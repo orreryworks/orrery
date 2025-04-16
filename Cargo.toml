@@ -1,0 +1,14 @@
+[package]
+name = "filament"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.32", features = ["derive"] }
+color = "0.2.3"
+env_logger = { version = "0.11.8", features = ["kv"] }
+layout-rs = "0.1.2"
+log = { version = "0.4.27", features = ["kv", "kv_std"] }
+nom = "8.0.0"
+petgraph = "0.7.1"
+svg = "0.18.0"
