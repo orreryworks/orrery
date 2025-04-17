@@ -1,4 +1,5 @@
 mod ast;
+mod color;
 mod error;
 mod export;
 mod graph;

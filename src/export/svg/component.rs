@@ -1,11 +1,11 @@
 use super::renderer;
+use crate::ast::elaborate::RelationType;
 use crate::export;
 use crate::layout::common::{Bounds, Component, Point};
 use crate::layout::component;
-use crate::ast::elaborate::RelationType;
 use log::{debug, info, trace};
-use svg::node::element::{Group, Path, Definitions, Marker};
 use std::collections::HashSet;
+use svg::node::element::{Definitions, Group, Marker, Path};
 use svg::Document;
 
 use super::Svg;
@@ -49,20 +49,41 @@ impl Svg {
 
         // Get marker references for this specific color
         let (start_marker, end_marker) = match &relation.relation_type {
-            RelationType::Forward => (None, Some(format!("url(#arrow-right-{})", self.sanitize_color(&relation.color)))),
-            RelationType::Backward => (Some(format!("url(#arrow-left-{})", self.sanitize_color(&relation.color))), None),
+            RelationType::Forward => (
+                None,
+                Some(format!(
+                    "url(#arrow-right-{})",
+                    relation.color.to_id_safe_string()
+                )),
+            ),
+            RelationType::Backward => (
+                Some(format!(
+                    "url(#arrow-left-{})",
+                    relation.color.to_id_safe_string()
+                )),
+                None,
+            ),
             RelationType::Bidirectional => (
-                Some(format!("url(#arrow-left-{})", self.sanitize_color(&relation.color))),
-                Some(format!("url(#arrow-right-{})", self.sanitize_color(&relation.color)))
+                Some(format!(
+                    "url(#arrow-left-{})",
+                    relation.color.to_id_safe_string()
+                )),
+                Some(format!(
+                    "url(#arrow-right-{})",
+                    relation.color.to_id_safe_string()
+                )),
             ),
             RelationType::Plain => (None, None),
         };
 
         // Create the path
         let mut path = Path::new()
-            .set("d", self.create_path_data_from_points(&source_edge, &target_edge))
+            .set(
+                "d",
+                self.create_path_data_from_points(&source_edge, &target_edge),
+            )
             .set("fill", "none")
-            .set("stroke", relation.color.as_str())
+            .set("stroke", relation.color.to_string())
             .set("stroke-width", relation.width);
 
         // Add markers if they exist
@@ -110,17 +131,17 @@ impl Svg {
         // Create marker definitions for each color used in the relationships
         let mut defs = Definitions::new();
         let mut marker_colors = HashSet::new();
-        
+
         // Collect all unique colors used in relations
         for relation in &l.relations {
-            marker_colors.insert(relation.relation.color.clone());
+            marker_colors.insert(&relation.relation.color);
         }
-        
+
         // Create markers for each color
         for color in &marker_colors {
             // Right-pointing arrow marker for this color
             let arrow_right = Marker::new()
-                .set("id", format!("arrow-right-{}", self.sanitize_color(color)))
+                .set("id", format!("arrow-right-{}", color.to_id_safe_string()))
                 .set("viewBox", "0 0 10 10")
                 .set("refX", 9)
                 .set("refY", 5)
@@ -130,12 +151,12 @@ impl Svg {
                 .add(
                     Path::new()
                         .set("d", "M 0 0 L 10 5 L 0 10 z")
-                        .set("fill", color.as_str()),
+                        .set("fill", color.to_string()),
                 );
 
             // Left-pointing arrow marker for this color
             let arrow_left = Marker::new()
-                .set("id", format!("arrow-left-{}", self.sanitize_color(color)))
+                .set("id", format!("arrow-left-{}", color.to_id_safe_string()))
                 .set("viewBox", "0 0 10 10")
                 .set("refX", 1)
                 .set("refY", 5)
@@ -145,12 +166,12 @@ impl Svg {
                 .add(
                     Path::new()
                         .set("d", "M 10 0 L 0 5 L 10 10 z")
-                        .set("fill", color.as_str()),
+                        .set("fill", color.to_string()),
                 );
 
             defs = defs.add(arrow_right).add(arrow_left);
         }
-        
+
         doc = doc.add(defs);
 
         // Calculate padding to center the content

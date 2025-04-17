@@ -1,5 +1,5 @@
-use crate::export;
 use crate::layout::common::{Point, Size};
+use crate::{color::Color, export};
 use log::{debug, error};
 use std::fs::File;
 use std::io::Write;
@@ -21,25 +21,7 @@ impl Svg {
     pub fn create_path_data_from_points(&self, start: &Point, end: &Point) -> String {
         format!("M {} {} L {} {}", start.x, start.y, end.x, end.y)
     }
-    
-    /// Convert a color string to a valid ID by removing invalid characters
-    pub fn sanitize_color(&self, color: &str) -> String {
-        // Replace invalid ID characters with underscores
-        let mut sanitized = color.replace('#', "hex")
-            .replace('(', "_")
-            .replace(')', "_")
-            .replace(',', "_")
-            .replace(' ', "_")
-            .replace(';', "_");
-        
-        // Ensure the ID starts with a letter (required for valid SVG IDs)
-        if sanitized.chars().next().map_or(false, |c| c.is_ascii_digit()) {
-            sanitized = format!("c_{}", sanitized);
-        }
-        
-        sanitized
-    }
-    
+
     /// Calculate the optimal size for the SVG based on content dimensions
     /// Adds a small margin around the content
     pub fn calculate_svg_dimensions(&self, content_size: &Size) -> Size {

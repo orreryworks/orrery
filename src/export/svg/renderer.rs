@@ -46,13 +46,13 @@ impl ShapeRenderer for Rectangle {
             .set("y", rect_y)
             .set("width", size.width)
             .set("height", size.height)
-            .set("stroke", type_def.line_color.as_str())
+            .set("stroke", type_def.line_color.to_string())
             .set("stroke-width", type_def.line_width)
             .set("fill", "white")
             .set("rx", type_def.rounded);
 
         if let Some(fill_color) = &type_def.fill_color {
-            rect = rect.set("fill", fill_color.as_str());
+            rect = rect.set("fill", fill_color.to_string());
         }
 
         // Component name
@@ -88,12 +88,12 @@ impl ShapeRenderer for Oval {
             .set("cy", position.y)
             .set("rx", rx)
             .set("ry", ry)
-            .set("stroke", type_def.line_color.as_str())
+            .set("stroke", type_def.line_color.to_string())
             .set("stroke-width", type_def.line_width)
             .set("fill", "white");
 
         if let Some(fill_color) = &type_def.fill_color {
-            ellipse = ellipse.set("fill", fill_color.as_str());
+            ellipse = ellipse.set("fill", fill_color.to_string());
         }
 
         // Component name

@@ -1,4 +1,5 @@
 use super::parser;
+use crate::color::Color;
 use crate::error::FilamentError;
 use crate::shape::{Oval, Rectangle, Shape};
 use log::{debug, error, info, trace};
@@ -12,7 +13,7 @@ pub struct TypeId(String);
 #[derive(Debug, Clone)]
 pub struct Attribute {
     pub name: TypeId,
-    pub value: String,
+    pub value: String, // TODO: Can I convert it to str?
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,7 +63,7 @@ pub struct Relation {
     pub source: TypeId,
     pub target: TypeId,
     pub relation_type: RelationType,
-    pub color: String,
+    pub color: Color,
     pub width: usize,
 }
 
@@ -87,8 +88,8 @@ pub enum DiagramKind {
 pub struct TypeDefinition {
     pub id: TypeId,
     pub attributes: Vec<Attribute>,
-    pub fill_color: Option<String>,
-    pub line_color: String,
+    pub fill_color: Option<Color>,
+    pub line_color: Color,
     pub line_width: usize,
     pub rounded: usize,
     pub font_size: usize,
@@ -311,12 +312,12 @@ impl Builder {
                     ..
                 } => {
                     // Extract color and width from attributes if they exist
-                    let mut color = "black".to_string();
+                    let mut color = Color::default();
                     let mut width = 1;
-                    
+
                     for attr in attributes {
                         match attr.name {
-                            "color" => color = attr.value.to_string(),
+                            "color" => color = Color::new(attr.value)?,
                             "width" => {
                                 if let Ok(w) = attr.value.parse::<usize>() {
                                     width = w;
@@ -325,7 +326,7 @@ impl Builder {
                             _ => {}
                         }
                     }
-                    
+
                     elements.push(Element::Relation(Relation {
                         source: TypeId::from_component_name(source),
                         target: TypeId::from_component_name(target),
@@ -333,7 +334,7 @@ impl Builder {
                         color,
                         width,
                     }))
-                },
+                }
                 _ => {
                     error!("Invalid element");
                     return Err(FilamentError::ElaborationError(
@@ -379,8 +380,8 @@ impl TypeDefinition {
         let mut attributes = Attribute::new_from_parser(attributes);
         for attr in &attributes {
             match attr.name.0.as_str() {
-                "fill_color" => type_def.fill_color = Some(attr.value.clone()),
-                "line_color" => type_def.line_color = attr.value.clone(),
+                "fill_color" => type_def.fill_color = Some(Color::new(attr.value.as_str())?),
+                "line_color" => type_def.line_color = Color::new(attr.value.as_str())?,
                 "line_width" => {
                     type_def.line_width = attr.value.parse().map_err(|e| {
                         let msg = format!("Invalid line_width: {}", e);
@@ -411,12 +412,13 @@ impl TypeDefinition {
     }
 
     fn defaults() -> Vec<Rc<TypeDefinition>> {
+        let black = Color::default();
         vec![
             Rc::new(Self {
                 id: TypeId::from_component_name("Rectangle"),
                 attributes: vec![],
                 fill_color: None,
-                line_color: "black".to_string(),
+                line_color: black.clone(),
                 line_width: 2,
                 rounded: 0,
                 font_size: 15,
@@ -426,7 +428,7 @@ impl TypeDefinition {
                 id: TypeId::from_component_name("Oval"),
                 attributes: vec![],
                 fill_color: None,
-                line_color: "black".to_string(),
+                line_color: black,
                 line_width: 2,
                 rounded: 0,
                 font_size: 15,

@@ -1,10 +1,11 @@
+use crate::ast::elaborate::RelationType;
+use crate::color::Color;
 use crate::export;
 use crate::layout::common::{Bounds, Point};
 use crate::layout::sequence;
-use crate::ast::elaborate::RelationType;
 use log::debug;
-use svg::node::element::{Group, Line, Path};
 use svg::node::element::{Definitions, Marker};
+use svg::node::element::{Group, Line, Path};
 use svg::Document;
 
 use super::{renderer, Svg};
@@ -35,7 +36,7 @@ impl Svg {
             .set("y1", lifeline_start_y)
             .set("x2", component.position.x)
             .set("y2", participant.lifeline_end)
-            .set("stroke", type_def.line_color.clone())
+            .set("stroke", &type_def.line_color)
             .set("stroke-width", 1)
             .set("stroke-dasharray", "4");
 
@@ -64,20 +65,41 @@ impl Svg {
 
         // Get marker references for this specific color
         let (start_marker, end_marker) = match &message.relation.relation_type {
-            RelationType::Forward => (None, Some(format!("url(#arrow-right-{})", self.sanitize_color(&message.relation.color)))),
-            RelationType::Backward => (Some(format!("url(#arrow-left-{})", self.sanitize_color(&message.relation.color))), None),
+            RelationType::Forward => (
+                None,
+                Some(format!(
+                    "url(#arrow-right-{})",
+                    message.relation.color.to_id_safe_string()
+                )),
+            ),
+            RelationType::Backward => (
+                Some(format!(
+                    "url(#arrow-left-{})",
+                    message.relation.color.to_id_safe_string()
+                )),
+                None,
+            ),
             RelationType::Bidirectional => (
-                Some(format!("url(#arrow-left-{})", self.sanitize_color(&message.relation.color))),
-                Some(format!("url(#arrow-right-{})", self.sanitize_color(&message.relation.color)))
+                Some(format!(
+                    "url(#arrow-left-{})",
+                    message.relation.color.to_id_safe_string()
+                )),
+                Some(format!(
+                    "url(#arrow-right-{})",
+                    message.relation.color.to_id_safe_string()
+                )),
             ),
             RelationType::Plain => (None, None),
         };
 
         // Create the path
         let mut path = Path::new()
-            .set("d", self.create_path_data_from_points(&start_point, &end_point))
+            .set(
+                "d",
+                self.create_path_data_from_points(&start_point, &end_point),
+            )
             .set("fill", "none")
-            .set("stroke", message.relation.color.as_str())
+            .set("stroke", message.relation.color.to_string())
             .set("stroke-width", message.relation.width);
 
         // Add markers if they exist
@@ -139,17 +161,17 @@ impl Svg {
         // Create marker definitions for each color used in the messages
         let mut defs = Definitions::new();
         let mut marker_colors = std::collections::HashSet::new();
-        
+
         // Collect all unique colors used in messages
         for message in &layout.messages {
-            marker_colors.insert(message.relation.color.clone());
+            marker_colors.insert(&message.relation.color);
         }
-        
+
         // Create markers for each color
         for color in &marker_colors {
             // Right-pointing arrow marker for this color
             let arrow_right = Marker::new()
-                .set("id", format!("arrow-right-{}", self.sanitize_color(color)))
+                .set("id", format!("arrow-right-{}", color.to_id_safe_string()))
                 .set("viewBox", "0 0 10 10")
                 .set("refX", 9)
                 .set("refY", 5)
@@ -159,12 +181,12 @@ impl Svg {
                 .add(
                     Path::new()
                         .set("d", "M 0 0 L 10 5 L 0 10 z")
-                        .set("fill", color.as_str()),
+                        .set("fill", color.to_string()),
                 );
 
             // Left-pointing arrow marker for this color
             let arrow_left = Marker::new()
-                .set("id", format!("arrow-left-{}", self.sanitize_color(color)))
+                .set("id", format!("arrow-left-{}", color.to_id_safe_string()))
                 .set("viewBox", "0 0 10 10")
                 .set("refX", 1)
                 .set("refY", 5)
@@ -174,12 +196,12 @@ impl Svg {
                 .add(
                     Path::new()
                         .set("d", "M 10 0 L 0 5 L 10 10 z")
-                        .set("fill", color.as_str()),
+                        .set("fill", color.to_string()),
                 );
 
             defs = defs.add(arrow_right).add(arrow_left);
         }
-        
+
         doc = doc.add(defs);
 
         // Calculate margins for centering
