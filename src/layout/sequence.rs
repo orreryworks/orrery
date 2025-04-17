@@ -1,5 +1,7 @@
-use crate::ast::elaborate::{Node, Relation};
-use crate::layout::common::{calculate_element_size, Component, Point};
+use crate::{
+    ast::elaborate::{Node, Relation},
+    layout::common::{calculate_element_size, Component, Point},
+};
 use petgraph::graph::DiGraph;
 use std::collections::HashMap;
 
@@ -21,8 +23,6 @@ pub struct Message<'a> {
 pub struct Layout<'a> {
     pub participants: Vec<Participant<'a>>,
     pub messages: Vec<Message<'a>>,
-    pub diagram_height: f32,
-    pub diagram_width: f32,
 }
 
 pub struct Engine {
@@ -132,29 +132,14 @@ impl Engine {
             current_y += self.message_spacing;
         }
 
-        // Add extra space at the bottom
-        let diagram_height = current_y + self.message_spacing;
-
-        // Calculate total diagram width based on the last participant position plus half its width and some margin
-        let diagram_width = if participants.is_empty() {
-            0.0
-        } else {
-            let last_participant = participants.last().unwrap();
-            last_participant.component.position.x
-                + (last_participant.component.size.width / 2.0)
-                + self.min_spacing
-        };
-
         // Update lifeline ends to match diagram height
         for participant in &mut participants {
-            participant.lifeline_end = diagram_height;
+            participant.lifeline_end = current_y + self.message_spacing;
         }
 
         Layout {
             participants,
             messages,
-            diagram_height,
-            diagram_width,
         }
     }
 }

@@ -1,12 +1,16 @@
 use super::renderer;
-use crate::ast::elaborate::RelationType;
-use crate::export;
-use crate::layout::common::{Bounds, Component, Point};
-use crate::layout::component;
+use crate::{
+    ast::elaborate::RelationType,
+    export,
+    layout::common::{Bounds, Component, Point},
+    layout::component,
+};
 use log::{debug, info, trace};
 use std::collections::HashSet;
-use svg::node::element::{Definitions, Group, Marker, Path};
-use svg::Document;
+use svg::{
+    node::element::{Definitions, Group, Marker, Path},
+    Document,
+};
 
 use super::Svg;
 

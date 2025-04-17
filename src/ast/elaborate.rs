@@ -1,11 +1,11 @@
 use super::parser;
-use crate::color::Color;
-use crate::error::FilamentError;
-use crate::shape::{Oval, Rectangle, Shape};
+use crate::{
+    color::Color,
+    error::FilamentError,
+    shape::{Oval, Rectangle, Shape},
+};
 use log::{debug, error, info, trace};
-use std::collections::HashMap;
-use std::fmt;
-use std::rc::Rc;
+use std::{collections::HashMap, fmt, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeId(String);

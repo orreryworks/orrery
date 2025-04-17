@@ -7,11 +7,10 @@ mod layout;
 mod shape;
 
 use ast::{elaborate, parser};
-use error::FilamentError;
-use std::fs;
-
 use clap::Parser;
+use error::FilamentError;
 use log::{debug, info, trace};
+use std::fs;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

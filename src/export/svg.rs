@@ -1,8 +1,9 @@
-use crate::layout::common::{Point, Size};
-use crate::{color::Color, export};
+use crate::{
+    export,
+    layout::common::{Point, Size},
+};
 use log::{debug, error};
-use std::fs::File;
-use std::io::Write;
+use std::{fs::File, io::Write};
 use svg::Document;
 
 /// Base SVG exporter structure with common properties and methods

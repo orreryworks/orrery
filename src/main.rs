@@ -1,8 +1,7 @@
 use clap::Parser;
 use filament::Config;
 use log::{error, info, LevelFilter};
-use std::process;
-use std::str::FromStr;
+use std::{process, str::FromStr};
 
 fn main() {
     // Parse configuration first

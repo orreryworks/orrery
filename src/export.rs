@@ -1,7 +1,6 @@
 pub mod svg;
 
-use crate::layout::component;
-use crate::layout::sequence;
+use crate::layout::{component, sequence};
 
 // A single Exporter trait that works with any layout type
 pub trait Exporter {

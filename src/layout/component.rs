@@ -1,7 +1,11 @@
-use crate::ast::elaborate::{Node, Relation};
-use crate::layout::common::{calculate_element_size, Component, Point, Size};
-use petgraph::graph::{DiGraph, NodeIndex};
-use petgraph::Direction;
+use crate::{
+    ast::elaborate::{Node, Relation},
+    layout::common::{calculate_element_size, Component, Point, Size},
+};
+use petgraph::{
+    graph::{DiGraph, NodeIndex},
+    Direction,
+};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug)]

@@ -1,5 +1,11 @@
 <svg height="360" viewBox="0 0 950 360" width="950" xmlns="http://www.w3.org/2000/svg">
 <defs>
+<marker id="arrow-right-blue" markerHeight="6" markerWidth="6" orient="auto" refX="9" refY="5" viewBox="0 0 10 10">
+<path d="M 0 0 L 10 5 L 0 10 z" fill="blue"/>
+</marker>
+<marker id="arrow-left-blue" markerHeight="6" markerWidth="6" orient="auto" refX="1" refY="5" viewBox="0 0 10 10">
+<path d="M 10 0 L 0 5 L 10 10 z" fill="blue"/>
+</marker>
 <marker id="arrow-right-black" markerHeight="6" markerWidth="6" orient="auto" refX="9" refY="5" viewBox="0 0 10 10">
 <path d="M 0 0 L 10 5 L 0 10 z" fill="black"/>
 </marker>
@@ -11,12 +17,6 @@
 </marker>
 <marker id="arrow-left-red" markerHeight="6" markerWidth="6" orient="auto" refX="1" refY="5" viewBox="0 0 10 10">
 <path d="M 10 0 L 0 5 L 10 10 z" fill="red"/>
-</marker>
-<marker id="arrow-right-blue" markerHeight="6" markerWidth="6" orient="auto" refX="9" refY="5" viewBox="0 0 10 10">
-<path d="M 0 0 L 10 5 L 0 10 z" fill="blue"/>
-</marker>
-<marker id="arrow-left-blue" markerHeight="6" markerWidth="6" orient="auto" refX="1" refY="5" viewBox="0 0 10 10">
-<path d="M 10 0 L 0 5 L 10 10 z" fill="blue"/>
 </marker>
 </defs>
 <g transform="translate(50, 50)">

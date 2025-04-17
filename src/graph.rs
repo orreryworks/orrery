@@ -1,5 +1,7 @@
-use crate::ast::elaborate::{Diagram, Element, Node, Relation};
-use crate::error::FilamentError;
+use crate::{
+    ast::elaborate::{Diagram, Element, Node, Relation},
+    error::FilamentError,
+};
 use petgraph::graph::DiGraph;
 use std::collections::HashMap;
 

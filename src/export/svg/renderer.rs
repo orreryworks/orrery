@@ -1,6 +1,8 @@
-use crate::ast::elaborate::TypeDefinition;
-use crate::layout::common::{Point, Size};
-use crate::shape::{Oval, Rectangle, Shape};
+use crate::{
+    ast::elaborate::TypeDefinition,
+    layout::common::{Point, Size},
+    shape::{Oval, Rectangle, Shape},
+};
 use svg::node::element::{Ellipse, Group, Rectangle as SvgRectangle, Text};
 
 /// Trait for rendering shapes to SVG

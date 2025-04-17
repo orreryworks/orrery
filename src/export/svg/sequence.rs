@@ -1,12 +1,16 @@
-use crate::ast::elaborate::RelationType;
-use crate::color::Color;
-use crate::export;
-use crate::layout::common::{Bounds, Point};
-use crate::layout::sequence;
+use crate::{
+    ast::elaborate::RelationType,
+    export,
+    layout::{
+        common::{Bounds, Point},
+        sequence,
+    },
+};
 use log::debug;
-use svg::node::element::{Definitions, Marker};
-use svg::node::element::{Group, Line, Path};
-use svg::Document;
+use svg::{
+    node::element::{Definitions, Group, Line, Marker, Path},
+    Document,
+};
 
 use super::{renderer, Svg};
 
