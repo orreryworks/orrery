@@ -4,7 +4,7 @@ use crate::{
     error::FilamentError,
     shape::{Oval, Rectangle, Shape},
 };
-use log::{debug, error, info, trace};
+use log::{debug, info, trace};
 use std::{collections::HashMap, fmt, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -187,11 +187,25 @@ impl Builder {
         }
     }
 
-    fn insert_type_definition(&mut self, type_def: TypeDefinition) -> bool {
+    fn insert_type_definition(
+        &mut self,
+        type_def: TypeDefinition,
+    ) -> Result<Rc<TypeDefinition>, FilamentError> {
         let id = type_def.id.clone();
         let type_def = Rc::new(type_def);
         self.type_definitions.push(Rc::clone(&type_def));
-        self.type_definition_map.insert(id, type_def).is_none()
+        if self
+            .type_definition_map
+            .insert(id, Rc::clone(&type_def))
+            .is_none()
+        {
+            Ok(type_def)
+        } else {
+            Err(FilamentError::ElaborationError(format!(
+                "Type definition '{}' already exists",
+                type_def.id
+            )))
+        }
     }
 
     fn update_type_direct_definitions(
@@ -203,24 +217,24 @@ impl Builder {
                 .type_definition_map
                 .get(&TypeId::from_component_name(&type_def.base_type))
                 .ok_or_else(|| {
-                    let msg = format!("Base type '{}' not found", &type_def.base_type);
-                    error!("{}", msg);
-                    FilamentError::ElaborationError(msg)
+                    FilamentError::ElaborationError(format!(
+                        "Base type '{}' not found",
+                        &type_def.base_type
+                    ))
                 })?;
-            if !self.insert_type_definition(TypeDefinition::from_base(
-                &type_def.name,
+            self.insert_type_definition(TypeDefinition::from_base(
+                TypeId::from_component_name(&type_def.name),
                 base,
                 &type_def.attributes,
-            )?) {
-                let msg = format!("Type definition '{}' already exists", type_def.name);
-                error!("{}", msg);
-                return Err(FilamentError::ElaborationError(msg));
-            }
+            )?)?;
         }
         Ok(())
     }
 
-    fn build_diagram_from_parser(&self, diag: &parser::Element) -> Result<Diagram, FilamentError> {
+    fn build_diagram_from_parser(
+        &mut self,
+        diag: &parser::Element,
+    ) -> Result<Diagram, FilamentError> {
         match diag {
             parser::Element::Diagram(diag) => {
                 let block = self.build_block_from_elements(&diag.elements)?;
@@ -228,7 +242,6 @@ impl Builder {
                     Block::None => Scope::default(),
                     Block::Scope(scope) => scope,
                     Block::Diagram(_) => {
-                        error!("Nested diagram not allowed");
                         return Err(FilamentError::ElaborationError(
                             "Nested diagram not allowed".to_string(),
                         ));
@@ -239,17 +252,14 @@ impl Builder {
                     scope,
                 })
             }
-            _ => {
-                error!("Invalid element type, expected Diagram");
-                Err(FilamentError::ElaborationError(
-                    "Invalid element, expected Diagram".to_string(),
-                ))
-            }
+            _ => Err(FilamentError::ElaborationError(
+                "Invalid element, expected Diagram".to_string(),
+            )),
         }
     }
 
     fn build_block_from_elements(
-        &self,
+        &mut self,
         parser_elements: &[parser::Element],
     ) -> Result<Block, FilamentError> {
         if parser_elements.is_empty() {
@@ -261,7 +271,6 @@ impl Builder {
         } else {
             for parser_elm in parser_elements {
                 if let parser::Element::Diagram { .. } = parser_elm {
-                    error!("Diagram cannot share scope with other elements");
                     return Err(FilamentError::ElaborationError(
                         "Diagram cannot share scope with other elements".to_string(),
                     ));
@@ -274,7 +283,7 @@ impl Builder {
     }
 
     fn build_scope_from_elements(
-        &self,
+        &mut self,
         parser_elements: &[parser::Element],
     ) -> Result<Scope, FilamentError> {
         let mut elements = Vec::new();
@@ -283,25 +292,15 @@ impl Builder {
                 parser::Element::Component {
                     name,
                     type_name,
+                    attributes,
                     nested_elements,
-                    ..
                 } => {
-                    let type_definition = match self
-                        .type_definition_map
-                        .get(&TypeId::from_component_name(type_name))
-                    {
-                        Some(type_def) => Rc::clone(type_def),
-                        None => {
-                            let msg = format!("Type '{type_name}' not found for '{name}'");
-                            error!("{}", msg);
-                            return Err(FilamentError::ElaborationError(msg));
-                        }
-                    };
                     elements.push(Element::Node(Node {
                         id: TypeId::from_component_name(name),
                         name: name.to_string(),
                         block: self.build_block_from_elements(nested_elements)?,
-                        type_definition,
+                        type_definition: self
+                            .build_element_type_definition(type_name, attributes)?,
                     }));
                 }
                 parser::Element::Relation {
@@ -336,7 +335,6 @@ impl Builder {
                     }))
                 }
                 _ => {
-                    error!("Invalid element");
                     return Err(FilamentError::ElaborationError(
                         "Invalid element".to_string(),
                     ));
@@ -345,11 +343,39 @@ impl Builder {
         }
         Ok(Scope { elements })
     }
+
+    fn build_element_type_definition(
+        &mut self,
+        type_name: &str,
+        attributes: &[parser::Attribute],
+    ) -> Result<Rc<TypeDefinition>, FilamentError> {
+        let base = self
+            .type_definition_map
+            .get(&TypeId::from_component_name(type_name))
+            .ok_or_else(|| {
+                FilamentError::ElaborationError(format!("Base type '{}' not found", type_name,))
+            })?;
+        if attributes.is_empty() {
+            return Ok(Rc::clone(base));
+        }
+        let id = TypeId::internal_id_from_index(self.type_definition_map.len());
+        self.insert_type_definition(TypeDefinition::from_base(id, base, attributes)?)
+    }
 }
 
 impl TypeId {
     pub fn from_component_name(name: &str) -> Self {
         TypeId(name.to_string())
+    }
+
+    fn internal_id_from_index(idx: usize) -> Self {
+        TypeId(format!("__{idx}"))
+    }
+}
+
+impl fmt::Display for TypeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -371,12 +397,12 @@ impl std::fmt::Debug for TypeDefinition {
 
 impl TypeDefinition {
     fn from_base(
-        name: &str,
+        id: TypeId,
         base: &Self,
         attributes: &[parser::Attribute],
     ) -> Result<Self, FilamentError> {
         let mut type_def = base.clone();
-        type_def.id = TypeId::from_component_name(name);
+        type_def.id = id;
         let mut attributes = Attribute::new_from_parser(attributes);
         for attr in &attributes {
             match attr.name.0.as_str() {
@@ -384,23 +410,17 @@ impl TypeDefinition {
                 "line_color" => type_def.line_color = Color::new(attr.value.as_str())?,
                 "line_width" => {
                     type_def.line_width = attr.value.parse().map_err(|e| {
-                        let msg = format!("Invalid line_width: {}", e);
-                        error!("{}", msg);
-                        FilamentError::ElaborationError(msg)
+                        FilamentError::ElaborationError(format!("Invalid line_width: {}", e))
                     })?
                 }
                 "rounded" => {
                     type_def.rounded = attr.value.parse().map_err(|e| {
-                        let msg = format!("Invalid rounded: {}", e);
-                        error!("{}", msg);
-                        FilamentError::ElaborationError(msg)
+                        FilamentError::ElaborationError(format!("Invalid rounded: {}", e))
                     })?
                 }
                 "font_size" => {
                     type_def.font_size = attr.value.parse().map_err(|e| {
-                        let msg = format!("Invalid font_size: {}", e);
-                        error!("{}", msg);
-                        FilamentError::ElaborationError(msg)
+                        FilamentError::ElaborationError(format!("Invalid font_size: {}", e))
                     })?
                 }
                 _ => {}
