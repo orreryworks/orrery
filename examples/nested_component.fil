@@ -1,0 +1,23 @@
+diagram component;
+
+// Define component types
+type Database = Rectangle [fill_color = "#B3E5FC", line_color = "#0288D1", rounded = "5"];
+type Service = Rectangle [fill_color = "#FFECB3", line_color = "#FFA000", rounded = "10"];
+type Frontend = Oval [fill_color = "#E8F5E9", line_color = "#388E3C"];
+
+// Define the outer components
+web_app: Frontend;
+api: Service;
+
+// Define a database server with inner components
+db_server: Rectangle {
+    primary_db: Database;
+    replica_db: Database;
+
+    // Relation between inner components
+    primary_db -> replica_db;
+};
+
+// Define relations between components
+web_app -> api;
+api -> db_server;

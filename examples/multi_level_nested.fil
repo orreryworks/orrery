@@ -1,0 +1,40 @@
+diagram component;
+
+// Define component types with distinctive colors
+type Database = Rectangle [fill_color = "#B3E5FC", line_color = "#0288D1", rounded = "5"];
+type Service = Rectangle [fill_color = "#FFECB3", line_color = "#FFA000", rounded = "10"];
+type Frontend = Oval [fill_color = "#E8F5E9", line_color = "#388E3C"];
+type Container = Rectangle [fill_color = "#F5F5F5", line_color = "#9E9E9E", rounded = "3"];
+
+// Define the top-level architecture
+browser: Frontend;
+cloud_server: Container {
+    // Web server with nested components
+    web_server: Service {
+        // Components inside the web server
+        static_assets: Rectangle [fill_color = "#F3E5F5"];
+        app_logic: Rectangle [fill_color = "#E1BEE7"];
+
+        // Relations within the web server
+        static_assets -> app_logic;
+    };
+
+    // Database server with nested components
+    db_server: Container {
+        primary_db: Database;
+        replica_db: Database;
+
+        // Relations within the database server
+        primary_db -> replica_db;
+    };
+
+    // Relations inside the cloud server
+    web_server -> db_server;
+};
+
+// External services
+cdn: Service;
+
+// Define top-level relations
+browser -> cloud_server;
+browser -> cdn;
