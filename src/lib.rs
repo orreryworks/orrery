@@ -30,13 +30,14 @@ pub struct Config {
 
 pub fn run(cfg: &Config) -> Result<(), FilamentError> {
     info!(
-        "Processing diagram with input: {}, output: {}",
-        cfg.file, cfg.output
+        input_path = cfg.file,
+        output_path = cfg.output;
+        "Processing diagram",
     );
 
     // Reading input file
     let content = fs::read_to_string(&cfg.file)?;
-    trace!("File content: {}", content);
+    trace!(content; "File content");
 
     // Parsing the diagram
     info!("Parsing diagram");
@@ -48,15 +49,16 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
     let elaborate_builder = elaborate::Builder::new();
     let elaborated_ast = elaborate_builder.build(&ast)?;
     debug!("Elaborated AST successfully");
+    trace!(elaborated_ast:?; "Elaborated AST");
 
     // Process diagram based on its type
     // Build the diagram graph (common for all types)
-    info!("Building {:?} diagram graph", elaborated_ast.kind);
+    info!(diagram_kind:? = elaborated_ast.kind; "Building diagram graph");
     let graph = graph::diagram_to_graph(&elaborated_ast)?;
     debug!(
-        "Graph built successfully with {} nodes and {} edges",
-        graph.node_count(),
-        graph.edge_count()
+        nodes_count = graph.node_count(),
+        edges_count = graph.edge_count();
+        "Graph built successfully",
     );
 
     // Create SVG exporter that will use diagram dimensions
@@ -70,9 +72,9 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
             let layout_engine = layout::component::Engine::new();
             let layout = layout_engine.calculate(&graph);
             debug!(
-                "Layout calculated with {} components and {} relations",
-                layout.components.len(),
-                layout.relations.len()
+                components_len = layout.components.len(),
+                relations_len = layout.relations.len();
+                "Layout calculated",
             );
 
             // Export the component layout
@@ -85,9 +87,9 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
             let layout_engine = layout::sequence::Engine::new();
             let layout = layout_engine.calculate(&graph);
             debug!(
-                "Layout calculated with {} participants and {} messages",
-                layout.participants.len(),
-                layout.messages.len()
+                participants_len = layout.participants.len(),
+                messages_len = layout.messages.len();
+                "Layout calculated",
             );
 
             // Export the sequence layout
@@ -97,10 +99,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
     }
 
     // Common post-processing
-    info!("SVG exported successfully to: {}", cfg.output);
-
-    // Debug output for development purposes
-    trace!(target: "ast", elaborated_ast:?; "Elaborated AST");
+    info!(output_file = cfg.output; "SVG exported successfully to");
 
     Ok(())
 }
