@@ -1,8 +1,8 @@
 use crate::{
-    ast::elaborate::{Node, Relation},
+    ast::elaborate::Relation,
+    graph::Graph,
     layout::common::{calculate_element_size, Component, Point},
 };
-use petgraph::graph::DiGraph;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -46,7 +46,7 @@ impl Engine {
         }
     }
 
-    pub fn calculate<'a>(&self, graph: &'a DiGraph<Node, Relation>) -> Layout<'a> {
+    pub fn calculate<'a>(&self, graph: &'a Graph) -> Layout<'a> {
         let mut participants: Vec<Participant<'a>> = Vec::new();
         let mut participant_indices = HashMap::new();
 
