@@ -211,7 +211,7 @@ pub fn build_diagram(input: &str) -> Result<Element, FilamentError> {
     match parse_diagram(input) {
         Ok((remaining, diagram)) => {
             if !remaining.is_empty() {
-                return Err(FilamentError::ParseError(format!(
+                return Err(FilamentError::Parse(format!(
                     "Unexpected trailing characters: {remaining}"
                 )));
             }
@@ -219,6 +219,6 @@ pub fn build_diagram(input: &str) -> Result<Element, FilamentError> {
             trace!("Parsed diagram: {:?}", diagram);
             Ok(diagram)
         }
-        Err(err) => Err(FilamentError::ParseError(err.to_string())),
+        Err(err) => Err(FilamentError::Parse(err.to_string())),
     }
 }

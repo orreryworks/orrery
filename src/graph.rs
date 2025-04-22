@@ -85,7 +85,7 @@ impl Graph {
                     self.graph
                         .add_edge(source_idx, target_idx, relation.clone());
                 } else {
-                    return Err(FilamentError::GraphError(format!(
+                    return Err(FilamentError::Graph(format!(
                         "Warning: Relation refers to undefined nodes: {} -> {}",
                         relation.source, relation.target
                     )));

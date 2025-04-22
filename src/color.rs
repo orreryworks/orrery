@@ -29,30 +29,16 @@ impl Color {
         }
     }
 
-    /// Get string representation of the color
-    pub fn to_string(&self) -> String {
-        // Use the color crate's Display implementation for DynamicColor
-        self.color.to_string()
-    }
-
     /// Get the sanitized ID-safe string for this color (for use in markers)
     pub fn to_id_safe_string(&self) -> String {
         let color_str = self.to_string();
         // Replace invalid ID characters with underscores
         let mut sanitized = color_str
             .replace('#', "hex")
-            .replace('(', "_")
-            .replace(')', "_")
-            .replace(',', "_")
-            .replace(' ', "_")
-            .replace(';', "_");
+            .replace(['(', ')', ',', ' ', ';'], "_");
 
         // Ensure the ID starts with a letter (required for valid SVG IDs)
-        if sanitized
-            .chars()
-            .next()
-            .map_or(false, |c| c.is_ascii_digit())
-        {
+        if sanitized.chars().next().is_some_and(|c| c.is_ascii_digit()) {
             sanitized = format!("c_{}", sanitized);
         }
 
@@ -69,7 +55,7 @@ impl Default for Color {
 // For compatibility with the existing codebase that uses colors as strings
 impl std::fmt::Display for Color {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", self.color)
     }
 }
 

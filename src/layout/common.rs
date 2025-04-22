@@ -54,7 +54,7 @@ pub struct Component<'a> {
     pub size: Size,
 }
 
-impl<'a> Component<'a> {
+impl Component<'_> {
     /// Calculate the bounds of this component
     pub fn bounds(&self) -> Bounds {
         let half_width = self.size.width / 2.0;

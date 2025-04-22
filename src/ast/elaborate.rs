@@ -158,7 +158,7 @@ impl Builder {
                         scope
                     }
                     Block::Diagram(_) => {
-                        return Err(FilamentError::ElaborationError(
+                        return Err(FilamentError::Elaboration(
                             "Nested diagram not allowed".to_string(),
                         ))
                     }
@@ -169,7 +169,7 @@ impl Builder {
                     "sequence" => DiagramKind::Sequence,
                     "component" => DiagramKind::Component,
                     _ => {
-                        return Err(FilamentError::ElaborationError(
+                        return Err(FilamentError::Elaboration(
                             "Invalid diagram kind".to_string(),
                         ))
                     }
@@ -181,7 +181,7 @@ impl Builder {
                 );
                 Ok(Diagram { kind, scope })
             }
-            _ => Err(FilamentError::ElaborationError(
+            _ => Err(FilamentError::Elaboration(
                 "Invalid element, expected Diagram".to_string(),
             )),
         }
@@ -201,7 +201,7 @@ impl Builder {
         {
             Ok(type_def)
         } else {
-            Err(FilamentError::ElaborationError(format!(
+            Err(FilamentError::Elaboration(format!(
                 "Type definition '{}' already exists",
                 type_def.id
             )))
@@ -215,15 +215,15 @@ impl Builder {
         for type_def in &diag.type_definitions {
             let base = self
                 .type_definition_map
-                .get(&TypeId::from_component_name(&type_def.base_type))
+                .get(&TypeId::from_component_name(type_def.base_type))
                 .ok_or_else(|| {
-                    FilamentError::ElaborationError(format!(
+                    FilamentError::Elaboration(format!(
                         "Base type '{}' not found",
                         &type_def.base_type
                     ))
                 })?;
             self.insert_type_definition(TypeDefinition::from_base(
-                TypeId::from_component_name(&type_def.name),
+                TypeId::from_component_name(type_def.name),
                 base,
                 &type_def.attributes,
             )?)?;
@@ -242,7 +242,7 @@ impl Builder {
                     Block::None => Scope::default(),
                     Block::Scope(scope) => scope,
                     Block::Diagram(_) => {
-                        return Err(FilamentError::ElaborationError(
+                        return Err(FilamentError::Elaboration(
                             "Nested diagram not allowed".to_string(),
                         ));
                     }
@@ -252,7 +252,7 @@ impl Builder {
                     scope,
                 })
             }
-            _ => Err(FilamentError::ElaborationError(
+            _ => Err(FilamentError::Elaboration(
                 "Invalid element, expected Diagram".to_string(),
             )),
         }
@@ -271,7 +271,7 @@ impl Builder {
         } else {
             for parser_elm in parser_elements {
                 if let parser::Element::Diagram { .. } = parser_elm {
-                    return Err(FilamentError::ElaborationError(
+                    return Err(FilamentError::Elaboration(
                         "Diagram cannot share scope with other elements".to_string(),
                     ));
                 }
@@ -335,9 +335,7 @@ impl Builder {
                     }))
                 }
                 _ => {
-                    return Err(FilamentError::ElaborationError(
-                        "Invalid element".to_string(),
-                    ));
+                    return Err(FilamentError::Elaboration("Invalid element".to_string()));
                 }
             }
         }
@@ -353,7 +351,7 @@ impl Builder {
             .type_definition_map
             .get(&TypeId::from_component_name(type_name))
             .ok_or_else(|| {
-                FilamentError::ElaborationError(format!("Base type '{}' not found", type_name,))
+                FilamentError::Elaboration(format!("Base type '{}' not found", type_name,))
             })?;
         if attributes.is_empty() {
             return Ok(Rc::clone(base));
@@ -410,17 +408,17 @@ impl TypeDefinition {
                 "line_color" => type_def.line_color = Color::new(attr.value.as_str())?,
                 "line_width" => {
                     type_def.line_width = attr.value.parse().map_err(|e| {
-                        FilamentError::ElaborationError(format!("Invalid line_width: {}", e))
+                        FilamentError::Elaboration(format!("Invalid line_width: {}", e))
                     })?
                 }
                 "rounded" => {
                     type_def.rounded = attr.value.parse().map_err(|e| {
-                        FilamentError::ElaborationError(format!("Invalid rounded: {}", e))
+                        FilamentError::Elaboration(format!("Invalid rounded: {}", e))
                     })?
                 }
                 "font_size" => {
                     type_def.font_size = attr.value.parse().map_err(|e| {
-                        FilamentError::ElaborationError(format!("Invalid font_size: {}", e))
+                        FilamentError::Elaboration(format!("Invalid font_size: {}", e))
                     })?
                 }
                 _ => {}
@@ -469,7 +467,7 @@ impl Attribute {
     fn new_from_parser(parser_attrs: &[parser::Attribute]) -> Vec<Self> {
         parser_attrs
             .iter()
-            .map(|attr| Self::new(&attr.name, &attr.value))
+            .map(|attr| Self::new(attr.name, attr.value))
             .collect()
     }
 }

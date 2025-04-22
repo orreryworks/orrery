@@ -191,13 +191,7 @@ impl Engine {
         // Start with leaf nodes and work up
         let mut visited = std::collections::HashSet::new();
         for node_idx in graph.node_indices() {
-            self.adjust_container_size(
-                node_idx,
-                graph,
-                hierarchy_map,
-                &mut component_sizes,
-                &mut visited,
-            );
+            self.adjust_container_size(node_idx, hierarchy_map, &mut component_sizes, &mut visited);
         }
 
         component_sizes
@@ -207,7 +201,6 @@ impl Engine {
     fn adjust_container_size(
         &self,
         node_idx: NodeIndex,
-        graph: &Graph,
         hierarchy_map: &HashMap<NodeIndex, Vec<NodeIndex>>,
         sizes: &mut HashMap<NodeIndex, Size>,
         visited: &mut std::collections::HashSet<NodeIndex>,
@@ -231,7 +224,7 @@ impl Engine {
 
             for &child_idx in children {
                 let child_size =
-                    self.adjust_container_size(child_idx, graph, hierarchy_map, sizes, visited);
+                    self.adjust_container_size(child_idx, hierarchy_map, sizes, visited);
                 max_width = max_width.max(child_size.width);
                 max_height = max_height.max(child_size.height);
             }
@@ -247,9 +240,8 @@ impl Engine {
                 let sqrt_count = (children.len() as f64).sqrt().ceil() as usize;
                 required_width =
                     max_width * sqrt_count as f32 + self.padding * (sqrt_count + 1) as f32;
-                required_height = max_height
-                    * ((children.len() + sqrt_count - 1) / sqrt_count) as f32
-                    + self.padding * (((children.len() + sqrt_count - 1) / sqrt_count) + 1) as f32;
+                required_height = max_height * children.len().div_ceil(sqrt_count) as f32
+                    + self.padding * (children.len().div_ceil(sqrt_count) + 1) as f32;
             }
 
             // Get the current size and ensure it's big enough
@@ -404,7 +396,7 @@ impl Engine {
         // Determine layout arrangement (simple grid layout for now)
         let sqrt_count = (children.len() as f64).sqrt().ceil() as usize;
         let cols = sqrt_count;
-        let rows = (children.len() + cols - 1) / cols;
+        let rows = children.len().div_ceil(cols);
 
         // Calculate cell dimensions
         let cell_width = available_width / cols as f32;

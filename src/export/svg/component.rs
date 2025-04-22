@@ -31,16 +31,12 @@ impl Svg {
         let renderer = renderer::get_renderer(&*type_def.shape_type);
 
         // Use the renderer to generate the SVG for the main component
-        let component_group = renderer.render_to_svg(
+        renderer.render_to_svg(
             &component.position,
             &component.size,
             type_def,
             &component.node.name,
-        );
-
-        // The inner blocks are now processed as part of the main graph,
-        // so we don't need to render them separately here.
-        component_group
+        )
     }
 
     fn render_relation(
@@ -196,7 +192,7 @@ impl Svg {
             main_group = main_group.add(self.render_relation(
                 l.source(relation),
                 l.target(relation),
-                &relation.relation,
+                relation.relation,
             ));
         }
 
