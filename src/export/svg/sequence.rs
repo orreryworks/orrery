@@ -1,12 +1,10 @@
 use crate::{
     ast::elaborate::RelationType,
-    export,
     layout::{
         common::{Bounds, Point},
         sequence,
     },
 };
-use log::debug;
 use svg::{
     node::element::{Definitions, Group, Line, Marker, Path},
     Document,
@@ -145,7 +143,7 @@ impl Svg {
         bounds
     }
 
-    fn render_sequence_diagram(&self, layout: &sequence::Layout) -> Document {
+    pub fn render_sequence_diagram(&self, layout: &sequence::Layout) -> Document {
         // Calculate content bounds
         let content_bounds = self.calculate_sequence_diagram_bounds(layout);
         let content_size = content_bounds.to_size();
@@ -235,16 +233,5 @@ impl Svg {
         let main_group = Group::new().set("transform", transform).add(diagram_group);
 
         doc.add(main_group)
-    }
-
-    /// Export a sequence diagram layout to SVG
-    pub fn export_sequence_layout(&self, layout: &sequence::Layout) -> Result<(), export::Error> {
-        debug!("Starting Sequence SVG export to file: {}", self.file_name);
-
-        // Render the SVG document
-        let doc = self.render_sequence_diagram(layout);
-
-        // Write the document to file
-        self.write_document(doc)
     }
 }

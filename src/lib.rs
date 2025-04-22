@@ -9,6 +9,7 @@ mod shape;
 use ast::{elaborate, parser};
 use clap::Parser;
 use error::FilamentError;
+use export::Exporter;
 use log::{debug, info, trace};
 use std::fs;
 

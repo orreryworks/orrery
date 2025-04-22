@@ -2,7 +2,7 @@ use crate::{
     export,
     layout::common::{Point, Size},
 };
-use log::{debug, error};
+use log::{debug, error, info};
 use std::{fs::File, io::Write};
 use svg::Document;
 
@@ -38,6 +38,7 @@ impl Svg {
 
     /// Writes an SVG document to the specified file
     pub fn write_document(&self, doc: Document) -> Result<(), export::Error> {
+        info!(file_name = self.file_name; "Creating SVG file");
         // Create the output file
         let f = match File::create(&self.file_name) {
             Ok(file) => file,
@@ -67,13 +68,19 @@ impl export::Exporter for Svg {
         &self,
         layout: &crate::layout::component::Layout,
     ) -> Result<(), export::Error> {
-        self.export_component_layout(layout)
+        let doc = self.render_component_diagram(layout);
+        debug!("SVG document rendered");
+
+        self.write_document(doc)
     }
 
     fn export_sequence_layout(
         &self,
         layout: &crate::layout::sequence::Layout,
     ) -> Result<(), export::Error> {
-        self.export_sequence_layout(layout)
+        let doc = self.render_sequence_diagram(layout);
+        debug!("SVG document rendered");
+
+        self.write_document(doc)
     }
 }

@@ -1,11 +1,9 @@
 use super::renderer;
 use crate::{
     ast::elaborate::RelationType,
-    export,
     layout::common::{Bounds, Component, Point},
     layout::component,
 };
-use log::{debug, info, trace};
 use std::collections::HashSet;
 use svg::{
     node::element::{Definitions, Group, Marker, Path},
@@ -119,7 +117,7 @@ impl Svg {
             .fold(l.components[0].bounds(), |acc, bounds| acc.merge(&bounds))
     }
 
-    fn render_component_diagram(&self, l: &component::Layout) -> Document {
+    pub fn render_component_diagram(&self, l: &component::Layout) -> Document {
         // Calculate content dimensions using the bounds method
         let content_bounds = self.calculate_component_diagram_bounds(l);
         let content_size = content_bounds.to_size();
@@ -208,20 +206,5 @@ impl Svg {
             .add(main_group);
 
         doc.add(transform_group)
-    }
-
-    /// Export a component diagram layout to SVG
-    pub fn export_component_layout(&self, l: &component::Layout) -> Result<(), export::Error> {
-        debug!("Starting Component SVG export to file: {}", self.file_name);
-
-        // Render the SVG document
-        let doc = self.render_component_diagram(l);
-        trace!("SVG document rendered");
-
-        // Create the output file
-        info!("Creating SVG file: {}", self.file_name);
-
-        // Write the document to file
-        self.write_document(doc)
     }
 }
