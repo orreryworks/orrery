@@ -153,7 +153,7 @@ impl Builder {
 
                 // Build block from elements
                 debug!("Building block from elements");
-                let block = self.build_block_from_elements(&diag.elements)?;
+                let block = self.build_block_from_elements(&diag.elements, None)?;
 
                 // Convert block to scope
                 let scope = match block {
@@ -163,8 +163,8 @@ impl Builder {
                     }
                     Block::Scope(scope) => {
                         debug!(
-                            "Using scope from block with {} elements",
-                            scope.elements.len()
+                            elements_len = scope.elements.len();
+                            "Using scope from block",
                         );
                         scope
                     }
@@ -248,7 +248,7 @@ impl Builder {
     ) -> Result<Diagram, FilamentError> {
         match diag {
             parser::Element::Diagram(diag) => {
-                let block = self.build_block_from_elements(&diag.elements)?;
+                let block = self.build_block_from_elements(&diag.elements, None)?;
                 let scope = match block {
                     Block::None => Scope::default(),
                     Block::Scope(scope) => scope,
@@ -272,6 +272,7 @@ impl Builder {
     fn build_block_from_elements(
         &mut self,
         parser_elements: &[parser::Element],
+        parent_id: Option<&TypeId>,
     ) -> Result<Block, FilamentError> {
         if parser_elements.is_empty() {
             Ok(Block::None)
@@ -288,7 +289,7 @@ impl Builder {
                 }
             }
             Ok(Block::Scope(
-                self.build_scope_from_elements(parser_elements)?,
+                self.build_scope_from_elements(parser_elements, parent_id)?,
             ))
         }
     }
@@ -296,6 +297,7 @@ impl Builder {
     fn build_scope_from_elements(
         &mut self,
         parser_elements: &[parser::Element],
+        parent_id: Option<&TypeId>,
     ) -> Result<Scope, FilamentError> {
         let mut elements = Vec::new();
         for parser_elm in parser_elements {
@@ -306,13 +308,23 @@ impl Builder {
                     attributes,
                     nested_elements,
                 } => {
-                    elements.push(Element::Node(Node {
-                        id: TypeId::from_component_name(name),
+                    let node_id = match parent_id {
+                        Some(parent) => parent.nested_id(name),
+                        None => TypeId::from_component_name(name),
+                    };
+
+                    // Process nested elements with the new ID as parent
+                    let block = self.build_block_from_elements(nested_elements, Some(&node_id))?;
+
+                    let node = Node {
+                        id: node_id,
                         name: name.to_string(),
-                        block: self.build_block_from_elements(nested_elements)?,
+                        block,
                         type_definition: self
                             .build_element_type_definition(type_name, attributes)?,
-                    }));
+                    };
+
+                    elements.push(Element::Node(node));
                 }
                 parser::Element::Relation {
                     source,
@@ -337,9 +349,20 @@ impl Builder {
                         }
                     }
 
+                    // Create source and target IDs based on parent context if present
+                    let source_id = match parent_id {
+                        Some(parent) => parent.nested_id(source),
+                        None => TypeId::from_component_name(source),
+                    };
+                    
+                    let target_id = match parent_id {
+                        Some(parent) => parent.nested_id(target),
+                        None => TypeId::from_component_name(target),
+                    };
+                    
                     elements.push(Element::Relation(Relation {
-                        source: TypeId::from_component_name(source),
-                        target: TypeId::from_component_name(target),
+                        source: source_id,
+                        target: target_id,
                         relation_type: RelationType::from_str(relation_type),
                         color,
                         width,
@@ -373,12 +396,17 @@ impl Builder {
 }
 
 impl TypeId {
-    pub fn from_component_name(name: &str) -> Self {
+    fn from_component_name(name: &str) -> Self {
         TypeId(name.to_string())
     }
 
     fn internal_id_from_index(idx: usize) -> Self {
         TypeId(format!("__{idx}"))
+    }
+
+    /// Creates a nested ID by combining parent ID and child ID with '::' separator
+    fn nested_id(&self, child_id: &str) -> Self {
+        TypeId(format!("{}::{}", self.0, child_id))
     }
 }
 
