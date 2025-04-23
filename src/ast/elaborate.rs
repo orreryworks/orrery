@@ -354,12 +354,12 @@ impl Builder {
                         Some(parent) => parent.nested_id(source),
                         None => TypeId::from_component_name(source),
                     };
-                    
+
                     let target_id = match parent_id {
                         Some(parent) => parent.nested_id(target),
                         None => TypeId::from_component_name(target),
                     };
-                    
+
                     elements.push(Element::Relation(Relation {
                         source: source_id,
                         target: target_id,
@@ -390,17 +390,20 @@ impl Builder {
         if attributes.is_empty() {
             return Ok(Rc::clone(base));
         }
-        let id = TypeId::internal_id_from_index(self.type_definition_map.len());
+        let id = TypeId::from_anonymous_index(self.type_definition_map.len());
         self.insert_type_definition(TypeDefinition::from_base(id, base, attributes)?)
     }
 }
 
 impl TypeId {
+    /// Creates a TypeId from a component name as defined in the diagram
     fn from_component_name(name: &str) -> Self {
         TypeId(name.to_string())
     }
 
-    fn internal_id_from_index(idx: usize) -> Self {
+    /// Creates an internal TypeId used for generated types
+    /// (e.g., for anonymous type definitions)generate_anonymous
+    fn from_anonymous_index(idx: usize) -> Self {
         TypeId(format!("__{idx}"))
     }
 
