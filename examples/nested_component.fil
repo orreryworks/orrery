@@ -4,6 +4,7 @@ diagram component;
 type Database = Rectangle [fill_color = "#B3E5FC", line_color = "#0288D1", rounded = "5"];
 type Service = Rectangle [fill_color = "#FFECB3", line_color = "#FFA000", rounded = "10"];
 type Frontend = Oval [fill_color = "#E8F5E9", line_color = "#388E3C"];
+type Cache = Rectangle [fill_color = "#DCEDC8", line_color = "#7CB342", rounded = "8"];
 
 // Define the outer components
 web_app: Frontend;
@@ -13,11 +14,37 @@ api: Service;
 db_server: Rectangle {
     primary_db: Database;
     replica_db: Database;
+    cache: Cache;
 
-    // Relation between inner components
+    // Relations between inner components
     primary_db -> replica_db;
+    primary_db -> cache;
 };
 
-// Define relations between components
+// External components
+logging_service: Service;
+metrics: Service;
+
+// Define regular relations between top-level components
 web_app -> api;
 api -> db_server;
+web_app -> logging_service;
+
+// Cross-level relations connecting across different nesting levels
+// Access from top-level component directly to nested component
+api -> db_server::primary_db [line_color = "#E91E63"];
+
+// Direct connection from web app to the replica database
+web_app -> db_server::replica_db [line_color = "#9C27B0"];
+
+// Connection from nested component to top-level component
+db_server::cache -> logging_service [line_color = "#009688"];
+
+// External logging service connected to internal component
+metrics -> db_server::primary_db [line_color = "#FF9800"];
+
+// Commentary on cross-level relations:
+// - These relations demonstrate how components at different nesting levels
+//   can be connected directly using the hierarchical ID syntax (parent::child)
+// - This enables explicit modeling of dependencies that cross boundaries
+//   while still maintaining the organizational structure

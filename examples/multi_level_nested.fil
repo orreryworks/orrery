@@ -5,6 +5,7 @@ type Database = Rectangle [fill_color = "#B3E5FC", line_color = "#0288D1", round
 type Service = Rectangle [fill_color = "#FFECB3", line_color = "#FFA000", rounded = "10"];
 type Frontend = Oval [fill_color = "#E8F5E9", line_color = "#388E3C"];
 type Container = Rectangle [fill_color = "#F5F5F5", line_color = "#9E9E9E", rounded = "3"];
+type ExternalAPI = Oval [fill_color = "#BBDEFB", line_color = "#1976D2"]; 
 
 // Define the top-level architecture
 browser: Frontend;
@@ -14,18 +15,22 @@ cloud_server: Container {
         // Components inside the web server
         static_assets: Rectangle [fill_color = "#F3E5F5"];
         app_logic: Rectangle [fill_color = "#E1BEE7"];
+        api_gateway: Service [fill_color = "#D1C4E9"];
 
         // Relations within the web server
         static_assets -> app_logic;
+        app_logic -> api_gateway;
     };
 
     // Database server with nested components
     db_server: Container {
         primary_db: Database;
         replica_db: Database;
+        cache: Service [fill_color = "#B2DFDB"];
 
         // Relations within the database server
         primary_db -> replica_db;
+        primary_db -> cache;
     };
 
     // Relations inside the cloud server
@@ -34,7 +39,27 @@ cloud_server: Container {
 
 // External services
 cdn: Service;
+auth_service: ExternalAPI;
+monitoring: Service;
 
 // Define top-level relations
 browser -> cloud_server;
 browser -> cdn;
+
+// Cross-level relations using the hierarchical ID syntax (parent::child)
+// Browser directly accessing specific components inside cloud_server
+browser -> cloud_server::web_server::api_gateway [line_color = "#E91E63"];
+
+// External auth service connecting to internal components
+auth_service -> cloud_server::web_server::app_logic [line_color = "#673AB7"];
+
+// Direct connection from nested component to external service
+cloud_server::web_server::api_gateway -> auth_service;
+
+// Connection between deeply nested components across different parent containers
+cloud_server::web_server::app_logic -> cloud_server::db_server::primary_db [line_color = "#009688"];
+
+// External monitoring connected to multiple internal components
+monitoring -> cloud_server::web_server [line_color = "#FF9800"];
+monitoring -> cloud_server::db_server::primary_db;
+cloud_server::db_server::cache -> cdn [line_color = "#4CAF50"];
