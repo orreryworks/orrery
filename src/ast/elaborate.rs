@@ -109,6 +109,17 @@ pub enum Block {
     Diagram(Diagram),
 }
 
+impl Block {
+    /// Returns true if this block contains any elements
+    pub fn has_nested_blocks(&self) -> bool {
+        match self {
+            Block::None => false,
+            Block::Scope(scope) => !scope.elements.is_empty(),
+            Block::Diagram(diagram) => !diagram.scope.elements.is_empty(),
+        }
+    }
+}
+
 pub struct Builder {
     type_definitions: Vec<Rc<TypeDefinition>>,
     type_definition_map: HashMap<TypeId, Rc<TypeDefinition>>,

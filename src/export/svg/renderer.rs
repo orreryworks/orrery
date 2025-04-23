@@ -8,12 +8,19 @@ use svg::node::element::{Ellipse, Group, Rectangle as SvgRectangle, Text};
 /// Trait for rendering shapes to SVG
 pub trait ShapeRenderer {
     /// Render a shape to SVG based on the given properties
+    /// 
+    /// * `position` - The center position of the shape
+    /// * `size` - The size of the shape
+    /// * `type_def` - The type definition containing styling information
+    /// * `text` - The text to display (component name)
+    /// * `has_nested_blocks` - Whether this component contains nested blocks
     fn render_to_svg(
         &self,
         position: &Point,
         size: &Size,
         type_def: &TypeDefinition,
         text: &str,
+        has_nested_blocks: bool,
     ) -> Group;
 }
 
@@ -34,6 +41,7 @@ impl ShapeRenderer for Rectangle {
         size: &Size,
         type_def: &TypeDefinition,
         text: &str,
+        has_nested_blocks: bool,
     ) -> Group {
         let group = Group::new();
 
@@ -58,9 +66,19 @@ impl ShapeRenderer for Rectangle {
         }
 
         // Component name
+        // If this component has nested blocks, position the text near the top
+        // otherwise place it in the center of the rectangle
+        let text_y = if has_nested_blocks {
+            // Position text near the top with a small padding
+            rect_y + 20.0 // 20px from the top edge
+        } else {
+            // Center the text vertically
+            position.y
+        };
+
         let text_element = Text::new(text)
             .set("x", position.x)
-            .set("y", position.y)
+            .set("y", text_y)
             .set("text-anchor", "middle")
             .set("dominant-baseline", "middle")
             .set("font-family", "Arial")
@@ -78,6 +96,7 @@ impl ShapeRenderer for Oval {
         size: &Size,
         type_def: &TypeDefinition,
         text: &str,
+        has_nested_blocks: bool,
     ) -> Group {
         let group = Group::new();
 
@@ -99,9 +118,19 @@ impl ShapeRenderer for Oval {
         }
 
         // Component name
+        // If this component has nested blocks, position the text near the top
+        // otherwise place it in the center of the ellipse
+        let text_y = if has_nested_blocks {
+            // Position text near the top with a small padding (adjust based on oval shape)
+            position.y - (ry * 0.5) // position text at 25% from the top
+        } else {
+            // Center the text vertically
+            position.y
+        };
+
         let text_element = Text::new(text)
             .set("x", position.x)
-            .set("y", position.y)
+            .set("y", text_y)
             .set("text-anchor", "middle")
             .set("dominant-baseline", "middle")
             .set("font-family", "Arial")

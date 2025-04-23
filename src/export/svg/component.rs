@@ -27,6 +27,8 @@ impl Svg {
         // Use the shape_type to render the appropriate shape via the renderer
         let type_def = &*component.node.type_definition;
 
+        let has_nested_blocks = component.node.block.has_nested_blocks();
+
         // Get the appropriate renderer based on the shape type
         let renderer = renderer::get_renderer(&*type_def.shape_type);
 
@@ -36,6 +38,7 @@ impl Svg {
             &component.size,
             type_def,
             &component.node.name,
+            has_nested_blocks,
         )
     }
 
