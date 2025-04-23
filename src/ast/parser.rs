@@ -3,12 +3,29 @@ use log::{debug, trace};
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while1},
-    character::complete::{alpha1, alphanumeric1, char, multispace0, multispace1},
-    combinator::{map, opt, recognize},
+    character::complete::{alpha1, alphanumeric1, char, line_ending, multispace0, multispace1, not_line_ending},
+    combinator::{map, opt, recognize, value},
     multi::{many0, separated_list0},
     sequence::{delimited, pair, preceded, separated_pair, terminated},
     IResult, Parser,
 };
+
+// Parses Rust-style line comments and whitespace
+fn ws_comments0(input: &str) -> IResult<&str, ()> {
+    value(
+        (),
+        many0(alt((
+            // Match whitespace
+            value((), multispace1),
+            // Match Rust style comments
+            value(
+                (),
+                terminated(preceded(tag("//"), not_line_ending), opt(line_ending)),
+            ),
+        ))),
+    )
+    .parse(input)
+}
 
 #[derive(Debug)]
 pub struct Attribute<'a> {
@@ -51,13 +68,13 @@ pub enum Element<'a> {
 fn parse_identifier(input: &str) -> IResult<&str, &str> {
     // Define a parser for a standard identifier (starts with alpha, can contain alphanum or underscore)
     let standard_identifier = || recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_"))))));
-    
+
     // Now allow multiple identifiers separated by :: for nested identifiers
     let nested_identifier = recognize(pair(
         standard_identifier(),
         many0(preceded(tag("::"), standard_identifier())),
     ));
-    
+
     map(nested_identifier, |s: &str| s).parse(input)
 }
 
@@ -73,7 +90,7 @@ fn parse_attribute(input: &str) -> IResult<&str, Attribute> {
     map(
         separated_pair(
             parse_identifier,
-            delimited(multispace0, char('='), multispace0),
+            delimited(ws_comments0, char('='), ws_comments0),
             parse_string_literal,
         ),
         |(name, value)| Attribute { name, value },
@@ -83,12 +100,12 @@ fn parse_attribute(input: &str) -> IResult<&str, Attribute> {
 
 fn parse_attributes(input: &str) -> IResult<&str, Vec<Attribute>> {
     delimited(
-        terminated(char('['), multispace0),
+        terminated(char('['), ws_comments0),
         separated_list0(
-            delimited(multispace0, char(','), multispace0),
+            delimited(ws_comments0, char(','), ws_comments0),
             parse_attribute,
         ),
-        preceded(multispace0, char(']')),
+        preceded(ws_comments0, char(']')),
     )
     .parse(input)
 }
@@ -96,15 +113,15 @@ fn parse_attributes(input: &str) -> IResult<&str, Vec<Attribute>> {
 fn parse_type_definition(input: &str) -> IResult<&str, TypeDefinition> {
     map(
         delimited(
-            multispace0,
+            ws_comments0,
             (
-                terminated(tag("type"), multispace1),
+                terminated(tag("type"), ws_comments0),
                 parse_identifier,
-                delimited(multispace0, char('='), multispace0),
+                delimited(ws_comments0, char('='), ws_comments0),
                 parse_identifier,
-                opt(parse_attributes),
+                preceded(multispace0, opt(parse_attributes)), // Allow 0 or more spaces before attributes
             ),
-            preceded(multispace0, char(';')),
+            preceded(ws_comments0, char(';')),
         ),
         |(_, name, _, base_type, attributes)| TypeDefinition {
             name,
@@ -120,16 +137,16 @@ fn parse_component(input: &str) -> IResult<&str, Element> {
         terminated(
             (
                 parse_identifier,
-                delimited(multispace0, char(':'), multispace0),
+                delimited(ws_comments0, char(':'), ws_comments0),
                 parse_identifier,
                 opt(parse_attributes),
                 opt(delimited(
-                    preceded(multispace0, char('{')),
+                    preceded(ws_comments0, char('{')),
                     parse_elements,
-                    preceded(multispace0, char('}')),
+                    preceded(ws_comments0, char('}')),
                 )),
             ),
-            preceded(multispace0, char(';')),
+            preceded(ws_comments0, char(';')),
         ),
         |(name, _, type_name, attributes, nested_elements)| Element::Component {
             name,
@@ -151,14 +168,19 @@ fn parse_relation(input: &str) -> IResult<&str, Element> {
         terminated(
             (
                 parse_identifier,
-                delimited(multispace1, parse_relation_type, multispace0),
-                opt(parse_attributes),
-                parse_identifier,
-                opt((preceded(multispace0, char(':')), parse_string_literal)),
+                preceded(ws_comments0, parse_relation_type),
+                preceded(
+                    multispace1, // Require at least one space after relation type
+                    pair(
+                        opt(preceded(multispace0, parse_attributes)), // Optional attributes
+                        preceded(multispace0, parse_identifier), // Target identifier with possible leading space
+                    ),
+                ),
+                opt((preceded(ws_comments0, char(':')), parse_string_literal)),
             ),
-            preceded(multispace0, char(';')),
+            preceded(ws_comments0, char(';')),
         ),
-        |(source, rel_type, attributes, target, _)| Element::Relation {
+        |(source, rel_type, (attributes, target), _)| Element::Relation {
             source,
             target,
             attributes: attributes.unwrap_or_default(),
@@ -170,15 +192,15 @@ fn parse_relation(input: &str) -> IResult<&str, Element> {
 
 fn parse_element(input: &str) -> IResult<&str, Element> {
     delimited(
-        multispace0,
+        ws_comments0,
         alt((parse_component, parse_relation)),
-        multispace0,
+        ws_comments0,
     )
     .parse(input)
 }
 
 fn parse_elements(input: &str) -> IResult<&str, Vec<Element>> {
-    many0(preceded(multispace0, parse_element)).parse(input)
+    many0(preceded(ws_comments0, parse_element)).parse(input)
 }
 
 fn parse_diagram_header(input: &str) -> IResult<&str, &str> {
@@ -192,13 +214,13 @@ fn parse_diagram_header(input: &str) -> IResult<&str, &str> {
 fn parse_diagram(input: &str) -> IResult<&str, Element> {
     map(
         delimited(
-            multispace0,
+            ws_comments0,
             (
                 parse_diagram_header,
                 many0(parse_type_definition),
                 parse_elements,
             ),
-            multispace0,
+            ws_comments0,
         ),
         |(kind, type_definitions, elements)| {
             Element::Diagram(Diagram {

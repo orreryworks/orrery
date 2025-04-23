@@ -15,63 +15,63 @@ main_system: System {
     frontend: System {
         ui: UI;
         state_manager: Rectangle;
-        
+
         // Components inside the UI
         ui {
             components: Rectangle;
             router: Rectangle;
-            
+
             components {
                 form: Rectangle;
                 table: Rectangle;
                 modal: Rectangle;
-                
+
                 // Relations inside the deepest level
                 form -> modal;
                 table -> modal;
             };
-            
+
             // Relations inside UI
             components -> router;
         };
-        
+
         // Frontend relations
         ui -> state_manager;
     };
-    
+
     // Backend subsystem with nested components
     backend: System {
         api_gateway: API;
-        
+
         // Service layer
         services: System {
             user_service: Service;
             data_service: Service;
             notification_service: Service;
-            
+
             // Relations between services
             user_service -> data_service;
             user_service -> notification_service;
         };
-        
+
         // Data layer
         data_layer: System {
             primary_db: Database;
             read_replica: Database;
             message_queue: Queue;
             redis_cache: Cache;
-            
+
             // Relations in data layer
             primary_db -> read_replica;
             primary_db -> message_queue;
             primary_db -> redis_cache;
         };
-        
+
         // Backend relations
         api_gateway -> services;
         services -> data_layer;
     };
-    
+
     // Main system relations
     frontend -> backend;
 };
@@ -91,23 +91,23 @@ monitoring -> main_system;
 // =========================================================
 
 // Direct access from top-level to deeply nested components
-auth_provider -> main_system::backend::services::user_service [line_color = "#E91E63"];
+auth_provider -> [line_color = "#E91E63"] main_system::backend::services::user_service;
 
 // Frontend component accessing backend database directly (architectural bypass)
-main_system::frontend::state_manager -> main_system::backend::data_layer::redis_cache [line_color = "#9C27B0"];
+main_system::frontend::state_manager -> [line_color = "#9C27B0"] main_system::backend::data_layer::redis_cache;
 
 // UI component calling service directly (skipping API gateway)
-main_system::frontend::ui::components::form -> main_system::backend::services::user_service [line_color = "#FF5722"];
+main_system::frontend::ui::components::form -> [line_color = "#FF5722"] main_system::backend::services::user_service;
 
 // External monitoring connected to specific internal components
-monitoring -> main_system::backend::data_layer::primary_db [line_color = "#795548"];
-monitoring -> main_system::backend::api_gateway [line_color = "#795548"];
+monitoring -> [line_color = "#795548"] main_system::backend::data_layer::primary_db;
+monitoring -> [line_color = "#795548"] main_system::backend::api_gateway;
 
 // Backend service talking directly to external service
-main_system::backend::services::notification_service -> auth_provider [line_color = "#607D8B"];
+main_system::backend::services::notification_service -> [line_color = "#607D8B"] auth_provider;
 
 // Deeply nested component accessing other deeply nested component in another subsystem
-main_system::frontend::ui::router -> main_system::backend::services::data_service [line_color = "#009688"];
+main_system::frontend::ui::router -> [line_color = "#009688"] main_system::backend::services::data_service;
 
 // Notification service pushing to frontend component
-main_system::backend::services::notification_service -> main_system::frontend::ui::components::modal [line_color = "#673AB7"];
+main_system::backend::services::notification_service -> [line_color = "#673AB7"] main_system::frontend::ui::components::modal;
