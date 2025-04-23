@@ -226,7 +226,7 @@ impl Builder {
         for type_def in &diag.type_definitions {
             let base = self
                 .type_definition_map
-                .get(&TypeId::from_component_name(type_def.base_type))
+                .get(&TypeId::from_name(type_def.base_type))
                 .ok_or_else(|| {
                     FilamentError::Elaboration(format!(
                         "Base type '{}' not found",
@@ -234,7 +234,7 @@ impl Builder {
                     ))
                 })?;
             self.insert_type_definition(TypeDefinition::from_base(
-                TypeId::from_component_name(type_def.name),
+                TypeId::from_name(type_def.name),
                 base,
                 &type_def.attributes,
             )?)?;
@@ -309,8 +309,8 @@ impl Builder {
                     nested_elements,
                 } => {
                     let node_id = match parent_id {
-                        Some(parent) => parent.nested_id(name),
-                        None => TypeId::from_component_name(name),
+                        Some(parent) => parent.create_nested(name),
+                        None => TypeId::from_name(name),
                     };
 
                     // Process nested elements with the new ID as parent
@@ -351,13 +351,13 @@ impl Builder {
 
                     // Create source and target IDs based on parent context if present
                     let source_id = match parent_id {
-                        Some(parent) => parent.nested_id(source),
-                        None => TypeId::from_component_name(source),
+                        Some(parent) => parent.create_nested(source),
+                        None => TypeId::from_name(source),
                     };
 
                     let target_id = match parent_id {
-                        Some(parent) => parent.nested_id(target),
-                        None => TypeId::from_component_name(target),
+                        Some(parent) => parent.create_nested(target),
+                        None => TypeId::from_name(target),
                     };
 
                     elements.push(Element::Relation(Relation {
@@ -383,32 +383,32 @@ impl Builder {
     ) -> Result<Rc<TypeDefinition>, FilamentError> {
         let base = self
             .type_definition_map
-            .get(&TypeId::from_component_name(type_name))
+            .get(&TypeId::from_name(type_name))
             .ok_or_else(|| {
                 FilamentError::Elaboration(format!("Base type '{}' not found", type_name,))
             })?;
         if attributes.is_empty() {
             return Ok(Rc::clone(base));
         }
-        let id = TypeId::from_anonymous_index(self.type_definition_map.len());
+        let id = TypeId::from_anonymous(self.type_definition_map.len());
         self.insert_type_definition(TypeDefinition::from_base(id, base, attributes)?)
     }
 }
 
 impl TypeId {
     /// Creates a TypeId from a component name as defined in the diagram
-    fn from_component_name(name: &str) -> Self {
+    fn from_name(name: &str) -> Self {
         TypeId(name.to_string())
     }
 
     /// Creates an internal TypeId used for generated types
-    /// (e.g., for anonymous type definitions)generate_anonymous
-    fn from_anonymous_index(idx: usize) -> Self {
+    /// (e.g., for anonymous type definitions)
+    fn from_anonymous(idx: usize) -> Self {
         TypeId(format!("__{idx}"))
     }
 
     /// Creates a nested ID by combining parent ID and child ID with '::' separator
-    fn nested_id(&self, child_id: &str) -> Self {
+    fn create_nested(&self, child_id: &str) -> Self {
         TypeId(format!("{}::{}", self.0, child_id))
     }
 }
@@ -475,7 +475,7 @@ impl TypeDefinition {
         let black = Color::default();
         vec![
             Rc::new(Self {
-                id: TypeId::from_component_name("Rectangle"),
+                id: TypeId::from_name("Rectangle"),
                 attributes: vec![],
                 fill_color: None,
                 line_color: black.clone(),
@@ -485,7 +485,7 @@ impl TypeDefinition {
                 shape_type: Rc::new(Rectangle) as Rc<dyn Shape>,
             }),
             Rc::new(Self {
-                id: TypeId::from_component_name("Oval"),
+                id: TypeId::from_name("Oval"),
                 attributes: vec![],
                 fill_color: None,
                 line_color: black,
@@ -501,7 +501,7 @@ impl TypeDefinition {
 impl Attribute {
     fn new(name: &str, value: &str) -> Self {
         Self {
-            name: TypeId::from_component_name(name),
+            name: TypeId::from_name(name),
             value: value.to_string(),
         }
     }

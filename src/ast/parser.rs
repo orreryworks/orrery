@@ -49,11 +49,16 @@ pub enum Element<'a> {
 
 // --- Parser Combinators ---
 fn parse_identifier(input: &str) -> IResult<&str, &str> {
-    map(
-        recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_")))))),
-        |s: &str| s,
-    )
-    .parse(input)
+    // Define a parser for a standard identifier (starts with alpha, can contain alphanum or underscore)
+    let standard_identifier = || recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_"))))));
+    
+    // Now allow multiple identifiers separated by :: for nested identifiers
+    let nested_identifier = recognize(pair(
+        standard_identifier(),
+        many0(preceded(tag("::"), standard_identifier())),
+    ));
+    
+    map(nested_identifier, |s: &str| s).parse(input)
 }
 
 fn parse_string_literal(input: &str) -> IResult<&str, &str> {
