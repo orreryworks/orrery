@@ -13,15 +13,11 @@ type Cache = Rectangle [fill_color = "#DCEDC8", line_color = "#7CB342", rounded 
 main_system: System {
     // Frontend subsystem with nested components
     frontend: System {
-        ui: UI;
         state_manager: Rectangle;
-
-        // Components inside the UI
-        ui {
-            components: Rectangle;
+        ui: UI {
             router: Rectangle;
 
-            components {
+            components: Rectangle {
                 form: Rectangle;
                 table: Rectangle;
                 modal: Rectangle;
