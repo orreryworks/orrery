@@ -3,31 +3,12 @@ use log::{debug, trace};
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while1},
-    character::complete::{
-        alpha1, alphanumeric1, char, line_ending, multispace0, multispace1, not_line_ending,
-    },
+    character::complete::{alpha1, alphanumeric1, char, multispace1, not_line_ending},
     combinator::{map, opt, recognize, value},
-    multi::{many0, separated_list0},
+    multi::{many0, many1, separated_list0, separated_list1},
     sequence::{delimited, pair, preceded, separated_pair, terminated},
     IResult, Parser,
 };
-
-// Parses Rust-style line comments and whitespace
-fn ws_comments0(input: &str) -> IResult<&str, ()> {
-    value(
-        (),
-        many0(alt((
-            // Match whitespace
-            value((), multispace1),
-            // Match Rust style comments
-            value(
-                (),
-                terminated(preceded(tag("//"), not_line_ending), opt(line_ending)),
-            ),
-        ))),
-    )
-    .parse(input)
-}
 
 #[derive(Debug)]
 pub struct Attribute<'a> {
@@ -66,26 +47,40 @@ pub enum Element<'a> {
     Diagram(Diagram<'a>),
 }
 
-// --- Parser Combinators ---
+// Parses Rust-style line comments and whitespace
+fn ws_comment(input: &str) -> IResult<&str, ()> {
+    value(
+        (),
+        alt((
+            // Match whitespace
+            multispace1,
+            // Match Rust style comments
+            recognize(pair(tag("//"), not_line_ending)),
+        )),
+    )
+    .parse(input)
+}
+
+fn ws_comments0(input: &str) -> IResult<&str, ()> {
+    value((), many0(ws_comment)).parse(input)
+}
+
+fn ws_comments1(input: &str) -> IResult<&str, ()> {
+    value((), many1(ws_comment)).parse(input)
+}
+
+// Define a parser for a standard identifier (starts with alpha, can contain alphanum or underscore)
 fn parse_identifier(input: &str) -> IResult<&str, &str> {
-    // Define a parser for a standard identifier (starts with alpha, can contain alphanum or underscore)
-    let standard_identifier = || recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_"))))));
+    recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_")))))).parse(input)
+    // NOTE: Why it is not working with char('_')?
+}
 
-    // Now allow multiple identifiers separated by :: for nested identifiers
-    let nested_identifier = recognize(pair(
-        standard_identifier(),
-        many0(preceded(tag("::"), standard_identifier())),
-    ));
-
-    map(nested_identifier, |s: &str| s).parse(input)
+fn parse_nested_identifier(input: &str) -> IResult<&str, &str> {
+    recognize(separated_list1(tag("::"), parse_identifier)).parse(input)
 }
 
 fn parse_string_literal(input: &str) -> IResult<&str, &str> {
-    map(
-        delimited(tag("\""), take_while1(|c: char| c != '"'), tag("\"")),
-        |s: &str| s,
-    )
-    .parse(input)
+    delimited(char('"'), take_while1(|c: char| c != '"'), char('"')).parse(input)
 }
 
 fn parse_attribute(input: &str) -> IResult<&str, Attribute> {
@@ -102,12 +97,12 @@ fn parse_attribute(input: &str) -> IResult<&str, Attribute> {
 
 fn parse_attributes(input: &str) -> IResult<&str, Vec<Attribute>> {
     delimited(
-        terminated(char('['), ws_comments0),
+        char('['),
         separated_list0(
-            delimited(ws_comments0, char(','), ws_comments0),
-            parse_attribute,
+            char(','),
+            delimited(ws_comments0, parse_attribute, ws_comments0),
         ),
-        preceded(ws_comments0, char(']')),
+        char(']'),
     )
     .parse(input)
 }
@@ -117,13 +112,13 @@ fn parse_type_definition(input: &str) -> IResult<&str, TypeDefinition> {
         delimited(
             ws_comments0,
             (
-                terminated(tag("type"), ws_comments0),
+                pair(tag("type"), ws_comments1),
                 parse_identifier,
                 delimited(ws_comments0, char('='), ws_comments0),
                 parse_identifier,
-                preceded(multispace0, opt(parse_attributes)), // Allow 0 or more spaces before attributes
+                preceded(ws_comments0, opt(parse_attributes)), // Allow 0 or more spaces before attributes
             ),
-            preceded(ws_comments0, char(';')),
+            pair(ws_comments0, char(';')),
         ),
         |(_, name, _, base_type, attributes)| TypeDefinition {
             name,
@@ -138,9 +133,9 @@ fn parse_component(input: &str) -> IResult<&str, Element> {
     map(
         terminated(
             (
-                parse_identifier,
-                delimited(ws_comments0, char(':'), ws_comments0),
-                parse_identifier,
+                terminated(parse_identifier, ws_comments0),
+                char(':'),
+                delimited(ws_comments0, parse_identifier, ws_comments0),
                 opt(parse_attributes),
                 opt(delimited(
                     preceded(ws_comments0, char('{')),
@@ -148,11 +143,11 @@ fn parse_component(input: &str) -> IResult<&str, Element> {
                     preceded(ws_comments0, char('}')),
                 )),
             ),
-            preceded(ws_comments0, char(';')),
+            pair(ws_comments0, char(';')),
         ),
         |(name, _, type_name, attributes, nested_elements)| Element::Component {
             name,
-            type_name, // TODO
+            type_name,
             attributes: attributes.unwrap_or_default(),
             nested_elements: nested_elements.unwrap_or_default(),
         },
@@ -169,24 +164,23 @@ fn parse_relation(input: &str) -> IResult<&str, Element> {
     map(
         terminated(
             (
-                parse_identifier,
-                preceded(ws_comments0, parse_relation_type),
-                preceded(
-                    multispace1, // Require at least one space after relation type
-                    pair(
-                        opt(preceded(multispace0, parse_attributes)), // Optional attributes
-                        preceded(multispace0, parse_identifier), // Target identifier with possible leading space
-                    ),
+                terminated(parse_nested_identifier, ws_comments1),
+                parse_relation_type,
+                opt(preceded(ws_comments0, parse_attributes)), // Optional attributes
+                delimited(
+                    ws_comments1, // Require at least one space after relation type
+                    parse_nested_identifier,
+                    ws_comments0, // Target identifier with possible leading space
                 ),
                 opt((preceded(ws_comments0, char(':')), parse_string_literal)),
             ),
-            preceded(ws_comments0, char(';')),
+            pair(ws_comments0, char(';')),
         ),
-        |(source, rel_type, (attributes, target), _)| Element::Relation {
+        |(source, relation_type, attributes, target, _)| Element::Relation {
             source,
             target,
             attributes: attributes.unwrap_or_default(),
-            relation_type: rel_type,
+            relation_type,
         },
     )
     .parse(input)
@@ -202,13 +196,14 @@ fn parse_element(input: &str) -> IResult<&str, Element> {
 }
 
 fn parse_elements(input: &str) -> IResult<&str, Vec<Element>> {
-    many0(preceded(ws_comments0, parse_element)).parse(input)
+    many0(parse_element).parse(input)
 }
 
 fn parse_diagram_header(input: &str) -> IResult<&str, &str> {
-    map(
-        terminated((tag("diagram"), multispace1, parse_identifier), char(';')),
-        |(_, _, kind)| kind,
+    delimited(
+        pair(tag("diagram"), multispace1),
+        parse_identifier,
+        pair(ws_comments0, char(';')),
     )
     .parse(input)
 }
@@ -257,6 +252,74 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_ws_comment() {
+        // Test whitespace
+        let (rest, _) = ws_comment("   \n\t   ").unwrap();
+        assert_eq!(rest, "");
+
+        // Test comments
+        let (rest, _) = ws_comment("// This is a comment").unwrap();
+        assert_eq!(rest, "");
+
+        // Test whitespace followed by comments
+        let (rest, _) = ws_comment("  \n  // Comment").unwrap();
+        assert_eq!(rest, "// Comment");
+
+        // Test whitespace followed by content
+        let (rest, _) = ws_comment("  \r\t  content").unwrap();
+        assert_eq!(rest, "content");
+
+        // Test comment followed by whitespace
+        let (rest, _) = ws_comment("// Comment\n").unwrap();
+        assert_eq!(rest, "\n");
+    }
+
+    #[test]
+    fn test_ws_comments0() {
+        // Test whitespace
+        let (rest, _) = ws_comments0("   \n\t   ").unwrap();
+        assert_eq!(rest, "");
+
+        // Test comments
+        let (rest, _) = ws_comments0("// This is a comment\n// Another comment").unwrap();
+        assert_eq!(rest, "");
+
+        // Test mixed whitespace and comments
+        let (rest, _) = ws_comments0("  // Comment\n  // Another\n  ").unwrap();
+        assert_eq!(rest, "");
+
+        // Test with content after
+        let (rest, _) = ws_comments0("  // Comment\n  content").unwrap();
+        assert_eq!(rest, "content");
+
+        // Test without content or whitespace
+        let (rest, _) = ws_comments0("content").unwrap();
+        assert_eq!(rest, "content");
+    }
+
+    #[test]
+    fn test_ws_comments1() {
+        // Test whitespace
+        let (rest, _) = ws_comments1("   \n\t   ").unwrap();
+        assert_eq!(rest, "");
+
+        // Test comments
+        let (rest, _) = ws_comments1("// This is a comment\n// Another comment").unwrap();
+        assert_eq!(rest, "");
+
+        // Test mixed whitespace and comments
+        let (rest, _) = ws_comments1("  // Comment\n  // Another\n  ").unwrap();
+        assert_eq!(rest, "");
+
+        // Test with content after
+        let (rest, _) = ws_comments1("  // Comment\n  content").unwrap();
+        assert_eq!(rest, "content");
+
+        // Test without content or whitespace
+        assert!(ws_comments1("content").is_err());
+    }
+
+    #[test]
     fn test_parse_identifier() {
         // Test basic identifiers
         assert!(parse_identifier("simple").is_ok());
@@ -264,14 +327,24 @@ mod tests {
         assert!(parse_identifier("camelCase").is_ok());
         assert!(parse_identifier("PascalCase").is_ok());
 
-        // Test nested identifiers
-        assert!(parse_identifier("parent::child").is_ok());
-        assert!(parse_identifier("module::sub_module::element").is_ok());
-
         // Test invalid identifiers
         assert!(parse_identifier("123invalid").is_err());
         assert!(parse_identifier("_invalid").is_err());
         assert!(parse_identifier("").is_err());
+    }
+
+    #[test]
+    fn test_parse_nested_identifier() {
+        // Test basic identifiers
+        assert!(parse_nested_identifier("simple").is_ok());
+
+        // Test nested identifiers
+        assert!(parse_nested_identifier("parent::child").is_ok());
+        assert!(parse_nested_identifier("module::sub_module::element").is_ok());
+
+        // Test invalid identifiers
+        assert!(parse_nested_identifier("_invalid").is_err());
+        assert!(parse_nested_identifier("").is_err());
     }
 
     #[test]
@@ -382,15 +455,15 @@ mod tests {
 
         // Test with whitespace and comments
         // FIXME: Fix the code to pass this test.
-        // let (rest, type_def) =
-        //     parse_type_definition("type Database = Rectangle // comment\n [fill_color=\"blue\"];")
-        //         .unwrap();
-        // assert_eq!(rest, "");
-        // assert_eq!(type_def.name, "Database");
-        // assert_eq!(type_def.base_type, "Rectangle");
-        // assert_eq!(type_def.attributes.len(), 1);
-        // assert_eq!(type_def.attributes[0].name, "fill_color");
-        // assert_eq!(type_def.attributes[0].value, "blue");
+        let (rest, type_def) =
+            parse_type_definition("type Database = Rectangle // comment\n [fill_color=\"blue\"];")
+                .unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(type_def.name, "Database");
+        assert_eq!(type_def.base_type, "Rectangle");
+        assert_eq!(type_def.attributes.len(), 1);
+        assert_eq!(type_def.attributes[0].name, "fill_color");
+        assert_eq!(type_def.attributes[0].value, "blue");
 
         // Test invalid type definitions
         assert!(parse_type_definition("type Database;").is_err());
@@ -419,26 +492,25 @@ mod tests {
         }
 
         // Test component with attributes - note the space before attributes
-        // FIXME: Fix the code to pass this test.
-        // let (rest, component) =
-        //     parse_component("database: Rectangle [fill_color=\"blue\"];").unwrap();
-        // assert_eq!(rest, "");
-        // match component {
-        //     Element::Component {
-        //         name,
-        //         type_name,
-        //         attributes,
-        //         nested_elements,
-        //     } => {
-        //         assert_eq!(name, "database");
-        //         assert_eq!(type_name, "Rectangle");
-        //         assert_eq!(attributes.len(), 1);
-        //         assert_eq!(attributes[0].name, "fill_color");
-        //         assert_eq!(attributes[0].value, "blue");
-        //         assert_eq!(nested_elements.len(), 0);
-        //     }
-        //     _ => panic!("Expected Component"),
-        // }
+        let (rest, component) =
+            parse_component("database: Rectangle [fill_color=\"blue\"];").unwrap();
+        assert_eq!(rest, "");
+        match component {
+            Element::Component {
+                name,
+                type_name,
+                attributes,
+                nested_elements,
+            } => {
+                assert_eq!(name, "database");
+                assert_eq!(type_name, "Rectangle");
+                assert_eq!(attributes.len(), 1);
+                assert_eq!(attributes[0].name, "fill_color");
+                assert_eq!(attributes[0].value, "blue");
+                assert_eq!(nested_elements.len(), 0);
+            }
+            _ => panic!("Expected Component"),
+        }
 
         // Test component with attributes - note there is no space before attributes
         let (rest, component) =
@@ -742,24 +814,5 @@ mod tests {
         let diagram_str = "diagram component; app: Rectangle; db: ; app -> db;";
         let result = build_diagram(diagram_str);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_ws_comments0() {
-        // Test whitespace
-        let (rest, _) = ws_comments0("   \n\t   ").unwrap();
-        assert_eq!(rest, "");
-
-        // Test comments
-        let (rest, _) = ws_comments0("// This is a comment\n// Another comment").unwrap();
-        assert_eq!(rest, "");
-
-        // Test mixed whitespace and comments
-        let (rest, _) = ws_comments0("  // Comment\n  // Another\n  ").unwrap();
-        assert_eq!(rest, "");
-
-        // Test with content after
-        let (rest, _) = ws_comments0("  // Comment\n  content").unwrap();
-        assert_eq!(rest, "content");
     }
 }
