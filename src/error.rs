@@ -1,32 +1,41 @@
-use std::{fmt, io};
+use miette::{Diagnostic, SourceSpan};
+use std::io;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum FilamentError {
-    Io(io::Error),
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+
+    #[error("Parse error: {0}")]
     Parse(String),
+
+    #[error("Parse error")]
+    ParseDiagnostic(#[from] ParseDiagnosticError),
+
+    #[error("Elaboration error: {0}")]
     Elaboration(String),
+
+    #[error("Graph error: {0}")]
     Graph(String),
+
+    #[error("Export error: {0}")]
     Export(Box<dyn std::error::Error>),
 }
 
-impl std::error::Error for FilamentError {}
+#[derive(Debug, Error, Diagnostic)]
+#[error("Parse error: {message}")]
+pub struct ParseDiagnosticError {
+    #[source_code]
+    pub src: String,
 
-impl fmt::Display for FilamentError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            FilamentError::Io(err) => write!(f, "I/O error: {}", err),
-            FilamentError::Parse(msg) => write!(f, "Parse error: {}", msg),
-            FilamentError::Elaboration(msg) => write!(f, "Elaboration error: {}", msg),
-            FilamentError::Graph(msg) => write!(f, "Graph error: {}", msg),
-            FilamentError::Export(err) => write!(f, "Export error: {}", err),
-        }
-    }
-}
+    pub message: String,
 
-impl From<io::Error> for FilamentError {
-    fn from(error: io::Error) -> Self {
-        FilamentError::Io(error)
-    }
+    #[label("here")]
+    pub span: Option<SourceSpan>,
+
+    #[help]
+    pub help: Option<String>,
 }
 
 impl From<String> for FilamentError {

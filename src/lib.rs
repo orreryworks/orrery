@@ -42,7 +42,23 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
 
     // Parsing the diagram
     info!("Parsing diagram");
-    let ast = parser::build_diagram(&content)?;
+    let parse_result = parser::build_diagram(&content);
+
+    if let Err(FilamentError::ParseDiagnostic(ref err)) = parse_result {
+        // Use miette to display a rich diagnostic error
+        let reporter = miette::GraphicalReportHandler::new();
+        let mut writer = String::new();
+
+        reporter.render_report(&mut writer, err).unwrap();
+        eprintln!("{}", writer);
+
+        return Err(FilamentError::Parse(format!(
+            "Failed to parse diagram: {}",
+            err
+        )));
+    }
+
+    let ast = parse_result?;
     debug!("Parsed AST successfully");
 
     // Elaborating the AST
