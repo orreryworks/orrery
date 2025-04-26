@@ -176,7 +176,7 @@ impl Builder {
                 };
 
                 // Determine the diagram kind based on the kind string
-                let kind = match diag.kind {
+                let kind = match *diag.kind.fragment() {
                     "sequence" => DiagramKind::Sequence,
                     "component" => DiagramKind::Component,
                     _ => {
@@ -226,7 +226,7 @@ impl Builder {
         for type_def in &diag.type_definitions {
             let base = self
                 .type_definition_map
-                .get(&TypeId::from_name(type_def.base_type))
+                .get(&TypeId::from_name(type_def.base_type.fragment()))
                 .ok_or_else(|| {
                     FilamentError::Elaboration(format!(
                         "Base type '{}' not found",
@@ -234,7 +234,7 @@ impl Builder {
                     ))
                 })?;
             self.insert_type_definition(TypeDefinition::from_base(
-                TypeId::from_name(type_def.name),
+                TypeId::from_name(type_def.name.fragment()),
                 base,
                 &type_def.attributes,
             )?)?;
@@ -338,10 +338,10 @@ impl Builder {
                     let mut width = 1;
 
                     for attr in attributes {
-                        match attr.name {
-                            "color" => color = Color::new(attr.value)?,
+                        match *attr.name.fragment() {
+                            "color" => color = Color::new(attr.value.fragment())?,
                             "width" => {
-                                if let Ok(w) = attr.value.parse::<usize>() {
+                                if let Ok(w) = attr.value.fragment().parse::<usize>() {
                                     width = w;
                                 }
                             }
@@ -509,7 +509,7 @@ impl Attribute {
     fn new_from_parser(parser_attrs: &[parser::Attribute]) -> Vec<Self> {
         parser_attrs
             .iter()
-            .map(|attr| Self::new(attr.name, attr.value))
+            .map(|attr| Self::new(attr.name.fragment(), attr.value.fragment()))
             .collect()
     }
 }
