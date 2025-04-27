@@ -1,10 +1,10 @@
-use crate::error::FilamentError;
+use crate::error::{FilamentError, ParseDiagnosticError};
 use log::{debug, trace};
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while1},
     character::complete::{alpha1, alphanumeric1, char, multispace1, not_line_ending},
-    combinator::{map, opt, recognize, value},
+    combinator::{all_consuming, cut, map, not, opt, peek, recognize, value},
     multi::{many0, many1, separated_list0, separated_list1},
     sequence::{delimited, pair, preceded, separated_pair, terminated},
     IResult, Parser,
@@ -75,23 +75,21 @@ fn ws_comments1(input: Span) -> ParseResult<()> {
 
 // Define a parser for a standard identifier (starts with alpha, can contain alphanum or underscore)
 fn parse_identifier(input: Span) -> ParseResult<Span> {
-    recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_"))))))
-    .parse(input)
+    recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_")))))).parse(input)
     // NOTE: Why it is not working with char('_')?
 }
 
 fn parse_nested_identifier(input: Span) -> ParseResult<Span> {
-    recognize(separated_list1(tag("::"), parse_identifier))
-    .parse(input)
+    recognize(separated_list1(tag("::"), parse_identifier)).parse(input)
 }
 
 fn parse_string_literal(input: Span) -> ParseResult<Span> {
-    delimited(char('"'), take_while1(|c: char| c != '"'), char('"'))
-    .parse(input)
+    delimited(char('"'), take_while1(|c: char| c != '"'), cut(char('"'))).parse(input)
 }
 
 fn parse_attribute(input: Span) -> ParseResult<Attribute> {
     map(
+        // FIXME: Why I cannot add cut() here?
         separated_pair(
             parse_identifier,
             delimited(ws_comments0, char('='), ws_comments0),
@@ -109,7 +107,7 @@ fn parse_attributes(input: Span) -> ParseResult<Vec<Attribute>> {
             char(','),
             delimited(ws_comments0, parse_attribute, ws_comments0),
         ),
-        char(']'),
+        cut(char(']')),
     )
     .parse(input)
 }
@@ -120,14 +118,16 @@ fn parse_type_definition(input: Span) -> ParseResult<TypeDefinition> {
             ws_comments0,
             (
                 pair(tag("type"), ws_comments1),
-                parse_identifier,
-                delimited(ws_comments0, char('='), ws_comments0),
-                parse_identifier,
-                preceded(ws_comments0, opt(parse_attributes)), // Allow 0 or more spaces before attributes
+                cut((
+                    parse_identifier,
+                    delimited(ws_comments0, char('='), ws_comments0),
+                    parse_identifier,
+                    preceded(ws_comments0, opt(parse_attributes)), // Allow 0 or more spaces before attributes
+                )),
             ),
             pair(ws_comments0, char(';')),
         ),
-        |(_, name, _, base_type, attributes)| TypeDefinition {
+        |(_, (name, _, base_type, attributes))| TypeDefinition {
             name,
             base_type,
             attributes: attributes.unwrap_or_default(),
@@ -142,17 +142,20 @@ fn parse_component(input: Span) -> ParseResult<Element> {
             (
                 terminated(parse_identifier, ws_comments0),
                 char(':'),
-                delimited(ws_comments0, parse_identifier, ws_comments0),
-                opt(parse_attributes),
-                opt(delimited(
-                    preceded(ws_comments0, char('{')),
-                    parse_elements,
-                    preceded(ws_comments0, char('}')),
+                peek(not(char(':'))),
+                cut((
+                    delimited(ws_comments0, parse_identifier, ws_comments0),
+                    opt(parse_attributes),
+                    opt(delimited(
+                        preceded(ws_comments0, char('{')),
+                        parse_elements,
+                        preceded(ws_comments0, char('}')),
+                    )),
                 )),
             ),
-            pair(ws_comments0, char(';')),
+            cut(pair(ws_comments0, char(';'))),
         ),
-        |(name, _, type_name, attributes, nested_elements)| Element::Component {
+        |(name, _, _, (type_name, attributes, nested_elements))| Element::Component {
             name,
             type_name,
             attributes: attributes.unwrap_or_default(),
@@ -164,8 +167,7 @@ fn parse_component(input: Span) -> ParseResult<Element> {
 
 // Parse a relation type like -> or <- or <-> or -
 fn parse_relation_type(input: Span) -> ParseResult<Span> {
-    alt((tag("<->"), tag("<-"), tag("->"), tag("-")))
-    .parse(input)
+    alt((tag("<->"), tag("<-"), tag("->"), tag("-"))).parse(input)
 }
 
 fn parse_relation(input: Span) -> ParseResult<Element> {
@@ -174,17 +176,19 @@ fn parse_relation(input: Span) -> ParseResult<Element> {
             (
                 terminated(parse_nested_identifier, ws_comments1),
                 parse_relation_type,
-                opt(preceded(ws_comments0, parse_attributes)), // Optional attributes
-                delimited(
-                    ws_comments1, // Require at least one space after relation type
-                    parse_nested_identifier,
-                    ws_comments0, // Target identifier with possible leading space
-                ),
-                opt((preceded(ws_comments0, char(':')), parse_string_literal)),
+                cut((
+                    opt(preceded(ws_comments0, parse_attributes)), // Optional attributes
+                    delimited(
+                        ws_comments1, // Require at least one space after relation type
+                        parse_nested_identifier,
+                        ws_comments0, // Target identifier with possible leading space
+                    ),
+                    opt((preceded(ws_comments0, char(':')), parse_string_literal)),
+                )),
             ),
-            pair(ws_comments0, char(';')),
+            cut(pair(ws_comments0, char(';'))),
         ),
-        |(source, relation_type, attributes, target, _)| Element::Relation {
+        |(source, relation_type, (attributes, target, _))| Element::Relation {
             source,
             target,
             attributes: attributes.unwrap_or_default(),
@@ -208,17 +212,17 @@ fn parse_elements(input: Span) -> ParseResult<Vec<Element>> {
 }
 
 fn parse_diagram_header(input: Span) -> ParseResult<Span> {
-    delimited(
+    cut(delimited(
         pair(tag("diagram"), multispace1),
         parse_identifier,
         pair(ws_comments0, char(';')),
-    )
+    ))
     .parse(input)
 }
 
 fn parse_diagram(input: Span) -> ParseResult<Element> {
     map(
-        delimited(
+        all_consuming(delimited(
             ws_comments0,
             (
                 parse_diagram_header,
@@ -226,7 +230,7 @@ fn parse_diagram(input: Span) -> ParseResult<Element> {
                 parse_elements,
             ),
             ws_comments0,
-        ),
+        )),
         |(kind, type_definitions, elements)| {
             Element::Diagram(Diagram {
                 kind,
@@ -243,7 +247,7 @@ pub fn build_diagram(input: &str) -> Result<Element, FilamentError> {
     let input_span = Span::new(input);
     match parse_diagram(input_span) {
         Ok((remaining, diagram)) => {
-            if remaining.fragment().len() > 0 {
+            if !remaining.is_empty() {
                 return Err(FilamentError::Parse(format!(
                     "Unexpected trailing characters: {}",
                     remaining.fragment()
@@ -253,7 +257,22 @@ pub fn build_diagram(input: &str) -> Result<Element, FilamentError> {
             trace!("Parsed diagram: {:?}", diagram);
             Ok(diagram)
         }
-        Err(err) => Err(FilamentError::Parse(err.to_string())),
+        Err(nom::Err::Error(err) | nom::Err::Failure(err)) => {
+            let offset = err.input.location_offset();
+            let length = 1; // TODO: Improve detecting actual error length
+            trace!("ParseDiagnosticError at offset {offset}, length {length}");
+            // Extract the input that caused the error
+            Err(FilamentError::ParseDiagnostic(ParseDiagnosticError {
+                src: input.to_string(),
+                message: err.to_string(),
+                span: Some((offset, length).into()),
+                help: None,
+            }))
+        }
+        Err(err) => {
+            trace!("Other parser error");
+            Err(FilamentError::Parse(err.to_string()))
+        }
     }
 }
 

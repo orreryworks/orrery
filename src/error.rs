@@ -2,24 +2,31 @@ use miette::{Diagnostic, SourceSpan};
 use std::io;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 pub enum FilamentError {
     #[error("I/O error: {0}")]
+    #[diagnostic(code(filament::error::io))]
     Io(#[from] io::Error),
 
+    // TODO: Ideally, this should be deprecated.
     #[error("Parse error: {0}")]
+    #[diagnostic(code(filament::error::parser))]
     Parse(String),
 
-    #[error("Parse error")]
+    #[error(transparent)]
+    #[diagnostic(code(filament::error::parser_diagnostic))]
     ParseDiagnostic(#[from] ParseDiagnosticError),
 
     #[error("Elaboration error: {0}")]
+    #[diagnostic(code(filament::error::elaboration))]
     Elaboration(String),
 
     #[error("Graph error: {0}")]
+    #[diagnostic(code(filament::error::graph))]
     Graph(String),
 
     #[error("Export error: {0}")]
+    #[diagnostic(code(filament::error::export))]
     Export(Box<dyn std::error::Error>),
 }
 
