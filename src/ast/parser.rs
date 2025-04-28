@@ -5,6 +5,7 @@ use nom::{
     bytes::complete::{tag, take_while1},
     character::complete::{alpha1, alphanumeric1, char, multispace1, not_line_ending},
     combinator::{all_consuming, cut, map, not, opt, peek, recognize, value},
+    error::context,
     multi::{many0, many1, separated_list0, separated_list1},
     sequence::{delimited, pair, preceded, separated_pair, terminated},
     IResult, Parser,
@@ -75,125 +76,156 @@ fn ws_comments1(input: Span) -> ParseResult<()> {
 
 // Define a parser for a standard identifier (starts with alpha, can contain alphanum or underscore)
 fn parse_identifier(input: Span) -> ParseResult<Span> {
-    recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_")))))).parse(input)
+    context(
+        "identifier",
+        recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_")))))),
+    )
+    .parse(input)
     // NOTE: Why it is not working with char('_')?
 }
 
 fn parse_nested_identifier(input: Span) -> ParseResult<Span> {
-    recognize(separated_list1(tag("::"), parse_identifier)).parse(input)
+    context(
+        "nested_identifier",
+        recognize(separated_list1(tag("::"), parse_identifier)),
+    )
+    .parse(input)
 }
 
 fn parse_string_literal(input: Span) -> ParseResult<Span> {
-    delimited(char('"'), take_while1(|c: char| c != '"'), cut(char('"'))).parse(input)
+    context(
+        "string_literal",
+        delimited(char('"'), take_while1(|c: char| c != '"'), cut(char('"'))),
+    )
+    .parse(input)
 }
 
 fn parse_attribute(input: Span) -> ParseResult<Attribute> {
-    map(
-        // FIXME: Why I cannot add cut() here?
-        separated_pair(
-            parse_identifier,
-            delimited(ws_comments0, char('='), ws_comments0),
-            parse_string_literal,
+    context(
+        "attribute",
+        map(
+            // FIXME: Why I cannot add cut() here?
+            separated_pair(
+                parse_identifier,
+                delimited(ws_comments0, char('='), ws_comments0),
+                parse_string_literal,
+            ),
+            |(name, value)| Attribute { name, value },
         ),
-        |(name, value)| Attribute { name, value },
     )
     .parse(input)
 }
 
 fn parse_attributes(input: Span) -> ParseResult<Vec<Attribute>> {
-    delimited(
-        char('['),
-        separated_list0(
-            char(','),
-            delimited(ws_comments0, parse_attribute, ws_comments0),
+    context(
+        "attributes",
+        delimited(
+            char('['),
+            separated_list0(
+                char(','),
+                delimited(ws_comments0, parse_attribute, ws_comments0),
+            ),
+            cut(char(']')),
         ),
-        cut(char(']')),
     )
     .parse(input)
 }
 
 fn parse_type_definition(input: Span) -> ParseResult<TypeDefinition> {
-    map(
-        delimited(
-            ws_comments0,
-            (
-                pair(tag("type"), ws_comments1),
-                cut((
-                    parse_identifier,
-                    delimited(ws_comments0, char('='), ws_comments0),
-                    parse_identifier,
-                    preceded(ws_comments0, opt(parse_attributes)), // Allow 0 or more spaces before attributes
-                )),
+    context(
+        "type_definition",
+        map(
+            delimited(
+                ws_comments0,
+                (
+                    pair(tag("type"), ws_comments1),
+                    cut((
+                        parse_identifier,
+                        delimited(ws_comments0, char('='), ws_comments0),
+                        parse_identifier,
+                        preceded(ws_comments0, opt(parse_attributes)), // Allow 0 or more spaces before attributes
+                    )),
+                ),
+                pair(ws_comments0, char(';')),
             ),
-            pair(ws_comments0, char(';')),
+            |(_, (name, _, base_type, attributes))| TypeDefinition {
+                name,
+                base_type,
+                attributes: attributes.unwrap_or_default(),
+            },
         ),
-        |(_, (name, _, base_type, attributes))| TypeDefinition {
-            name,
-            base_type,
-            attributes: attributes.unwrap_or_default(),
-        },
     )
     .parse(input)
 }
 
 fn parse_component(input: Span) -> ParseResult<Element> {
-    map(
-        terminated(
-            (
-                terminated(parse_identifier, ws_comments0),
-                char(':'),
-                peek(not(char(':'))),
-                cut((
-                    delimited(ws_comments0, parse_identifier, ws_comments0),
-                    opt(parse_attributes),
-                    opt(delimited(
-                        preceded(ws_comments0, char('{')),
-                        parse_elements,
-                        preceded(ws_comments0, char('}')),
+    context(
+        "component",
+        map(
+            terminated(
+                (
+                    terminated(parse_identifier, ws_comments0),
+                    char(':'),
+                    peek(not(char(':'))),
+                    cut((
+                        delimited(ws_comments0, parse_identifier, ws_comments0),
+                        opt(parse_attributes),
+                        opt(delimited(
+                            preceded(ws_comments0, char('{')),
+                            parse_elements,
+                            preceded(ws_comments0, char('}')),
+                        )),
                     )),
-                )),
+                ),
+                cut(pair(ws_comments0, char(';'))),
             ),
-            cut(pair(ws_comments0, char(';'))),
+            |(name, _, _, (type_name, attributes, nested_elements))| Element::Component {
+                name,
+                type_name,
+                attributes: attributes.unwrap_or_default(),
+                nested_elements: nested_elements.unwrap_or_default(),
+            },
         ),
-        |(name, _, _, (type_name, attributes, nested_elements))| Element::Component {
-            name,
-            type_name,
-            attributes: attributes.unwrap_or_default(),
-            nested_elements: nested_elements.unwrap_or_default(),
-        },
     )
     .parse(input)
 }
 
 // Parse a relation type like -> or <- or <-> or -
 fn parse_relation_type(input: Span) -> ParseResult<Span> {
-    alt((tag("<->"), tag("<-"), tag("->"), tag("-"))).parse(input)
+    context(
+        "relation_type",
+        alt((tag("<->"), tag("<-"), tag("->"), tag("-"))),
+    )
+    .parse(input)
 }
 
 fn parse_relation(input: Span) -> ParseResult<Element> {
-    map(
-        terminated(
-            (
-                terminated(parse_nested_identifier, ws_comments1),
-                parse_relation_type,
-                cut((
-                    opt(preceded(ws_comments0, parse_attributes)), // Optional attributes
-                    delimited(
-                        ws_comments1, // Require at least one space after relation type
-                        parse_nested_identifier,
-                        ws_comments0, // Target identifier with possible leading space
-                    ),
-                    opt((preceded(ws_comments0, char(':')), parse_string_literal)),
-                )),
+    context(
+        "relation",
+        map(
+            terminated(
+                (
+                    terminated(parse_nested_identifier, ws_comments1),
+                    parse_relation_type,
+                    cut((
+                        opt(preceded(ws_comments0, parse_attributes)), // Optional attributes
+                        delimited(
+                            ws_comments1, // Require at least one space after relation type
+                            parse_nested_identifier,
+                            ws_comments0, // Target identifier with possible leading space
+                        ),
+                        opt((preceded(ws_comments0, char(':')), parse_string_literal)),
+                    )),
+                ),
+                cut(pair(ws_comments0, char(';'))),
             ),
-            cut(pair(ws_comments0, char(';'))),
+            |(source, relation_type, (attributes, target, _))| Element::Relation {
+                source,
+                target,
+                attributes: attributes.unwrap_or_default(),
+                relation_type,
+            },
         ),
-        |(source, relation_type, (attributes, target, _))| Element::Relation {
-            source,
-            target,
-            attributes: attributes.unwrap_or_default(),
-            relation_type,
-        },
     )
     .parse(input)
 }
@@ -212,11 +244,14 @@ fn parse_elements(input: Span) -> ParseResult<Vec<Element>> {
 }
 
 fn parse_diagram_header(input: Span) -> ParseResult<Span> {
-    cut(delimited(
-        pair(tag("diagram"), multispace1),
-        parse_identifier,
-        pair(ws_comments0, char(';')),
-    ))
+    context(
+        "header",
+        cut(delimited(
+            pair(tag("diagram"), multispace1),
+            parse_identifier,
+            pair(ws_comments0, char(';')),
+        )),
+    )
     .parse(input)
 }
 
