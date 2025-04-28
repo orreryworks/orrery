@@ -1,4 +1,5 @@
-use crate::error::{FilamentError, ParseDiagnosticError};
+use crate::ast::error::ParserError;
+use crate::error::FilamentError;
 use log::{debug, trace};
 use nom::{
     branch::alt,
@@ -13,7 +14,7 @@ use nom::{
 use nom_locate::LocatedSpan;
 
 type Span<'a> = LocatedSpan<&'a str>;
-type ParseResult<'a, T> = IResult<Span<'a>, T, nom::error::Error<Span<'a>>>;
+type ParseResult<'a, T> = IResult<Span<'a>, T, ParserError>;
 
 #[derive(Debug)]
 pub struct Attribute<'a> {
@@ -146,7 +147,7 @@ fn parse_type_definition(input: Span) -> ParseResult<TypeDefinition> {
                         preceded(ws_comments0, opt(parse_attributes)), // Allow 0 or more spaces before attributes
                     )),
                 ),
-                pair(ws_comments0, char(';')),
+                pair(ws_comments0, context("semicolon", char(';'))),
             ),
             |(_, (name, _, base_type, attributes))| TypeDefinition {
                 name,
@@ -177,7 +178,7 @@ fn parse_component(input: Span) -> ParseResult<Element> {
                         )),
                     )),
                 ),
-                cut(pair(ws_comments0, char(';'))),
+                cut(pair(ws_comments0, context("semicolon", char(';')))),
             ),
             |(name, _, _, (type_name, attributes, nested_elements))| Element::Component {
                 name,
@@ -217,7 +218,7 @@ fn parse_relation(input: Span) -> ParseResult<Element> {
                         opt((preceded(ws_comments0, char(':')), parse_string_literal)),
                     )),
                 ),
-                cut(pair(ws_comments0, char(';'))),
+                cut(pair(ws_comments0, context("semicolon", char(';')))),
             ),
             |(source, relation_type, (attributes, target, _))| Element::Relation {
                 source,
@@ -247,9 +248,9 @@ fn parse_diagram_header(input: Span) -> ParseResult<Span> {
     context(
         "header",
         cut(delimited(
-            pair(tag("diagram"), multispace1),
-            parse_identifier,
-            pair(ws_comments0, char(';')),
+            pair(context("diagram_keyword", tag("diagram")), multispace1),
+            context("diagram_type", parse_identifier),
+            pair(ws_comments0, context("semicolon", char(';'))),
         )),
     )
     .parse(input)
@@ -279,30 +280,30 @@ fn parse_diagram(input: Span) -> ParseResult<Element> {
 
 pub fn build_diagram(input: &str) -> Result<Element, FilamentError> {
     debug!("Starting diagram parsing, input length: {}", input.len());
+
+    // Create a span with the full input
     let input_span = Span::new(input);
+
+    // Pass the full input to our parser
     match parse_diagram(input_span) {
         Ok((remaining, diagram)) => {
             if !remaining.is_empty() {
-                return Err(FilamentError::Parse(format!(
-                    "Unexpected trailing characters: {}",
-                    remaining.fragment()
-                )));
+                // Create a proper error with location information
+                let mut err = ParserError::new(remaining, nom::error::ErrorKind::NonEmpty);
+                err.src = input.to_string();
+
+                return Err(err.into());
             }
             debug!("Diagram parsed successfully");
             trace!("Parsed diagram: {:?}", diagram);
             Ok(diagram)
         }
-        Err(nom::Err::Error(err) | nom::Err::Failure(err)) => {
-            let offset = err.input.location_offset();
-            let length = 1; // TODO: Improve detecting actual error length
-            trace!("ParseDiagnosticError at offset {offset}, length {length}");
-            // Extract the input that caused the error
-            Err(FilamentError::ParseDiagnostic(ParseDiagnosticError {
-                src: input.to_string(),
-                message: err.to_string(),
-                span: Some((offset, length).into()),
-                help: None,
-            }))
+        Err(nom::Err::Error(mut err) | nom::Err::Failure(mut err)) => {
+            trace!("ParserError: {:?}", err);
+
+            // Make sure the error has the full source
+            err.src = input.to_string();
+            Err(err.into())
         }
         Err(err) => {
             trace!("Other parser error");
