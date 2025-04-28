@@ -1,7 +1,9 @@
 mod parser;
+mod elaborate;
 
 use miette::Diagnostic;
 pub use parser::{ParseDiagnosticError, SlimParserError};
+pub use elaborate::ElaborationDiagnosticError;
 use std::io;
 use thiserror::Error;
 
@@ -21,10 +23,16 @@ pub enum FilamentError {
     #[error(transparent)]
     #[diagnostic(code(filament::error::parser_diagnostic))]
     ParseDiagnostic(#[from] ParseDiagnosticError),
-
+    
+    /// For simple elaboration errors (will be deprecated)
     #[error("Elaboration error: {0}")]
     #[diagnostic(code(filament::error::elaboration))]
     Elaboration(String),
+    
+    /// For rich diagnostic elaboration errors
+    #[error(transparent)]
+    #[diagnostic(code(filament::error::elaboration_diagnostic))]
+    ElaborationDiagnostic(#[from] ElaborationDiagnosticError),
 
     #[error("Graph error: {0}")]
     #[diagnostic(code(filament::error::graph))]

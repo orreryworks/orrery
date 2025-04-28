@@ -1,7 +1,7 @@
 use super::parser;
 use crate::{
     color::Color,
-    error::FilamentError,
+    error::{ElaborationDiagnosticError, FilamentError},
     shape::{Oval, Rectangle, Shape},
 };
 use log::{debug, info, trace};
@@ -120,13 +120,14 @@ impl Block {
     }
 }
 
-pub struct Builder {
+pub struct Builder<'a> {
     type_definitions: Vec<Rc<TypeDefinition>>,
     type_definition_map: HashMap<TypeId, Rc<TypeDefinition>>,
+    source: &'a str, // Store the original source code for error reporting
 }
 
-impl Builder {
-    pub fn new() -> Self {
+impl<'a> Builder<'a> {
+    pub fn new(source: &'a str) -> Self {
         let type_definitions = TypeDefinition::defaults();
         let type_definition_map = type_definitions
             .iter()
@@ -136,6 +137,7 @@ impl Builder {
         Self {
             type_definitions,
             type_definition_map,
+            source,
         }
     }
 
@@ -169,9 +171,14 @@ impl Builder {
                         scope
                     }
                     Block::Diagram(_) => {
-                        return Err(FilamentError::Elaboration(
+                        return Err(ElaborationDiagnosticError::new(
                             "Nested diagram not allowed".to_string(),
-                        ))
+                            diag.kind, // Use diagram kind span as reference point
+                            self.source,
+                            "invalid diagram structure",
+                            Some("Diagrams cannot be nested inside other diagrams".to_string()),
+                        )
+                        .into());
                     }
                 };
 
@@ -180,9 +187,16 @@ impl Builder {
                     "sequence" => DiagramKind::Sequence,
                     "component" => DiagramKind::Component,
                     _ => {
-                        return Err(FilamentError::Elaboration(
-                            "Invalid diagram kind".to_string(),
-                        ))
+                        return Err(ElaborationDiagnosticError::new(
+                            format!("Invalid diagram kind: '{}'", diag.kind.fragment()),
+                            diag.kind,
+                            self.source,
+                            "unsupported diagram type",
+                            Some(
+                                "Supported diagram types are: 'component', 'sequence'".to_string(),
+                            ),
+                        )
+                        .into())
                     }
                 };
 
@@ -205,6 +219,8 @@ impl Builder {
         let id = type_def.id.clone();
         let type_def = Rc::new(type_def);
         self.type_definitions.push(Rc::clone(&type_def));
+
+        // Check if the type already exists
         if self
             .type_definition_map
             .insert(id, Rc::clone(&type_def))
@@ -212,6 +228,8 @@ impl Builder {
         {
             Ok(type_def)
         } else {
+            // We could use a span here if we tracked where the duplicate was defined
+            // For now, we use a simple error since we don't store that information
             Err(FilamentError::Elaboration(format!(
                 "Type definition '{}' already exists",
                 type_def.id
@@ -224,20 +242,47 @@ impl Builder {
         diag: &parser::Diagram,
     ) -> Result<(), FilamentError> {
         for type_def in &diag.type_definitions {
+            let base_type_name = TypeId::from_name(type_def.base_type.fragment());
             let base = self
                 .type_definition_map
-                .get(&TypeId::from_name(type_def.base_type.fragment()))
+                .get(&base_type_name)
                 .ok_or_else(|| {
-                    FilamentError::Elaboration(format!(
-                        "Base type '{}' not found",
-                        &type_def.base_type
+                    // Create a rich diagnostic error with source location information
+                    let type_name = type_def.base_type.fragment();
+                    let message = format!("Base type '{type_name}' not found");
+
+                    FilamentError::ElaborationDiagnostic(ElaborationDiagnosticError::new(
+                        message,
+                        type_def.base_type,
+                        self.source,
+                        "undefined type",
+                        Some(format!(
+                            "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type",
+                        ))
                     ))
                 })?;
-            self.insert_type_definition(TypeDefinition::from_base(
+
+            // Try to create the type definition
+            match TypeDefinition::from_base(
                 TypeId::from_name(type_def.name.fragment()),
                 base,
                 &type_def.attributes,
-            )?)?;
+            ) {
+                Ok(new_type_def) => {
+                    self.insert_type_definition(new_type_def)?;
+                }
+                Err(err) => {
+                    // Wrap the error with location information for attribute errors
+                    return Err(ElaborationDiagnosticError::new(
+                        format!("Invalid type definition: {}", err),
+                        type_def.name,
+                        self.source,
+                        "type definition error",
+                        Some("Check attribute types and values for errors".to_string()),
+                    )
+                    .into());
+                }
+            }
         }
         Ok(())
     }
@@ -253,15 +298,36 @@ impl Builder {
                     Block::None => Scope::default(),
                     Block::Scope(scope) => scope,
                     Block::Diagram(_) => {
-                        return Err(FilamentError::Elaboration(
+                        return Err(ElaborationDiagnosticError::new(
                             "Nested diagram not allowed".to_string(),
-                        ));
+                            diag.kind,
+                            self.source,
+                            "invalid nesting",
+                            Some("Diagrams cannot be nested inside other diagrams".to_string()),
+                        )
+                        .into());
                     }
                 };
-                Ok(Diagram {
-                    kind: DiagramKind::Component,
-                    scope,
-                })
+
+                // Determine the diagram kind
+                let kind = match *diag.kind.fragment() {
+                    "sequence" => DiagramKind::Sequence,
+                    "component" => DiagramKind::Component,
+                    _ => {
+                        return Err(ElaborationDiagnosticError::new(
+                            format!("Invalid diagram kind: '{}'", diag.kind.fragment()),
+                            diag.kind,
+                            self.source,
+                            "unsupported diagram type",
+                            Some(
+                                "Supported diagram types are: 'component', 'sequence'".to_string(),
+                            ),
+                        )
+                        .into());
+                    }
+                };
+
+                Ok(Diagram { kind, scope })
             }
             _ => Err(FilamentError::Elaboration(
                 "Invalid element, expected Diagram".to_string(),
@@ -277,17 +343,30 @@ impl Builder {
         if parser_elements.is_empty() {
             Ok(Block::None)
         } else if let parser::Element::Diagram { .. } = parser_elements[0] {
+            // This case happens when a diagram is the first element in a block
             Ok(Block::Diagram(
                 self.build_diagram_from_parser(&parser_elements[0])?,
             ))
         } else {
+            // Check to make sure no diagrams are mixed with other elements
             for parser_elm in parser_elements {
-                if let parser::Element::Diagram { .. } = parser_elm {
-                    return Err(FilamentError::Elaboration(
+                if let parser::Element::Diagram(diag) = parser_elm {
+                    // If we found a diagram mixed with other elements, provide a rich error
+                    return Err(ElaborationDiagnosticError::new(
                         "Diagram cannot share scope with other elements".to_string(),
-                    ));
+                        diag.kind, // Use the diagram kind span as the error location
+                        self.source,
+                        "invalid nesting",
+                        Some(
+                            "A diagram declaration must be the only element in its scope"
+                                .to_string(),
+                        ),
+                    )
+                    .into());
                 }
             }
+
+            // If no diagrams were found mixed with other elements, build the scope
             Ok(Block::Scope(
                 self.build_scope_from_elements(parser_elements, parent_id)?,
             ))
@@ -313,6 +392,23 @@ impl Builder {
                         None => TypeId::from_name(name),
                     };
 
+                    // Try to get the type definition for this element
+                    let type_def = match self.build_element_type_definition(type_name, attributes) {
+                        Ok(def) => def,
+                        Err(_) => {
+                            return Err(ElaborationDiagnosticError::new(
+                                format!("Unknown type '{type_name}' for component '{name}'"),
+                                *name, // Use the component name's span as the error location
+                                self.source,
+                                "undefined type",
+                                Some(format!(
+                                    "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type"
+                                )),
+                            )
+                            .into());
+                        }
+                    };
+
                     // Process nested elements with the new ID as parent
                     let block = self.build_block_from_elements(nested_elements, Some(&node_id))?;
 
@@ -320,8 +416,7 @@ impl Builder {
                         id: node_id,
                         name: name.to_string(),
                         block,
-                        type_definition: self
-                            .build_element_type_definition(type_name, attributes)?,
+                        type_definition: type_def,
                     };
 
                     elements.push(Element::Node(node));
@@ -337,15 +432,46 @@ impl Builder {
                     let mut color = Color::default();
                     let mut width = 1;
 
+                    // Process attributes with better error handling
                     for attr in attributes {
                         match *attr.name.fragment() {
-                            "color" => color = Color::new(attr.value.fragment())?,
-                            "width" => {
-                                if let Ok(w) = attr.value.fragment().parse::<usize>() {
-                                    width = w;
+                            "color" => {
+                                color = match Color::new(attr.value.fragment()) {
+                                    Ok(color) => color,
+                                    Err(err) => {
+                                        return Err(ElaborationDiagnosticError::new(
+                                            format!(
+                                                "Invalid color value '{}': {err}",
+                                                attr.value.fragment(),
+                                            ),
+                                            attr.value,
+                                            self.source,
+                                            "invalid color",
+                                            Some(
+                                                "Color must be a valid CSS color value".to_string(),
+                                            ),
+                                        )
+                                        .into());
+                                    }
                                 }
                             }
-                            _ => {}
+                            "width" => {
+                                width = match attr.value.fragment().parse::<usize>() {
+                                    Ok(width) => width,
+                                    Err(_) => {
+                                        return Err(ElaborationDiagnosticError::new(
+                                            format!("Invalid width value '{}': expected a positive integer", attr.value.fragment()),
+                                            attr.value,
+                                            self.source,
+                                            "invalid width",
+                                            Some("Width must be a positive integer".to_string()),
+                                        ).into());
+                                    }
+                                };
+                            }
+                            _ => {
+                                // TODO: We could warn about unknown attributes here
+                            }
                         }
                     }
 
@@ -369,7 +495,10 @@ impl Builder {
                     }))
                 }
                 _ => {
-                    return Err(FilamentError::Elaboration("Invalid element".to_string()));
+                    // This should never happen since we already filtered out invalid elements
+                    return Err(FilamentError::Elaboration(
+                        "Invalid element type".to_string(),
+                    ));
                 }
             }
         }
@@ -381,17 +510,33 @@ impl Builder {
         type_name: &str,
         attributes: &[parser::Attribute],
     ) -> Result<Rc<TypeDefinition>, FilamentError> {
-        let base = self
-            .type_definition_map
-            .get(&TypeId::from_name(type_name))
-            .ok_or_else(|| {
-                FilamentError::Elaboration(format!("Base type '{}' not found", type_name,))
-            })?;
+        // Look up the base type
+        let type_id = TypeId::from_name(type_name);
+        let base = match self.type_definition_map.get(&type_id) {
+            Some(base) => base,
+            None => {
+                return Err(FilamentError::Elaboration(format!(
+                    "Type '{type_name}' not found. Type '{type_name}' must be defined with a 'type' statement before it can be used",
+                )));
+            }
+        };
+
+        // If there are no attributes, just return the base type
         if attributes.is_empty() {
             return Ok(Rc::clone(base));
         }
+
+        // Otherwise, create a new anonymous type based on the base type
         let id = TypeId::from_anonymous(self.type_definition_map.len());
-        self.insert_type_definition(TypeDefinition::from_base(id, base, attributes)?)
+        match TypeDefinition::from_base(id, base, attributes) {
+            Ok(new_type) => self.insert_type_definition(new_type),
+            Err(err) => {
+                // Provide better error information for attribute errors
+                Err(FilamentError::Elaboration(format!(
+                    "Error creating type based on '{type_name}': {err}"
+                )))
+            }
+        }
     }
 }
 
@@ -443,30 +588,56 @@ impl TypeDefinition {
     ) -> Result<Self, FilamentError> {
         let mut type_def = base.clone();
         type_def.id = id;
-        let mut attributes = Attribute::new_from_parser(attributes);
-        for attr in &attributes {
-            match attr.name.0.as_str() {
-                "fill_color" => type_def.fill_color = Some(Color::new(attr.value.as_str())?),
-                "line_color" => type_def.line_color = Color::new(attr.value.as_str())?,
-                "line_width" => {
-                    type_def.line_width = attr.value.parse().map_err(|e| {
-                        FilamentError::Elaboration(format!("Invalid line_width: {}", e))
+        // Process attributes with descriptive errors
+        for attr in Attribute::new_from_parser(attributes) {
+            let name = attr.name.0.as_str();
+            let value = attr.value.as_str();
+
+            match name {
+                "fill_color" => {
+                    type_def.fill_color = Some(Color::new(value).map_err(|err| {
+                        FilamentError::Elaboration(format!("Invalid fill_color '{value}': {err}"))
+                    })?)
+                }
+                "line_color" => {
+                    type_def.line_color = Color::new(value).map_err(|err| {
+                        FilamentError::Elaboration(format!("Invalid line_color '{value}': {err}"))
                     })?
+                }
+                "line_width" => {
+                    type_def.line_width =
+                        value
+                            .parse::<usize>()
+                            .or(Err(FilamentError::Elaboration(format!(
+                                "Invalid line_width '{value}': expected a positive integer"
+                            ))))?
                 }
                 "rounded" => {
-                    type_def.rounded = attr.value.parse().map_err(|e| {
-                        FilamentError::Elaboration(format!("Invalid rounded: {}", e))
-                    })?
+                    type_def.rounded =
+                        value
+                            .parse::<usize>()
+                            .or(Err(FilamentError::Elaboration(format!(
+                                "Invalid rounded '{value}': expected a positive integer"
+                            ))))?
                 }
                 "font_size" => {
-                    type_def.font_size = attr.value.parse().map_err(|e| {
-                        FilamentError::Elaboration(format!("Invalid font_size: {}", e))
-                    })?
+                    type_def.font_size =
+                        value
+                            .parse::<usize>()
+                            .or(Err(FilamentError::Elaboration(format!(
+                                "Invalid font_size '{value}': expected a positive integer"
+                            ))))?
                 }
-                _ => {}
+                _ => {
+                    // TODO: For unknown attributes, just add them to the list
+                    // We could warn about them, but we'll just keep them for now
+                }
             }
         }
-        type_def.attributes.append(&mut attributes);
+
+        // FIXME: Why do I need this line????!!!
+        // Add all attributes to the list (both known and unknown)
+        // type_def.attributes.append(&mut parsed_attributes);
 
         Ok(type_def)
     }
