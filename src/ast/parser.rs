@@ -1,5 +1,4 @@
-use crate::ast::error::ParserError;
-use crate::error::FilamentError;
+use crate::error::{FilamentError, SlimParserError};
 use log::{debug, trace};
 use nom::{
     branch::alt,
@@ -14,7 +13,7 @@ use nom::{
 use nom_locate::LocatedSpan;
 
 type Span<'a> = LocatedSpan<&'a str>;
-type ParseResult<'a, T> = IResult<Span<'a>, T, ParserError>;
+type ParseResult<'a, T> = IResult<Span<'a>, T, SlimParserError>;
 
 #[derive(Debug)]
 pub struct Attribute<'a> {
@@ -296,22 +295,25 @@ pub fn build_diagram(input: &str) -> Result<Element, FilamentError> {
     match parse_diagram(input_span) {
         Ok((remaining, diagram)) => {
             if !remaining.is_empty() {
-                // Create a proper error with location information
-                let mut err = ParserError::new(remaining, nom::error::ErrorKind::NonEmpty);
-                err.src = input.to_string();
+                // Create a slim error for the remaining content
+                let err = SlimParserError::new(remaining, nom::error::ErrorKind::NonEmpty);
 
-                return Err(err.into());
+                // Convert to full error with the complete source
+                let full_err = err.move_to_full_error(input);
+
+                return Err(FilamentError::ParseDiagnostic(full_err));
             }
             debug!("Diagram parsed successfully");
             trace!("Parsed diagram: {:?}", diagram);
             Ok(diagram)
         }
-        Err(nom::Err::Error(mut err) | nom::Err::Failure(mut err)) => {
-            trace!("ParserError: {:?}", err);
+        Err(nom::Err::Error(err) | nom::Err::Failure(err)) => {
+            trace!("Parser error: kind={:?}, offset={}", err.kind, err.offset);
 
-            // Make sure the error has the full source
-            err.src = input.to_string();
-            Err(err.into())
+            // Convert the slim error to a full error with context
+            let full_err = err.move_to_full_error(input);
+
+            Err(FilamentError::ParseDiagnostic(full_err))
         }
         Err(err) => {
             trace!("Other parser error");
