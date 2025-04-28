@@ -53,6 +53,14 @@ pub enum Element<'a> {
     Diagram(Diagram<'a>),
 }
 
+fn semicolon(input: Span) -> ParseResult<()> {
+    cut(value(
+        (),
+        pair(ws_comments0, context("semicolon", char(';'))),
+    ))
+    .parse(input)
+}
+
 // Parses Rust-style line comments and whitespace
 fn ws_comment(input: Span) -> ParseResult<()> {
     value(
@@ -147,7 +155,7 @@ fn parse_type_definition(input: Span) -> ParseResult<TypeDefinition> {
                         preceded(ws_comments0, opt(parse_attributes)), // Allow 0 or more spaces before attributes
                     )),
                 ),
-                pair(ws_comments0, context("semicolon", char(';'))),
+                semicolon,
             ),
             |(_, (name, _, base_type, attributes))| TypeDefinition {
                 name,
@@ -178,7 +186,7 @@ fn parse_component(input: Span) -> ParseResult<Element> {
                         )),
                     )),
                 ),
-                cut(pair(ws_comments0, context("semicolon", char(';')))),
+                semicolon,
             ),
             |(name, _, _, (type_name, attributes, nested_elements))| Element::Component {
                 name,
@@ -218,7 +226,7 @@ fn parse_relation(input: Span) -> ParseResult<Element> {
                         opt((preceded(ws_comments0, char(':')), parse_string_literal)),
                     )),
                 ),
-                cut(pair(ws_comments0, context("semicolon", char(';')))),
+                semicolon,
             ),
             |(source, relation_type, (attributes, target, _))| Element::Relation {
                 source,
@@ -250,7 +258,7 @@ fn parse_diagram_header(input: Span) -> ParseResult<Span> {
         cut(delimited(
             pair(context("diagram_keyword", tag("diagram")), multispace1),
             context("diagram_type", parse_identifier),
-            pair(ws_comments0, context("semicolon", char(';'))),
+            semicolon,
         )),
     )
     .parse(input)
@@ -315,6 +323,23 @@ pub fn build_diagram(input: &str) -> Result<Element, FilamentError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_semicolon() {
+        // Test semicolon
+        let input = Span::new(";");
+        let (rest, _) = semicolon(input).unwrap();
+        assert_eq!(*rest.fragment(), "");
+
+        // Test with whitespace
+        let input = Span::new("   \t\r\n  ;");
+        let (rest, _) = semicolon(input).unwrap();
+        assert_eq!(*rest.fragment(), "");
+
+        // Test without semicolon
+        let input = Span::new("content");
+        assert!(semicolon(input).is_err());
+    }
 
     #[test]
     fn test_ws_comment() {
