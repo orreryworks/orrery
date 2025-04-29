@@ -1,5 +1,5 @@
 use clap::Parser;
-use filament::Config;
+use filament::{Config, FilamentError};
 use log::{error, info, LevelFilter};
 use std::{process, str::FromStr};
 
@@ -25,7 +25,21 @@ fn main() {
 
     // Run the application
     if let Err(err) = filament::run(&cfg) {
-        error!(err:err; "Run failed");
+        // Use miette to display a rich diagnostic error
+        let reporter = miette::GraphicalReportHandler::new();
+        let mut writer = String::new();
+        match err {
+            FilamentError::ParseDiagnostic(ref err) => {
+                reporter.render_report(&mut writer, err).unwrap();
+            }
+            FilamentError::ElaborationDiagnostic(ref err) => {
+                reporter.render_report(&mut writer, err).unwrap();
+            }
+            err => {
+                writer.push_str(&err.to_string());
+            }
+        }
+        error!("Failed\n{}", writer);
         process::exit(1);
     }
 

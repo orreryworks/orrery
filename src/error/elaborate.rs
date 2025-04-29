@@ -45,22 +45,4 @@ impl ElaborationDiagnosticError {
             help,
         }
     }
-
-    /// Create a new elaboration error from a manual offset and length
-    pub fn with_span(
-        message: String,
-        offset: usize,
-        length: usize,
-        src: &str,
-        label: impl Into<String>,
-        help: Option<String>,
-    ) -> Self {
-        ElaborationDiagnosticError {
-            src: src.to_string(),
-            message,
-            span: (offset, length).into(),
-            label: label.into(),
-            help,
-        }
-    }
 }
