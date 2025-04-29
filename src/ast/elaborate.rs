@@ -87,7 +87,6 @@ pub enum DiagramKind {
 #[derive(Clone)]
 pub struct TypeDefinition {
     pub id: TypeId,
-    pub attributes: Vec<Attribute>,
     pub fill_color: Option<Color>,
     pub line_color: Color,
     pub line_width: usize,
@@ -569,7 +568,6 @@ impl std::fmt::Debug for TypeDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TypeDefinition")
             .field("id", &self.id)
-            .field("attributes", &self.attributes)
             .field("fill_color", &self.fill_color)
             .field("line_color", &self.line_color)
             .field("line_width", &self.line_width)
@@ -635,10 +633,6 @@ impl TypeDefinition {
             }
         }
 
-        // FIXME: Why do I need this line????!!!
-        // Add all attributes to the list (both known and unknown)
-        // type_def.attributes.append(&mut parsed_attributes);
-
         Ok(type_def)
     }
 
@@ -647,7 +641,6 @@ impl TypeDefinition {
         vec![
             Rc::new(Self {
                 id: TypeId::from_name("Rectangle"),
-                attributes: vec![],
                 fill_color: None,
                 line_color: black.clone(),
                 line_width: 2,
@@ -657,7 +650,6 @@ impl TypeDefinition {
             }),
             Rc::new(Self {
                 id: TypeId::from_name("Oval"),
-                attributes: vec![],
                 fill_color: None,
                 line_color: black,
                 line_width: 2,
