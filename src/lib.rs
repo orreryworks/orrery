@@ -48,7 +48,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
     // Elaborating the AST
     info!("Elaborating AST");
     let elaborate_builder = elaborate::Builder::new(&content);
-    let elaborated_ast = elaborate_builder.build(&ast)?;
+    let elaborated_ast = elaborate_builder.build(ast)?;
     debug!("Elaborated AST successfully");
     trace!(elaborated_ast:?; "Elaborated AST");
 

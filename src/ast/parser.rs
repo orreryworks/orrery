@@ -1,6 +1,9 @@
-use crate::error::{FilamentError, SlimParserError};
+use super::parser_types as types;
+use crate::ast::span::Spanned;
+use crate::error::{ParseDiagnosticError, SlimParserError};
 use log::{debug, trace};
 use nom::{
+    IResult, Parser,
     branch::alt,
     bytes::complete::{tag, take_while1},
     character::complete::{alpha1, alphanumeric1, char, multispace1, not_line_ending},
@@ -8,237 +11,260 @@ use nom::{
     error::context,
     multi::{many0, many1, separated_list0, separated_list1},
     sequence::{delimited, pair, preceded, separated_pair, terminated},
-    IResult, Parser,
 };
 use nom_locate::LocatedSpan;
 
 type Span<'a> = LocatedSpan<&'a str>;
-type ParseResult<'a, T> = IResult<Span<'a>, T, SlimParserError>;
+type PResult<'a, T> = IResult<Span<'a>, Spanned<T>, SlimParserError>;
 
-#[derive(Debug)]
-pub struct Attribute<'a> {
-    pub name: Span<'a>,
-    pub value: Span<'a>,
+fn to_spanned<'a, T>(input: Span, result: IResult<Span<'a>, T, SlimParserError>) -> PResult<'a, T> {
+    match result {
+        Ok((span, val)) => Ok((
+            span,
+            Spanned::new(val, input.location_offset(), span.fragment().len()),
+        )),
+        Err(err) => Err(err),
+    }
 }
 
-#[derive(Debug)]
-pub struct TypeDefinition<'a> {
-    pub name: Span<'a>,
-    pub base_type: Span<'a>,
-    pub attributes: Vec<Attribute<'a>>,
-}
-
-#[derive(Debug)]
-pub struct Diagram<'a> {
-    pub kind: Span<'a>,
-    pub type_definitions: Vec<TypeDefinition<'a>>,
-    pub elements: Vec<Element<'a>>,
-}
-
-#[derive(Debug)]
-pub enum Element<'a> {
-    Component {
-        name: Span<'a>,
-        type_name: Span<'a>, // TODO
-        attributes: Vec<Attribute<'a>>,
-        nested_elements: Vec<Element<'a>>,
-    },
-    Relation {
-        source: Span<'a>,
-        target: Span<'a>,
-        relation_type: Span<'a>, // e.g., "->" or "<->". Could be an enum
-        attributes: Vec<Attribute<'a>>,
-    },
-    Diagram(Diagram<'a>),
-}
-
-fn semicolon(input: Span) -> ParseResult<()> {
-    cut(value(
-        (),
-        pair(ws_comments0, context("semicolon", char(';'))),
-    ))
-    .parse(input)
+fn semicolon(input: Span) -> PResult<()> {
+    to_spanned(
+        input,
+        cut(value(
+            (),
+            pair(ws_comments0, context("semicolon", char(';'))),
+        ))
+        .parse(input),
+    )
 }
 
 // Parses Rust-style line comments and whitespace
-fn ws_comment(input: Span) -> ParseResult<()> {
-    value(
-        (),
-        alt((
-            // Match whitespace
-            multispace1,
-            // Match Rust style comments
-            recognize(pair(tag("//"), not_line_ending)),
-        )),
+fn ws_comment(input: Span) -> PResult<()> {
+    to_spanned(
+        input,
+        value(
+            (),
+            alt((
+                // Match whitespace
+                multispace1,
+                // Match Rust style comments
+                recognize(pair(tag("//"), not_line_ending)),
+            )),
+        )
+        .parse(input),
     )
-    .parse(input)
 }
 
-fn ws_comments0(input: Span) -> ParseResult<()> {
-    value((), many0(ws_comment)).parse(input)
+fn ws_comments0(input: Span) -> PResult<()> {
+    to_spanned(input, value((), many0(ws_comment)).parse(input))
 }
 
-fn ws_comments1(input: Span) -> ParseResult<()> {
-    value((), many1(ws_comment)).parse(input)
+fn ws_comments1(input: Span) -> PResult<()> {
+    to_spanned(input, value((), many1(ws_comment)).parse(input))
 }
 
 // Define a parser for a standard identifier (starts with alpha, can contain alphanum or underscore)
-fn parse_identifier(input: Span) -> ParseResult<Span> {
-    context(
-        "identifier",
-        recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_")))))),
+fn parse_identifier(input: Span) -> PResult<&str> {
+    to_spanned(
+        input,
+        context(
+            "identifier",
+            map(
+                recognize(pair(alpha1, many0(alt((alphanumeric1, tag("_")))))),
+                |v: LocatedSpan<&str>| v.into_fragment(),
+            ),
+        )
+        .parse(input),
     )
-    .parse(input)
     // NOTE: Why it is not working with char('_')?
 }
 
-fn parse_nested_identifier(input: Span) -> ParseResult<Span> {
-    context(
-        "nested_identifier",
-        recognize(separated_list1(tag("::"), parse_identifier)),
-    )
-    .parse(input)
-}
-
-fn parse_string_literal(input: Span) -> ParseResult<Span> {
-    context(
-        "string_literal",
-        delimited(char('"'), take_while1(|c: char| c != '"'), cut(char('"'))),
-    )
-    .parse(input)
-}
-
-fn parse_attribute(input: Span) -> ParseResult<Attribute> {
-    context(
-        "attribute",
-        map(
-            // FIXME: Why I cannot add cut() here?
-            separated_pair(
-                parse_identifier,
-                delimited(ws_comments0, char('='), ws_comments0),
-                parse_string_literal,
+fn parse_nested_identifier(input: Span) -> PResult<&str> {
+    to_spanned(
+        input,
+        context(
+            "nested_identifier",
+            map(
+                recognize(separated_list1(tag("::"), parse_identifier)),
+                |v: LocatedSpan<&str>| v.into_fragment(),
             ),
-            |(name, value)| Attribute { name, value },
-        ),
+        )
+        .parse(input),
     )
-    .parse(input)
 }
 
-fn parse_attributes(input: Span) -> ParseResult<Vec<Attribute>> {
-    context(
-        "attributes",
-        delimited(
-            char('['),
-            separated_list0(
-                char(','),
-                delimited(ws_comments0, parse_attribute, ws_comments0),
+fn parse_string_literal(input: Span) -> PResult<&str> {
+    to_spanned(
+        input,
+        context(
+            "string_literal",
+            map(
+                delimited(char('"'), take_while1(|c: char| c != '"'), cut(char('"'))),
+                |v: LocatedSpan<&str>| v.into_fragment(),
             ),
-            cut(char(']')),
-        ),
+        )
+        .parse(input),
     )
-    .parse(input)
 }
 
-fn parse_type_definition(input: Span) -> ParseResult<TypeDefinition> {
-    context(
-        "type_definition",
-        map(
+fn parse_attribute(input: Span) -> PResult<types::Attribute> {
+    to_spanned(
+        input,
+        context(
+            "attribute",
+            map(
+                // FIXME: Why I cannot add cut() here?
+                separated_pair(
+                    parse_identifier,
+                    delimited(ws_comments0, char('='), ws_comments0),
+                    parse_string_literal,
+                ),
+                |(name, value)| types::Attribute { name, value },
+            ),
+        )
+        .parse(input),
+    )
+}
+
+fn parse_attributes(input: Span) -> PResult<Vec<Spanned<types::Attribute>>> {
+    to_spanned(
+        input,
+        context(
+            "attributes",
             delimited(
-                ws_comments0,
-                (
-                    pair(tag("type"), ws_comments1),
-                    cut((
-                        parse_identifier,
-                        delimited(ws_comments0, char('='), ws_comments0),
-                        parse_identifier,
-                        preceded(ws_comments0, opt(parse_attributes)), // Allow 0 or more spaces before attributes
-                    )),
+                char('['),
+                separated_list0(
+                    char(','),
+                    delimited(ws_comments0, parse_attribute, ws_comments0),
                 ),
-                semicolon,
+                cut(char(']')),
             ),
-            |(_, (name, _, base_type, attributes))| TypeDefinition {
-                name,
-                base_type,
-                attributes: attributes.unwrap_or_default(),
-            },
-        ),
+        )
+        .parse(input),
     )
-    .parse(input)
 }
 
-fn parse_component(input: Span) -> ParseResult<Element> {
-    context(
-        "component",
-        map(
-            terminated(
-                (
-                    terminated(parse_identifier, ws_comments0),
-                    char(':'),
-                    peek(not(char(':'))),
-                    cut((
-                        delimited(ws_comments0, parse_identifier, ws_comments0),
-                        opt(parse_attributes),
-                        opt(delimited(
-                            preceded(ws_comments0, char('{')),
-                            parse_elements,
-                            preceded(ws_comments0, char('}')),
+fn parse_type_definition(input: Span) -> PResult<types::TypeDefinition> {
+    to_spanned(
+        input,
+        context(
+            "type_definition",
+            map(
+                delimited(
+                    ws_comments0,
+                    (
+                        pair(tag("type"), ws_comments1),
+                        cut((
+                            parse_identifier,
+                            delimited(ws_comments0, char('='), ws_comments0),
+                            parse_identifier,
+                            preceded(ws_comments0, opt(parse_attributes)), // Allow 0 or more spaces before attributes
                         )),
-                    )),
+                    ),
+                    semicolon,
                 ),
-                semicolon,
+                |(_, (name, _, base_type, attributes))| types::TypeDefinition {
+                    name,
+                    base_type,
+                    attributes: attributes.unwrap_or_default(),
+                },
             ),
-            |(name, _, _, (type_name, attributes, nested_elements))| Element::Component {
-                name,
-                type_name,
-                attributes: attributes.unwrap_or_default(),
-                nested_elements: nested_elements.unwrap_or_default(),
-            },
-        ),
+        )
+        .parse(input),
     )
-    .parse(input)
+}
+
+fn parse_type_definitions(input: Span) -> PResult<Vec<Spanned<types::TypeDefinition>>> {
+    to_spanned(input, many0(parse_type_definition).parse(input))
+}
+
+fn parse_component(input: Span) -> PResult<types::Element> {
+    to_spanned(
+        input,
+        context(
+            "component",
+            map(
+                terminated(
+                    (
+                        terminated(parse_identifier, ws_comments0),
+                        char(':'),
+                        peek(not(char(':'))),
+                        cut((
+                            delimited(ws_comments0, parse_identifier, ws_comments0),
+                            opt(parse_attributes),
+                            opt(delimited(
+                                preceded(ws_comments0, char('{')),
+                                parse_elements,
+                                preceded(ws_comments0, char('}')),
+                            )),
+                        )),
+                    ),
+                    semicolon,
+                ),
+                |(name, _, _, (type_name, attributes, nested_elements))| {
+                    types::Element::Component {
+                        name,
+                        type_name,
+                        attributes: attributes.unwrap_or_default(),
+                        nested_elements: nested_elements.unwrap_or_default(),
+                    }
+                },
+            ),
+        )
+        .parse(input),
+    )
 }
 
 // Parse a relation type like -> or <- or <-> or -
-fn parse_relation_type(input: Span) -> ParseResult<Span> {
-    context(
-        "relation_type",
-        alt((tag("<->"), tag("<-"), tag("->"), tag("-"))),
-    )
-    .parse(input)
-}
-
-fn parse_relation(input: Span) -> ParseResult<Element> {
-    context(
-        "relation",
-        map(
-            terminated(
-                (
-                    terminated(parse_nested_identifier, ws_comments1),
-                    parse_relation_type,
-                    cut((
-                        opt(preceded(ws_comments0, parse_attributes)), // Optional attributes
-                        delimited(
-                            ws_comments1, // Require at least one space after relation type
-                            parse_nested_identifier,
-                            ws_comments0, // Target identifier with possible leading space
-                        ),
-                        opt((preceded(ws_comments0, char(':')), parse_string_literal)),
-                    )),
-                ),
-                semicolon,
+fn parse_relation_type(input: Span) -> PResult<&str> {
+    to_spanned(
+        input,
+        context(
+            "relation_type",
+            map(
+                alt((tag("<->"), tag("<-"), tag("->"), tag("-"))),
+                |v: LocatedSpan<&str>| v.into_fragment(),
             ),
-            |(source, relation_type, (attributes, target, _))| Element::Relation {
-                source,
-                target,
-                attributes: attributes.unwrap_or_default(),
-                relation_type,
-            },
-        ),
+        )
+        .parse(input),
     )
-    .parse(input)
 }
 
-fn parse_element(input: Span) -> ParseResult<Element> {
+fn parse_relation(input: Span) -> PResult<types::Element> {
+    to_spanned(
+        input,
+        context(
+            "relation",
+            map(
+                terminated(
+                    (
+                        terminated(parse_nested_identifier, ws_comments1),
+                        parse_relation_type,
+                        cut((
+                            opt(preceded(ws_comments0, parse_attributes)), // Optional attributes
+                            delimited(
+                                ws_comments1, // Require at least one space after relation type
+                                parse_nested_identifier,
+                                ws_comments0, // Target identifier with possible leading space
+                            ),
+                            opt((preceded(ws_comments0, char(':')), parse_string_literal)),
+                        )),
+                    ),
+                    semicolon,
+                ),
+                |(source, relation_type, (attributes, target, _))| types::Element::Relation {
+                    source,
+                    target,
+                    attributes: attributes.unwrap_or_default(),
+                    relation_type,
+                },
+            ),
+        )
+        .parse(input),
+    )
+}
+
+fn parse_element(input: Span) -> PResult<types::Element> {
     delimited(
         ws_comments0,
         alt((parse_component, parse_relation)),
@@ -247,11 +273,11 @@ fn parse_element(input: Span) -> ParseResult<Element> {
     .parse(input)
 }
 
-fn parse_elements(input: Span) -> ParseResult<Vec<Element>> {
-    many0(parse_element).parse(input)
+fn parse_elements(input: Span) -> PResult<Vec<Spanned<types::Element>>> {
+    to_spanned(input, many0(parse_element).parse(input))
 }
 
-fn parse_diagram_header(input: Span) -> ParseResult<Span> {
+fn parse_diagram_header(input: Span) -> PResult<&str> {
     context(
         "header",
         cut(delimited(
@@ -263,29 +289,28 @@ fn parse_diagram_header(input: Span) -> ParseResult<Span> {
     .parse(input)
 }
 
-fn parse_diagram(input: Span) -> ParseResult<Element> {
-    map(
-        all_consuming(delimited(
-            ws_comments0,
-            (
-                parse_diagram_header,
-                many0(parse_type_definition),
-                parse_elements,
-            ),
-            ws_comments0,
-        )),
-        |(kind, type_definitions, elements)| {
-            Element::Diagram(Diagram {
-                kind,
-                type_definitions,
-                elements,
-            })
-        },
+fn parse_diagram(input: Span) -> PResult<types::Element> {
+    to_spanned(
+        input,
+        map(
+            all_consuming(delimited(
+                ws_comments0,
+                (parse_diagram_header, parse_type_definitions, parse_elements),
+                ws_comments0,
+            )),
+            |(kind, type_definitions, elements)| {
+                types::Element::Diagram(types::Diagram {
+                    kind,
+                    type_definitions,
+                    elements,
+                })
+            },
+        )
+        .parse(input),
     )
-    .parse(input)
 }
 
-pub fn build_diagram(input: &str) -> Result<Element, FilamentError> {
+pub fn build_diagram(input: &str) -> Result<Spanned<types::Element>, ParseDiagnosticError> {
     debug!("Starting diagram parsing, input length: {}", input.len());
 
     // Create a span with the full input
@@ -299,9 +324,7 @@ pub fn build_diagram(input: &str) -> Result<Element, FilamentError> {
                 let err = SlimParserError::new(remaining, nom::error::ErrorKind::NonEmpty);
 
                 // Convert to full error with the complete source
-                let full_err = err.move_to_full_error(input);
-
-                return Err(FilamentError::ParseDiagnostic(full_err));
+                return Err(err.move_to_full_error(input));
             }
             debug!("Diagram parsed successfully");
             trace!("Parsed diagram: {:?}", diagram);
@@ -311,13 +334,16 @@ pub fn build_diagram(input: &str) -> Result<Element, FilamentError> {
             trace!("Parser error: kind={:?}, offset={}", err.kind, err.offset);
 
             // Convert the slim error to a full error with context
-            let full_err = err.move_to_full_error(input);
-
-            Err(FilamentError::ParseDiagnostic(full_err))
+            Err(err.move_to_full_error(input))
         }
         Err(err) => {
             trace!("Other parser error");
-            Err(FilamentError::Parse(err.to_string()))
+            Err(ParseDiagnosticError {
+                src: input.to_string(),
+                message: err.to_string(),
+                span: Some((0, input_span.len()).into()),
+                help: None,
+            })
         }
     }
 }
@@ -460,18 +486,18 @@ mod tests {
         let input = Span::new("\"hello\"");
         let (rest, value) = parse_string_literal(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        assert_eq!(*value.fragment(), "hello");
+        assert_eq!(*value, "hello");
 
         let input = Span::new("\"hello world\"");
         let (rest, value) = parse_string_literal(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        assert_eq!(*value.fragment(), "hello world");
+        assert_eq!(*value, "hello world");
 
         // Test with content after the string
         let input = Span::new("\"hello\" world");
         let (rest, value) = parse_string_literal(input).unwrap();
         assert_eq!(*rest.fragment(), " world");
-        assert_eq!(*value.fragment(), "hello");
+        assert_eq!(*value, "hello");
 
         // Test invalid string literals
         assert!(parse_string_literal(Span::new("hello")).is_err());
@@ -485,22 +511,22 @@ mod tests {
         let input = Span::new("color=\"blue\"");
         let (rest, attr) = parse_attribute(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        assert_eq!(*attr.name.fragment(), "color");
-        assert_eq!(*attr.value.fragment(), "blue");
+        assert_eq!(*attr.name, "color");
+        assert_eq!(*attr.value, "blue");
 
         // Test with whitespace
         let input = Span::new("color = \"blue\"");
         let (rest, attr) = parse_attribute(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        assert_eq!(*attr.name.fragment(), "color");
-        assert_eq!(*attr.value.fragment(), "blue");
+        assert_eq!(*attr.name, "color");
+        assert_eq!(*attr.value, "blue");
 
         // Test with comments
         let input = Span::new("color = // comment\n \"blue\"");
         let (rest, attr) = parse_attribute(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        assert_eq!(*attr.name.fragment(), "color");
-        assert_eq!(*attr.value.fragment(), "blue");
+        assert_eq!(*attr.name, "color");
+        assert_eq!(*attr.value, "blue");
 
         // Test invalid attributes
         assert!(parse_attribute(Span::new("color=blue")).is_err());
@@ -521,28 +547,28 @@ mod tests {
         let (rest, attrs) = parse_attributes(input).unwrap();
         assert_eq!(*rest.fragment(), "");
         assert_eq!(attrs.len(), 1);
-        assert_eq!(*attrs[0].name.fragment(), "color");
-        assert_eq!(*attrs[0].value.fragment(), "blue");
+        assert_eq!(*attrs[0].name, "color");
+        assert_eq!(*attrs[0].value, "blue");
 
         // Test multiple attributes
         let input = Span::new("[color=\"blue\", size=\"large\"]");
         let (rest, attrs) = parse_attributes(input).unwrap();
         assert_eq!(*rest.fragment(), "");
         assert_eq!(attrs.len(), 2);
-        assert_eq!(*attrs[0].name.fragment(), "color");
-        assert_eq!(*attrs[0].value.fragment(), "blue");
-        assert_eq!(*attrs[1].name.fragment(), "size");
-        assert_eq!(*attrs[1].value.fragment(), "large");
+        assert_eq!(*attrs[0].name, "color");
+        assert_eq!(*attrs[0].value, "blue");
+        assert_eq!(*attrs[1].name, "size");
+        assert_eq!(*attrs[1].value, "large");
 
         // Test with whitespace and comments
         let input = Span::new("[color=\"blue\" // comment\n, size=\"large\"]");
         let (rest, attrs) = parse_attributes(input).unwrap();
         assert_eq!(*rest.fragment(), "");
         assert_eq!(attrs.len(), 2);
-        assert_eq!(*attrs[0].name.fragment(), "color");
-        assert_eq!(*attrs[0].value.fragment(), "blue");
-        assert_eq!(*attrs[1].name.fragment(), "size");
-        assert_eq!(*attrs[1].value.fragment(), "large");
+        assert_eq!(*attrs[0].name, "color");
+        assert_eq!(*attrs[0].value, "blue");
+        assert_eq!(*attrs[1].name, "size");
+        assert_eq!(*attrs[1].value, "large");
 
         // Test invalid attributes
         assert!(parse_attributes(Span::new("[color=blue]")).is_err());
@@ -556,30 +582,30 @@ mod tests {
         let input = Span::new("type Database = Rectangle;");
         let (rest, type_def) = parse_type_definition(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        assert_eq!(*type_def.name.fragment(), "Database");
-        assert_eq!(*type_def.base_type.fragment(), "Rectangle");
+        assert_eq!(*type_def.name, "Database");
+        assert_eq!(*type_def.base_type, "Rectangle");
         assert_eq!(type_def.attributes.len(), 0);
 
         // Test type definition with attributes - notice the space before the attributes
         let input = Span::new("type Database = Rectangle [fill_color=\"blue\"];");
         let (rest, type_def) = parse_type_definition(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        assert_eq!(*type_def.name.fragment(), "Database");
-        assert_eq!(*type_def.base_type.fragment(), "Rectangle");
+        assert_eq!(*type_def.name, "Database");
+        assert_eq!(*type_def.base_type, "Rectangle");
         assert_eq!(type_def.attributes.len(), 1);
-        assert_eq!(*type_def.attributes[0].name.fragment(), "fill_color");
-        assert_eq!(*type_def.attributes[0].value.fragment(), "blue");
+        assert_eq!(*type_def.attributes[0].name, "fill_color");
+        assert_eq!(*type_def.attributes[0].value, "blue");
 
         // Test with whitespace and comments
         // FIXME: Fix the code to pass this test.
         let input = Span::new("type Database = Rectangle // comment\n [fill_color=\"blue\"];");
         let (rest, type_def) = parse_type_definition(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        assert_eq!(*type_def.name.fragment(), "Database");
-        assert_eq!(*type_def.base_type.fragment(), "Rectangle");
+        assert_eq!(*type_def.name, "Database");
+        assert_eq!(*type_def.base_type, "Rectangle");
         assert_eq!(type_def.attributes.len(), 1);
-        assert_eq!(*type_def.attributes[0].name.fragment(), "fill_color");
-        assert_eq!(*type_def.attributes[0].value.fragment(), "blue");
+        assert_eq!(*type_def.attributes[0].name, "fill_color");
+        assert_eq!(*type_def.attributes[0].value, "blue");
 
         // Test invalid type definitions
         assert!(parse_type_definition(Span::new("type Database;")).is_err());
@@ -593,15 +619,15 @@ mod tests {
         let input = Span::new("database: Rectangle;");
         let (rest, component) = parse_component(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        match component {
-            Element::Component {
+        match component.into_inner() {
+            types::Element::Component {
                 name,
                 type_name,
                 attributes,
                 nested_elements,
             } => {
-                assert_eq!(*name.fragment(), "database");
-                assert_eq!(*type_name.fragment(), "Rectangle");
+                assert_eq!(*name, "database");
+                assert_eq!(*type_name, "Rectangle");
                 assert_eq!(attributes.len(), 0);
                 assert_eq!(nested_elements.len(), 0);
             }
@@ -612,18 +638,18 @@ mod tests {
         let input = Span::new("database: Rectangle [fill_color=\"blue\"];");
         let (rest, component) = parse_component(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        match component {
-            Element::Component {
+        match component.into_inner() {
+            types::Element::Component {
                 name,
                 type_name,
                 attributes,
                 nested_elements,
             } => {
-                assert_eq!(*name.fragment(), "database");
-                assert_eq!(*type_name.fragment(), "Rectangle");
+                assert_eq!(*name, "database");
+                assert_eq!(*type_name, "Rectangle");
                 assert_eq!(attributes.len(), 1);
-                assert_eq!(*attributes[0].name.fragment(), "fill_color");
-                assert_eq!(*attributes[0].value.fragment(), "blue");
+                assert_eq!(*attributes[0].name, "fill_color");
+                assert_eq!(*attributes[0].value, "blue");
                 assert_eq!(nested_elements.len(), 0);
             }
             _ => panic!("Expected Component"),
@@ -633,20 +659,20 @@ mod tests {
         let input = Span::new("server: Oval[fill_color=\"green\", line_color=\"black\"];");
         let (rest, component) = parse_component(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        match component {
-            Element::Component {
+        match component.into_inner() {
+            types::Element::Component {
                 name,
                 type_name,
                 attributes,
                 nested_elements,
             } => {
-                assert_eq!(*name.fragment(), "server");
-                assert_eq!(*type_name.fragment(), "Oval");
+                assert_eq!(*name, "server");
+                assert_eq!(*type_name, "Oval");
                 assert_eq!(attributes.len(), 2);
-                assert_eq!(*attributes[0].name.fragment(), "fill_color");
-                assert_eq!(*attributes[0].value.fragment(), "green");
-                assert_eq!(*attributes[1].name.fragment(), "line_color");
-                assert_eq!(*attributes[1].value.fragment(), "black");
+                assert_eq!(*attributes[0].name, "fill_color");
+                assert_eq!(*attributes[0].value, "green");
+                assert_eq!(*attributes[1].name, "line_color");
+                assert_eq!(*attributes[1].value, "black");
                 assert_eq!(nested_elements.len(), 0);
             }
             _ => panic!("Expected Component"),
@@ -656,23 +682,23 @@ mod tests {
         let input = Span::new("system: Rectangle { db: Database; };");
         let (rest, component) = parse_component(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        match component {
-            Element::Component {
+        match component.into_inner() {
+            types::Element::Component {
                 name,
                 type_name,
                 attributes,
                 nested_elements,
             } => {
-                assert_eq!(*name.fragment(), "system");
-                assert_eq!(*type_name.fragment(), "Rectangle");
+                assert_eq!(*name, "system");
+                assert_eq!(*type_name, "Rectangle");
                 assert_eq!(attributes.len(), 0);
                 assert_eq!(nested_elements.len(), 1);
-                match &nested_elements[0] {
-                    Element::Component {
+                match nested_elements.into_inner().pop().unwrap().into_inner() {
+                    types::Element::Component {
                         name, type_name, ..
                     } => {
-                        assert_eq!(*name.fragment(), "db");
-                        assert_eq!(*type_name.fragment(), "Database");
+                        assert_eq!(*name, "db");
+                        assert_eq!(*type_name, "Database");
                     }
                     _ => panic!("Expected Component"),
                 }
@@ -692,16 +718,16 @@ mod tests {
         let input = Span::new("a -> b;");
         let (rest, relation) = parse_relation(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        match relation {
-            Element::Relation {
+        match relation.into_inner() {
+            types::Element::Relation {
                 source,
                 target,
                 relation_type,
                 attributes,
             } => {
-                assert_eq!(*source.fragment(), "a");
-                assert_eq!(*target.fragment(), "b");
-                assert_eq!(*relation_type.fragment(), "->");
+                assert_eq!(*source, "a");
+                assert_eq!(*target, "b");
+                assert_eq!(*relation_type, "->");
                 assert_eq!(attributes.len(), 0);
             }
             _ => panic!("Expected Relation"),
@@ -709,27 +735,27 @@ mod tests {
 
         let input = Span::new("a <- b;");
         let (_rest, relation) = parse_relation(input).unwrap();
-        match relation {
-            Element::Relation { relation_type, .. } => {
-                assert_eq!(*relation_type.fragment(), "<-");
+        match relation.into_inner() {
+            types::Element::Relation { relation_type, .. } => {
+                assert_eq!(*relation_type, "<-");
             }
             _ => panic!("Expected Relation"),
         }
 
         let input = Span::new("a <-> b;");
         let (_rest, relation) = parse_relation(input).unwrap();
-        match relation {
-            Element::Relation { relation_type, .. } => {
-                assert_eq!(*relation_type.fragment(), "<->");
+        match relation.into_inner() {
+            types::Element::Relation { relation_type, .. } => {
+                assert_eq!(*relation_type, "<->");
             }
             _ => panic!("Expected Relation"),
         }
 
         let input = Span::new("a - b;");
         let (_rest, relation) = parse_relation(input).unwrap();
-        match relation {
-            Element::Relation { relation_type, .. } => {
-                assert_eq!(*relation_type.fragment(), "-");
+        match relation.into_inner() {
+            types::Element::Relation { relation_type, .. } => {
+                assert_eq!(*relation_type, "-");
             }
             _ => panic!("Expected Relation"),
         }
@@ -737,19 +763,19 @@ mod tests {
         // Test relation with attributes
         let input = Span::new("a -> [color=\"red\"] b;");
         let (_rest, relation) = parse_relation(input).unwrap();
-        match relation {
-            Element::Relation {
+        match relation.into_inner() {
+            types::Element::Relation {
                 source,
                 target,
                 relation_type,
                 attributes,
             } => {
-                assert_eq!(*source.fragment(), "a");
-                assert_eq!(*target.fragment(), "b");
-                assert_eq!(*relation_type.fragment(), "->");
+                assert_eq!(*source, "a");
+                assert_eq!(*target, "b");
+                assert_eq!(*relation_type, "->");
                 assert_eq!(attributes.len(), 1);
-                assert_eq!(*attributes[0].name.fragment(), "color");
-                assert_eq!(*attributes[0].value.fragment(), "red");
+                assert_eq!(*attributes[0].name, "color");
+                assert_eq!(*attributes[0].value, "red");
             }
             _ => panic!("Expected Relation"),
         }
@@ -757,10 +783,10 @@ mod tests {
         // Test nested identifiers in relations
         let input = Span::new("parent::child -> service;");
         let (_rest, relation) = parse_relation(input).unwrap();
-        match relation {
-            Element::Relation { source, target, .. } => {
-                assert_eq!(*source.fragment(), "parent::child");
-                assert_eq!(*target.fragment(), "service");
+        match relation.into_inner() {
+            types::Element::Relation { source, target, .. } => {
+                assert_eq!(*source, "parent::child");
+                assert_eq!(*target, "service");
             }
             _ => panic!("Expected Relation"),
         }
@@ -777,12 +803,12 @@ mod tests {
         let input = Span::new("diagram component;");
         let (rest, kind) = parse_diagram_header(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        assert_eq!(*kind.fragment(), "component");
+        assert_eq!(*kind, "component");
 
         let input = Span::new("diagram sequence;");
         let (rest, kind) = parse_diagram_header(input).unwrap();
         assert_eq!(*rest.fragment(), "");
-        assert_eq!(*kind.fragment(), "sequence");
+        assert_eq!(*kind, "sequence");
 
         // Test invalid diagram headers
         assert!(parse_diagram_header(Span::new("diagram;")).is_err());
@@ -796,9 +822,9 @@ mod tests {
         let diagram_str = Span::new("diagram component;");
         let (_rest, diagram) = parse_diagram(diagram_str).unwrap();
         assert_eq!(*_rest.fragment(), "");
-        match diagram {
-            Element::Diagram(d) => {
-                assert_eq!(*d.kind.fragment(), "component");
+        match diagram.into_inner() {
+            types::Element::Diagram(d) => {
+                assert_eq!(*d.kind, "component");
                 assert_eq!(d.type_definitions.len(), 0);
                 assert_eq!(d.elements.len(), 0);
             }
@@ -813,11 +839,11 @@ mod tests {
         ",
         );
         let (_rest, diagram) = parse_diagram(diagram_str).unwrap();
-        match diagram {
-            Element::Diagram(d) => {
-                assert_eq!(*d.kind.fragment(), "component");
+        match diagram.into_inner() {
+            types::Element::Diagram(d) => {
+                assert_eq!(*d.kind, "component");
                 assert_eq!(d.type_definitions.len(), 1);
-                assert_eq!(*d.type_definitions[0].name.fragment(), "Database");
+                assert_eq!(*d.type_definitions[0].name, "Database");
                 assert_eq!(d.elements.len(), 0);
             }
             _ => panic!("Expected Diagram"),
@@ -832,9 +858,9 @@ mod tests {
         ",
         );
         let (_rest, diagram) = parse_diagram(diagram_str).unwrap();
-        match diagram {
-            Element::Diagram(d) => {
-                assert_eq!(*d.kind.fragment(), "component");
+        match diagram.into_inner() {
+            types::Element::Diagram(d) => {
+                assert_eq!(*d.kind, "component");
                 assert_eq!(d.type_definitions.len(), 0);
                 assert_eq!(d.elements.len(), 2);
             }
@@ -851,14 +877,14 @@ mod tests {
         ",
         );
         let (_rest, diagram) = parse_diagram(diagram_str).unwrap();
-        match diagram {
-            Element::Diagram(d) => {
-                assert_eq!(*d.kind.fragment(), "component");
+        match diagram.into_inner() {
+            types::Element::Diagram(d) => {
+                assert_eq!(*d.kind, "component");
                 assert_eq!(d.elements.len(), 3);
-                match &d.elements[2] {
-                    Element::Relation { source, target, .. } => {
-                        assert_eq!(*source.fragment(), "app");
-                        assert_eq!(*target.fragment(), "db");
+                match d.elements.into_inner().remove(2).into_inner() {
+                    types::Element::Relation { source, target, .. } => {
+                        assert_eq!(*source, "app");
+                        assert_eq!(*target, "db");
                     }
                     _ => panic!("Expected Relation"),
                 }
@@ -878,17 +904,17 @@ mod tests {
         ",
         );
         let (rest, diagram) = parse_diagram(diagram_str).unwrap();
-        match diagram {
-            Element::Diagram(d) => {
-                assert_eq!(*d.kind.fragment(), "component");
+        match diagram.into_inner() {
+            types::Element::Diagram(d) => {
+                assert_eq!(*d.kind, "component");
                 assert_eq!(d.elements.len(), 1);
-                match &d.elements[0] {
-                    Element::Component {
+                match d.elements.into_inner().pop().unwrap().into_inner() {
+                    types::Element::Component {
                         name,
                         nested_elements,
                         ..
                     } => {
-                        assert_eq!(*name.fragment(), "system");
+                        assert_eq!(*name, "system");
                         assert_eq!(nested_elements.len(), 3);
                     }
                     _ => panic!("Expected Component"),
@@ -922,9 +948,9 @@ mod tests {
         let result = parse_diagram(diagram_str);
         assert!(result.is_ok());
         let (rest, diagram) = result.unwrap();
-        match diagram {
-            Element::Diagram(d) => {
-                assert_eq!(*d.kind.fragment(), "component");
+        match diagram.into_inner() {
+            types::Element::Diagram(d) => {
+                assert_eq!(*d.kind, "component");
                 assert_eq!(d.type_definitions.len(), 3);
                 assert_eq!(d.elements.len(), 5); // 3 components + 2 relations
             }
