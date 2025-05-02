@@ -1,6 +1,6 @@
 use clap::Parser;
 use filament::{Config, FilamentError};
-use log::{error, info, LevelFilter};
+use log::{LevelFilter, error, info};
 use std::{process, str::FromStr};
 
 fn main() {
@@ -32,8 +32,9 @@ fn main() {
             FilamentError::ParseDiagnostic(ref err) => {
                 reporter.render_report(&mut writer, err).unwrap();
             }
-            FilamentError::ElaborationDiagnostic { source: ref err, .. } => {
-                reporter.render_report(&mut writer, err).unwrap();
+            FilamentError::ElaborationDiagnostic { .. } => {
+                // Pass the FilamentError itself which implements Diagnostic and has source_code
+                reporter.render_report(&mut writer, &err).unwrap();
             }
             err => {
                 writer.push_str(&err.to_string());

@@ -35,8 +35,5 @@ pub fn build_ast(source: &str) -> Result<elaborate::Diagram, FilamentError> {
     // Step 2: Elaborate the AST with rich error handling
     let elaborate_builder = elaborate::Builder::new(source);
     elaborate_builder.build(parsed_ast)
-        .map_err(|e| FilamentError::ElaborationDiagnostic {
-            source: e,
-            src: source.to_string(),
-        })
+        .map_err(|e| FilamentError::new_elaboration_error(e, source))
 }

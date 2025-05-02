@@ -17,11 +17,11 @@ pub enum FilamentError {
     #[error(transparent)]
     ParseDiagnostic(#[from] ParseDiagnosticError),
 
-    /// For rich diagnostic elaboration errors - now holds the source code too
-    #[error("{source}")] // Display the inner error's message
+    /// For rich diagnostic elaboration errors - holds the source code too.
+    #[error("{err}")] // Display the inner error's message
     ElaborationDiagnostic {
         #[source] // The actual error
-        source: ElaborationDiagnosticError,
+        err: ElaborationDiagnosticError,
         src: String, // The source code for this error
     },
 
@@ -50,7 +50,7 @@ impl Diagnostic for FilamentError {
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
-            FilamentError::ElaborationDiagnostic { source, .. } => source.help(),
+            FilamentError::ElaborationDiagnostic { err: source, .. } => source.help(),
             FilamentError::ParseDiagnostic(e) => e.help(),
             _ => None, // Other errors don't have specific help
         }
@@ -67,7 +67,7 @@ impl Diagnostic for FilamentError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match self {
             FilamentError::ParseDiagnostic(e) => e.labels(),
-            FilamentError::ElaborationDiagnostic { source, .. } => source.labels(),
+            FilamentError::ElaborationDiagnostic { err: source, .. } => source.labels(),
             _ => None,
         }
     }
@@ -78,5 +78,19 @@ impl Diagnostic for FilamentError {
 impl From<crate::export::Error> for FilamentError {
     fn from(error: crate::export::Error) -> Self {
         FilamentError::Export(Box::new(error))
+    }
+}
+
+impl FilamentError {
+    /// Create a new ElaborationDiagnostic error with the associated source code.
+    /// This provides a cleaner API than directly constructing the variant.
+    pub fn new_elaboration_error(
+        error: ElaborationDiagnosticError,
+        source_code: impl Into<String>,
+    ) -> Self {
+        FilamentError::ElaborationDiagnostic {
+            err: error,
+            src: source_code.into(),
+        }
     }
 }
