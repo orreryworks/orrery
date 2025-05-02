@@ -6,7 +6,7 @@ mod graph;
 mod layout;
 mod shape;
 
-use ast::{elaborate, parser};
+use ast::elaborate;
 use clap::Parser;
 pub use error::FilamentError;
 use export::Exporter;
@@ -40,16 +40,10 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
     let content = fs::read_to_string(&cfg.file)?;
     trace!(content; "File content");
 
-    // Parsing the diagram
-    info!("Parsing diagram");
-    let ast = parser::build_diagram(&content)?;
-    debug!("Parsed AST successfully");
-
-    // Elaborating the AST
-    info!("Elaborating AST");
-    let elaborate_builder = elaborate::Builder::new(&content);
-    let elaborated_ast = elaborate_builder.build(ast)?;
-    debug!("Elaborated AST successfully");
+    // Process the diagram through parsing and elaboration
+    info!("Building diagram AST");
+    let elaborated_ast = ast::build_ast(&content)?;
+    debug!("AST built successfully");
     trace!(elaborated_ast:?; "Elaborated AST");
 
     // Process diagram based on its type

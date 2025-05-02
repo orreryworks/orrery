@@ -11,3 +11,32 @@ pub mod elaborate;
 pub mod parser;
 mod parser_types;
 pub mod span;
+
+use crate::error::FilamentError;
+
+/// Builds a fully elaborated AST from source code.
+///
+/// This function centralizes the process of building a Filament diagram AST by:
+/// 1. Parsing the source code into an initial AST
+/// 2. Elaborating the AST to resolve references and validate the structure
+/// 3. Handling error wrapping and source code association for diagnostics
+///
+/// # Arguments
+///
+/// * `source` - The source code to parse and elaborate
+///
+/// # Returns
+///
+/// The elaborated diagram AST or a FilamentError
+pub fn build_ast(source: &str) -> Result<elaborate::Diagram, FilamentError> {
+    // Step 1: Parse the diagram
+    let parsed_ast = parser::build_diagram(source)?;
+    
+    // Step 2: Elaborate the AST with rich error handling
+    let elaborate_builder = elaborate::Builder::new(source);
+    elaborate_builder.build(parsed_ast)
+        .map_err(|e| FilamentError::ElaborationDiagnostic {
+            source: e,
+            src: source.to_string(),
+        })
+}

@@ -32,7 +32,7 @@ fn main() {
             FilamentError::ParseDiagnostic(ref err) => {
                 reporter.render_report(&mut writer, err).unwrap();
             }
-            FilamentError::ElaborationDiagnostic(ref err) => {
+            FilamentError::ElaborationDiagnostic { source: ref err, .. } => {
                 reporter.render_report(&mut writer, err).unwrap();
             }
             err => {

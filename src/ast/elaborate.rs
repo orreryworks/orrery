@@ -123,11 +123,12 @@ impl Block {
 pub struct Builder<'a> {
     type_definitions: Vec<Rc<TypeDefinition>>,
     type_definition_map: HashMap<TypeId, Rc<TypeDefinition>>,
-    source: &'a str, // Store the original source code for error reporting
+    _phantom: std::marker::PhantomData<&'a str>, // Use PhantomData to maintain the lifetime parameter
 }
 
 impl<'a> Builder<'a> {
-    pub fn new(source: &'a str) -> Self {
+    pub fn new(_source: &'a str) -> Self {
+        // We keep the source parameter for backward compatibility but don't store it anymore
         let type_definitions = TypeDefinition::defaults();
         let type_definition_map = type_definitions
             .iter()
@@ -137,7 +138,7 @@ impl<'a> Builder<'a> {
         Self {
             type_definitions,
             type_definition_map,
-            source,
+            _phantom: std::marker::PhantomData,
         }
     }
 
@@ -177,7 +178,6 @@ impl<'a> Builder<'a> {
                         return Err(ElaborationDiagnosticError::from_spanned(
                             "Nested diagram not allowed".to_string(),
                             &diag.kind,
-                            self.source,
                             "invalid diagram structure",
                             Some("Diagrams cannot be nested inside other diagrams".to_string()),
                         ));
@@ -193,7 +193,6 @@ impl<'a> Builder<'a> {
                         return Err(ElaborationDiagnosticError::from_spanned(
                             format!("Invalid diagram kind: '{}'", diag.kind),
                             &diag.kind,
-                            self.source,
                             "unsupported diagram type",
                             Some(
                                 "Supported diagram types are: 'component', 'sequence'".to_string(),
@@ -211,7 +210,6 @@ impl<'a> Builder<'a> {
             _ => Err(ElaborationDiagnosticError::from_spanned(
                 "Invalid element, expected Diagram".to_string(),
                 &diag,
-                self.source,
                 "invalid element",
                 None,
             )),
@@ -241,7 +239,6 @@ impl<'a> Builder<'a> {
             Err(ElaborationDiagnosticError::from_spanned(
                 format!("Type definition '{}' already exists", type_def.id),
                 &span,
-                self.source,
                 "duplicate type definition",
                 None,
             ))
@@ -265,7 +262,6 @@ impl<'a> Builder<'a> {
                     ElaborationDiagnosticError::from_spanned(
                         message,
                         &type_def.base_type,
-                        self.source,
                         "undefined type",
                         Some(format!(
                             "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type",
@@ -278,7 +274,6 @@ impl<'a> Builder<'a> {
                 TypeId::from_name(&type_def.name),
                 base,
                 &type_def.attributes,
-                self.source,
             ) {
                 Ok(new_type_def) => {
                     self.insert_type_definition(type_def.map(|_| new_type_def))?;
@@ -288,7 +283,6 @@ impl<'a> Builder<'a> {
                     return Err(ElaborationDiagnosticError::from_spanned(
                         format!("Invalid type definition: {err}"),
                         &type_def.name,
-                        self.source,
                         "type definition error",
                         Some("Check attribute types and values for errors".to_string()),
                     ));
@@ -312,7 +306,6 @@ impl<'a> Builder<'a> {
                         return Err(ElaborationDiagnosticError::from_spanned(
                             "Nested diagram not allowed".to_string(),
                             &diag.kind,
-                            self.source,
                             "invalid nesting",
                             Some("Diagrams cannot be nested inside other diagrams".to_string()),
                         ));
@@ -327,7 +320,6 @@ impl<'a> Builder<'a> {
                         return Err(ElaborationDiagnosticError::from_spanned(
                             format!("Invalid diagram kind: '{}'", diag.kind),
                             &diag.kind,
-                            self.source,
                             "unsupported diagram type",
                             Some(
                                 "Supported diagram types are: 'component', 'sequence'".to_string(),
@@ -341,7 +333,6 @@ impl<'a> Builder<'a> {
             _ => Err(ElaborationDiagnosticError::from_spanned(
                 "Invalid element, expected Diagram".to_string(),
                 diag,
-                self.source,
                 "invalid element",
                 None,
             )),
@@ -368,7 +359,6 @@ impl<'a> Builder<'a> {
                     return Err(ElaborationDiagnosticError::from_spanned(
                         "Diagram cannot share scope with other elements".to_string(),
                         &diag.kind, // Use the diagram kind span as the error location
-                        self.source,
                         "invalid nesting",
                         Some(
                             "A diagram declaration must be the only element in its scope"
@@ -411,7 +401,6 @@ impl<'a> Builder<'a> {
                             return Err(ElaborationDiagnosticError::from_spanned(
                                 format!("Unknown type '{type_name}' for component '{name}'"),
                                 name, // Use the component name's span as the error location
-                                self.source,
                                 "undefined type",
                                 Some(format!(
                                     "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type"
@@ -453,7 +442,6 @@ impl<'a> Builder<'a> {
                                         return Err(ElaborationDiagnosticError::from_spanned(
                                             format!("Invalid color value '{}': {err}", attr.value,),
                                             &attr.value,
-                                            self.source,
                                             "invalid color",
                                             Some(
                                                 "Color must be a valid CSS color value".to_string(),
@@ -472,7 +460,6 @@ impl<'a> Builder<'a> {
                                                 attr.value
                                             ),
                                             &attr.value,
-                                            self.source,
                                             "invalid width",
                                             Some("Width must be a positive integer".to_string()),
                                         ));
@@ -509,7 +496,6 @@ impl<'a> Builder<'a> {
                     return Err(ElaborationDiagnosticError::from_spanned(
                         "Invalid element type".to_string(),
                         parser_elm,
-                        self.source,
                         "invalid element type",
                         None,
                     ));
@@ -532,7 +518,6 @@ impl<'a> Builder<'a> {
                 return Err(ElaborationDiagnosticError::from_spanned(
                     format!("Unknown type '{type_name}' for component '{type_name}'"),
                     type_name, // Use the component name's span as the error location
-                    self.source,
                     "undefined type",
                     Some(format!(
                         "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type"
@@ -548,12 +533,11 @@ impl<'a> Builder<'a> {
 
         // Otherwise, create a new anonymous type based on the base type
         let id = TypeId::from_anonymous(self.type_definition_map.len());
-        match TypeDefinition::from_base(id, base, attributes, self.source) {
+        match TypeDefinition::from_base(id, base, attributes) {
             Ok(new_type) => self.insert_type_definition(type_name.map(|_| new_type)),
             Err(err) => Err(ElaborationDiagnosticError::from_spanned(
                 format!("Error creating type based on '{type_name}': {err}"),
                 type_name,
-                self.source,
                 "undefined type",
                 Some(format!(
                     "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type"
@@ -607,7 +591,6 @@ impl TypeDefinition {
         id: TypeId,
         base: &Self,
         attributes: &[Spanned<parser_types::Attribute>],
-        src: &str, // TODO: Implement source location tracking
     ) -> Result<Self, ElaborationDiagnosticError> {
         let mut type_def = base.clone();
         type_def.id = id;
@@ -622,7 +605,6 @@ impl TypeDefinition {
                         ElaborationDiagnosticError::from_spanned(
                             format!("Invalid fill_color '{value}': {err}"),
                             &attr,
-                            src,
                             "invalid color",
                             Some("Use a CSS color".to_string()),
                         )
@@ -633,7 +615,6 @@ impl TypeDefinition {
                         ElaborationDiagnosticError::from_spanned(
                             format!("Invalid line_color '{value}': {err}"),
                             &attr,
-                            src,
                             "invalid color",
                             Some("Use a CSS color".to_string()),
                         )
@@ -646,7 +627,6 @@ impl TypeDefinition {
                             .or(Err(ElaborationDiagnosticError::from_spanned(
                                 format!("Invalid line_width '{value}'"),
                                 &attr,
-                                src,
                                 "invalid positive integer",
                                 Some("Use a positive integer".to_string()),
                             )))?
@@ -658,7 +638,6 @@ impl TypeDefinition {
                             .or(Err(ElaborationDiagnosticError::from_spanned(
                                 format!("Invalid rounded '{value}'"),
                                 &attr,
-                                src,
                                 "invalid positive integer",
                                 Some("Use a positive integer".to_string()),
                             )))?
@@ -670,7 +649,6 @@ impl TypeDefinition {
                             .or(Err(ElaborationDiagnosticError::from_spanned(
                                 format!("Invalid font_size '{value}'"),
                                 &attr,
-                                src,
                                 "invalid positive integer",
                                 Some("Use a positive integer".to_string()),
                             )))?
