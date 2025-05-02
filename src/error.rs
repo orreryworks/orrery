@@ -18,9 +18,8 @@ pub enum FilamentError {
     ParseDiagnostic(#[from] ParseDiagnosticError),
 
     /// For rich diagnostic elaboration errors - holds the source code too.
-    #[error("{err}")] // Display the inner error's message
+    #[error("{err}")] // Empty message to avoid duplication with inner error
     ElaborationDiagnostic {
-        #[source] // The actual error
         err: ElaborationDiagnosticError,
         src: String, // The source code for this error
     },
@@ -41,7 +40,8 @@ impl Diagnostic for FilamentError {
                 Some(Box::new("filament::error::parser_diagnostic"))
             }
             FilamentError::ElaborationDiagnostic { .. } => {
-                Some(Box::new("filament::error::elaboration_diagnostic"))
+                // Return None to suppress the error code in output
+                None
             }
             FilamentError::Graph(_) => Some(Box::new("filament::error::graph")),
             FilamentError::Export(_) => Some(Box::new("filament::error::export")),
