@@ -21,8 +21,13 @@ fn to_spanned<'a, T>(input: Span, result: IResult<Span<'a>, T, SlimParserError>)
     match result {
         Ok((span, val)) => Ok((
             span,
-            Spanned::new(val, input.location_offset(), span.fragment().len()),
+            Spanned::new(
+                val,
+                input.location_offset(),
+                span.location_offset() - input.location_offset(),
+            ),
         )),
+
         Err(err) => Err(err),
     }
 }
