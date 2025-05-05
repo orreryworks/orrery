@@ -1,16 +1,16 @@
 use crate::{
-    ast::elaborate::RelationType,
+    ast,
     layout::{
         common::{Bounds, Point},
         sequence,
     },
 };
 use svg::{
-    node::element::{Definitions, Group, Line, Marker, Path},
     Document,
+    node::element::{Definitions, Group, Line, Marker, Path},
 };
 
-use super::{renderer, Svg};
+use super::{Svg, renderer};
 
 impl Svg {
     fn render_participant(&self, participant: &sequence::Participant) -> Group {
@@ -70,21 +70,21 @@ impl Svg {
 
         // Get marker references for this specific color
         let (start_marker, end_marker) = match &message.relation.relation_type {
-            RelationType::Forward => (
+            ast::RelationType::Forward => (
                 None,
                 Some(format!(
                     "url(#arrow-right-{})",
                     message.relation.color.to_id_safe_string()
                 )),
             ),
-            RelationType::Backward => (
+            ast::RelationType::Backward => (
                 Some(format!(
                     "url(#arrow-left-{})",
                     message.relation.color.to_id_safe_string()
                 )),
                 None,
             ),
-            RelationType::Bidirectional => (
+            ast::RelationType::Bidirectional => (
                 Some(format!(
                     "url(#arrow-left-{})",
                     message.relation.color.to_id_safe_string()
@@ -94,7 +94,7 @@ impl Svg {
                     message.relation.color.to_id_safe_string()
                 )),
             ),
-            RelationType::Plain => (None, None),
+            ast::RelationType::Plain => (None, None),
         };
 
         // Create the path

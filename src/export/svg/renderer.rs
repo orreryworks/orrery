@@ -1,5 +1,5 @@
 use crate::{
-    ast::elaborate::TypeDefinition,
+    ast,
     layout::common::{Point, Size},
     shape::{Oval, Rectangle, Shape},
 };
@@ -8,7 +8,7 @@ use svg::node::element::{Ellipse, Group, Rectangle as SvgRectangle, Text};
 /// Trait for rendering shapes to SVG
 pub trait ShapeRenderer {
     /// Render a shape to SVG based on the given properties
-    /// 
+    ///
     /// * `position` - The center position of the shape
     /// * `size` - The size of the shape
     /// * `type_def` - The type definition containing styling information
@@ -18,7 +18,7 @@ pub trait ShapeRenderer {
         &self,
         position: &Point,
         size: &Size,
-        type_def: &TypeDefinition,
+        type_def: &ast::TypeDefinition,
         text: &str,
         has_nested_blocks: bool,
     ) -> Group;
@@ -39,7 +39,7 @@ impl ShapeRenderer for Rectangle {
         &self,
         position: &Point,
         size: &Size,
-        type_def: &TypeDefinition,
+        type_def: &ast::TypeDefinition,
         text: &str,
         has_nested_blocks: bool,
     ) -> Group {
@@ -94,7 +94,7 @@ impl ShapeRenderer for Oval {
         &self,
         position: &Point,
         size: &Size,
-        type_def: &TypeDefinition,
+        type_def: &ast::TypeDefinition,
         text: &str,
         has_nested_blocks: bool,
     ) -> Group {

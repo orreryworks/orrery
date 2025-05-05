@@ -1,135 +1,19 @@
-use super::parser_types;
+use super::{elaborate_types as types, parser_types};
 use crate::ast::span::Spanned;
-use crate::{
-    color::Color,
-    error::ElaborationDiagnosticError,
-    shape::{Oval, Rectangle, Shape},
-};
+use crate::{color::Color, error::ElaborationDiagnosticError};
 use log::{debug, info, trace};
-use std::{collections::HashMap, fmt, rc::Rc};
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TypeId(String);
-
-#[derive(Debug, Clone)]
-pub struct Attribute {
-    pub name: TypeId,
-    pub value: String, // TODO: Can I convert it to str?
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum RelationType {
-    Forward,       // ->
-    Backward,      // <-
-    Bidirectional, // <->
-    Plain,         // -
-}
-
-impl RelationType {
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "->" => RelationType::Forward,
-            "<-" => RelationType::Backward,
-            "<->" => RelationType::Bidirectional,
-            "-" => RelationType::Plain,
-            _ => RelationType::Forward, // Default to forward if unknown
-        }
-    }
-
-    fn to_string(&self) -> &'static str {
-        match self {
-            RelationType::Forward => "->",
-            RelationType::Backward => "<-",
-            RelationType::Bidirectional => "<->",
-            RelationType::Plain => "-",
-        }
-    }
-}
-impl fmt::Display for RelationType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.to_string())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Node {
-    pub id: TypeId,
-    pub name: String,
-    pub block: Block,
-    pub type_definition: Rc<TypeDefinition>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Relation {
-    pub source: TypeId,
-    pub target: TypeId,
-    pub relation_type: RelationType,
-    pub color: Color,
-    pub width: usize,
-}
-
-#[derive(Debug, Clone)]
-pub enum Element {
-    Node(Node),
-    Relation(Relation),
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct Scope {
-    pub elements: Vec<Element>,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum DiagramKind {
-    Component,
-    Sequence,
-}
-
-#[derive(Clone)]
-pub struct TypeDefinition {
-    pub id: TypeId,
-    pub fill_color: Option<Color>,
-    pub line_color: Color,
-    pub line_width: usize,
-    pub rounded: usize,
-    pub font_size: usize,
-    pub shape_type: Rc<dyn Shape>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Diagram {
-    pub kind: DiagramKind,
-    pub scope: Scope,
-}
-
-#[derive(Debug, Clone)]
-pub enum Block {
-    None,
-    Scope(Scope),
-    Diagram(Diagram),
-}
-
-impl Block {
-    /// Returns true if this block contains any elements
-    pub fn has_nested_blocks(&self) -> bool {
-        match self {
-            Block::None => false,
-            Block::Scope(scope) => !scope.elements.is_empty(),
-            Block::Diagram(diagram) => !diagram.scope.elements.is_empty(),
-        }
-    }
-}
+use std::{collections::HashMap, rc::Rc};
 
 pub struct Builder<'a> {
-    type_definitions: Vec<Rc<TypeDefinition>>,
-    type_definition_map: HashMap<TypeId, Rc<TypeDefinition>>,
+    type_definitions: Vec<Rc<types::TypeDefinition>>,
+    type_definition_map: HashMap<types::TypeId, Rc<types::TypeDefinition>>,
     _phantom: std::marker::PhantomData<&'a str>, // Use PhantomData to maintain the lifetime parameter
 }
 
 impl<'a> Builder<'a> {
     pub fn new(_source: &'a str) -> Self {
         // We keep the source parameter for backward compatibility but don't store it anymore
-        let type_definitions = TypeDefinition::defaults();
+        let type_definitions = types::TypeDefinition::defaults();
         let type_definition_map = type_definitions
             .iter()
             .map(|def| (def.id.clone(), Rc::clone(def)))
@@ -145,7 +29,7 @@ impl<'a> Builder<'a> {
     pub fn build(
         mut self,
         diag: Spanned<parser_types::Element<'a>>,
-    ) -> Result<Diagram, ElaborationDiagnosticError> {
+    ) -> Result<types::Diagram, ElaborationDiagnosticError> {
         debug!("Building elaborated diagram");
         match diag.inner() {
             parser_types::Element::Diagram(diag) => {
@@ -163,18 +47,18 @@ impl<'a> Builder<'a> {
 
                 // Convert block to scope
                 let scope = match block {
-                    Block::None => {
+                    types::Block::None => {
                         debug!("Empty block, using default scope");
-                        Scope::default()
+                        types::Scope::default()
                     }
-                    Block::Scope(scope) => {
+                    types::Block::Scope(scope) => {
                         debug!(
                             elements_len = scope.elements.len();
                             "Using scope from block",
                         );
                         scope
                     }
-                    Block::Diagram(_) => {
+                    types::Block::Diagram(_) => {
                         return Err(ElaborationDiagnosticError::from_spanned(
                             "Nested diagram not allowed".to_string(),
                             &diag.kind,
@@ -187,8 +71,8 @@ impl<'a> Builder<'a> {
                 // Determine the diagram kind based on the kind string
                 let kind = match *diag.kind.inner() {
                     // FIXME: Why kind has &&str?!
-                    "sequence" => DiagramKind::Sequence,
-                    "component" => DiagramKind::Component,
+                    "sequence" => types::DiagramKind::Sequence,
+                    "component" => types::DiagramKind::Component,
                     _ => {
                         return Err(ElaborationDiagnosticError::from_spanned(
                             format!("Invalid diagram kind: '{}'", diag.kind),
@@ -205,7 +89,7 @@ impl<'a> Builder<'a> {
                     "Diagram elaboration completed successfully with kind: {:?}",
                     kind
                 );
-                Ok(Diagram { kind, scope })
+                Ok(types::Diagram { kind, scope })
             }
             _ => Err(ElaborationDiagnosticError::from_spanned(
                 "Invalid element, expected Diagram".to_string(),
@@ -218,8 +102,8 @@ impl<'a> Builder<'a> {
 
     fn insert_type_definition(
         &mut self,
-        type_def: Spanned<TypeDefinition>,
-    ) -> Result<Rc<TypeDefinition>, ElaborationDiagnosticError> {
+        type_def: Spanned<types::TypeDefinition>,
+    ) -> Result<Rc<types::TypeDefinition>, ElaborationDiagnosticError> {
         let span = type_def.clone_spanned();
         let type_def = type_def.into_inner();
         let id = type_def.id.clone();
@@ -250,7 +134,7 @@ impl<'a> Builder<'a> {
         type_defs: &Spanned<Vec<Spanned<parser_types::TypeDefinition<'a>>>>,
     ) -> Result<(), ElaborationDiagnosticError> {
         for type_def in type_defs.inner() {
-            let base_type_name = TypeId::from_name(&type_def.base_type);
+            let base_type_name = types::TypeId::from_name(&type_def.base_type);
             let base = self
                 .type_definition_map
                 .get(&base_type_name)
@@ -270,8 +154,8 @@ impl<'a> Builder<'a> {
                 })?;
 
             // Try to create the type definition
-            match TypeDefinition::from_base(
-                TypeId::from_name(&type_def.name),
+            match types::TypeDefinition::from_base(
+                types::TypeId::from_name(&type_def.name),
                 base,
                 &type_def.attributes,
             ) {
@@ -295,14 +179,14 @@ impl<'a> Builder<'a> {
     fn build_diagram_from_parser(
         &mut self,
         diag: &Spanned<parser_types::Element>,
-    ) -> Result<Diagram, ElaborationDiagnosticError> {
+    ) -> Result<types::Diagram, ElaborationDiagnosticError> {
         match diag.inner() {
             parser_types::Element::Diagram(diag) => {
                 let block = self.build_block_from_elements(&diag.elements, None)?;
                 let scope = match block {
-                    Block::None => Scope::default(),
-                    Block::Scope(scope) => scope,
-                    Block::Diagram(_) => {
+                    types::Block::None => types::Scope::default(),
+                    types::Block::Scope(scope) => scope,
+                    types::Block::Diagram(_) => {
                         return Err(ElaborationDiagnosticError::from_spanned(
                             "Nested diagram not allowed".to_string(),
                             &diag.kind,
@@ -314,8 +198,8 @@ impl<'a> Builder<'a> {
 
                 // Determine the diagram kind
                 let kind = match *diag.kind {
-                    "sequence" => DiagramKind::Sequence,
-                    "component" => DiagramKind::Component,
+                    "sequence" => types::DiagramKind::Sequence,
+                    "component" => types::DiagramKind::Component,
                     _ => {
                         return Err(ElaborationDiagnosticError::from_spanned(
                             format!("Invalid diagram kind: '{}'", diag.kind),
@@ -328,7 +212,7 @@ impl<'a> Builder<'a> {
                     }
                 };
 
-                Ok(Diagram { kind, scope })
+                Ok(types::Diagram { kind, scope })
             }
             _ => Err(ElaborationDiagnosticError::from_spanned(
                 "Invalid element, expected Diagram".to_string(),
@@ -342,13 +226,13 @@ impl<'a> Builder<'a> {
     fn build_block_from_elements(
         &mut self,
         parser_elements: &[Spanned<parser_types::Element>],
-        parent_id: Option<&TypeId>,
-    ) -> Result<Block, ElaborationDiagnosticError> {
+        parent_id: Option<&types::TypeId>,
+    ) -> Result<types::Block, ElaborationDiagnosticError> {
         if parser_elements.is_empty() {
-            Ok(Block::None)
+            Ok(types::Block::None)
         } else if let parser_types::Element::Diagram { .. } = parser_elements[0].inner() {
             // This case happens when a diagram is the first element in a block
-            Ok(Block::Diagram(
+            Ok(types::Block::Diagram(
                 self.build_diagram_from_parser(&parser_elements[0])?,
             ))
         } else {
@@ -369,7 +253,7 @@ impl<'a> Builder<'a> {
             }
 
             // If no diagrams were found mixed with other elements, build the scope
-            Ok(Block::Scope(
+            Ok(types::Block::Scope(
                 self.build_scope_from_elements(parser_elements, parent_id)?,
             ))
         }
@@ -378,8 +262,8 @@ impl<'a> Builder<'a> {
     fn build_scope_from_elements(
         &mut self,
         parser_elements: &[Spanned<parser_types::Element>],
-        parent_id: Option<&TypeId>,
-    ) -> Result<Scope, ElaborationDiagnosticError> {
+        parent_id: Option<&types::TypeId>,
+    ) -> Result<types::Scope, ElaborationDiagnosticError> {
         let mut elements = Vec::new();
         for parser_elm in parser_elements {
             match parser_elm.inner() {
@@ -391,7 +275,7 @@ impl<'a> Builder<'a> {
                 } => {
                     let node_id = match parent_id {
                         Some(parent) => parent.create_nested(name),
-                        None => TypeId::from_name(name),
+                        None => types::TypeId::from_name(name),
                     };
 
                     // Try to get the type definition for this element
@@ -412,14 +296,14 @@ impl<'a> Builder<'a> {
                     // Process nested elements with the new ID as parent
                     let block = self.build_block_from_elements(nested_elements, Some(&node_id))?;
 
-                    let node = Node {
+                    let node = types::Node {
                         id: node_id,
                         name: name.to_string(),
                         block,
                         type_definition: type_def,
                     };
 
-                    elements.push(Element::Node(node));
+                    elements.push(types::Element::Node(node));
                 }
                 parser_types::Element::Relation {
                     source,
@@ -475,18 +359,18 @@ impl<'a> Builder<'a> {
                     // Create source and target IDs based on parent context if present
                     let source_id = match parent_id {
                         Some(parent) => parent.create_nested(source),
-                        None => TypeId::from_name(source),
+                        None => types::TypeId::from_name(source),
                     };
 
                     let target_id = match parent_id {
                         Some(parent) => parent.create_nested(target),
-                        None => TypeId::from_name(target),
+                        None => types::TypeId::from_name(target),
                     };
 
-                    elements.push(Element::Relation(Relation {
+                    elements.push(types::Element::Relation(types::Relation {
                         source: source_id,
                         target: target_id,
-                        relation_type: RelationType::from_str(relation_type),
+                        relation_type: types::RelationType::from_str(relation_type),
                         color,
                         width,
                     }))
@@ -502,16 +386,16 @@ impl<'a> Builder<'a> {
                 }
             }
         }
-        Ok(Scope { elements })
+        Ok(types::Scope { elements })
     }
 
     fn build_element_type_definition(
         &mut self,
         type_name: &Spanned<&str>,
         attributes: &[Spanned<parser_types::Attribute>],
-    ) -> Result<Rc<TypeDefinition>, ElaborationDiagnosticError> {
+    ) -> Result<Rc<types::TypeDefinition>, ElaborationDiagnosticError> {
         // Look up the base type
-        let type_id = TypeId::from_name(type_name);
+        let type_id = types::TypeId::from_name(type_name);
         let base = match self.type_definition_map.get(&type_id) {
             Some(base) => base,
             None => {
@@ -532,8 +416,8 @@ impl<'a> Builder<'a> {
         }
 
         // Otherwise, create a new anonymous type based on the base type
-        let id = TypeId::from_anonymous(self.type_definition_map.len());
-        match TypeDefinition::from_base(id, base, attributes) {
+        let id = types::TypeId::from_anonymous(self.type_definition_map.len());
+        match types::TypeDefinition::from_base(id, base, attributes) {
             Ok(new_type) => self.insert_type_definition(type_name.map(|_| new_type)),
             Err(err) => Err(ElaborationDiagnosticError::from_spanned(
                 format!("Error creating type based on '{type_name}': {err}"),
@@ -544,162 +428,5 @@ impl<'a> Builder<'a> {
                 )),
             )),
         }
-    }
-}
-
-impl TypeId {
-    /// Creates a TypeId from a component name as defined in the diagram
-    fn from_name(name: &str) -> Self {
-        TypeId(name.to_string())
-    }
-
-    /// Creates an internal TypeId used for generated types
-    /// (e.g., for anonymous type definitions)
-    fn from_anonymous(idx: usize) -> Self {
-        TypeId(format!("__{idx}"))
-    }
-
-    /// Creates a nested ID by combining parent ID and child ID with '::' separator
-    fn create_nested(&self, child_id: &str) -> Self {
-        TypeId(format!("{}::{}", self.0, child_id))
-    }
-}
-
-impl fmt::Display for TypeId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-// Implement Debug manually for TypeDefinition since we can't derive it due to the dyn ShapeType
-impl std::fmt::Debug for TypeDefinition {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TypeDefinition")
-            .field("id", &self.id)
-            .field("fill_color", &self.fill_color)
-            .field("line_color", &self.line_color)
-            .field("line_width", &self.line_width)
-            .field("rounded", &self.rounded)
-            .field("font_size", &self.font_size)
-            .field("shape_type", &self.shape_type.name())
-            .finish()
-    }
-}
-
-impl TypeDefinition {
-    fn from_base(
-        id: TypeId,
-        base: &Self,
-        attributes: &[Spanned<parser_types::Attribute>],
-    ) -> Result<Self, ElaborationDiagnosticError> {
-        let mut type_def = base.clone();
-        type_def.id = id;
-        // Process attributes with descriptive errors
-        for attr in Attribute::new_from_parser(attributes) {
-            let name = attr.name.0.as_str();
-            let value = attr.value.as_str();
-
-            match name {
-                "fill_color" => {
-                    type_def.fill_color = Some(Color::new(value).map_err(|err| {
-                        ElaborationDiagnosticError::from_spanned(
-                            format!("Invalid fill_color '{value}': {err}"),
-                            &attr,
-                            "invalid color",
-                            Some("Use a CSS color".to_string()),
-                        )
-                    })?)
-                }
-                "line_color" => {
-                    type_def.line_color = Color::new(value).map_err(|err| {
-                        ElaborationDiagnosticError::from_spanned(
-                            format!("Invalid line_color '{value}': {err}"),
-                            &attr,
-                            "invalid color",
-                            Some("Use a CSS color".to_string()),
-                        )
-                    })?
-                }
-                "line_width" => {
-                    type_def.line_width =
-                        value
-                            .parse::<usize>()
-                            .or(Err(ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid line_width '{value}'"),
-                                &attr,
-                                "invalid positive integer",
-                                Some("Use a positive integer".to_string()),
-                            )))?
-                }
-                "rounded" => {
-                    type_def.rounded =
-                        value
-                            .parse::<usize>()
-                            .or(Err(ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid rounded '{value}'"),
-                                &attr,
-                                "invalid positive integer",
-                                Some("Use a positive integer".to_string()),
-                            )))?
-                }
-                "font_size" => {
-                    type_def.font_size =
-                        value
-                            .parse::<usize>()
-                            .or(Err(ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid font_size '{value}'"),
-                                &attr,
-                                "invalid positive integer",
-                                Some("Use a positive integer".to_string()),
-                            )))?
-                }
-                _ => {
-                    // TODO: For unknown attributes, just add them to the list
-                    // We could warn about them, but we'll just keep them for now
-                }
-            }
-        }
-
-        Ok(type_def)
-    }
-
-    fn defaults() -> Vec<Rc<TypeDefinition>> {
-        let black = Color::default();
-        vec![
-            Rc::new(Self {
-                id: TypeId::from_name("Rectangle"),
-                fill_color: None,
-                line_color: black.clone(),
-                line_width: 2,
-                rounded: 0,
-                font_size: 15,
-                shape_type: Rc::new(Rectangle) as Rc<dyn Shape>,
-            }),
-            Rc::new(Self {
-                id: TypeId::from_name("Oval"),
-                fill_color: None,
-                line_color: black,
-                line_width: 2,
-                rounded: 0,
-                font_size: 15,
-                shape_type: Rc::new(Oval) as Rc<dyn Shape>,
-            }),
-        ]
-    }
-}
-
-impl Attribute {
-    fn new(name: &str, value: &str) -> Self {
-        Self {
-            name: TypeId::from_name(name),
-            value: value.to_string(),
-        }
-    }
-
-    fn new_from_parser(parser_attrs: &[Spanned<parser_types::Attribute>]) -> Vec<Spanned<Self>> {
-        parser_attrs
-            .iter()
-            .map(|attr| attr.map(|attr| Self::new(&attr.name, &attr.value)))
-            .collect()
     }
 }

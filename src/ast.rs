@@ -8,11 +8,13 @@
 /// - `parser_types`: Contains spanned versions of parser types with source location tracking
 /// - `elaborate`: Handles AST elaboration with rich error diagnostics
 pub mod elaborate;
+mod elaborate_types;
 pub mod parser;
 mod parser_types;
 pub mod span;
 
 use crate::error::FilamentError;
+pub use elaborate_types::*;
 
 /// Builds a fully elaborated AST from source code.
 ///
@@ -28,12 +30,13 @@ use crate::error::FilamentError;
 /// # Returns
 ///
 /// The elaborated diagram AST or a FilamentError
-pub fn build_ast(source: &str) -> Result<elaborate::Diagram, FilamentError> {
+pub fn build_ast(source: &str) -> Result<elaborate_types::Diagram, FilamentError> {
     // Step 1: Parse the diagram
     let parsed_ast = parser::build_diagram(source)?;
-    
+
     // Step 2: Elaborate the AST with rich error handling
     let elaborate_builder = elaborate::Builder::new(source);
-    elaborate_builder.build(parsed_ast)
+    elaborate_builder
+        .build(parsed_ast)
         .map_err(|e| FilamentError::new_elaboration_error(e, source))
 }

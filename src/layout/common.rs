@@ -1,4 +1,4 @@
-use crate::ast::elaborate::Node;
+use crate::ast;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Point {
@@ -49,7 +49,7 @@ impl Bounds {
 
 #[derive(Debug)]
 pub struct Component<'a> {
-    pub node: &'a Node,
+    pub node: &'a ast::Node,
     pub position: Point,
     pub size: Size,
 }
@@ -88,7 +88,12 @@ pub fn estimate_text_size(text: &str, font_size: usize) -> Size {
 /// Calculate the size of a component or participant based on its text content
 // TODO: This is not a good estimation. Consider using resvg + usvg to get abs_bounding_box
 // or ab_glyph or other font libraries for a better estimation.
-pub fn calculate_element_size(node: &Node, min_width: f32, min_height: f32, padding: f32) -> Size {
+pub fn calculate_element_size(
+    node: &ast::Node,
+    min_width: f32,
+    min_height: f32,
+    padding: f32,
+) -> Size {
     // Calculate text size based on the node's name and font size
     let text_size = estimate_text_size(&node.name, node.type_definition.font_size);
 

@@ -1,17 +1,17 @@
 use crate::{
-    ast::elaborate::Relation,
+    ast,
     graph::Graph,
-    layout::common::{calculate_element_size, Component, Point, Size},
+    layout::common::{Component, Point, Size, calculate_element_size},
 };
 use petgraph::{
-    graph::{DiGraph, NodeIndex},
     Direction,
+    graph::{DiGraph, NodeIndex},
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 
 #[derive(Debug)]
 pub struct LayoutRelation<'a> {
-    pub relation: &'a Relation,
+    pub relation: &'a ast::Relation,
     source_index: usize,
     target_index: usize,
 }
@@ -128,13 +128,13 @@ impl Engine {
 
             // Skip nodes that don't have blocks
             match &node.block {
-                crate::ast::elaborate::Block::None => continue,
-                crate::ast::elaborate::Block::Scope(scope) => {
+                ast::Block::None => continue,
+                ast::Block::Scope(scope) => {
                     // Find all nodes that are part of this node's scope
                     let mut children = Vec::new();
 
                     for element in &scope.elements {
-                        if let crate::ast::elaborate::Element::Node(inner_node) = element {
+                        if let ast::Element::Node(inner_node) = element {
                             if let Some(&child_idx) = node_id_map.get(&inner_node.id.to_string()) {
                                 children.push(child_idx);
                             }
@@ -145,12 +145,12 @@ impl Engine {
                         hierarchy_map.insert(node_idx, children);
                     }
                 }
-                crate::ast::elaborate::Block::Diagram(diagram) => {
+                ast::Block::Diagram(diagram) => {
                     // Find all nodes that are part of this node's diagram
                     let mut children = Vec::new();
 
                     for element in &diagram.scope.elements {
-                        if let crate::ast::elaborate::Element::Node(inner_node) = element {
+                        if let ast::Element::Node(inner_node) = element {
                             if let Some(&child_idx) = node_id_map.get(&inner_node.id.to_string()) {
                                 children.push(child_idx);
                             }

@@ -1,7 +1,7 @@
 use crate::{
-    ast::elaborate::Relation,
+    ast,
     graph::Graph,
-    layout::common::{calculate_element_size, Component, Point},
+    layout::common::{Component, Point, calculate_element_size},
 };
 use std::collections::HashMap;
 
@@ -13,7 +13,7 @@ pub struct Participant<'a> {
 
 #[derive(Debug)]
 pub struct Message<'a> {
-    pub relation: &'a Relation,
+    pub relation: &'a ast::Relation,
     pub source_index: usize,
     pub target_index: usize,
     pub y_position: f32,

@@ -1,13 +1,13 @@
 use super::renderer;
 use crate::{
-    ast::elaborate::RelationType,
+    ast,
     layout::common::{Bounds, Component, Point},
     layout::component,
 };
 use std::collections::HashSet;
 use svg::{
-    node::element::{Definitions, Group, Marker, Path},
     Document,
+    node::element::{Definitions, Group, Marker, Path},
 };
 
 use super::Svg;
@@ -46,7 +46,7 @@ impl Svg {
         &self,
         source: &Component,
         target: &Component,
-        relation: &crate::ast::elaborate::Relation,
+        relation: &ast::Relation,
     ) -> Path {
         // Calculate intersection points where the line meets each shape's boundary
         let source_edge = self.find_intersection(source, &target.position);
@@ -54,21 +54,21 @@ impl Svg {
 
         // Get marker references for this specific color
         let (start_marker, end_marker) = match &relation.relation_type {
-            RelationType::Forward => (
+            ast::RelationType::Forward => (
                 None,
                 Some(format!(
                     "url(#arrow-right-{})",
                     relation.color.to_id_safe_string()
                 )),
             ),
-            RelationType::Backward => (
+            ast::RelationType::Backward => (
                 Some(format!(
                     "url(#arrow-left-{})",
                     relation.color.to_id_safe_string()
                 )),
                 None,
             ),
-            RelationType::Bidirectional => (
+            ast::RelationType::Bidirectional => (
                 Some(format!(
                     "url(#arrow-left-{})",
                     relation.color.to_id_safe_string()
@@ -78,7 +78,7 @@ impl Svg {
                     relation.color.to_id_safe_string()
                 )),
             ),
-            RelationType::Plain => (None, None),
+            ast::RelationType::Plain => (None, None),
         };
 
         // Create the path

@@ -6,7 +6,6 @@ mod graph;
 mod layout;
 mod shape;
 
-use ast::elaborate;
 use clap::Parser;
 pub use error::FilamentError;
 use export::Exporter;
@@ -61,7 +60,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
 
     // Process diagram based on its type
     match elaborated_ast.kind {
-        elaborate::DiagramKind::Component => {
+        ast::DiagramKind::Component => {
             // Calculating component layout
             info!("Calculating component layout");
             let layout_engine = layout::component::Engine::new();
@@ -76,7 +75,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
             info!("Exporting component diagram to SVG");
             svg_exporter.export_component_layout(&layout)?;
         }
-        elaborate::DiagramKind::Sequence => {
+        ast::DiagramKind::Sequence => {
             // Calculating sequence layout
             info!("Calculating sequence layout");
             let layout_engine = layout::sequence::Engine::new();
