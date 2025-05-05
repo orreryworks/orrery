@@ -24,7 +24,7 @@ impl Color {
     /// This will parse CSS color strings such as "#ff0000", "rgb(255, 0, 0)", "red", etc.
     pub fn new(color_str: &str) -> Result<Self, String> {
         match DynamicColor::from_str(color_str) {
-            Ok(color) => Ok(Color { color }),
+            Ok(color) => Ok(Self { color }),
             Err(err) => Err(format!("Invalid color '{color_str}': {err}")),
         }
     }
@@ -61,6 +61,6 @@ impl std::fmt::Display for Color {
 
 impl From<&Color> for svg::node::Value {
     fn from(color: &Color) -> Self {
-        svg::node::Value::from(color.to_string())
+        Self::from(color.to_string())
     }
 }

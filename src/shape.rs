@@ -27,7 +27,7 @@ impl Shape for Rectangle {
         let dy = b.y - a.y;
 
         // Normalize the direction vector
-        let length = (dx * dx + dy * dy).sqrt();
+        let length = dx.hypot(dy); // (dx * dx + dy * dy).sqrt()
         if length < 0.001 {
             // Avoid division by zero
             return *b;
@@ -52,28 +52,28 @@ impl Shape for Rectangle {
 
         // Check each edge and find the closest valid intersection
         if t_top.is_finite() && t_top > 0.0 {
-            let x = a.x + t_top * dx_norm;
+            let x = dx_norm.mul_add(t_top, a.x); // a.x + t_top * dx_norm
             if x >= rect_center.x - half_width && x <= rect_center.x + half_width {
                 t = t_top;
             }
         }
 
         if t_bottom.is_finite() && t_bottom > 0.0 && t_bottom < t {
-            let x = a.x + t_bottom * dx_norm;
+            let x = dx_norm.mul_add(t_bottom, a.x); // a.x + t_bottom * dx_norm
             if x >= rect_center.x - half_width && x <= rect_center.x + half_width {
                 t = t_bottom;
             }
         }
 
         if t_left.is_finite() && t_left > 0.0 && t_left < t {
-            let y = a.y + t_left * dy_norm;
+            let y = dy_norm.mul_add(t_left, a.y); // a.y + t_left * dy_norm
             if y >= rect_center.y - half_height && y <= rect_center.y + half_height {
                 t = t_left;
             }
         }
 
         if t_right.is_finite() && t_right > 0.0 && t_right < t {
-            let y = a.y + t_right * dy_norm;
+            let y = dy_norm.mul_add(t_right, a.y); // a.y + t_right * dy_norm
             if y >= rect_center.y - half_height && y <= rect_center.y + half_height {
                 t = t_right;
             }
@@ -85,8 +85,8 @@ impl Shape for Rectangle {
 
         // Calculate the intersection point
         Point {
-            x: a.x + dx_norm * t,
-            y: a.y + dy_norm * t,
+            x: dx_norm.mul_add(t, a.x), //a.x + dx_norm * t
+            y: dy_norm.mul_add(t, a.y), // a.y + dy_norm * t
         }
     }
 
@@ -108,7 +108,7 @@ impl Shape for Oval {
         let dy = b.y - a.y;
 
         // Normalize the direction vector
-        let length = (dx * dx + dy * dy).sqrt();
+        let length = dx.hypot(dy); // (dx * dx + dy * dy).sqrt()
         if length < 0.001 {
             // Avoid division by zero
             return *b;
@@ -130,13 +130,13 @@ impl Shape for Oval {
         // where a is half_width and b is half_height
         let cos_angle = angle.cos();
         let sin_angle = angle.sin();
-        let radius = (half_width * half_height)
-            / ((half_height * cos_angle).powi(2) + (half_width * sin_angle).powi(2)).sqrt();
+        let radius =
+            (half_width * half_height) / (half_height * cos_angle).hypot(half_width * sin_angle);
 
         // Calculate the intersection point
         Point {
-            x: a.x + dx_norm * radius,
-            y: a.y + dy_norm * radius,
+            x: dx_norm.mul_add(radius, a.x), // a.x + dx_norm * radius
+            y: dy_norm.mul_add(radius, a.y), // a.y + dy_norm * radius
         }
     }
 

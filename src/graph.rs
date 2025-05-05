@@ -10,7 +10,7 @@ pub struct Graph {
 impl Graph {
     /// Convert a diagram to a graph, recursively processing nested blocks
     pub fn from_diagram(diagram: &ast::Diagram) -> Result<Self, FilamentError> {
-        let mut graph = Graph {
+        let mut graph = Self {
             graph: DiGraph::new(),
         };
         let mut node_map = HashMap::new();

@@ -122,7 +122,8 @@ impl ShapeRenderer for Oval {
         // otherwise place it in the center of the ellipse
         let text_y = if has_nested_blocks {
             // Position text near the top with a small padding (adjust based on oval shape)
-            position.y - (ry * 0.5) // position text at 25% from the top
+            // position text at 25% from the top
+            ry.mul_add(-0.5, position.y) // position.y - (ry * 0.5)
         } else {
             // Center the text vertically
             position.y

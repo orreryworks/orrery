@@ -37,8 +37,8 @@ impl Bounds {
     }
 
     /// Merge two bounds to create a larger bounds that contains both
-    pub fn merge(&self, other: &Bounds) -> Bounds {
-        Bounds {
+    pub fn merge(&self, other: &Self) -> Self {
+        Self {
             min_x: self.min_x.min(other.min_x),
             min_y: self.min_y.min(other.min_y),
             max_x: self.max_x.max(other.max_x),
@@ -98,8 +98,8 @@ pub fn calculate_element_size(
     let text_size = estimate_text_size(&node.name, node.type_definition.font_size);
 
     // Add padding around the text and ensure minimum size
-    let width = (text_size.width + padding * 2.0).max(min_width);
-    let height = (text_size.height + padding * 2.0).max(min_height);
+    let width = padding.mul_add(2.0, text_size.width).max(min_width);
+    let height = padding.mul_add(2.0, text_size.height).max(min_height);
 
     Size { width, height }
 }

@@ -27,20 +27,20 @@ pub enum RelationType {
 impl RelationType {
     pub fn from_str(s: &str) -> Self {
         match s {
-            "->" => RelationType::Forward,
-            "<-" => RelationType::Backward,
-            "<->" => RelationType::Bidirectional,
-            "-" => RelationType::Plain,
-            _ => RelationType::Forward, // Default to forward if unknown
+            "->" => Self::Forward,
+            "<-" => Self::Backward,
+            "<->" => Self::Bidirectional,
+            "-" => Self::Plain,
+            _ => Self::Forward, // Default to forward if unknown
         }
     }
 
     fn to_string(&self) -> &'static str {
         match self {
-            RelationType::Forward => "->",
-            RelationType::Backward => "<-",
-            RelationType::Bidirectional => "<->",
-            RelationType::Plain => "-",
+            Self::Forward => "->",
+            Self::Backward => "<-",
+            Self::Bidirectional => "<->",
+            Self::Plain => "-",
         }
     }
 }
@@ -78,7 +78,7 @@ pub struct Scope {
     pub elements: Vec<Element>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DiagramKind {
     Component,
     Sequence,
@@ -112,9 +112,9 @@ impl Block {
     /// Returns true if this block contains any elements
     pub fn has_nested_blocks(&self) -> bool {
         match self {
-            Block::None => false,
-            Block::Scope(scope) => !scope.elements.is_empty(),
-            Block::Diagram(diagram) => !diagram.scope.elements.is_empty(),
+            Self::None => false,
+            Self::Scope(scope) => !scope.elements.is_empty(),
+            Self::Diagram(diagram) => !diagram.scope.elements.is_empty(),
         }
     }
 }
@@ -122,18 +122,18 @@ impl Block {
 impl TypeId {
     /// Creates a `TypeId` from a component name as defined in the diagram
     pub fn from_name(name: &str) -> Self {
-        TypeId(name.to_string())
+        Self(name.to_string())
     }
 
     /// Creates an internal `TypeId` used for generated types
     /// (e.g., for anonymous type definitions)
     pub fn from_anonymous(idx: usize) -> Self {
-        TypeId(format!("__{idx}"))
+        Self(format!("__{idx}"))
     }
 
     /// Creates a nested ID by combining parent ID and child ID with '::' separator
     pub fn create_nested(&self, child_id: &str) -> Self {
-        TypeId(format!("{}::{}", self.0, child_id))
+        Self(format!("{}::{}", self.0, child_id))
     }
 }
 
@@ -193,34 +193,34 @@ impl TypeDefinition {
                     })?;
                 }
                 "line_width" => {
-                    type_def.line_width = value.parse::<usize>().or(Err(
+                    type_def.line_width = value.parse::<usize>().map_err(|_| {
                         ElaborationDiagnosticError::from_spanned(
                             format!("Invalid line_width '{value}'"),
                             &attr,
                             "invalid positive integer",
                             Some("Use a positive integer".to_string()),
-                        ),
-                    ))?;
+                        )
+                    })?;
                 }
                 "rounded" => {
-                    type_def.rounded = value.parse::<usize>().or(Err(
+                    type_def.rounded = value.parse::<usize>().map_err(|_| {
                         ElaborationDiagnosticError::from_spanned(
                             format!("Invalid rounded '{value}'"),
                             &attr,
                             "invalid positive integer",
                             Some("Use a positive integer".to_string()),
-                        ),
-                    ))?;
+                        )
+                    })?;
                 }
                 "font_size" => {
-                    type_def.font_size = value.parse::<usize>().or(Err(
+                    type_def.font_size = value.parse::<usize>().map_err(|_| {
                         ElaborationDiagnosticError::from_spanned(
                             format!("Invalid font_size '{value}'"),
                             &attr,
                             "invalid positive integer",
                             Some("Use a positive integer".to_string()),
-                        ),
-                    ))?;
+                        )
+                    })?;
                 }
                 _ => {
                     // TODO: For unknown attributes, just add them to the list
@@ -232,7 +232,7 @@ impl TypeDefinition {
         Ok(type_def)
     }
 
-    pub fn defaults() -> Vec<Rc<TypeDefinition>> {
+    pub fn defaults() -> Vec<Rc<Self>> {
         let black = Color::default();
         vec![
             Rc::new(Self {

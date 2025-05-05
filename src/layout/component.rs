@@ -41,7 +41,7 @@ pub struct Engine {
 
 impl Engine {
     pub fn new() -> Self {
-        Engine {
+        Self {
             padding: 40.0,
             min_component_width: 100.0,
             min_component_height: 60.0,
@@ -390,8 +390,8 @@ impl Engine {
 
         // Calculate area available for children
         let container_padding = self.padding;
-        let available_width = parent_size.width - (container_padding * 2.0);
-        let available_height = parent_size.height - (container_padding * 2.0);
+        let available_width = container_padding.mul_add(-2.0, parent_size.width); // parent_size.width - (container_padding * 2.0)
+        let available_height = container_padding.mul_add(-2.0, parent_size.height); // parent_size.height - (container_padding * 2.0)
 
         // Determine layout arrangement (simple grid layout for now)
         let sqrt_count = (children.len() as f64).sqrt().ceil() as usize;

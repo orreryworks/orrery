@@ -27,9 +27,9 @@ impl Svg {
     /// Adds a small margin around the content
     pub fn calculate_svg_dimensions(&self, content_size: &Size) -> Size {
         // Add some margin to the content size
-        let margin = 50.0;
-        let width = content_size.width + margin * 2.0;
-        let height = content_size.height + margin * 2.0;
+        let margin: f32 = 50.0;
+        let width = margin.mul_add(2.0, content_size.width); // content_size.width + margin * 2.0;
+        let height = margin.mul_add(2.0, content_size.height); // content_size.height + margin * 2.0;
 
         debug!("Final SVG dimensions: {width}x{height}");
 

@@ -61,7 +61,7 @@ impl ElaborationDiagnosticError {
         let offset = span.location_offset();
         let length = span.fragment().len();
 
-        ElaborationDiagnosticError {
+        Self {
             message,
             span: (offset, length).into(),
             label: label.into(),
@@ -76,7 +76,7 @@ impl ElaborationDiagnosticError {
         label: impl Into<String>,
         help: Option<String>,
     ) -> Self {
-        ElaborationDiagnosticError {
+        Self {
             message,
             span: (spanned.offset(), spanned.length()).into(),
             label: label.into(),

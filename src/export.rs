@@ -26,8 +26,8 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Render(msg) => write!(f, "Render error: {msg}"),
-            Error::Io(err) => write!(f, "I/O error: {err}"),
+            Self::Render(msg) => write!(f, "Render error: {msg}"),
+            Self::Io(err) => write!(f, "I/O error: {err}"),
         }
     }
 }
@@ -35,8 +35,8 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Error::Render(_) => None,
-            Error::Io(err) => Some(err),
+            Self::Render(_) => None,
+            Self::Io(err) => Some(err),
         }
     }
 }

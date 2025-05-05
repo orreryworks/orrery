@@ -35,39 +35,37 @@ pub enum FilamentError {
 impl Diagnostic for FilamentError {
     fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
-            FilamentError::Io(_) => Some(Box::new("filament::error::io")),
-            FilamentError::ParseDiagnostic(_) => {
-                Some(Box::new("filament::error::parser_diagnostic"))
-            }
-            FilamentError::ElaborationDiagnostic { .. } => {
+            Self::Io(_) => Some(Box::new("filament::error::io")),
+            Self::ParseDiagnostic(_) => Some(Box::new("filament::error::parser_diagnostic")),
+            Self::ElaborationDiagnostic { .. } => {
                 // Return None to suppress the error code in output
                 None
             }
-            FilamentError::Graph(_) => Some(Box::new("filament::error::graph")),
-            FilamentError::Export(_) => Some(Box::new("filament::error::export")),
+            Self::Graph(_) => Some(Box::new("filament::error::graph")),
+            Self::Export(_) => Some(Box::new("filament::error::export")),
         }
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
-            FilamentError::ElaborationDiagnostic { err: source, .. } => source.help(),
-            FilamentError::ParseDiagnostic(e) => e.help(),
+            Self::ElaborationDiagnostic { err: source, .. } => source.help(),
+            Self::ParseDiagnostic(e) => e.help(),
             _ => None, // Other errors don't have specific help
         }
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         match self {
-            FilamentError::ParseDiagnostic(e) => Some(&e.src),
-            FilamentError::ElaborationDiagnostic { src, .. } => Some(src),
+            Self::ParseDiagnostic(e) => Some(&e.src),
+            Self::ElaborationDiagnostic { src, .. } => Some(src),
             _ => None,
         }
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match self {
-            FilamentError::ParseDiagnostic(e) => e.labels(),
-            FilamentError::ElaborationDiagnostic { err: source, .. } => source.labels(),
+            Self::ParseDiagnostic(e) => e.labels(),
+            Self::ElaborationDiagnostic { err: source, .. } => source.labels(),
             _ => None,
         }
     }
@@ -77,7 +75,7 @@ impl Diagnostic for FilamentError {
 
 impl From<crate::export::Error> for FilamentError {
     fn from(error: crate::export::Error) -> Self {
-        FilamentError::Export(Box::new(error))
+        Self::Export(Box::new(error))
     }
 }
 
@@ -88,7 +86,7 @@ impl FilamentError {
         error: ElaborationDiagnosticError,
         source_code: impl Into<String>,
     ) -> Self {
-        FilamentError::ElaborationDiagnostic {
+        Self::ElaborationDiagnostic {
             err: error,
             src: source_code.into(),
         }

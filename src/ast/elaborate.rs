@@ -270,10 +270,10 @@ impl<'a> Builder<'a> {
                     attributes,
                     nested_elements,
                 } => {
-                    let node_id = match parent_id {
-                        Some(parent) => parent.create_nested(name),
-                        None => types::TypeId::from_name(name),
-                    };
+                    let node_id = parent_id.map_or_else(
+                        || types::TypeId::from_name(name),
+                        |parent| parent.create_nested(name),
+                    );
 
                     let type_def = self.build_element_type_definition(type_name, attributes)
                         .map_err(|_| ElaborationDiagnosticError::from_spanned(
@@ -350,15 +350,15 @@ impl<'a> Builder<'a> {
                     }
 
                     // Create source and target IDs based on parent context if present
-                    let source_id = match parent_id {
-                        Some(parent) => parent.create_nested(source),
-                        None => types::TypeId::from_name(source),
-                    };
+                    let source_id = parent_id.map_or_else(
+                        || types::TypeId::from_name(source),
+                        |parent| parent.create_nested(source),
+                    );
 
-                    let target_id = match parent_id {
-                        Some(parent) => parent.create_nested(target),
-                        None => types::TypeId::from_name(target),
-                    };
+                    let target_id = parent_id.map_or_else(
+                        || types::TypeId::from_name(target),
+                        |parent| parent.create_nested(target),
+                    );
 
                     elements.push(types::Element::Relation(types::Relation {
                         source: source_id,

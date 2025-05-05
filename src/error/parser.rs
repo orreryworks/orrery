@@ -49,7 +49,7 @@ pub struct SlimParserError {
 impl SlimParserError {
     /// Create a new slim error from a span
     pub fn new(input: LocatedSpan<&str>, kind: ErrorKind) -> Self {
-        SlimParserError {
+        Self {
             offset: input.location_offset(),
             line: input.location_line(),
             column: input.get_column() as u32,
@@ -134,14 +134,7 @@ impl<'a> ParseError<LocatedSpan<&'a str>> for SlimParserError {
     fn append(_input: LocatedSpan<&'a str>, _kind: ErrorKind, other: Self) -> Self {
         // Just return the original error - we don't use append for extra context
         // (we use ContextError::add_context for that instead)
-        SlimParserError {
-            offset: other.offset,
-            line: other.line,
-            column: other.column,
-            kind: other.kind,
-            context: other.context,
-            span_len: other.span_len,
-        }
+        other
     }
 
     fn from_char(input: LocatedSpan<&'a str>, _c: char) -> Self {
@@ -169,13 +162,9 @@ impl<'a> ContextError<LocatedSpan<&'a str>> for SlimParserError {
         let mut contexts = (*other.context).clone();
         contexts.push(ctx);
 
-        SlimParserError {
-            offset: other.offset,
-            line: other.line,
-            column: other.column,
-            kind: other.kind,
+        Self {
             context: Rc::new(contexts),
-            span_len: other.span_len,
+            ..other
         }
     }
 }
