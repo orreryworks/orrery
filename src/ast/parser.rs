@@ -206,7 +206,7 @@ fn parse_component(input: Span) -> PResult<types::Element> {
                     ),
                     semicolon,
                 ),
-                |(name, _, _, (type_name, attributes, nested_elements))| {
+                |(name, _, (), (type_name, attributes, nested_elements))| {
                     types::Element::Component {
                         name,
                         type_name,
@@ -332,7 +332,7 @@ pub fn build_diagram(input: &str) -> Result<Spanned<types::Element>, ParseDiagno
                 return Err(err.move_to_full_error(input));
             }
             debug!("Diagram parsed successfully");
-            trace!("Parsed diagram: {:?}", diagram);
+            trace!(diagram:?; "Parsed diagram");
             Ok(diagram)
         }
         Err(nom::Err::Error(err) | nom::Err::Failure(err)) => {

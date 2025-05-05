@@ -82,7 +82,7 @@ impl From<crate::export::Error> for FilamentError {
 }
 
 impl FilamentError {
-    /// Create a new ElaborationDiagnostic error with the associated source code.
+    /// Create a new `ElaborationDiagnostic` error with the associated source code.
     /// This provides a cleaner API than directly constructing the variant.
     pub fn new_elaboration_error(
         error: ElaborationDiagnosticError,

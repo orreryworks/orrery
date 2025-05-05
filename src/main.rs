@@ -1,6 +1,6 @@
 use clap::Parser;
 use filament::{Config, FilamentError};
-use log::{LevelFilter, error, info};
+use log::{LevelFilter, debug, error, info};
 use std::{process, str::FromStr};
 
 fn main() {
@@ -13,15 +13,15 @@ fn main() {
             "Invalid log level: {}. Using 'info' instead.",
             cfg.log_level
         );
-        LevelFilter::Info
+        LevelFilter::Warn
     });
 
     env_logger::Builder::from_env(env_logger::Env::default())
         .filter_level(log_level)
         .init();
 
-    info!("Starting Filament with log level: {}", log_level);
-    info!("Parsed configuration: {:?}", cfg);
+    info!(log_level:?; "Starting Filament");
+    debug!(cfg:?; "Parsed configuration");
 
     // Run the application
     if let Err(err) = filament::run(&cfg) {
@@ -40,7 +40,7 @@ fn main() {
                 writer.push_str(&err.to_string());
             }
         }
-        error!("Failed\n{}", writer);
+        error!("Failed\n{writer}");
         process::exit(1);
     }
 

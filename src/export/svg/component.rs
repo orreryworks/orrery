@@ -201,7 +201,7 @@ impl Svg {
 
         // Apply a translation to center the diagram and add margins
         let transform_group = Group::new()
-            .set("transform", format!("translate({}, {})", margin, margin))
+            .set("transform", format!("translate({margin}, {margin})"))
             .add(main_group);
 
         doc.add(transform_group)

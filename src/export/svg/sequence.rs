@@ -141,7 +141,7 @@ impl Svg {
             .participants
             .iter()
             .map(|p| p.lifeline_end) // Bottom of lifelines
-            .fold(f32::MIN, |a, b| a.max(b));
+            .fold(f32::MIN, f32::max);
 
         bounds
     }

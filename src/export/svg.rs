@@ -31,7 +31,7 @@ impl Svg {
         let width = content_size.width + margin * 2.0;
         let height = content_size.height + margin * 2.0;
 
-        debug!("Final SVG dimensions: {}x{}", width, height);
+        debug!("Final SVG dimensions: {width}x{height}");
 
         Size { width, height }
     }
@@ -43,14 +43,14 @@ impl Svg {
         let f = match File::create(&self.file_name) {
             Ok(file) => file,
             Err(err) => {
-                error!("Failed to create SVG file {}: {}", self.file_name, err);
+                error!(file_name=self.file_name, err:err; "Failed to create SVG file");
                 return Err(export::Error::Io(err));
             }
         };
 
         // Write the SVG content to the file
-        if let Err(err) = write!(&f, "{}", doc) {
-            error!("Failed to write SVG content to {}: {}", self.file_name, err);
+        if let Err(err) = write!(&f, "{doc}") {
+            error!(file_name=self.file_name, err:err; "Failed to write SVG content");
             return Err(export::Error::Io(err));
         }
 

@@ -12,7 +12,7 @@ use thiserror::Error;
 /// - Optional help text with suggestions to fix the error
 ///
 /// These rich errors are displayed using miette's pretty error formatting.
-/// The source code itself is expected to be provided by the container error type (e.g., FilamentError).
+/// The source code itself is expected to be provided by the container error type (e.g., `FilamentError`).
 #[derive(Debug, Error)]
 #[error("{message}")]
 pub struct ElaborationDiagnosticError {
@@ -50,7 +50,7 @@ impl Diagnostic for ElaborationDiagnosticError {
 }
 
 impl ElaborationDiagnosticError {
-    /// Create a new elaboration error from a nom_locate::LocatedSpan.
+    /// Create a new elaboration error from a `nom_locate::LocatedSpan`.
     /// The source code must be provided when wrapping this error.
     pub fn new(
         message: String,

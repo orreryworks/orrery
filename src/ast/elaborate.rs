@@ -28,7 +28,7 @@ impl<'a> Builder<'a> {
 
     pub fn build(
         mut self,
-        diag: Spanned<parser_types::Element<'a>>,
+        diag: &Spanned<parser_types::Element<'a>>,
     ) -> Result<types::Diagram, ElaborationDiagnosticError> {
         debug!("Building elaborated diagram");
         match diag.inner() {
@@ -85,15 +85,12 @@ impl<'a> Builder<'a> {
                     }
                 };
 
-                info!(
-                    "Diagram elaboration completed successfully with kind: {:?}",
-                    kind
-                );
+                info!(kind:?; "Diagram elaboration completed successfully");
                 Ok(types::Diagram { kind, scope })
             }
             _ => Err(ElaborationDiagnosticError::from_spanned(
                 "Invalid element, expected Diagram".to_string(),
-                &diag,
+                diag,
                 "invalid element",
                 None,
             )),
@@ -278,20 +275,16 @@ impl<'a> Builder<'a> {
                         None => types::TypeId::from_name(name),
                     };
 
-                    // Try to get the type definition for this element
-                    let type_def = match self.build_element_type_definition(type_name, attributes) {
-                        Ok(def) => def,
-                        Err(_) => {
-                            return Err(ElaborationDiagnosticError::from_spanned(
-                                format!("Unknown type '{type_name}' for component '{name}'"),
-                                name, // Use the component name's span as the error location
-                                "undefined type",
-                                Some(format!(
-                                    "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type"
-                                )),
-                            ));
-                        }
-                    };
+                    let type_def = self.build_element_type_definition(type_name, attributes)
+                        .map_err(|_| ElaborationDiagnosticError::from_spanned(
+                            format!("Unknown type '{type_name}' for component '{name}'"),
+                            name, // Use the component name's span as the error location
+                            "undefined type",
+                            Some(format!(
+                                "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type"
+                            )),
+                        )
+                    )?;
 
                     // Process nested elements with the new ID as parent
                     let block = self.build_block_from_elements(nested_elements, Some(&node_id))?;
@@ -373,9 +366,9 @@ impl<'a> Builder<'a> {
                         relation_type: types::RelationType::from_str(relation_type),
                         color,
                         width,
-                    }))
+                    }));
                 }
-                _ => {
+                parser_types::Element::Diagram(_) => {
                     // This should never happen since we already filtered out invalid elements
                     return Err(ElaborationDiagnosticError::from_spanned(
                         "Invalid element type".to_string(),
@@ -396,18 +389,15 @@ impl<'a> Builder<'a> {
     ) -> Result<Rc<types::TypeDefinition>, ElaborationDiagnosticError> {
         // Look up the base type
         let type_id = types::TypeId::from_name(type_name);
-        let base = match self.type_definition_map.get(&type_id) {
-            Some(base) => base,
-            None => {
-                return Err(ElaborationDiagnosticError::from_spanned(
-                    format!("Unknown type '{type_name}' for component '{type_name}'"),
-                    type_name, // Use the component name's span as the error location
-                    "undefined type",
-                    Some(format!(
-                        "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type"
-                    )),
-                ));
-            }
+        let Some(base) = self.type_definition_map.get(&type_id) else {
+            return Err(ElaborationDiagnosticError::from_spanned(
+                format!("Unknown type '{type_name}' for component '{type_name}'"),
+                type_name, // Use the component name's span as the error location
+                "undefined type",
+                Some(format!(
+                    "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type"
+                )),
+            ));
         };
 
         // If there are no attributes, just return the base type

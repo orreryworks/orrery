@@ -65,7 +65,9 @@ impl SlimParserError {
         let span_len = std::cmp::min(self.span_len, input_str.len().saturating_sub(self.offset));
 
         // Build the context string
-        let context_str = if !self.context.is_empty() {
+        let context_str = if self.context.is_empty() {
+            String::new()
+        } else {
             let mut result = String::from(" (in ");
             let contexts: Vec<_> = self.context.iter().rev().collect();
 
@@ -78,31 +80,29 @@ impl SlimParserError {
             }
             result.push(')');
             result
-        } else {
-            String::new()
         };
 
         // Extract the character that was found (if available)
         let found_char = input_str
             .get(self.offset..)
             .and_then(|s| s.chars().next())
-            .map(|c| format!("found '{}'", c))
-            .unwrap_or_else(|| "end of input".into());
+            .map_or_else(|| "end of input".into(), |c| format!("found '{c}'"));
 
         // Create a helpful message
         let message = match self.kind {
-            ErrorKind::Char => format!(
-                "Expected a specific character but {}{}",
-                found_char, context_str
-            ),
+            ErrorKind::Char => {
+                format!("Expected a specific character but {found_char}{context_str}")
+            }
             _ => format!(
-                "{:?} error at line {}, column {}{}",
-                self.kind, self.line, self.column, context_str
+                "{:?} error at line {}, column {}{context_str}",
+                self.kind, self.line, self.column,
             ),
         };
 
         // Build the help message
-        let help = if !self.context.is_empty() {
+        let help = if self.context.is_empty() {
+            None
+        } else {
             let contexts: Vec<_> = self.context.iter().rev().collect();
             let mut help_text = String::from("Error occurred while parsing ");
 
@@ -115,8 +115,6 @@ impl SlimParserError {
             }
 
             Some(help_text)
-        } else {
-            None
         };
 
         ParseDiagnosticError {

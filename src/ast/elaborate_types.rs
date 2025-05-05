@@ -120,12 +120,12 @@ impl Block {
 }
 
 impl TypeId {
-    /// Creates a TypeId from a component name as defined in the diagram
+    /// Creates a `TypeId` from a component name as defined in the diagram
     pub fn from_name(name: &str) -> Self {
         TypeId(name.to_string())
     }
 
-    /// Creates an internal TypeId used for generated types
+    /// Creates an internal `TypeId` used for generated types
     /// (e.g., for anonymous type definitions)
     pub fn from_anonymous(idx: usize) -> Self {
         TypeId(format!("__{idx}"))
@@ -180,7 +180,7 @@ impl TypeDefinition {
                             "invalid color",
                             Some("Use a CSS color".to_string()),
                         )
-                    })?)
+                    })?);
                 }
                 "line_color" => {
                     type_def.line_color = Color::new(value).map_err(|err| {
@@ -190,40 +190,37 @@ impl TypeDefinition {
                             "invalid color",
                             Some("Use a CSS color".to_string()),
                         )
-                    })?
+                    })?;
                 }
                 "line_width" => {
-                    type_def.line_width =
-                        value
-                            .parse::<usize>()
-                            .or(Err(ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid line_width '{value}'"),
-                                &attr,
-                                "invalid positive integer",
-                                Some("Use a positive integer".to_string()),
-                            )))?
+                    type_def.line_width = value.parse::<usize>().or(Err(
+                        ElaborationDiagnosticError::from_spanned(
+                            format!("Invalid line_width '{value}'"),
+                            &attr,
+                            "invalid positive integer",
+                            Some("Use a positive integer".to_string()),
+                        ),
+                    ))?;
                 }
                 "rounded" => {
-                    type_def.rounded =
-                        value
-                            .parse::<usize>()
-                            .or(Err(ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid rounded '{value}'"),
-                                &attr,
-                                "invalid positive integer",
-                                Some("Use a positive integer".to_string()),
-                            )))?
+                    type_def.rounded = value.parse::<usize>().or(Err(
+                        ElaborationDiagnosticError::from_spanned(
+                            format!("Invalid rounded '{value}'"),
+                            &attr,
+                            "invalid positive integer",
+                            Some("Use a positive integer".to_string()),
+                        ),
+                    ))?;
                 }
                 "font_size" => {
-                    type_def.font_size =
-                        value
-                            .parse::<usize>()
-                            .or(Err(ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid font_size '{value}'"),
-                                &attr,
-                                "invalid positive integer",
-                                Some("Use a positive integer".to_string()),
-                            )))?
+                    type_def.font_size = value.parse::<usize>().or(Err(
+                        ElaborationDiagnosticError::from_spanned(
+                            format!("Invalid font_size '{value}'"),
+                            &attr,
+                            "invalid positive integer",
+                            Some("Use a positive integer".to_string()),
+                        ),
+                    ))?;
                 }
                 _ => {
                     // TODO: For unknown attributes, just add them to the list

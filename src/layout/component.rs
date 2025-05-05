@@ -95,9 +95,9 @@ impl Engine {
                     component_indices.get(&relation.target),
                 ) {
                     Some(LayoutRelation {
+                        relation,
                         source_index,
                         target_index,
-                        relation,
                     })
                 } else {
                     None
@@ -128,7 +128,7 @@ impl Engine {
 
             // Skip nodes that don't have blocks
             match &node.block {
-                ast::Block::None => continue,
+                ast::Block::None => {}
                 ast::Block::Scope(scope) => {
                     // Find all nodes that are part of this node's scope
                     let mut children = Vec::new();

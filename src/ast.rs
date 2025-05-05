@@ -29,7 +29,7 @@ pub use elaborate_types::*;
 ///
 /// # Returns
 ///
-/// The elaborated diagram AST or a FilamentError
+/// The elaborated diagram AST or a `FilamentError`
 pub fn build_ast(source: &str) -> Result<elaborate_types::Diagram, FilamentError> {
     // Step 1: Parse the diagram
     let parsed_ast = parser::build_diagram(source)?;
@@ -37,6 +37,6 @@ pub fn build_ast(source: &str) -> Result<elaborate_types::Diagram, FilamentError
     // Step 2: Elaborate the AST with rich error handling
     let elaborate_builder = elaborate::Builder::new(source);
     elaborate_builder
-        .build(parsed_ast)
+        .build(&parsed_ast)
         .map_err(|e| FilamentError::new_elaboration_error(e, source))
 }

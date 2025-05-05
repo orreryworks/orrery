@@ -4,7 +4,7 @@ use std::{
     str::FromStr,
 };
 
-/// Wrapper around the DynamicColor type from the color crate
+/// Wrapper around the `DynamicColor` type from the color crate
 /// This provides convenience methods for working with colors in the Filament project
 #[derive(Clone, PartialEq, Debug)]
 pub struct Color {
@@ -20,12 +20,12 @@ impl Hash for Color {
 }
 
 impl Color {
-    /// Create a new FilamentColor from a string
+    /// Create a new `FilamentColor` from a string
     /// This will parse CSS color strings such as "#ff0000", "rgb(255, 0, 0)", "red", etc.
     pub fn new(color_str: &str) -> Result<Self, String> {
         match DynamicColor::from_str(color_str) {
             Ok(color) => Ok(Color { color }),
-            Err(e) => Err(format!("Invalid color '{}': {}", color_str, e)),
+            Err(err) => Err(format!("Invalid color '{color_str}': {err}")),
         }
     }
 
@@ -39,7 +39,7 @@ impl Color {
 
         // Ensure the ID starts with a letter (required for valid SVG IDs)
         if sanitized.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-            sanitized = format!("c_{}", sanitized);
+            sanitized = format!("c_{sanitized}");
         }
 
         sanitized
