@@ -84,11 +84,11 @@ impl Svg {
             ast::RelationType::Plain => (None, None),
         };
 
-        // Create the path
+        // Create the path based on the arrow style
         let mut path = Path::new()
             .set(
                 "d",
-                self.create_path_data_from_points(&source_edge, &target_edge),
+                self.create_path_data_for_style(&source_edge, &target_edge, &relation.arrow_style),
             )
             .set("fill", "none")
             .set("stroke", relation.color.to_string())

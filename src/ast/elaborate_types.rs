@@ -5,7 +5,7 @@ use crate::{
     error::ElaborationDiagnosticError,
     shape::{Oval, Rectangle, Shape},
 };
-use std::{fmt, rc::Rc};
+use std::{fmt, rc::Rc, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeId(String);
@@ -58,6 +58,32 @@ pub struct Node {
     pub type_definition: Rc<TypeDefinition>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArrowStyle {
+    Straight,
+    Curved,
+    Orthogonal,
+}
+
+impl Default for ArrowStyle {
+    fn default() -> Self {
+        Self::Straight
+    }
+}
+
+impl FromStr for ArrowStyle {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "straight" => Ok(Self::Straight),
+            "curved" => Ok(Self::Curved),
+            "orthogonal" => Ok(Self::Orthogonal),
+            _ => Err("Invalid arrow style"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Relation {
     pub source: TypeId,
@@ -65,6 +91,7 @@ pub struct Relation {
     pub relation_type: RelationType,
     pub color: Color,
     pub width: usize,
+    pub arrow_style: ArrowStyle,
     pub label: Option<String>,
 }
 

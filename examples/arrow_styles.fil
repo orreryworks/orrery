@@ -1,0 +1,45 @@
+// This example demonstrates all available arrow styles in Filament
+diagram component;
+
+// Define custom types
+type Database = Rectangle [fill_color="lightblue", rounded="10", line_width="2"];
+type Service = Rectangle [fill_color="#e6f3ff", rounded="5"];
+type Client = Oval [fill_color="#ffe6e6"];
+type ExternalSystem = Rectangle [fill_color="#f0f0f0", line_color="#666666"];
+
+// Define components with a layout that will show arrow styles clearly
+client: Client;
+
+services: Rectangle [fill_color="#f9f9f9"] {
+    api_gateway: Service;
+    auth_service: Service;
+    user_service: Service;
+    payment_service: Service;
+};
+
+storage: Rectangle [fill_color="#f9f9f9"] {
+    user_db: Database;
+    payment_db: Database;
+};
+
+external_api: ExternalSystem;
+
+// Define relationships with different arrow styles
+
+// Straight arrows (default style)
+client -> services::api_gateway: "Straight (default)";
+services::user_service -> storage::user_db: "Straight";
+
+// Curved arrows
+services::api_gateway -> [style="curved", color="blue", width="2"] services::auth_service: "Curved";
+services::payment_service -> [style="curved", color="green"] external_api: "Curved";
+
+// Orthogonal arrows (follows x and y axes only)
+services::api_gateway -> [style="orthogonal", color="purple", width="2"] services::user_service: "Orthogonal";
+services::auth_service -> [style="orthogonal", color="red"] services::payment_service: "Orthogonal";
+storage::payment_db -> [style="orthogonal", color="orange"] services::payment_service: "Orthogonal";
+
+// Mix of styles with different relation types
+client <- [style="curved", color="#666666"] external_api: "Response";
+services::user_service <-> [style="orthogonal", color="#333333"] storage::payment_db: "Read/Write";
+services::payment_service - [style="straight", color="#999999"] storage::user_db;

@@ -115,6 +115,7 @@ Attributes customize the appearance of elements:
 
 - `color`: The line color of the relation
 - `width`: The thickness of the relation line (numeric value)
+- `style`: The style of the arrow line (values: `"straight"`, `"curved"`, or `"orthogonal"`, default is `"straight"`)
 
 ### 6.3 Relation Labels
 
@@ -196,6 +197,8 @@ api_gateway: Service;
 
 end_user -> api_gateway;
 api_gateway -> backend_system;
+api_gateway -> [style="curved", color="red"] end_user: "Response";
+backend_system -> [style="orthogonal", color="green"] user_database: "Query";
 ```
 
 ### 11.2 Sequence Diagram Example

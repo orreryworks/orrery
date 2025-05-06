@@ -98,11 +98,11 @@ impl Svg {
             ast::RelationType::Plain => (None, None),
         };
 
-        // Create the path
+        // Create the path - always use straight style for sequence diagrams
         let mut path = Path::new()
             .set(
                 "d",
-                self.create_path_data_from_points(&start_point, &end_point),
+                self.create_path_data_for_style(&start_point, &end_point, &ast::ArrowStyle::Straight),
             )
             .set("fill", "none")
             .set("stroke", message.relation.color.to_string())

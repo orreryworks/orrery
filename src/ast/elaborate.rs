@@ -2,7 +2,7 @@ use super::{elaborate_types as types, parser_types};
 use crate::ast::span::Spanned;
 use crate::{color::Color, error::ElaborationDiagnosticError};
 use log::{debug, info, trace};
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, rc::Rc, str::FromStr};
 
 pub struct Builder<'a> {
     type_definitions: Vec<Rc<types::TypeDefinition>>,
@@ -305,9 +305,10 @@ impl<'a> Builder<'a> {
                     attributes,
                     label,
                 } => {
-                    // Extract color and width from attributes if they exist
+                    // Extract color, width and arrow style from attributes if they exist
                     let mut color = Color::default();
                     let mut width = 1;
+                    let mut arrow_style = types::ArrowStyle::default();
 
                     // Process attributes with better error handling
                     for attr in attributes.inner() {
@@ -343,6 +344,22 @@ impl<'a> Builder<'a> {
                                     }
                                 };
                             }
+                            "style" => {
+                                arrow_style = match types::ArrowStyle::from_str(&attr.value) {
+                                    Ok(style) => style,
+                                    Err(_) => {
+                                        return Err(ElaborationDiagnosticError::from_spanned(
+                                            format!(
+                                                "Invalid arrow style '{}'",
+                                                attr.value
+                                            ),
+                                            &attr.value,
+                                            "invalid style",
+                                            Some("Arrow style must be 'straight', 'curved', or 'orthogonal'".to_string()),
+                                        ));
+                                    }
+                                };
+                            }
                             _ => {
                                 // TODO: We could warn about unknown attributes here
                             }
@@ -366,6 +383,7 @@ impl<'a> Builder<'a> {
                         relation_type: types::RelationType::from_str(relation_type),
                         color,
                         width,
+                        arrow_style,
                         label: label.as_ref().map(|l| l.to_string()),
                     }));
                 }
