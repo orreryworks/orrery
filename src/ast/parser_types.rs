@@ -36,6 +36,7 @@ pub enum Element<'a> {
         target: Spanned<&'a str>,
         relation_type: Spanned<&'a str>,
         attributes: Spanned<Vec<Spanned<Attribute<'a>>>>,
+        label: Option<Spanned<&'a str>>,
     },
     Diagram(Diagram<'a>),
 }

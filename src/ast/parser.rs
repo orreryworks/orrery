@@ -252,16 +252,24 @@ fn parse_relation(input: Span) -> PResult<types::Element> {
                                 parse_nested_identifier,
                                 ws_comments0, // Target identifier with possible leading space
                             ),
-                            opt((preceded(ws_comments0, char(':')), parse_string_literal)),
+                            opt((
+                                delimited(ws_comments0, char(':'), ws_comments0),
+                                parse_string_literal,
+                            )),
                         )),
                     ),
                     semicolon,
                 ),
-                |(source, relation_type, (attributes, target, _))| types::Element::Relation {
-                    source,
-                    target,
-                    attributes: attributes.unwrap_or_default(),
-                    relation_type,
+                |(source, relation_type, (attributes, target, label_opt))| {
+                    // Convert the Optional tuple into a simple Optional spanned string
+                    let label = label_opt.map(|(_, s)| s);
+                    types::Element::Relation {
+                        source,
+                        target,
+                        attributes: attributes.unwrap_or_default(),
+                        relation_type,
+                        label,
+                    }
                 },
             ),
         )
@@ -729,11 +737,13 @@ mod tests {
                 target,
                 relation_type,
                 attributes,
+                label,
             } => {
                 assert_eq!(*source, "a");
                 assert_eq!(*target, "b");
                 assert_eq!(*relation_type, "->");
                 assert_eq!(attributes.len(), 0);
+                assert_eq!(label, None);
             }
             _ => panic!("Expected Relation"),
         }
@@ -774,6 +784,7 @@ mod tests {
                 target,
                 relation_type,
                 attributes,
+                label,
             } => {
                 assert_eq!(*source, "a");
                 assert_eq!(*target, "b");
@@ -781,6 +792,7 @@ mod tests {
                 assert_eq!(attributes.len(), 1);
                 assert_eq!(*attributes[0].name, "color");
                 assert_eq!(*attributes[0].value, "red");
+                assert_eq!(label, None);
             }
             _ => panic!("Expected Relation"),
         }
@@ -792,6 +804,26 @@ mod tests {
             types::Element::Relation { source, target, .. } => {
                 assert_eq!(*source, "parent::child");
                 assert_eq!(*target, "service");
+            }
+            _ => panic!("Expected Relation"),
+        }
+
+        // Test relation with label
+        let input = Span::new("a -> b: \"label text\";");
+        let (_rest, relation) = parse_relation(input).unwrap();
+        match relation.into_inner() {
+            types::Element::Relation {
+                source,
+                target,
+                relation_type,
+                attributes,
+                label,
+            } => {
+                assert_eq!(*source, "a");
+                assert_eq!(*target, "b");
+                assert_eq!(*relation_type, "->");
+                assert_eq!(attributes.len(), 0);
+                assert_eq!(*label.expect("label is None"), "label text");
             }
             _ => panic!("Expected Relation"),
         }

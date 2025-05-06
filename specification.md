@@ -82,12 +82,12 @@ user_database: Database;
 Relations define connections between components:
 
 ```
-<source> <relation_type> [attribute1="value1", ...] <target>;
+<source> <relation_type> [attribute1="value1", ...] <target> [: "label"];
 ```
 
 Example:
 ```
-frontend_app -> [color="blue", width="2"] user_database;
+frontend_app -> [color="blue", width="2"] user_database: "Stores data";
 ```
 
 #### 5.2.1 Relation Types
@@ -115,6 +115,16 @@ Attributes customize the appearance of elements:
 
 - `color`: The line color of the relation
 - `width`: The thickness of the relation line (numeric value)
+
+### 6.3 Relation Labels
+
+Relations can optionally include text labels to describe their purpose or meaning:
+
+```
+<source> <relation_type> [attributes...] <target>: "Label text";
+```
+
+Labels are displayed above the relation line with a background for readability.
 
 ## 7. Nesting and Hierarchy
 
@@ -197,7 +207,7 @@ user_agent: Rectangle;
 api_service: Rectangle;
 data_store: Rectangle;
 
-user_agent -> [color="blue"] api_service;
+user_agent -> [color="blue"] api_service: "Request";
 api_service -> [color="green"] data_store;
 data_store -> [color="green"] api_service;
 api_service -> [color="blue"] user_agent;

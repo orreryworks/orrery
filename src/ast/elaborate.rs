@@ -303,7 +303,7 @@ impl<'a> Builder<'a> {
                     target,
                     relation_type,
                     attributes,
-                    ..
+                    label,
                 } => {
                     // Extract color and width from attributes if they exist
                     let mut color = Color::default();
@@ -366,6 +366,7 @@ impl<'a> Builder<'a> {
                         relation_type: types::RelationType::from_str(relation_type),
                         color,
                         width,
+                        label: label.as_ref().map(|l| l.to_string()),
                     }));
                 }
                 parser_types::Element::Diagram(_) => {

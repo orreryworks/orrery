@@ -1,3 +1,4 @@
+
 use crate::{
     ast,
     layout::{
@@ -7,7 +8,7 @@ use crate::{
 };
 use svg::{
     Document,
-    node::element::{Definitions, Group, Line, Marker, Path},
+    node::element::{Definitions, Group, Line, Marker, Path, Text, Rectangle},
 };
 
 use super::{Svg, renderer};
@@ -49,7 +50,7 @@ impl Svg {
     }
 
     fn render_message(&self, message: &sequence::Message, layout: &sequence::Layout) -> Group {
-        let group = Group::new();
+        let mut group = Group::new();
 
         let source = &layout.participants[message.source_index];
         let target = &layout.participants[message.target_index];
@@ -116,7 +117,40 @@ impl Svg {
             path = path.set("marker-end", marker);
         }
 
-        group.add(path)
+        // Add the path to the group
+        group = group.add(path);
+
+        // Add label if it exists
+        if let Some(label) = &message.relation.label {
+            // Calculate position for the label (slightly above the message line)
+            let mid_x = (source_x + target_x) / 2.0;
+            let label_y = message_y - 15.0; // 15px above the message line
+            
+            // Create a white background rectangle for better readability
+            let bg = Rectangle::new()
+                .set("x", mid_x - (label.len() as f32 * 3.5) - 5.0)  // Add some padding
+                .set("y", label_y - 15.0) // Position above the line
+                .set("width", label.len() as f32 * 7.0 + 10.0)  // Approximate width based on text length
+                .set("height", 20.0)
+                .set("fill", "white")
+                .set("fill-opacity", 0.8)
+                .set("rx", 3.0);  // Slightly rounded corners
+            
+            // Create the text label
+            let text = Text::new("Text")
+                .set("x", mid_x)
+                .set("y", label_y)
+                .set("text-anchor", "middle")
+                .set("dominant-baseline", "middle")
+                .set("font-family", "Arial")
+                .set("font-size", 14)
+                .add(svg::node::Text::new(label));
+            
+            // Add background and text to the group
+            group = group.add(bg).add(text);
+        }
+        
+        group
     }
 
     fn calculate_sequence_diagram_bounds(&self, layout: &sequence::Layout) -> Bounds {
@@ -238,3 +272,4 @@ impl Svg {
         doc.add(main_group)
     }
 }
+

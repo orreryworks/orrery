@@ -7,7 +7,7 @@ use crate::{
 use std::collections::HashSet;
 use svg::{
     Document,
-    node::element::{Definitions, Group, Marker, Path},
+    node::element::{Definitions, Group, Marker, Path, Rectangle, Text},
 };
 
 use super::Svg;
@@ -47,7 +47,10 @@ impl Svg {
         source: &Component,
         target: &Component,
         relation: &ast::Relation,
-    ) -> Path {
+    ) -> Group {
+        // Create a group to hold both the path and label
+        let mut group = Group::new();
+
         // Calculate intersection points where the line meets each shape's boundary
         let source_edge = self.find_intersection(source, &target.position);
         let target_edge = self.find_intersection(target, &source.position);
@@ -100,7 +103,43 @@ impl Svg {
             path = path.set("marker-end", marker);
         }
 
-        path
+        // Add the path to the group
+        group = group.add(path);
+
+        // Add label if it exists
+        if let Some(label) = &relation.label {
+            // Calculate midpoint for the label
+            let mid_x = (source_edge.x + target_edge.x) / 2.0;
+            let mid_y = (source_edge.y + target_edge.y) / 2.0;
+
+            // Add a small offset to position the label above the line
+            let offset_y = -10.0;
+
+            // Create a white background rectangle for better readability
+            let bg = Rectangle::new()
+                .set("x", mid_x - (label.len() as f32 * 3.5) - 5.0) // Add some padding
+                .set("y", mid_y + offset_y - 15.0) // Position above the line
+                .set("width", label.len() as f32 * 7.0 + 10.0) // Approximate width based on text length
+                .set("height", 20.0)
+                .set("fill", "white")
+                .set("fill-opacity", 0.8)
+                .set("rx", 3.0); // Slightly rounded corners
+
+            // Create the text label
+            let text = Text::new("Text")
+                .set("x", mid_x)
+                .set("y", mid_y + offset_y)
+                .set("text-anchor", "middle")
+                .set("dominant-baseline", "middle")
+                .set("font-family", "Arial")
+                .set("font-size", 14)
+                .add(svg::node::Text::new(label));
+
+            // Add background and text to the group
+            group = group.add(bg).add(text);
+        }
+
+        group
     }
 
     fn calculate_component_diagram_bounds(&self, l: &component::Layout) -> Bounds {

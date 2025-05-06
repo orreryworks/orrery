@@ -65,6 +65,7 @@ pub struct Relation {
     pub relation_type: RelationType,
     pub color: Color,
     pub width: usize,
+    pub label: Option<String>,
 }
 
 #[derive(Debug, Clone)]
