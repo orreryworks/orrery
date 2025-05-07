@@ -37,7 +37,7 @@ impl Svg {
             &component.position,
             &component.size,
             type_def,
-            &component.node.name,
+            component.node.display_text(),
             has_nested_blocks,
         )
     }

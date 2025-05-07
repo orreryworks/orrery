@@ -192,6 +192,12 @@ fn parse_component(input: Span) -> PResult<types::Element> {
                 terminated(
                     (
                         terminated(parse_identifier, ws_comments0),
+                        // Parse optional "as" followed by a string literal
+                        opt(delimited(
+                            delimited(ws_comments1, tag("as"), ws_comments1),
+                            parse_string_literal,
+                            ws_comments0,
+                        )),
                         char(':'),
                         peek(not(char(':'))),
                         cut((
@@ -206,9 +212,10 @@ fn parse_component(input: Span) -> PResult<types::Element> {
                     ),
                     semicolon,
                 ),
-                |(name, _, (), (type_name, attributes, nested_elements))| {
+                |(name, display_name, _, (), (type_name, attributes, nested_elements))| {
                     types::Element::Component {
                         name,
+                        display_name,
                         type_name,
                         attributes: attributes.unwrap_or_default(),
                         nested_elements: nested_elements.unwrap_or_default(),
@@ -635,11 +642,13 @@ mod tests {
         match component.into_inner() {
             types::Element::Component {
                 name,
+                display_name,
                 type_name,
                 attributes,
                 nested_elements,
             } => {
                 assert_eq!(*name, "database");
+                assert_eq!(display_name, None);
                 assert_eq!(*type_name, "Rectangle");
                 assert_eq!(attributes.len(), 0);
                 assert_eq!(nested_elements.len(), 0);
@@ -654,11 +663,13 @@ mod tests {
         match component.into_inner() {
             types::Element::Component {
                 name,
+                display_name,
                 type_name,
                 attributes,
                 nested_elements,
             } => {
                 assert_eq!(*name, "database");
+                assert_eq!(display_name, None);
                 assert_eq!(*type_name, "Rectangle");
                 assert_eq!(attributes.len(), 1);
                 assert_eq!(*attributes[0].name, "fill_color");
@@ -675,11 +686,13 @@ mod tests {
         match component.into_inner() {
             types::Element::Component {
                 name,
+                display_name,
                 type_name,
                 attributes,
                 nested_elements,
             } => {
                 assert_eq!(*name, "server");
+                assert_eq!(display_name, None);
                 assert_eq!(*type_name, "Oval");
                 assert_eq!(attributes.len(), 2);
                 assert_eq!(*attributes[0].name, "fill_color");
@@ -698,11 +711,13 @@ mod tests {
         match component.into_inner() {
             types::Element::Component {
                 name,
+                display_name,
                 type_name,
                 attributes,
                 nested_elements,
             } => {
                 assert_eq!(*name, "system");
+                assert_eq!(display_name, None);
                 assert_eq!(*type_name, "Rectangle");
                 assert_eq!(attributes.len(), 0);
                 assert_eq!(nested_elements.len(), 1);
@@ -715,6 +730,28 @@ mod tests {
                     }
                     _ => panic!("Expected Component"),
                 }
+            }
+            _ => panic!("Expected Component"),
+        }
+
+        // Test component with display name (alias)
+        let input = Span::new("db_server as \"Database Server\": Rectangle;");
+        let (rest, component) = parse_component(input).unwrap();
+        assert_eq!(*rest.fragment(), "");
+        match component.into_inner() {
+            types::Element::Component {
+                name,
+                display_name,
+                type_name,
+                attributes,
+                nested_elements,
+            } => {
+                assert_eq!(*name, "db_server");
+                assert!(display_name.is_some());
+                assert_eq!(*display_name.unwrap(), "Database Server");
+                assert_eq!(*type_name, "Rectangle");
+                assert_eq!(attributes.len(), 0);
+                assert_eq!(nested_elements.len(), 0);
             }
             _ => panic!("Expected Component"),
         }

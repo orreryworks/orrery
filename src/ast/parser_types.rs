@@ -27,6 +27,7 @@ pub struct Diagram<'a> {
 pub enum Element<'a> {
     Component {
         name: Spanned<&'a str>,
+        display_name: Option<Spanned<&'a str>>,
         type_name: Spanned<&'a str>,
         attributes: Spanned<Vec<Spanned<Attribute<'a>>>>,
         nested_elements: Spanned<Vec<Spanned<Element<'a>>>>,

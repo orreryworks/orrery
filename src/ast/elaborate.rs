@@ -266,6 +266,7 @@ impl<'a> Builder<'a> {
             match parser_elm.inner() {
                 parser_types::Element::Component {
                     name,
+                    display_name,
                     type_name,
                     attributes,
                     nested_elements,
@@ -292,6 +293,7 @@ impl<'a> Builder<'a> {
                     let node = types::Node {
                         id: node_id,
                         name: name.to_string(),
+                        display_name: display_name.as_ref().map(|n| n.to_string()),
                         block,
                         type_definition: type_def,
                     };

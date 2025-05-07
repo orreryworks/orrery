@@ -54,8 +54,17 @@ impl fmt::Display for RelationType {
 pub struct Node {
     pub id: TypeId,
     pub name: String,
+    pub display_name: Option<String>,
     pub block: Block,
     pub type_definition: Rc<TypeDefinition>,
+}
+
+impl Node {
+    /// Returns the display text for this node
+    /// Uses display_name if present, otherwise falls back to the identifier name
+    pub fn display_text(&self) -> &str {
+        self.display_name.as_deref().unwrap_or(&self.name)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

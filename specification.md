@@ -63,17 +63,21 @@ type Database = Rectangle [fill_color="lightblue", rounded="10", line_width="2"]
 Components are the basic building blocks of diagrams:
 
 ```
-<element_name>: <TypeName> [attribute1="value1", ...] { nested elements... };
+<element_name> [as "Display Name"]: <TypeName> [attribute1="value1", ...] { nested elements... };
 ```
 
 **Naming Conventions:**
 - Element names typically use snake_case (e.g., `user_service`, `data_layer`)
 - Element names must begin with a letter
 - Element names can contain alphanumeric characters and underscores
+- Optional display names can be provided using the `as "Display Name"` syntax
+- If no display name is provided, the element name is used as the display text
 
 Example:
 ```
-frontend_app: Rectangle [fill_color="#e6f3ff"];
+// With display name
+frontend_app as "Frontend Application": Rectangle [fill_color="#e6f3ff"];
+// Without display name (will display "user_database" text)
 user_database: Database;
 ```
 
@@ -187,9 +191,9 @@ type Database = Rectangle [fill_color="lightblue", rounded="10"];
 type Service = Rectangle [fill_color="#e6f3ff"];
 type Client = Oval [fill_color="#ffe6e6"];
 
-end_user: Client;
-backend_system: Service {
-    auth_service: Service;
+end_user as "End User": Client;
+backend_system as "Backend System": Service {
+    auth_service as "Auth Service": Service;
     user_db: Database;
     auth_service -> user_db;
 };
