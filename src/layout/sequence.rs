@@ -1,8 +1,12 @@
 use crate::{
     ast,
     graph::Graph,
-    layout::common::{Component, Point, calculate_element_size},
+    layout::{
+        common::{Component, Point, calculate_element_size},
+        text,
+    },
 };
+use petgraph::graph::NodeIndex;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -32,6 +36,7 @@ pub struct Engine {
     message_spacing: f32,
     top_margin: f32,
     text_padding: f32,
+    label_padding: f32, // Padding to add for message labels
 }
 
 impl Engine {
@@ -43,7 +48,42 @@ impl Engine {
             message_spacing: 50.0,
             top_margin: 60.0,
             text_padding: 15.0,
+            label_padding: 20.0, // Extra padding for labels
         }
+    }
+    
+    /// Calculate additional spacing needed between participants based on message label sizes
+    fn calculate_message_label_spacing(
+        &self,
+        source_idx: usize,
+        target_idx: usize,
+        messages: &[(NodeIndex, NodeIndex, &ast::Relation)],
+        participant_indices: &HashMap<NodeIndex, usize>,
+    ) -> f32 {
+        let mut max_spacing: f32 = 0.0;
+        
+        for (src_node, tgt_node, relation) in messages {
+            // Get participant indices for this message
+            if let (Some(&src_idx), Some(&tgt_idx)) = (
+                participant_indices.get(src_node),
+                participant_indices.get(tgt_node)
+            ) {
+                // Check if this message is between the two participants we're checking
+                let is_between = (src_idx == source_idx && tgt_idx == target_idx) || 
+                                 (src_idx == target_idx && tgt_idx == source_idx);
+                
+                if is_between {
+                    // If there's a label, calculate its width and add padding
+                    if let Some(label) = &relation.label {
+                        let label_width = text::calculate_text_size(label, 14).width;
+                        let needed_spacing = label_width + self.label_padding;
+                        max_spacing = max_spacing.max(needed_spacing);
+                    }
+                }
+            }
+        }
+        
+        max_spacing
     }
 
     pub fn calculate<'a>(&self, graph: &'a Graph) -> Layout<'a> {
@@ -65,6 +105,14 @@ impl Engine {
             })
             .collect();
 
+        // Collect all messages to consider their labels for spacing
+        let mut messages_vec = Vec::new();
+        for edge_idx in graph.edge_indices() {
+            let (source_idx, target_idx) = graph.edge_endpoints(edge_idx).unwrap();
+            let relation = graph.edge_weight(edge_idx).unwrap();
+            messages_vec.push((source_idx, target_idx, relation));
+        }
+
         // Process nodes in order and calculate individual positions
         let mut x_position = 0.0;
 
@@ -80,9 +128,16 @@ impl Engine {
             else if let Some(last_participant) = participants.last() {
                 // Get previous participant's width
                 let prev_width = last_participant.component.size.width;
+                
+                // Calculate additional spacing needed for any messages between these participants
+                let additional_spacing = self.calculate_message_label_spacing(
+                    i - 1, i, &messages_vec, &participant_indices);
+                
+                // Use the larger of min_spacing or additional_spacing needed for labels
+                let effective_spacing = self.min_spacing.max(additional_spacing);
 
-                // Move position by half of previous width + minimum spacing + half of current width
-                x_position += (prev_width / 2.0) + self.min_spacing + (size.width / 2.0);
+                // Move position by half of previous width + spacing + half of current width
+                x_position += (prev_width / 2.0) + effective_spacing + (size.width / 2.0);
             }
 
             // Create participant at calculated position

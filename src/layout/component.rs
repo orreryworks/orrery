@@ -1,7 +1,10 @@
 use crate::{
     ast,
     graph::Graph,
-    layout::common::{Component, Point, Size, calculate_element_size},
+    layout::{
+        common::{Component, Point, Size, calculate_element_size},
+        text,
+    },
 };
 use petgraph::{
     Direction,
@@ -308,6 +311,16 @@ impl Engine {
         // Assign layers for top-level nodes
         let layers = self.assign_layers_for_graph(&filtered_graph, &node_map);
 
+        // Collect all relations between top-level nodes to consider label spacing
+        let top_level_relations = graph.edge_indices().filter_map(|edge_idx| {
+            let (source, target) = graph.edge_endpoints(edge_idx).unwrap();
+            if top_level_nodes.contains(&source) && top_level_nodes.contains(&target) {
+                Some(graph.edge_weight(edge_idx).unwrap())
+            } else {
+                None
+            }
+        });
+
         // Calculate max width for each layer
         let layer_widths: Vec<f32> = layers
             .iter()
@@ -320,12 +333,60 @@ impl Engine {
             })
             .collect();
 
-        // Calculate starting x position for each layer
+        // Calculate additional spacing needed between layers based on relation labels
+        let mut layer_spacings = vec![self.padding; layers.len().saturating_sub(1)];
+
+        // Adjust spacings based on relation labels
+        for relation in top_level_relations {
+            if let Some(label) = &relation.label {
+                // Calculate width of the label
+                let label_width = text::calculate_text_size(label, 14).width;
+
+                // Get the layer indices for source and target
+                // This is a simplification - in a real implementation, we would need to map back from node IDs to layer indices
+                let mut source_layer = None;
+                let mut target_layer = None;
+
+                for (layer_idx, layer_nodes) in layers.iter().enumerate() {
+                    for node_idx in layer_nodes {
+                        let node = graph.node_weight(*node_idx).unwrap();
+                        if node.id == relation.source {
+                            source_layer = Some(layer_idx);
+                        }
+                        if node.id == relation.target {
+                            target_layer = Some(layer_idx);
+                        }
+                    }
+                }
+
+                if let (Some(src), Some(tgt)) = (source_layer, target_layer) {
+                    if src != tgt {
+                        // Only adjust spacing for relations between different layers
+                        let min_layer = src.min(tgt);
+                        let needed_spacing = label_width + 30.0; // Add some padding
+
+                        // Update the spacing if the label requires more space
+                        if min_layer < layer_spacings.len() {
+                            layer_spacings[min_layer] =
+                                layer_spacings[min_layer].max(needed_spacing);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Calculate starting x position for each layer with updated spacings
         let mut layer_x_positions = Vec::with_capacity(layers.len());
         let mut x_pos = 0.0;
-        for width in &layer_widths {
+
+        for (i, width) in layer_widths.iter().enumerate() {
             layer_x_positions.push(x_pos + width / 2.0);
-            x_pos += width + self.padding;
+            let spacing = if i < layer_spacings.len() {
+                layer_spacings[i]
+            } else {
+                self.padding
+            };
+            x_pos += width + spacing;
         }
 
         // For each layer, calculate positions for top-level nodes
