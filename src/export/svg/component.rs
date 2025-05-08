@@ -1,13 +1,12 @@
-use super::renderer;
+use super::{arrows, renderer};
 use crate::{
     ast,
     layout::common::{Bounds, Component, Point},
     layout::component,
 };
-use std::collections::HashSet;
 use svg::{
     Document,
-    node::element::{Definitions, Group, Marker, Path, Rectangle, Text},
+    node::element::{Group, Rectangle, Text},
 };
 
 use super::Svg;
@@ -55,53 +54,15 @@ impl Svg {
         let source_edge = self.find_intersection(source, &target.position);
         let target_edge = self.find_intersection(target, &source.position);
 
-        // Get marker references for this specific color
-        let (start_marker, end_marker) = match &relation.relation_type {
-            ast::RelationType::Forward => (
-                None,
-                Some(format!(
-                    "url(#arrow-right-{})",
-                    relation.color.to_id_safe_string()
-                )),
-            ),
-            ast::RelationType::Backward => (
-                Some(format!(
-                    "url(#arrow-left-{})",
-                    relation.color.to_id_safe_string()
-                )),
-                None,
-            ),
-            ast::RelationType::Bidirectional => (
-                Some(format!(
-                    "url(#arrow-left-{})",
-                    relation.color.to_id_safe_string()
-                )),
-                Some(format!(
-                    "url(#arrow-right-{})",
-                    relation.color.to_id_safe_string()
-                )),
-            ),
-            ast::RelationType::Plain => (None, None),
-        };
-
-        // Create the path based on the arrow style
-        let mut path = Path::new()
-            .set(
-                "d",
-                self.create_path_data_for_style(&source_edge, &target_edge, &relation.arrow_style),
-            )
-            .set("fill", "none")
-            .set("stroke", relation.color.to_string())
-            .set("stroke-width", relation.width);
-
-        // Add markers if they exist
-        if let Some(marker) = start_marker {
-            path = path.set("marker-start", marker);
-        }
-
-        if let Some(marker) = end_marker {
-            path = path.set("marker-end", marker);
-        }
+        // Create the path with appropriate markers
+        let path = arrows::create_path(
+            &source_edge,
+            &target_edge,
+            &relation.relation_type,
+            &relation.color,
+            relation.width,
+            &relation.arrow_style,
+        );
 
         // Add the path to the group
         group = group.add(path);
@@ -172,49 +133,11 @@ impl Svg {
             .set("width", svg_size.width)
             .set("height", svg_size.height);
 
-        // Create marker definitions for each color used in the relationships
-        let mut defs = Definitions::new();
-        let mut marker_colors = HashSet::new();
+        // Create marker definitions iterator for each color used in relations
+        let relation_colors = l.relations.iter().map(|r| &r.relation.color);
 
-        // Collect all unique colors used in relations
-        for relation in &l.relations {
-            marker_colors.insert(&relation.relation.color);
-        }
-
-        // Create markers for each color
-        for color in &marker_colors {
-            // Right-pointing arrow marker for this color
-            let arrow_right = Marker::new()
-                .set("id", format!("arrow-right-{}", color.to_id_safe_string()))
-                .set("viewBox", "0 0 10 10")
-                .set("refX", 9)
-                .set("refY", 5)
-                .set("markerWidth", 6)
-                .set("markerHeight", 6)
-                .set("orient", "auto")
-                .add(
-                    Path::new()
-                        .set("d", "M 0 0 L 10 5 L 0 10 z")
-                        .set("fill", color.to_string()),
-                );
-
-            // Left-pointing arrow marker for this color
-            let arrow_left = Marker::new()
-                .set("id", format!("arrow-left-{}", color.to_id_safe_string()))
-                .set("viewBox", "0 0 10 10")
-                .set("refX", 1)
-                .set("refY", 5)
-                .set("markerWidth", 6)
-                .set("markerHeight", 6)
-                .set("orient", "auto")
-                .add(
-                    Path::new()
-                        .set("d", "M 10 0 L 0 5 L 10 10 z")
-                        .set("fill", color.to_string()),
-                );
-
-            defs = defs.add(arrow_right).add(arrow_left);
-        }
+        // Create marker definitions from collected colors
+        let defs = arrows::create_marker_definitions(relation_colors);
 
         doc = doc.add(defs);
 

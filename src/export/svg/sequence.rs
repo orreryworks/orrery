@@ -1,4 +1,3 @@
-
 use crate::{
     ast,
     layout::{
@@ -8,10 +7,10 @@ use crate::{
 };
 use svg::{
     Document,
-    node::element::{Definitions, Group, Line, Marker, Path, Text, Rectangle},
+    node::element::{Group, Line, Rectangle, Text},
 };
 
-use super::{Svg, renderer};
+use super::{Svg, arrows, renderer};
 
 impl Svg {
     fn render_participant(&self, participant: &sequence::Participant) -> Group {
@@ -69,53 +68,15 @@ impl Svg {
             y: message_y,
         };
 
-        // Get marker references for this specific color
-        let (start_marker, end_marker) = match &message.relation.relation_type {
-            ast::RelationType::Forward => (
-                None,
-                Some(format!(
-                    "url(#arrow-right-{})",
-                    message.relation.color.to_id_safe_string()
-                )),
-            ),
-            ast::RelationType::Backward => (
-                Some(format!(
-                    "url(#arrow-left-{})",
-                    message.relation.color.to_id_safe_string()
-                )),
-                None,
-            ),
-            ast::RelationType::Bidirectional => (
-                Some(format!(
-                    "url(#arrow-left-{})",
-                    message.relation.color.to_id_safe_string()
-                )),
-                Some(format!(
-                    "url(#arrow-right-{})",
-                    message.relation.color.to_id_safe_string()
-                )),
-            ),
-            ast::RelationType::Plain => (None, None),
-        };
-
-        // Create the path - always use straight style for sequence diagrams
-        let mut path = Path::new()
-            .set(
-                "d",
-                self.create_path_data_for_style(&start_point, &end_point, &ast::ArrowStyle::Straight),
-            )
-            .set("fill", "none")
-            .set("stroke", message.relation.color.to_string())
-            .set("stroke-width", message.relation.width);
-
-        // Add markers if they exist
-        if let Some(marker) = start_marker {
-            path = path.set("marker-start", marker);
-        }
-
-        if let Some(marker) = end_marker {
-            path = path.set("marker-end", marker);
-        }
+        // Create the path with appropriate markers - always use straight style for sequence diagrams
+        let path = arrows::create_path(
+            &start_point,
+            &end_point,
+            &message.relation.relation_type,
+            &message.relation.color,
+            message.relation.width,
+            &ast::ArrowStyle::Straight,
+        );
 
         // Add the path to the group
         group = group.add(path);
@@ -125,17 +86,17 @@ impl Svg {
             // Calculate position for the label (slightly above the message line)
             let mid_x = (source_x + target_x) / 2.0;
             let label_y = message_y - 15.0; // 15px above the message line
-            
+
             // Create a white background rectangle for better readability
             let bg = Rectangle::new()
-                .set("x", mid_x - (label.len() as f32 * 3.5) - 5.0)  // Add some padding
+                .set("x", mid_x - (label.len() as f32 * 3.5) - 5.0) // Add some padding
                 .set("y", label_y - 15.0) // Position above the line
-                .set("width", label.len() as f32 * 7.0 + 10.0)  // Approximate width based on text length
+                .set("width", label.len() as f32 * 7.0 + 10.0) // Approximate width based on text length
                 .set("height", 20.0)
                 .set("fill", "white")
                 .set("fill-opacity", 0.8)
-                .set("rx", 3.0);  // Slightly rounded corners
-            
+                .set("rx", 3.0); // Slightly rounded corners
+
             // Create the text label
             let text = Text::new("Text")
                 .set("x", mid_x)
@@ -145,11 +106,11 @@ impl Svg {
                 .set("font-family", "Arial")
                 .set("font-size", 14)
                 .add(svg::node::Text::new(label));
-            
+
             // Add background and text to the group
             group = group.add(bg).add(text);
         }
-        
+
         group
     }
 
@@ -197,49 +158,11 @@ impl Svg {
             .set("width", svg_size.width)
             .set("height", svg_size.height);
 
-        // Create marker definitions for each color used in the messages
-        let mut defs = Definitions::new();
-        let mut marker_colors = std::collections::HashSet::new();
+        // Create marker definitions iterator for each color used in messages
+        let message_colors = layout.messages.iter().map(|m| &m.relation.color);
 
-        // Collect all unique colors used in messages
-        for message in &layout.messages {
-            marker_colors.insert(&message.relation.color);
-        }
-
-        // Create markers for each color
-        for color in &marker_colors {
-            // Right-pointing arrow marker for this color
-            let arrow_right = Marker::new()
-                .set("id", format!("arrow-right-{}", color.to_id_safe_string()))
-                .set("viewBox", "0 0 10 10")
-                .set("refX", 9)
-                .set("refY", 5)
-                .set("markerWidth", 6)
-                .set("markerHeight", 6)
-                .set("orient", "auto")
-                .add(
-                    Path::new()
-                        .set("d", "M 0 0 L 10 5 L 0 10 z")
-                        .set("fill", color.to_string()),
-                );
-
-            // Left-pointing arrow marker for this color
-            let arrow_left = Marker::new()
-                .set("id", format!("arrow-left-{}", color.to_id_safe_string()))
-                .set("viewBox", "0 0 10 10")
-                .set("refX", 1)
-                .set("refY", 5)
-                .set("markerWidth", 6)
-                .set("markerHeight", 6)
-                .set("orient", "auto")
-                .add(
-                    Path::new()
-                        .set("d", "M 10 0 L 0 5 L 10 10 z")
-                        .set("fill", color.to_string()),
-                );
-
-            defs = defs.add(arrow_right).add(arrow_left);
-        }
+        // Create marker definitions from collected colors
+        let defs = arrows::create_marker_definitions(message_colors);
 
         doc = doc.add(defs);
 
@@ -272,4 +195,3 @@ impl Svg {
         doc.add(main_group)
     }
 }
-
