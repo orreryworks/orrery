@@ -3,6 +3,7 @@ use crate::{
     ast,
     layout::common::{Bounds, Component, Point},
     layout::component,
+    layout::text,
 };
 use svg::{
     Document,
@@ -76,12 +77,15 @@ impl Svg {
             // Add a small offset to position the label above the line
             let offset_y = -10.0;
 
-            // Create a white background rectangle for better readability
+            // Calculate text dimensions
+            let text_size = text::calculate_text_size(label, 14);
+
+            // Create a white background rectangle for better readability with correct dimensions
             let bg = Rectangle::new()
-                .set("x", mid_x - (label.len() as f32 * 3.5) - 5.0) // Add some padding
-                .set("y", mid_y + offset_y - 15.0) // Position above the line
-                .set("width", label.len() as f32 * 7.0 + 10.0) // Approximate width based on text length
-                .set("height", 20.0)
+                .set("x", mid_x - (text_size.width / 2.0) - 5.0) // Center and add padding
+                .set("y", mid_y + offset_y - (text_size.height / 2.0) - 5.0) // Position above the line
+                .set("width", text_size.width + 10.0) // Add padding to text width
+                .set("height", text_size.height + 10.0) // Add padding to text height
                 .set("fill", "white")
                 .set("fill-opacity", 0.8)
                 .set("rx", 3.0); // Slightly rounded corners

@@ -1,3 +1,4 @@
+use super::text;
 use crate::ast;
 
 #[derive(Debug, Copy, Clone)]
@@ -69,33 +70,15 @@ impl Component<'_> {
     }
 }
 
-/// Utility function to estimate the size of text in pixels
-/// This is a simple approximation based on the font size and text length
-pub fn estimate_text_size(text: &str, font_size: usize) -> Size {
-    // Convert usize font_size to f32 for calculations
-    let font_size_f32 = font_size as f32;
-
-    // Roughly estimate based on average character width (usually 0.6x font size)
-    let char_width = font_size_f32 * 0.6;
-    let width = text.len() as f32 * char_width;
-
-    // Font height is approximately 1.2-1.5x the font size
-    let height = font_size_f32 * 1.2;
-
-    Size { width, height }
-}
-
 /// Calculate the size of a component or participant based on its text content
-// TODO: This is not a good estimation. Consider using resvg + usvg to get abs_bounding_box
-// or ab_glyph or other font libraries for a better estimation.
 pub fn calculate_element_size(
     node: &ast::Node,
     min_width: f32,
     min_height: f32,
     padding: f32,
 ) -> Size {
-    // Calculate text size based on the node's name and font size
-    let text_size = estimate_text_size(&node.name, node.type_definition.font_size);
+    // Calculate text size based on the node's display text and font size
+    let text_size = text::calculate_text_size(node.display_text(), node.type_definition.font_size);
 
     // Add padding around the text and ensure minimum size
     let width = padding.mul_add(2.0, text_size.width).max(min_width);

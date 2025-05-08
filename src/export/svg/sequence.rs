@@ -2,7 +2,7 @@ use crate::{
     ast,
     layout::{
         common::{Bounds, Point},
-        sequence,
+        sequence, text,
     },
 };
 use svg::{
@@ -87,12 +87,15 @@ impl Svg {
             let mid_x = (source_x + target_x) / 2.0;
             let label_y = message_y - 15.0; // 15px above the message line
 
-            // Create a white background rectangle for better readability
+            // Calculate text dimensions using cosmic-text
+            let text_size = text::calculate_text_size(label, 14);
+
+            // Create a white background rectangle for better readability with correct dimensions
             let bg = Rectangle::new()
-                .set("x", mid_x - (label.len() as f32 * 3.5) - 5.0) // Add some padding
-                .set("y", label_y - 15.0) // Position above the line
-                .set("width", label.len() as f32 * 7.0 + 10.0) // Approximate width based on text length
-                .set("height", 20.0)
+                .set("x", mid_x - (text_size.width / 2.0) - 5.0) // Center and add padding
+                .set("y", label_y - (text_size.height / 2.0) - 5.0) // Position above the line
+                .set("width", text_size.width + 10.0) // Add padding to text width
+                .set("height", text_size.height + 10.0) // Add padding to text height
                 .set("fill", "white")
                 .set("fill-opacity", 0.8)
                 .set("rx", 3.0); // Slightly rounded corners
