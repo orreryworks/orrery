@@ -13,10 +13,10 @@ use super::Svg;
 
 impl Svg {
     // Find the point where a line from the shape entity to an external point intersects with the shape entity's boundary
-    fn find_intersection(&self, shape_entity: &Component, external_point: &Point) -> Point {
+    fn find_intersection(&self, shape_entity: &Component, external_point: Point) -> Point {
         let type_def = &*shape_entity.node.type_definition;
         type_def.shape_type.find_intersection(
-            &shape_entity.position,
+            shape_entity.position,
             external_point,
             &shape_entity.size,
         )
@@ -33,7 +33,7 @@ impl Svg {
 
         // Use the renderer to generate the SVG for the main component
         renderer.render_to_svg(
-            &component.position,
+            component.position,
             &component.size,
             type_def,
             component.node.display_text(),
@@ -51,13 +51,13 @@ impl Svg {
         let mut group = Group::new();
 
         // Calculate intersection points where the line meets each shape's boundary
-        let source_edge = self.find_intersection(source, &target.position);
-        let target_edge = self.find_intersection(target, &source.position);
+        let source_edge = self.find_intersection(source, target.position);
+        let target_edge = self.find_intersection(target, source.position);
 
         // Create the path with appropriate markers
         let path = arrows::create_path(
-            &source_edge,
-            &target_edge,
+            source_edge,
+            target_edge,
             &relation.relation_type,
             &relation.color,
             relation.width,

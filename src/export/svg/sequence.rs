@@ -25,7 +25,7 @@ impl Svg {
 
         // Use the renderer to generate the SVG for the participant
         let shape_group = renderer.render_to_svg(
-            &component.position,
+            component.position,
             &component.size,
             type_def,
             component.node.display_text(),
@@ -70,8 +70,8 @@ impl Svg {
 
         // Create the path with appropriate markers - always use straight style for sequence diagrams
         let path = arrows::create_path(
-            &start_point,
-            &end_point,
+            start_point,
+            end_point,
             &message.relation.relation_type,
             &message.relation.color,
             message.relation.width,

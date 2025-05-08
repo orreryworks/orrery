@@ -73,7 +73,7 @@ pub fn get_markers_for_relation(
 }
 
 /// Create a path data string for the given arrow style
-pub fn create_path_data_for_style(start: &Point, end: &Point, style: &ArrowStyle) -> String {
+pub fn create_path_data_for_style(start: Point, end: Point, style: &ArrowStyle) -> String {
     match style {
         ArrowStyle::Straight => create_path_data_from_points(start, end),
         ArrowStyle::Curved => create_curved_path_data_from_points(start, end),
@@ -82,13 +82,13 @@ pub fn create_path_data_for_style(start: &Point, end: &Point, style: &ArrowStyle
 }
 
 /// Create a path data string from two points
-pub fn create_path_data_from_points(start: &Point, end: &Point) -> String {
+pub fn create_path_data_from_points(start: Point, end: Point) -> String {
     format!("M {} {} L {} {}", start.x, start.y, end.x, end.y)
 }
 
 /// Create a curved path data string from two points
 /// Creates a cubic bezier curve with control points positioned to create a nice arc
-pub fn create_curved_path_data_from_points(start: &Point, end: &Point) -> String {
+pub fn create_curved_path_data_from_points(start: Point, end: Point) -> String {
     // For the control points, we'll use points positioned to create a smooth arc
     // between the start and end points
     let ctrl1_x = start.x + (end.x - start.x) / 4.0;
@@ -99,16 +99,13 @@ pub fn create_curved_path_data_from_points(start: &Point, end: &Point) -> String
 
     format!(
         "M {} {} C {} {}, {} {}, {} {}",
-        start.x, start.y,
-        ctrl1_x, ctrl1_y,
-        ctrl2_x, ctrl2_y,
-        end.x, end.y
+        start.x, start.y, ctrl1_x, ctrl1_y, ctrl2_x, ctrl2_y, end.x, end.y
     )
 }
 
 /// Create an orthogonal path data string from two points
 /// Creates a path with only horizontal and vertical line segments
-pub fn create_orthogonal_path_data_from_points(start: &Point, end: &Point) -> String {
+pub fn create_orthogonal_path_data_from_points(start: Point, end: Point) -> String {
     // Determine whether to go horizontal first then vertical, or vertical first then horizontal
     // This decision is based on the relative positions of the start and end points
 
@@ -120,32 +117,26 @@ pub fn create_orthogonal_path_data_from_points(start: &Point, end: &Point) -> St
     if dx > dy {
         // Go horizontal first (50% of the way), then vertical, then horizontal again
         let mid_x1 = start.x + (end.x - start.x) * 0.5;
-    
+
         format!(
             "M {} {} L {} {} L {} {} L {} {}",
-            start.x, start.y,
-            mid_x1, start.y,
-            mid_x1, end.y,
-            end.x, end.y
+            start.x, start.y, mid_x1, start.y, mid_x1, end.y, end.x, end.y
         )
     } else {
         // Go vertical first (50% of the way), then horizontal, then vertical again
         let mid_y1 = start.y + (end.y - start.y) * 0.5;
-    
+
         format!(
             "M {} {} L {} {} L {} {} L {} {}",
-            start.x, start.y,
-            start.x, mid_y1,
-            end.x, mid_y1,
-            end.x, end.y
+            start.x, start.y, start.x, mid_y1, end.x, mid_y1, end.x, end.y
         )
     }
 }
 
 /// Create a path for connecting two points with appropriate markers
 pub fn create_path(
-    start: &Point,
-    end: &Point,
+    start: Point,
+    end: Point,
     relation_type: &RelationType,
     color: &Color,
     width: usize,

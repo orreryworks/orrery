@@ -4,7 +4,7 @@ use crate::layout::common::{Point, Size};
 pub trait Shape {
     /// Find the intersection point where a line from point a to point b intersects with this shape
     /// centered at point a with the given size
-    fn find_intersection(&self, a: &Point, b: &Point, a_size: &Size) -> Point;
+    fn find_intersection(&self, a: Point, b: Point, a_size: &Size) -> Point;
 
     /// Get a string identifier for this shape type
     fn name(&self) -> &'static str;
@@ -15,7 +15,7 @@ pub struct Rectangle;
 pub struct Oval;
 
 impl Shape for Rectangle {
-    fn find_intersection(&self, a: &Point, b: &Point, a_size: &Size) -> Point {
+    fn find_intersection(&self, a: Point, b: Point, a_size: &Size) -> Point {
         let half_width = a_size.width / 2.0;
         let half_height = a_size.height / 2.0;
 
@@ -30,7 +30,7 @@ impl Shape for Rectangle {
         let length = dx.hypot(dy); // (dx * dx + dy * dy).sqrt()
         if length < 0.001 {
             // Avoid division by zero
-            return *b;
+            return b;
         }
 
         let dx_norm = dx / length;
@@ -80,7 +80,7 @@ impl Shape for Rectangle {
         }
 
         if t == f32::MAX || !t.is_finite() {
-            return *b; // Fallback if no intersection found
+            return b; // Fallback if no intersection found
         }
 
         // Calculate the intersection point
@@ -96,7 +96,7 @@ impl Shape for Rectangle {
 }
 
 impl Shape for Oval {
-    fn find_intersection(&self, a: &Point, b: &Point, a_size: &Size) -> Point {
+    fn find_intersection(&self, a: Point, b: Point, a_size: &Size) -> Point {
         // For an ellipse, finding the intersection is more complex than for a rectangle
         // We use a parametric approach based on the direction vector
 
@@ -111,7 +111,7 @@ impl Shape for Oval {
         let length = dx.hypot(dy); // (dx * dx + dy * dy).sqrt()
         if length < 0.001 {
             // Avoid division by zero
-            return *b;
+            return b;
         }
 
         let dx_norm = dx / length;

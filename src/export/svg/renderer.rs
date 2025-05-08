@@ -16,7 +16,7 @@ pub trait ShapeRenderer {
     /// * `has_nested_blocks` - Whether this component contains nested blocks
     fn render_to_svg(
         &self,
-        position: &Point,
+        position: Point,
         size: &Size,
         type_def: &ast::TypeDefinition,
         text: &str,
@@ -37,7 +37,7 @@ pub fn get_renderer(shape_type: &dyn Shape) -> &dyn ShapeRenderer {
 impl ShapeRenderer for Rectangle {
     fn render_to_svg(
         &self,
-        position: &Point,
+        position: Point,
         size: &Size,
         type_def: &ast::TypeDefinition,
         text: &str,
@@ -92,7 +92,7 @@ impl ShapeRenderer for Rectangle {
 impl ShapeRenderer for Oval {
     fn render_to_svg(
         &self,
-        position: &Point,
+        position: Point,
         size: &Size,
         type_def: &ast::TypeDefinition,
         text: &str,
