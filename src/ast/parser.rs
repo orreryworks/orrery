@@ -191,14 +191,14 @@ fn parse_component(input: Span) -> PResult<types::Element> {
             map(
                 terminated(
                     (
-                        terminated(parse_identifier, ws_comments0),
+                        parse_identifier,
                         // Parse optional "as" followed by a string literal
                         opt(delimited(
                             delimited(ws_comments1, tag("as"), ws_comments1),
                             parse_string_literal,
                             ws_comments0,
                         )),
-                        char(':'),
+                        preceded(ws_comments0, char(':')),
                         peek(not(char(':'))),
                         cut((
                             delimited(ws_comments0, parse_identifier, ws_comments0),
