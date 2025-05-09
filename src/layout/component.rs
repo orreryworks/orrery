@@ -2,7 +2,8 @@ use crate::{
     ast,
     graph::Graph,
     layout::{
-        common::{Component, Point, Size, calculate_element_size},
+        common::{Component, Point, Size},
+        positioning::calculate_element_size,
         text,
     },
 };
@@ -271,9 +272,36 @@ impl Engine {
         sizes: &HashMap<NodeIndex, Size>,
         hierarchy_map: &HashMap<NodeIndex, Vec<NodeIndex>>,
     ) -> HashMap<NodeIndex, Point> {
-        let mut positions = HashMap::new();
-
-        // First, identify all top-level nodes (nodes that aren't children of any other node)
+        // Step 1: Find top-level nodes and create a simplified graph
+        let (top_level_nodes, filtered_graph, node_map) = self.identify_top_level_nodes(graph, hierarchy_map);
+        
+        // Step 2: Assign layers for the top-level nodes
+        let layers = self.assign_layers_for_graph(&filtered_graph, &node_map);
+        
+        // Step 3: Calculate layer metrics (widths and spacings)
+        let (layer_widths, layer_spacings) = self.calculate_layer_metrics(
+            graph, &layers, &top_level_nodes, sizes);
+        
+        // Step 4: Calculate X positions for each layer
+        let layer_x_positions = self.calculate_layer_x_positions(&layer_widths, &layer_spacings);
+        
+        // Step 5: Position top-level nodes within their layers
+        let positions = self.position_nodes_in_layers(&layers, &layer_x_positions, sizes);
+        
+        // Step 6: Position child nodes within their parent containers
+        let mut result_positions = positions.clone();
+        self.position_all_children(&top_level_nodes, hierarchy_map, sizes, &mut result_positions);
+        
+        result_positions
+    }
+    
+    /// Identify top-level nodes and create a simplified graph containing only those nodes
+    fn identify_top_level_nodes(
+        &self,
+        graph: &Graph,
+        hierarchy_map: &HashMap<NodeIndex, Vec<NodeIndex>>,
+    ) -> (Vec<NodeIndex>, DiGraph<(), ()>, HashMap<NodeIndex, NodeIndex>) {
+        // Identify all nodes that are children of some other node
         let mut is_child = std::collections::HashSet::new();
         for children in hierarchy_map.values() {
             for &child in children {
@@ -281,16 +309,17 @@ impl Engine {
             }
         }
 
+        // Find top-level nodes (nodes that aren't children)
         let top_level_nodes: Vec<_> = graph
             .node_indices()
             .filter(|&idx| !is_child.contains(&idx))
             .collect();
 
-        // Create layers for top-level nodes only
+        // Create simplified graph with only top-level nodes
         let mut filtered_graph = DiGraph::<(), ()>::new();
         let mut node_map = HashMap::new();
 
-        // Add only top-level nodes to filtered graph
+        // Add top-level nodes to filtered graph
         for &node_idx in &top_level_nodes {
             let new_idx = filtered_graph.add_node(());
             node_map.insert(node_idx, new_idx);
@@ -308,19 +337,17 @@ impl Engine {
             }
         }
 
-        // Assign layers for top-level nodes
-        let layers = self.assign_layers_for_graph(&filtered_graph, &node_map);
-
-        // Collect all relations between top-level nodes to consider label spacing
-        let top_level_relations = graph.edge_indices().filter_map(|edge_idx| {
-            let (source, target) = graph.edge_endpoints(edge_idx).unwrap();
-            if top_level_nodes.contains(&source) && top_level_nodes.contains(&target) {
-                Some(graph.edge_weight(edge_idx).unwrap())
-            } else {
-                None
-            }
-        });
-
+        (top_level_nodes, filtered_graph, node_map)
+    }
+    
+    /// Calculate metrics for each layer: widths and spacings between layers
+    fn calculate_layer_metrics(
+        &self,
+        graph: &Graph,
+        layers: &[Vec<NodeIndex>],
+        top_level_nodes: &[NodeIndex],
+        sizes: &HashMap<NodeIndex, Size>,
+    ) -> (Vec<f32>, Vec<f32>) {
         // Calculate max width for each layer
         let layer_widths: Vec<f32> = layers
             .iter()
@@ -333,39 +360,35 @@ impl Engine {
             })
             .collect();
 
-        // Calculate additional spacing needed between layers based on relation labels
+        // Initialize spacings with default padding
         let mut layer_spacings = vec![self.padding; layers.len().saturating_sub(1)];
+
+        // Collect relations between top-level nodes to consider label spacing
+        let top_level_relations = graph.edge_indices().filter_map(|edge_idx| {
+            let (source, target) = graph.edge_endpoints(edge_idx).unwrap();
+            if top_level_nodes.contains(&source) && top_level_nodes.contains(&target) {
+                Some(graph.edge_weight(edge_idx).unwrap())
+            } else {
+                None
+            }
+        });
 
         // Adjust spacings based on relation labels
         for relation in top_level_relations {
             if let Some(label) = &relation.label {
-                // Calculate width of the label
                 let label_width = text::calculate_text_size(label, 14).width;
-
-                // Get the layer indices for source and target
-                // This is a simplification - in a real implementation, we would need to map back from node IDs to layer indices
-                let mut source_layer = None;
-                let mut target_layer = None;
-
-                for (layer_idx, layer_nodes) in layers.iter().enumerate() {
-                    for node_idx in layer_nodes {
-                        let node = graph.node_weight(*node_idx).unwrap();
-                        if node.id == relation.source {
-                            source_layer = Some(layer_idx);
-                        }
-                        if node.id == relation.target {
-                            target_layer = Some(layer_idx);
-                        }
-                    }
-                }
-
+                
+                // Find layers for source and target nodes
+                let (source_layer, target_layer) = self.find_node_layers(
+                    graph, relation, layers);
+                
                 if let (Some(src), Some(tgt)) = (source_layer, target_layer) {
                     if src != tgt {
                         // Only adjust spacing for relations between different layers
                         let min_layer = src.min(tgt);
                         let needed_spacing = label_width + 30.0; // Add some padding
 
-                        // Update the spacing if the label requires more space
+                        // Update spacing if label requires more space
                         if min_layer < layer_spacings.len() {
                             layer_spacings[min_layer] =
                                 layer_spacings[min_layer].max(needed_spacing);
@@ -375,8 +398,41 @@ impl Engine {
             }
         }
 
-        // Calculate starting x position for each layer with updated spacings
-        let mut layer_x_positions = Vec::with_capacity(layers.len());
+        (layer_widths, layer_spacings)
+    }
+    
+    /// Find which layer contains nodes for a given relation
+    fn find_node_layers(
+        &self,
+        graph: &Graph,
+        relation: &ast::Relation,
+        layers: &[Vec<NodeIndex>],
+    ) -> (Option<usize>, Option<usize>) {
+        let mut source_layer = None;
+        let mut target_layer = None;
+
+        for (layer_idx, layer_nodes) in layers.iter().enumerate() {
+            for node_idx in layer_nodes {
+                let node = graph.node_weight(*node_idx).unwrap();
+                if node.id == relation.source {
+                    source_layer = Some(layer_idx);
+                }
+                if node.id == relation.target {
+                    target_layer = Some(layer_idx);
+                }
+            }
+        }
+
+        (source_layer, target_layer)
+    }
+    
+    /// Calculate X positions for each layer based on widths and spacings
+    fn calculate_layer_x_positions(
+        &self,
+        layer_widths: &[f32],
+        layer_spacings: &[f32],
+    ) -> Vec<f32> {
+        let mut layer_x_positions = Vec::with_capacity(layer_widths.len());
         let mut x_pos = 0.0;
 
         for (i, width) in layer_widths.iter().enumerate() {
@@ -389,7 +445,18 @@ impl Engine {
             x_pos += width + spacing;
         }
 
-        // For each layer, calculate positions for top-level nodes
+        layer_x_positions
+    }
+    
+    /// Position nodes within their layers
+    fn position_nodes_in_layers(
+        &self,
+        layers: &[Vec<NodeIndex>],
+        layer_x_positions: &[f32],
+        sizes: &HashMap<NodeIndex, Size>,
+    ) -> HashMap<NodeIndex, Point> {
+        let mut positions = HashMap::new();
+        
         for (layer_idx, layer_nodes) in layers.iter().enumerate() {
             let x = layer_x_positions[layer_idx];
 
@@ -408,28 +475,31 @@ impl Engine {
                 y_pos += node_height;
             }
         }
-
-        // Create a copy of positions for the recursive calls
-        let mut result_positions = positions.clone();
-
-        // Now recursively position children within their parent containers
-        for &node_idx in &top_level_nodes {
+        
+        positions
+    }
+    
+    /// Position all children within their parent containers
+    fn position_all_children(
+        &self,
+        top_level_nodes: &[NodeIndex],
+        hierarchy_map: &HashMap<NodeIndex, Vec<NodeIndex>>,
+        sizes: &HashMap<NodeIndex, Size>,
+        result_positions: &mut HashMap<NodeIndex, Point>,
+    ) {
+        for &node_idx in top_level_nodes {
             if let Some(children) = hierarchy_map.get(&node_idx) {
-                // Clone just the positions we need for recursive calls to avoid borrow issues
                 let parent_pos = result_positions[&node_idx];
-
                 self.position_children_within_parent(
                     node_idx,
                     parent_pos,
                     children,
                     sizes,
                     hierarchy_map,
-                    &mut result_positions,
+                    result_positions,
                 );
             }
         }
-
-        result_positions
     }
 
     /// Helper method to position children within their parent container without borrowing conflicts

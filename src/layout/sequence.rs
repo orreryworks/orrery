@@ -2,8 +2,8 @@ use crate::{
     ast,
     graph::Graph,
     layout::{
-        common::{Component, Point, calculate_element_size},
-        text,
+        common::{Component, Point},
+        positioning::{self, calculate_element_size},
     },
 };
 use petgraph::graph::NodeIndex;
@@ -51,7 +51,7 @@ impl Engine {
             label_padding: 20.0, // Extra padding for labels
         }
     }
-    
+
     /// Calculate additional spacing needed between participants based on message label sizes
     fn calculate_message_label_spacing(
         &self,
@@ -60,30 +60,26 @@ impl Engine {
         messages: &[(NodeIndex, NodeIndex, &ast::Relation)],
         participant_indices: &HashMap<NodeIndex, usize>,
     ) -> f32 {
-        let mut max_spacing: f32 = 0.0;
-        
-        for (src_node, tgt_node, relation) in messages {
-            // Get participant indices for this message
-            if let (Some(&src_idx), Some(&tgt_idx)) = (
-                participant_indices.get(src_node),
-                participant_indices.get(tgt_node)
-            ) {
-                // Check if this message is between the two participants we're checking
-                let is_between = (src_idx == source_idx && tgt_idx == target_idx) || 
-                                 (src_idx == target_idx && tgt_idx == source_idx);
-                
-                if is_between {
-                    // If there's a label, calculate its width and add padding
-                    if let Some(label) = &relation.label {
-                        let label_width = text::calculate_text_size(label, 14).width;
-                        let needed_spacing = label_width + self.label_padding;
-                        max_spacing = max_spacing.max(needed_spacing);
+        // Filter messages to only those between the two participants
+        let relevant_messages = messages
+            .iter()
+            .filter_map(|(src_node, tgt_node, relation)| {
+                if let (Some(&src_idx), Some(&tgt_idx)) = (
+                    participant_indices.get(src_node),
+                    participant_indices.get(tgt_node),
+                ) {
+                    if (src_idx == source_idx && tgt_idx == target_idx)
+                        || (src_idx == target_idx && tgt_idx == source_idx)
+                    {
+                        return Some(*relation);
                     }
                 }
-            }
-        }
-        
-        max_spacing
+                None
+            });
+
+        // Extract labels from relations and use shared function to calculate spacing
+        let labels = relevant_messages.map(|relation| relation.label.as_ref());
+        positioning::calculate_label_spacing(labels, self.label_padding)
     }
 
     pub fn calculate<'a>(&self, graph: &'a Graph) -> Layout<'a> {
@@ -113,39 +109,36 @@ impl Engine {
             messages_vec.push((source_idx, target_idx, relation));
         }
 
-        // Process nodes in order and calculate individual positions
-        let mut x_position = 0.0;
+        // Calculate additional spacings based on message labels
+        let node_count = graph.node_indices().count();
+        let mut spacings = Vec::with_capacity(node_count.saturating_sub(1));
+        for i in 1..node_count {
+            let spacing =
+                self.calculate_message_label_spacing(i - 1, i, &messages_vec, &participant_indices);
+            spacings.push(spacing);
+        }
 
-        for (i, node_idx) in graph.node_indices().enumerate() {
-            let node = graph.node_weight(node_idx).unwrap();
-            let size = participant_sizes.get(&node_idx).unwrap().clone();
+        // Get list of node indices and their sizes
+        let node_indices: Vec<_> = graph.node_indices().collect();
+        let sizes: Vec<_> = node_indices
+            .iter()
+            .map(|&idx| participant_sizes.get(&idx).unwrap().clone())
+            .collect();
 
-            // For the first participant, we start at half its width
-            if i == 0 {
-                x_position = size.width / 2.0;
-            }
-            // For subsequent participants, we position based on previous participant and spacing
-            else if let Some(last_participant) = participants.last() {
-                // Get previous participant's width
-                let prev_width = last_participant.component.size.width;
-                
-                // Calculate additional spacing needed for any messages between these participants
-                let additional_spacing = self.calculate_message_label_spacing(
-                    i - 1, i, &messages_vec, &participant_indices);
-                
-                // Use the larger of min_spacing or additional_spacing needed for labels
-                let effective_spacing = self.min_spacing.max(additional_spacing);
+        // Calculate horizontal positions using positioning algorithms
+        let x_positions =
+            positioning::distribute_horizontally(&sizes, self.min_spacing, Some(&spacings), 0.0);
 
-                // Move position by half of previous width + spacing + half of current width
-                x_position += (prev_width / 2.0) + effective_spacing + (size.width / 2.0);
-            }
+        // Create participants and store their indices
+        for (i, node_idx) in node_indices.iter().enumerate() {
+            let node = graph.node_weight(*node_idx).unwrap();
+            let size = participant_sizes.get(node_idx).unwrap().clone();
 
-            // Create participant at calculated position
             participants.push(Participant {
                 component: Component {
                     node,
                     position: Point {
-                        x: x_position,
+                        x: x_positions[i],
                         y: self.top_margin,
                     },
                     size,
@@ -153,7 +146,7 @@ impl Engine {
                 lifeline_end: self.top_margin, // Will be updated later
             });
 
-            participant_indices.insert(node_idx, i);
+            participant_indices.insert(*node_idx, i);
         }
 
         // Calculate message positions and update lifeline ends
