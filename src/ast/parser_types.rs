@@ -19,6 +19,7 @@ pub struct Attribute<'a> {
 #[derive(Debug)]
 pub struct Diagram<'a> {
     pub kind: Spanned<&'a str>,
+    pub attributes: Spanned<Vec<Spanned<Attribute<'a>>>>,
     pub type_definitions: Spanned<Vec<Spanned<TypeDefinition<'a>>>>,
     pub elements: Spanned<Vec<Spanned<Element<'a>>>>,
 }

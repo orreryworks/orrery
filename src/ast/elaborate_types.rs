@@ -5,6 +5,7 @@ use crate::{
     error::ElaborationDiagnosticError,
     shape::{Oval, Rectangle, Shape},
 };
+use std::fmt::Display;
 use std::{fmt, rc::Rc, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -132,10 +133,51 @@ pub struct TypeDefinition {
     pub shape_type: Rc<dyn Shape>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutEngine {
+    Basic,
+    Force,
+}
+
+impl FromStr for LayoutEngine {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "basic" => Ok(Self::Basic),
+            "force" => Ok(Self::Force),
+            _ => Err("Unsupported layout engine"),
+        }
+    }
+}
+
+impl From<LayoutEngine> for &'static str {
+    fn from(val: LayoutEngine) -> Self {
+        match val {
+            LayoutEngine::Basic => "basic",
+            LayoutEngine::Force => "force",
+        }
+    }
+}
+
+impl Default for LayoutEngine {
+    fn default() -> Self {
+        Self::Basic
+    }
+}
+
+impl Display for LayoutEngine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s: &'static str = (*self).into();
+        write!(f, "{s}")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Diagram {
     pub kind: DiagramKind,
     pub scope: Scope,
+    pub layout_engine: LayoutEngine,
 }
 
 #[derive(Debug, Clone)]

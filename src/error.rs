@@ -27,6 +27,9 @@ pub enum FilamentError {
     #[error("Graph error: {0}")]
     Graph(String),
 
+    #[error("Layout error: {0}")]
+    Layout(String),
+
     #[error("Export error: {0}")]
     Export(Box<dyn std::error::Error>),
 }
@@ -42,6 +45,7 @@ impl Diagnostic for FilamentError {
                 None
             }
             Self::Graph(_) => Some(Box::new("filament::error::graph")),
+            Self::Layout(_) => Some(Box::new("filament::error::layout")),
             Self::Export(_) => Some(Box::new("filament::error::export")),
         }
     }

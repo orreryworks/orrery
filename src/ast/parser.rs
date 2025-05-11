@@ -16,6 +16,10 @@ use nom_locate::LocatedSpan;
 
 type Span<'a> = LocatedSpan<&'a str>;
 type PResult<'a, T> = IResult<Span<'a>, Spanned<T>, SlimParserError>;
+type DiagramHeader<'a> = (
+    Spanned<&'a str>,
+    Spanned<Vec<Spanned<types::Attribute<'a>>>>,
+);
 
 fn to_spanned<'a, T>(input: Span, result: IResult<Span<'a>, T, SlimParserError>) -> PResult<'a, T> {
     match result {
@@ -297,16 +301,26 @@ fn parse_elements(input: Span) -> PResult<Vec<Spanned<types::Element>>> {
     to_spanned(input, many0(parse_element).parse(input))
 }
 
-fn parse_diagram_header(input: Span) -> PResult<&str> {
-    context(
-        "header",
-        cut(delimited(
-            pair(context("diagram_keyword", tag("diagram")), multispace1),
-            context("diagram_type", parse_identifier),
-            semicolon,
-        )),
+fn parse_diagram_header(input: Span) -> PResult<DiagramHeader> {
+    to_spanned(
+        input,
+        context(
+            "header",
+            map(
+                cut((
+                    delimited(
+                        pair(context("diagram_keyword", tag("diagram")), multispace1),
+                        context("diagram_type", parse_identifier),
+                        ws_comments0,
+                    ),
+                    opt(parse_attributes),
+                    semicolon,
+                )),
+                |(kind, attrs_opt, _)| (kind, attrs_opt.unwrap_or_default()),
+            ),
+        )
+        .parse(input),
     )
-    .parse(input)
 }
 
 fn parse_diagram(input: Span) -> PResult<types::Element> {
@@ -318,9 +332,11 @@ fn parse_diagram(input: Span) -> PResult<types::Element> {
                 (parse_diagram_header, parse_type_definitions, parse_elements),
                 ws_comments0,
             )),
-            |(kind, type_definitions, elements)| {
+            |(header_result, type_definitions, elements)| {
+                let (kind, attributes) = header_result.into_inner();
                 types::Element::Diagram(types::Diagram {
                     kind,
+                    attributes,
                     type_definitions,
                     elements,
                 })
@@ -875,14 +891,28 @@ mod tests {
     fn test_parse_diagram_header() {
         // Test basic diagram header
         let input = Span::new("diagram component;");
-        let (rest, kind) = parse_diagram_header(input).unwrap();
+        let (rest, result) = parse_diagram_header(input).unwrap();
+        let (kind, attrs) = result.into_inner();
         assert_eq!(*rest.fragment(), "");
         assert_eq!(*kind, "component");
+        assert_eq!(attrs.len(), 0);
 
         let input = Span::new("diagram sequence;");
-        let (rest, kind) = parse_diagram_header(input).unwrap();
+        let (rest, result) = parse_diagram_header(input).unwrap();
+        let (kind, attrs) = result.into_inner();
         assert_eq!(*rest.fragment(), "");
         assert_eq!(*kind, "sequence");
+        assert_eq!(attrs.len(), 0);
+
+        // Test diagram header with attributes
+        let input = Span::new("diagram component [layout_engine=\"basic\"];");
+        let (rest, result) = parse_diagram_header(input).unwrap();
+        let (kind, attrs) = result.into_inner();
+        assert_eq!(*rest.fragment(), "");
+        assert_eq!(*kind, "component");
+        assert_eq!(attrs.len(), 1);
+        assert_eq!(*attrs[0].name, "layout_engine");
+        assert_eq!(*attrs[0].value, "basic");
 
         // Test invalid diagram headers
         assert!(parse_diagram_header(Span::new("diagram;")).is_err());
@@ -899,6 +929,7 @@ mod tests {
         match diagram.into_inner() {
             types::Element::Diagram(d) => {
                 assert_eq!(*d.kind, "component");
+                assert_eq!(d.attributes.len(), 0);
                 assert_eq!(d.type_definitions.len(), 0);
                 assert_eq!(d.elements.len(), 0);
             }
@@ -916,6 +947,7 @@ mod tests {
         match diagram.into_inner() {
             types::Element::Diagram(d) => {
                 assert_eq!(*d.kind, "component");
+                assert_eq!(d.attributes.len(), 0);
                 assert_eq!(d.type_definitions.len(), 1);
                 assert_eq!(*d.type_definitions[0].name, "Database");
                 assert_eq!(d.elements.len(), 0);

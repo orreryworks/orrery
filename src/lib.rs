@@ -63,7 +63,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
         ast::DiagramKind::Component => {
             // Calculating component layout
             info!("Calculating component layout");
-            let layout_engine = layout::component::Engine::new();
+            let layout_engine = layout::create_component_engine(elaborated_ast.layout_engine)?;
             let layout = layout_engine.calculate(&graph);
             debug!(
                 components_len = layout.components.len(),
@@ -78,7 +78,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
         ast::DiagramKind::Sequence => {
             // Calculating sequence layout
             info!("Calculating sequence layout");
-            let layout_engine = layout::sequence::Engine::new();
+            let layout_engine = layout::create_sequence_engine(elaborated_ast.layout_engine)?;
             let layout = layout_engine.calculate(&graph);
             debug!(
                 participants_len = layout.participants.len(),

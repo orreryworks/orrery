@@ -85,8 +85,30 @@ impl<'a> Builder<'a> {
                     }
                 };
 
+                // Process layout_engine attribute
+                let mut layout_engine = types::LayoutEngine::default();
+
+                // Look for layout_engine in attributes
+                for attr in diag.attributes.inner() {
+                    if *attr.name == "layout_engine" {
+                        let value = attr.value.inner();
+                        layout_engine = types::LayoutEngine::from_str(value).map_err(|_| {
+                            ElaborationDiagnosticError::from_spanned(
+                                format!("Invalid layout_engine value: '{}'", value),
+                                &attr.value,
+                                "unsupported layout engine",
+                                Some("Supported layout engines are: 'basic', 'force'".to_string()),
+                            )
+                        })?;
+                    }
+                }
+
                 info!(kind:?; "Diagram elaboration completed successfully");
-                Ok(types::Diagram { kind, scope })
+                Ok(types::Diagram {
+                    kind,
+                    scope,
+                    layout_engine,
+                })
             }
             _ => Err(ElaborationDiagnosticError::from_spanned(
                 "Invalid element, expected Diagram".to_string(),
@@ -209,7 +231,29 @@ impl<'a> Builder<'a> {
                     }
                 };
 
-                Ok(types::Diagram { kind, scope })
+                // Process layout_engine attribute
+                let mut layout_engine = types::LayoutEngine::default();
+
+                // Look for layout_engine in attributes
+                for attr in diag.attributes.inner() {
+                    if attr.name.inner() == &"layout_engine" {
+                        let value = attr.value.inner();
+                        layout_engine = types::LayoutEngine::from_str(value).map_err(|_| {
+                            ElaborationDiagnosticError::from_spanned(
+                                format!("Invalid layout_engine value: '{}'", value),
+                                &attr.value,
+                                "unsupported layout engine",
+                                Some("Supported layout engines are: 'basic', 'force'".to_string()),
+                            )
+                        })?;
+                    }
+                }
+
+                Ok(types::Diagram {
+                    kind,
+                    scope,
+                    layout_engine,
+                })
             }
             _ => Err(ElaborationDiagnosticError::from_spanned(
                 "Invalid element, expected Diagram".to_string(),

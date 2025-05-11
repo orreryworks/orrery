@@ -11,7 +11,7 @@ Filament allows you to define diagrams using a text-based syntax, which is then 
 A Filament document consists of a diagram declaration, optional type definitions, and diagram elements.
 
 ```
-diagram <kind>;
+diagram <kind> [attributes...];
 [type definitions...]
 [elements...]
 ```
@@ -28,6 +28,12 @@ Filament supports two types of diagrams:
 Example:
 ```
 diagram component;
+```
+
+Diagrams can also include attributes to customize their behavior:
+
+```
+diagram component [layout_engine="force"];
 ```
 
 ## 4. Type System
@@ -105,7 +111,7 @@ Filament supports four relation types:
 
 ## 6. Attributes
 
-Attributes customize the appearance of elements:
+Attributes customize the appearance and behavior of elements:
 
 ### 6.1 Common Attributes
 
@@ -156,12 +162,24 @@ Nested components are positioned within their parent container and maintain thei
 
 ## 9. Layout Behavior
 
+Filament supports multiple layout engines that can be specified using the `layout_engine` attribute in the diagram declaration:
+
+```
+diagram component [layout_engine="force"];
+```
+
+Available layout engines:
+
+- `basic`: The default layout engine with simple positioning (available for both component and sequence diagrams)
+- `force`: A force-directed layout engine for more organic component positioning (available for component diagrams)
+
 ### 9.1 Component Diagrams
 
 - Components are automatically positioned based on their relationships
 - Nested components are arranged within their parent container
 - Sizes are automatically calculated based on content and text
 - Margins and padding are automatically applied for readability
+- The layout algorithm can be selected with the `layout_engine` attribute
 
 ### 9.2 Sequence Diagrams
 
@@ -185,7 +203,7 @@ Filament diagrams are rendered as SVG files with the following characteristics:
 ### 11.1 Component Diagram Example
 
 ```
-diagram component;
+diagram component [layout_engine="force"];
 
 type Database = Rectangle [fill_color="lightblue", rounded="10"];
 type Service = Rectangle [fill_color="#e6f3ff"];
