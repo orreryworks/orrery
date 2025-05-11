@@ -7,6 +7,7 @@
 // Layout engine modules with different implementations
 mod basic;
 mod force;
+mod sugiyama;
 
 use crate::{
     ast::LayoutEngine,
@@ -34,6 +35,7 @@ pub fn create_component_engine(
     match engine_type {
         LayoutEngine::Basic => Ok(Box::new(basic::Component::new())),
         LayoutEngine::Force => Ok(Box::new(force::Component::new())),
+        LayoutEngine::Sugiyama => Ok(Box::new(sugiyama::Component::new())),
         // Future layout engines would be added here
     }
 }

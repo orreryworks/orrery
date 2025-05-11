@@ -137,6 +137,7 @@ pub struct TypeDefinition {
 pub enum LayoutEngine {
     Basic,
     Force,
+    Sugiyama,
 }
 
 impl FromStr for LayoutEngine {
@@ -146,6 +147,7 @@ impl FromStr for LayoutEngine {
         match s {
             "basic" => Ok(Self::Basic),
             "force" => Ok(Self::Force),
+            "sugiyama" => Ok(Self::Sugiyama),
             _ => Err("Unsupported layout engine"),
         }
     }
@@ -156,6 +158,7 @@ impl From<LayoutEngine> for &'static str {
         match val {
             LayoutEngine::Basic => "basic",
             LayoutEngine::Force => "force",
+            LayoutEngine::Sugiyama => "sugiyama",
         }
     }
 }

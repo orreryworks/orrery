@@ -97,7 +97,7 @@ impl<'a> Builder<'a> {
                                 format!("Invalid layout_engine value: '{}'", value),
                                 &attr.value,
                                 "unsupported layout engine",
-                                Some("Supported layout engines are: 'basic', 'force'".to_string()),
+                                Some("Supported layout engines are: 'basic', 'force', 'sugiyama'".to_string()),
                             )
                         })?;
                     }
@@ -243,7 +243,7 @@ impl<'a> Builder<'a> {
                                 format!("Invalid layout_engine value: '{}'", value),
                                 &attr.value,
                                 "unsupported layout engine",
-                                Some("Supported layout engines are: 'basic', 'force'".to_string()),
+                                Some("Supported layout engines are: 'basic', 'force', 'sugiyama'".to_string()),
                             )
                         })?;
                     }
