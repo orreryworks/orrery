@@ -5,6 +5,9 @@ use crate::{
 use log::{debug, info, trace};
 use std::{collections::HashMap, rc::Rc, str::FromStr};
 
+/// Type alias for Result with ElaborationDiagnosticError as the error type
+type EResult<T> = Result<T, ElaborationDiagnosticError>;
+
 pub struct Builder<'a> {
     cfg: &'a AppConfig,
     type_definitions: Vec<Rc<types::TypeDefinition>>,
@@ -29,10 +32,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn build(
-        mut self,
-        diag: &Spanned<parser_types::Element<'a>>,
-    ) -> Result<types::Diagram, ElaborationDiagnosticError> {
+    pub fn build(mut self, diag: &Spanned<parser_types::Element<'a>>) -> EResult<types::Diagram> {
         debug!("Building elaborated diagram");
         match diag.inner() {
             parser_types::Element::Diagram(diag) => {
@@ -71,46 +71,9 @@ impl<'a> Builder<'a> {
                     }
                 };
 
-                // Determine the diagram kind based on the kind string
-                let kind = match *diag.kind.inner() {
-                    // FIXME: Why kind has &&str?!
-                    "sequence" => types::DiagramKind::Sequence,
-                    "component" => types::DiagramKind::Component,
-                    _ => {
-                        return Err(ElaborationDiagnosticError::from_spanned(
-                            format!("Invalid diagram kind: '{}'", diag.kind),
-                            &diag.kind,
-                            "unsupported diagram type",
-                            Some(
-                                "Supported diagram types are: 'component', 'sequence'".to_string(),
-                            ),
-                        ));
-                    }
-                };
-
-                // Set the layout engine based on the diagram kind and config
-                let mut layout_engine = match kind {
-                    types::DiagramKind::Component => self.cfg.layout.component,
-                    types::DiagramKind::Sequence => self.cfg.layout.sequence,
-                };
-
-                // Look for layout_engine in attributes - this overrides config settings
-                for attr in diag.attributes.inner() {
-                    if *attr.name == "layout_engine" {
-                        let value = attr.value.inner();
-                        layout_engine = types::LayoutEngine::from_str(value).map_err(|_| {
-                            ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid layout_engine value: '{}'", value),
-                                &attr.value,
-                                "unsupported layout engine",
-                                Some(
-                                    "Supported layout engines are: 'basic', 'force', 'sugiyama'"
-                                        .to_string(),
-                                ),
-                            )
-                        })?;
-                    }
-                }
+                // Determine diagram kind and layout engine
+                let kind = self.determine_diagram_kind(&diag.kind)?;
+                let layout_engine = self.determine_layout_engine(kind, &diag.attributes)?;
 
                 info!(kind:?; "Diagram elaboration completed successfully");
                 Ok(types::Diagram {
@@ -131,7 +94,7 @@ impl<'a> Builder<'a> {
     fn insert_type_definition(
         &mut self,
         type_def: Spanned<types::TypeDefinition>,
-    ) -> Result<Rc<types::TypeDefinition>, ElaborationDiagnosticError> {
+    ) -> EResult<Rc<types::TypeDefinition>> {
         let span = type_def.clone_spanned();
         let type_def = type_def.into_inner();
         let id = type_def.id.clone();
@@ -159,9 +122,9 @@ impl<'a> Builder<'a> {
 
     fn update_type_direct_definitions(
         &mut self,
-        type_defs: &Spanned<Vec<Spanned<parser_types::TypeDefinition<'a>>>>,
-    ) -> Result<(), ElaborationDiagnosticError> {
-        for type_def in type_defs.inner() {
+        type_definitions: &Spanned<Vec<Spanned<parser_types::TypeDefinition<'a>>>>,
+    ) -> EResult<()> {
+        for type_def in type_definitions.inner() {
             let base_type_name = types::TypeId::from_name(&type_def.base_type);
             let base = self
                 .type_definition_map
@@ -169,15 +132,9 @@ impl<'a> Builder<'a> {
                 .ok_or_else(|| {
                     // Create a rich diagnostic error with source location information
                     let type_name = &type_def.base_type;
-                    let message = format!("Base type '{type_name}' not found");
-
-                    ElaborationDiagnosticError::from_spanned(
-                        message,
-                        &type_def.base_type,
-                        "undefined type",
-                        Some(format!(
-                            "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type",
-                        ))
+                    self.create_undefined_type_error(
+                        type_name,
+                        &format!("Base type '{type_name}' not found"),
                     )
                 })?;
 
@@ -207,7 +164,7 @@ impl<'a> Builder<'a> {
     fn build_diagram_from_parser(
         &mut self,
         diag: &Spanned<parser_types::Element>,
-    ) -> Result<types::Diagram, ElaborationDiagnosticError> {
+    ) -> EResult<types::Diagram> {
         match diag.inner() {
             parser_types::Element::Diagram(diag) => {
                 let block = self.build_block_from_elements(&diag.elements, None)?;
@@ -224,45 +181,9 @@ impl<'a> Builder<'a> {
                     }
                 };
 
-                // Determine the diagram kind
-                let kind = match *diag.kind {
-                    "sequence" => types::DiagramKind::Sequence,
-                    "component" => types::DiagramKind::Component,
-                    _ => {
-                        return Err(ElaborationDiagnosticError::from_spanned(
-                            format!("Invalid diagram kind: '{}'", diag.kind),
-                            &diag.kind,
-                            "unsupported diagram type",
-                            Some(
-                                "Supported diagram types are: 'component', 'sequence'".to_string(),
-                            ),
-                        ));
-                    }
-                };
-
-                // Set the layout engine based on the diagram kind and config
-                let mut layout_engine = match kind {
-                    types::DiagramKind::Component => self.cfg.layout.component,
-                    types::DiagramKind::Sequence => self.cfg.layout.sequence,
-                };
-
-                // Look for layout_engine in attributes
-                for attr in diag.attributes.inner() {
-                    if attr.name.inner() == &"layout_engine" {
-                        let value = attr.value.inner();
-                        layout_engine = types::LayoutEngine::from_str(value).map_err(|_| {
-                            ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid layout_engine value: '{}'", value),
-                                &attr.value,
-                                "unsupported layout engine",
-                                Some(
-                                    "Supported layout engines are: 'basic', 'force', 'sugiyama'"
-                                        .to_string(),
-                                ),
-                            )
-                        })?;
-                    }
-                }
+                // Determine diagram kind and layout engine
+                let kind = self.determine_diagram_kind(&diag.kind)?;
+                let layout_engine = self.determine_layout_engine(kind, &diag.attributes)?;
 
                 Ok(types::Diagram {
                     kind,
@@ -283,7 +204,7 @@ impl<'a> Builder<'a> {
         &mut self,
         parser_elements: &[Spanned<parser_types::Element>],
         parent_id: Option<&types::TypeId>,
-    ) -> Result<types::Block, ElaborationDiagnosticError> {
+    ) -> EResult<types::Block> {
         if parser_elements.is_empty() {
             Ok(types::Block::None)
         } else if let parser_types::Element::Diagram { .. } = parser_elements[0].inner() {
@@ -319,7 +240,7 @@ impl<'a> Builder<'a> {
         &mut self,
         parser_elements: &[Spanned<parser_types::Element>],
         parent_id: Option<&types::TypeId>,
-    ) -> Result<types::Scope, ElaborationDiagnosticError> {
+    ) -> EResult<types::Scope> {
         let mut elements = Vec::new();
         for parser_elm in parser_elements {
             match parser_elm.inner() {
@@ -330,21 +251,16 @@ impl<'a> Builder<'a> {
                     attributes,
                     nested_elements,
                 } => {
-                    let node_id = parent_id.map_or_else(
-                        || types::TypeId::from_name(name),
-                        |parent| parent.create_nested(name),
-                    );
+                    let node_id = self.create_type_id(parent_id, name);
 
-                    let type_def = self.build_element_type_definition(type_name, attributes)
-                        .map_err(|_| ElaborationDiagnosticError::from_spanned(
-                            format!("Unknown type '{type_name}' for component '{name}'"),
-                            name, // Use the component name's span as the error location
-                            "undefined type",
-                            Some(format!(
-                                "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type"
-                            )),
-                        )
-                    )?;
+                    let type_def = self
+                        .build_element_type_definition(type_name, attributes)
+                        .map_err(|_| {
+                            self.create_undefined_type_error(
+                                name,
+                                &format!("Unknown type '{type_name}' for component '{name}'"),
+                            )
+                        })?;
 
                     // Process nested elements with the new ID as parent
                     let block = self.build_block_from_elements(nested_elements, Some(&node_id))?;
@@ -366,77 +282,11 @@ impl<'a> Builder<'a> {
                     attributes,
                     label,
                 } => {
-                    // Extract color, width and arrow style from attributes if they exist
-                    let mut color = Color::default();
-                    let mut width = 1;
-                    let mut arrow_style = types::ArrowStyle::default();
-
-                    // Process attributes with better error handling
-                    for attr in attributes.inner() {
-                        match *attr.name {
-                            "color" => {
-                                color = match Color::new(&attr.value) {
-                                    Ok(color) => color,
-                                    Err(err) => {
-                                        return Err(ElaborationDiagnosticError::from_spanned(
-                                            format!("Invalid color value '{}': {err}", attr.value,),
-                                            &attr.value,
-                                            "invalid color",
-                                            Some(
-                                                "Color must be a valid CSS color value".to_string(),
-                                            ),
-                                        ));
-                                    }
-                                }
-                            }
-                            "width" => {
-                                width = match attr.value.parse::<usize>() {
-                                    Ok(width) => width,
-                                    Err(_) => {
-                                        return Err(ElaborationDiagnosticError::from_spanned(
-                                            format!(
-                                                "Invalid width value '{}': expected a positive integer",
-                                                attr.value
-                                            ),
-                                            &attr.value,
-                                            "invalid width",
-                                            Some("Width must be a positive integer".to_string()),
-                                        ));
-                                    }
-                                };
-                            }
-                            "style" => {
-                                arrow_style = match types::ArrowStyle::from_str(&attr.value) {
-                                    Ok(style) => style,
-                                    Err(_) => {
-                                        return Err(ElaborationDiagnosticError::from_spanned(
-                                            format!(
-                                                "Invalid arrow style '{}'",
-                                                attr.value
-                                            ),
-                                            &attr.value,
-                                            "invalid style",
-                                            Some("Arrow style must be 'straight', 'curved', or 'orthogonal'".to_string()),
-                                        ));
-                                    }
-                                };
-                            }
-                            _ => {
-                                // TODO: We could warn about unknown attributes here
-                            }
-                        }
-                    }
+                    let (color, width, arrow_style) = self.parse_relation_attributes(attributes)?;
 
                     // Create source and target IDs based on parent context if present
-                    let source_id = parent_id.map_or_else(
-                        || types::TypeId::from_name(source),
-                        |parent| parent.create_nested(source),
-                    );
-
-                    let target_id = parent_id.map_or_else(
-                        || types::TypeId::from_name(target),
-                        |parent| parent.create_nested(target),
-                    );
+                    let source_id = self.create_type_id(parent_id, source);
+                    let target_id = self.create_type_id(parent_id, target);
 
                     elements.push(types::Element::Relation(types::Relation {
                         source: source_id,
@@ -466,18 +316,13 @@ impl<'a> Builder<'a> {
         &mut self,
         type_name: &Spanned<&str>,
         attributes: &[Spanned<parser_types::Attribute>],
-    ) -> Result<Rc<types::TypeDefinition>, ElaborationDiagnosticError> {
+    ) -> EResult<Rc<types::TypeDefinition>> {
         // Look up the base type
         let type_id = types::TypeId::from_name(type_name);
         let Some(base) = self.type_definition_map.get(&type_id) else {
-            return Err(ElaborationDiagnosticError::from_spanned(
-                format!("Unknown type '{type_name}' for component '{type_name}'"),
-                type_name, // Use the component name's span as the error location
-                "undefined type",
-                Some(format!(
-                    "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type"
-                )),
-            ));
+            return Err(
+                self.create_undefined_type_error(type_name, &format!("Unknown type '{type_name}'"))
+            );
         };
 
         // If there are no attributes, just return the base type
@@ -489,14 +334,154 @@ impl<'a> Builder<'a> {
         let id = types::TypeId::from_anonymous(self.type_definition_map.len());
         match types::TypeDefinition::from_base(id, base, attributes) {
             Ok(new_type) => self.insert_type_definition(type_name.map(|_| new_type)),
-            Err(err) => Err(ElaborationDiagnosticError::from_spanned(
-                format!("Error creating type based on '{type_name}': {err}"),
+            Err(err) => Err(self.create_undefined_type_error(
                 type_name,
-                "undefined type",
-                Some(format!(
-                    "Type '{type_name}' must be a built-in type or defined with a 'type' statement before it can be used as a base type"
-                )),
+                &format!("Error creating type based on '{type_name}': {err}"),
             )),
         }
+    }
+
+    /// Determines the diagram kind based on the input string.
+    fn determine_diagram_kind(&self, kind_str: &Spanned<&str>) -> EResult<types::DiagramKind> {
+        match *kind_str.inner() {
+            "sequence" => Ok(types::DiagramKind::Sequence),
+            "component" => Ok(types::DiagramKind::Component),
+            _ => Err(ElaborationDiagnosticError::from_spanned(
+                format!("Invalid diagram kind: '{}'", kind_str),
+                kind_str,
+                "unsupported diagram type",
+                Some("Supported diagram types are: 'component', 'sequence'".to_string()),
+            )),
+        }
+    }
+
+    /// Determines the layout engine based on diagram kind and attributes.
+    /// First uses the config default for the diagram kind, then looks for an override in attributes.
+    fn determine_layout_engine(
+        &self,
+        kind: types::DiagramKind,
+        attributes: &Spanned<Vec<Spanned<parser_types::Attribute<'a>>>>,
+    ) -> EResult<types::LayoutEngine> {
+        // Set the layout engine based on the diagram kind and config
+        let mut layout_engine = match kind {
+            types::DiagramKind::Component => self.cfg.layout.component,
+            types::DiagramKind::Sequence => self.cfg.layout.sequence,
+        };
+
+        // Look for layout_engine in attributes - this overrides config settings
+        for attr in attributes.inner() {
+            if attr.inner().name.inner() == &"layout_engine" {
+                let value = attr.inner().value.inner();
+                layout_engine = types::LayoutEngine::from_str(value).map_err(|_| {
+                    ElaborationDiagnosticError::from_spanned(
+                        format!("Invalid layout_engine value: '{}'", value),
+                        &attr.inner().value,
+                        "unsupported layout engine",
+                        Some(
+                            "Supported layout engines are: 'basic', 'force', 'sugiyama'"
+                                .to_string(),
+                        ),
+                    )
+                })?;
+            }
+        }
+
+        Ok(layout_engine)
+    }
+
+    /// Creates a TypeId from a name, considering the parent context if available
+    fn create_type_id(
+        &self,
+        parent_id: Option<&types::TypeId>,
+        name: &Spanned<&str>,
+    ) -> types::TypeId {
+        let name_str = name.inner().as_ref();
+        parent_id.map_or_else(
+            || types::TypeId::from_name(name_str),
+            |parent| parent.create_nested(name_str),
+        )
+    }
+
+    /// Creates a standardized error for undefined type situations
+    fn create_undefined_type_error(
+        &self,
+        span: &Spanned<&str>,
+        message: &str,
+    ) -> ElaborationDiagnosticError {
+        ElaborationDiagnosticError::from_spanned(
+            message.to_string(),
+            span,
+            "undefined type",
+            Some(format!(
+                "Type '{}' must be a built-in type or defined with a 'type' statement before it can be used as a base type",
+                span.inner()
+            )),
+        )
+    }
+
+    /// Parses relation attributes and returns color, width, and arrow style
+    fn parse_relation_attributes(
+        &self,
+        attributes: &Spanned<Vec<Spanned<parser_types::Attribute<'_>>>>,
+    ) -> EResult<(Color, usize, types::ArrowStyle)> {
+        let mut color = Color::default();
+        let mut width = 1;
+        let mut arrow_style = types::ArrowStyle::default();
+
+        // Process attributes with better error handling
+        for attr in attributes.inner() {
+            match *attr.name {
+                "color" => {
+                    color = match Color::new(&attr.value) {
+                        Ok(color) => color,
+                        Err(err) => {
+                            return Err(ElaborationDiagnosticError::from_spanned(
+                                format!("Invalid color value '{}': {err}", attr.value,),
+                                &attr.value,
+                                "invalid color",
+                                Some("Color must be a valid CSS color value".to_string()),
+                            ));
+                        }
+                    }
+                }
+                "width" => {
+                    width = match attr.value.parse::<usize>() {
+                        Ok(width) => width,
+                        Err(_) => {
+                            return Err(ElaborationDiagnosticError::from_spanned(
+                                format!(
+                                    "Invalid width value '{}': expected a positive integer",
+                                    attr.value
+                                ),
+                                &attr.value,
+                                "invalid width",
+                                Some("Width must be a positive integer".to_string()),
+                            ));
+                        }
+                    };
+                }
+                "style" => {
+                    arrow_style = match types::ArrowStyle::from_str(&attr.value) {
+                        Ok(style) => style,
+                        Err(_) => {
+                            return Err(ElaborationDiagnosticError::from_spanned(
+                                format!("Invalid arrow style '{}'", attr.value),
+                                &attr.value,
+                                "invalid style",
+                                Some(
+                                    "Arrow style must be 'straight', 'curved', or 'orthogonal'"
+                                        .to_string(),
+                                ),
+                            ));
+                        }
+                    };
+                }
+                _ => {
+                    // TODO: We could warn about unknown attributes here
+                }
+            }
+        }
+
+        Ok((color, width, arrow_style))
     }
 }
