@@ -5,6 +5,7 @@ use crate::{
     error::ElaborationDiagnosticError,
     shape::{Oval, Rectangle, Shape},
 };
+use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::{fmt, rc::Rc, str::FromStr};
 
@@ -133,7 +134,8 @@ pub struct TypeDefinition {
     pub shape_type: Rc<dyn Shape>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum LayoutEngine {
     Basic,
     Force,

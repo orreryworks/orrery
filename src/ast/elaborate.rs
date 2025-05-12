@@ -1,17 +1,19 @@
 use super::{elaborate_types as types, parser_types};
-use crate::ast::span::Spanned;
-use crate::{color::Color, error::ElaborationDiagnosticError};
+use crate::{
+    ast::span::Spanned, color::Color, config::AppConfig, error::ElaborationDiagnosticError,
+};
 use log::{debug, info, trace};
 use std::{collections::HashMap, rc::Rc, str::FromStr};
 
 pub struct Builder<'a> {
+    cfg: &'a AppConfig,
     type_definitions: Vec<Rc<types::TypeDefinition>>,
     type_definition_map: HashMap<types::TypeId, Rc<types::TypeDefinition>>,
     _phantom: std::marker::PhantomData<&'a str>, // Use PhantomData to maintain the lifetime parameter
 }
 
 impl<'a> Builder<'a> {
-    pub fn new(_source: &'a str) -> Self {
+    pub fn new(cfg: &'a AppConfig, _source: &'a str) -> Self {
         // We keep the source parameter for backward compatibility but don't store it anymore
         let type_definitions = types::TypeDefinition::defaults();
         let type_definition_map = type_definitions
@@ -20,6 +22,7 @@ impl<'a> Builder<'a> {
             .collect();
 
         Self {
+            cfg,
             type_definitions,
             type_definition_map,
             _phantom: std::marker::PhantomData,
@@ -85,10 +88,13 @@ impl<'a> Builder<'a> {
                     }
                 };
 
-                // Process layout_engine attribute
-                let mut layout_engine = types::LayoutEngine::default();
+                // Set the layout engine based on the diagram kind and config
+                let mut layout_engine = match kind {
+                    types::DiagramKind::Component => self.cfg.layout.component,
+                    types::DiagramKind::Sequence => self.cfg.layout.sequence,
+                };
 
-                // Look for layout_engine in attributes
+                // Look for layout_engine in attributes - this overrides config settings
                 for attr in diag.attributes.inner() {
                     if *attr.name == "layout_engine" {
                         let value = attr.value.inner();
@@ -97,7 +103,10 @@ impl<'a> Builder<'a> {
                                 format!("Invalid layout_engine value: '{}'", value),
                                 &attr.value,
                                 "unsupported layout engine",
-                                Some("Supported layout engines are: 'basic', 'force', 'sugiyama'".to_string()),
+                                Some(
+                                    "Supported layout engines are: 'basic', 'force', 'sugiyama'"
+                                        .to_string(),
+                                ),
                             )
                         })?;
                     }
@@ -231,8 +240,11 @@ impl<'a> Builder<'a> {
                     }
                 };
 
-                // Process layout_engine attribute
-                let mut layout_engine = types::LayoutEngine::default();
+                // Set the layout engine based on the diagram kind and config
+                let mut layout_engine = match kind {
+                    types::DiagramKind::Component => self.cfg.layout.component,
+                    types::DiagramKind::Sequence => self.cfg.layout.sequence,
+                };
 
                 // Look for layout_engine in attributes
                 for attr in diag.attributes.inner() {
@@ -243,7 +255,10 @@ impl<'a> Builder<'a> {
                                 format!("Invalid layout_engine value: '{}'", value),
                                 &attr.value,
                                 "unsupported layout engine",
-                                Some("Supported layout engines are: 'basic', 'force', 'sugiyama'".to_string()),
+                                Some(
+                                    "Supported layout engines are: 'basic', 'force', 'sugiyama'"
+                                        .to_string(),
+                                ),
                             )
                         })?;
                     }

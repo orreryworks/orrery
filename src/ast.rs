@@ -13,7 +13,7 @@ pub mod parser;
 mod parser_types;
 pub mod span;
 
-use crate::error::FilamentError;
+use crate::{config::AppConfig, error::FilamentError};
 pub use elaborate_types::*;
 
 /// Builds a fully elaborated AST from source code.
@@ -30,12 +30,12 @@ pub use elaborate_types::*;
 /// # Returns
 ///
 /// The elaborated diagram AST or a `FilamentError`
-pub fn build_ast(source: &str) -> Result<elaborate_types::Diagram, FilamentError> {
+pub fn build_ast(cfg: &AppConfig, source: &str) -> Result<elaborate_types::Diagram, FilamentError> {
     // Step 1: Parse the diagram
     let parsed_ast = parser::build_diagram(source)?;
 
     // Step 2: Elaborate the AST with rich error handling
-    let elaborate_builder = elaborate::Builder::new(source);
+    let elaborate_builder = elaborate::Builder::new(cfg, source);
     elaborate_builder
         .build(&parsed_ast)
         .map_err(|e| FilamentError::new_elaboration_error(e, source))

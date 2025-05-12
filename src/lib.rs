@@ -1,5 +1,6 @@
 mod ast;
 mod color;
+mod config;
 mod error;
 mod export;
 mod graph;
@@ -7,6 +8,7 @@ mod layout;
 mod shape;
 
 use clap::Parser;
+use config::AppConfig;
 pub use error::FilamentError;
 use export::Exporter;
 use log::{debug, info, trace};
@@ -26,6 +28,10 @@ pub struct Config {
     /// Path to the output SVG file
     #[arg(short, long, default_value = "out.svg")]
     pub output: String,
+
+    /// Path to configuration file (TOML)
+    #[arg(short, long)]
+    pub config: Option<String>,
 }
 
 pub fn run(cfg: &Config) -> Result<(), FilamentError> {
@@ -35,13 +41,22 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
         "Processing diagram",
     );
 
+    // Load configuration if specified
+    let app_config = if let Some(config_path) = &cfg.config {
+        info!(config_path; "Loading configuration file");
+        AppConfig::load(config_path)?
+    } else {
+        debug!("Using default configuration");
+        AppConfig::default()
+    };
+
     // Reading input file
     let content = fs::read_to_string(&cfg.file)?;
     trace!(content; "File content");
 
     // Process the diagram through parsing and elaboration
     info!("Building diagram AST");
-    let elaborated_ast = ast::build_ast(&content)?;
+    let elaborated_ast = ast::build_ast(&app_config, &content)?;
     debug!("AST built successfully");
     trace!(elaborated_ast:?; "Elaborated AST");
 

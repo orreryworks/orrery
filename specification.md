@@ -172,6 +172,7 @@ Available layout engines:
 
 - `basic`: The default layout engine with simple positioning (available for both component and sequence diagrams)
 - `force`: A force-directed layout engine for more organic component positioning (available for component diagrams)
+- `sugiyama`: A hierarchical layout engine for layered diagrams (available for component diagrams)
 
 ### 9.1 Component Diagrams
 
@@ -250,15 +251,53 @@ Filament provides error reporting for various issues:
 
 Each error includes a description to help locate and fix the issue.
 
-## 13. Command Line Usage
+## 13. Configuration File
+
+Filament supports configuration through a TOML file that can specify default settings for diagram rendering.
+
+### 13.1 Configuration File Format
+
+The configuration file uses TOML syntax and supports the following settings:
+
+```toml
+# Layout engine configuration
+[layout]
+# Default layout engine for component diagrams (basic, force, sugiyama)
+component = "sugiyama"
+# Default layout engine for sequence diagrams (basic)
+sequence = "basic"
+```
+
+Layout engine values are case-sensitive and must match the supported enum values exactly.
+
+### 13.2 Layout Engine Values
+
+The layout engine names in the configuration file are string representations of the internal enum values:
+
+| String Value | Layout Engine Type | Supported Diagram Types       |
+|--------------|-------------------|------------------------------|
+| "basic"      | Basic layout      | Component, Sequence          |
+| "force"      | Force-directed    | Component                    |
+| "sugiyama"   | Hierarchical      | Component                    |
+
+### 13.3 Layout Engines Priority
+
+When determining which layout engine to use, Filament follows this priority order:
+
+1. Explicit layout engine in diagram declaration (`layout_engine` attribute)
+2. Default layout engine in configuration file
+3. Built-in default (`basic`)
+
+## 14. Command Line Usage
 
 Filament diagrams can be rendered using the command line tool:
 
 ```
-filament [--log-level=LEVEL] [-o|--output=FILE.svg] input_file.fil
+filament [--log-level=LEVEL] [-c|--config=CONFIG.toml] [-o|--output=FILE.svg] input_file.fil
 ```
 
 Where:
 - `--log-level`: Sets the logging verbosity (off, error, warn, info, debug, trace)
+- `-c, --config`: Path to a TOML configuration file (optional)
 - `-o, --output`: Specifies the output SVG file path (defaults to "out.svg")
 - `input_file.fil`: The path to the Filament source file
