@@ -21,3 +21,4 @@ rand = "0.9.1"
 rust-sugiyama = "0.3.0"
 toml = "0.8.22"
 serde = { version = "1.0", features = ["derive"] }
+directories = "6.0.0"

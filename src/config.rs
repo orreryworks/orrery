@@ -2,6 +2,8 @@ use crate::{
     ast::LayoutEngine,
     error::{ConfigError, FilamentError},
 };
+use directories::ProjectDirs;
+use log::{debug, info};
 use serde::Deserialize;
 use std::{
     fs,
@@ -56,5 +58,40 @@ impl AppConfig {
 
         // No need to validate layout engines as they're now enum values
         Ok(config)
+    }
+
+    pub fn find_and_load(explicit_path: Option<impl AsRef<Path>>) -> Result<Self, FilamentError> {
+        // 1. Try the explicitly provided path first if available
+        if let Some(path) = explicit_path {
+            let path = path.as_ref();
+            info!(path = path.display().to_string(); "Loading configuration from explicit path");
+            return Self::load(path);
+        }
+
+        // 2. Try the local project directory
+        let local_config = Path::new("filament/config.toml");
+        if local_config.exists() {
+            info!(path = local_config.display().to_string(); "Loading configuration from local path");
+            return Self::load(local_config);
+        }
+
+        // 3. Try the platform-specific config directory
+        if let Some(proj_dirs) = ProjectDirs::from("com", "filament", "filament") {
+            let config_dir = proj_dirs.config_dir();
+            let system_config = config_dir.join("config.toml");
+
+            if system_config.exists() {
+                info!(path = system_config.display().to_string(); "Loading configuration from system path");
+                return Self::load(system_config);
+            }
+
+            debug!(path = system_config.display().to_string(); "System configuration file not found");
+        } else {
+            debug!("Could not determine platform-specific config directory");
+        }
+
+        // 4. If no config is found, return default config
+        debug!("No configuration file found, using default configuration");
+        Ok(AppConfig::default())
     }
 }

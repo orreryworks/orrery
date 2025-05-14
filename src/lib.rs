@@ -41,14 +41,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
         "Processing diagram",
     );
 
-    // Load configuration if specified
-    let app_config = if let Some(config_path) = &cfg.config {
-        info!(config_path; "Loading configuration file");
-        AppConfig::load(config_path)?
-    } else {
-        debug!("Using default configuration");
-        AppConfig::default()
-    };
+    let app_config = AppConfig::find_and_load(cfg.config.as_ref())?;
 
     // Reading input file
     let content = fs::read_to_string(&cfg.file)?;

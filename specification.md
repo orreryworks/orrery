@@ -255,7 +255,19 @@ Each error includes a description to help locate and fix the issue.
 
 Filament supports configuration through a TOML file that can specify default settings for diagram rendering.
 
-### 13.1 Configuration File Format
+### 13.1 Configuration File Locations
+
+Filament searches for configuration files in the following locations (in order of priority):
+
+1. Explicitly provided path with the `-c/--config` command-line option
+2. Local directory: `./filament/config.toml`
+3. Platform-specific user config directory: `config.toml` in the standard configuration directory for your platform
+
+   The specific paths follow the [directories](https://docs.rs/directories/latest/directories/) crate's `ProjectDirs` convention, using the qualifier "com", organization "filament", and application name "filament".
+
+If no configuration file is found, default values are used.
+
+### 13.2 Configuration File Format
 
 The configuration file uses TOML syntax and supports the following settings:
 
@@ -270,7 +282,7 @@ sequence = "basic"
 
 Layout engine values are case-sensitive and must match the supported enum values exactly.
 
-### 13.2 Layout Engine Values
+### 13.3 Layout Engine Values
 
 The layout engine names in the configuration file are string representations of the internal enum values:
 
@@ -280,12 +292,12 @@ The layout engine names in the configuration file are string representations of 
 | "force"      | Force-directed    | Component                    |
 | "sugiyama"   | Hierarchical      | Component                    |
 
-### 13.3 Layout Engines Priority
+### 13.4 Layout Engines Priority
 
 When determining which layout engine to use, Filament follows this priority order:
 
 1. Explicit layout engine in diagram declaration (`layout_engine` attribute)
-2. Default layout engine in configuration file
+2. Default layout engine in configuration file (if found in any of the search locations)
 3. Built-in default (`basic`)
 
 ## 14. Command Line Usage
