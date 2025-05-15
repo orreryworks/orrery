@@ -308,8 +308,12 @@ impl TypeDefinition {
                     })?;
                 }
                 _ => {
-                    // TODO: For unknown attributes, just add them to the list
-                    // We could warn about them, but we'll just keep them for now
+                    return Err(ElaborationDiagnosticError::from_spanned(
+                        format!("Unsupported type definition attribute '{}'", name),
+                        &attr,
+                        "unsupported attribute",
+                        None,
+                    ));
                 }
             }
         }

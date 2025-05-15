@@ -444,7 +444,12 @@ impl<'a> Builder<'a> {
                     };
                 }
                 _ => {
-                    // TODO: We could warn about unknown attributes here
+                    return Err(ElaborationDiagnosticError::from_spanned(
+                        format!("Unsupported relation attribute '{}'", attr.name),
+                        attr,
+                        "unsupported attribute",
+                        None,
+                    ));
                 }
             }
         }
@@ -476,7 +481,14 @@ impl<'a> Builder<'a> {
                     let color = Self::extract_background_color(attr)?;
                     background_color = Some(color);
                 }
-                _ => {}
+                _ => {
+                    return Err(ElaborationDiagnosticError::from_spanned(
+                        format!("Unsupported diagram attribute '{}'", attr.inner().name),
+                        attr,
+                        "unsupported attribute",
+                        None,
+                    ));
+                }
             }
         }
 
