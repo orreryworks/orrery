@@ -32,30 +32,6 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// Extract background color from diagram attributes
-    /// Returns None if no background color is specified
-    fn extract_background_color(
-        &self,
-        attrs: &Spanned<Vec<Spanned<parser_types::Attribute<'_>>>>,
-    ) -> EResult<Option<Color>> {
-        // First try to extract from the attributes
-        for attr in attrs.inner() {
-            if *attr.name == "background_color" {
-                let color_str = *attr.value;
-                return Some(Color::new(color_str).map_err(|err| {
-                    ElaborationDiagnosticError::from_spanned(
-                        format!("Invalid background_color '{color_str}': {err}"),
-                        attr,
-                        "invalid color",
-                        Some("Use a valid CSS color".to_string()),
-                    )
-                }))
-                .transpose();
-            }
-        }
-        Ok(None)
-    }
-
     pub fn build(mut self, diag: &Spanned<parser_types::Element<'a>>) -> EResult<types::Diagram> {
         debug!("Building elaborated diagram");
         match diag.inner() {
@@ -95,12 +71,9 @@ impl<'a> Builder<'a> {
                     }
                 };
 
-                // Determine diagram kind and layout engine
                 let kind = self.determine_diagram_kind(&diag.kind)?;
-                let layout_engine = self.determine_layout_engine(kind, &diag.attributes)?;
-
-                // Extract background color from attributes if specified
-                let background_color = self.extract_background_color(&diag.attributes)?;
+                let (layout_engine, background_color) =
+                    self.extract_diagram_attributes(kind, &diag.attributes)?;
 
                 info!(kind:?; "Diagram elaboration completed successfully");
                 Ok(types::Diagram {
@@ -209,12 +182,9 @@ impl<'a> Builder<'a> {
                     }
                 };
 
-                // Determine diagram kind and layout engine
                 let kind = self.determine_diagram_kind(&diag.kind)?;
-                let layout_engine = self.determine_layout_engine(kind, &diag.attributes)?;
-
-                // Extract background color from attributes if specified
-                let background_color = self.extract_background_color(&diag.attributes)?;
+                let (layout_engine, background_color) =
+                    self.extract_diagram_attributes(kind, &diag.attributes)?;
 
                 Ok(types::Diagram {
                     kind,
@@ -387,40 +357,6 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// Determines the layout engine based on diagram kind and attributes.
-    /// First uses the config default for the diagram kind, then looks for an override in attributes.
-    fn determine_layout_engine(
-        &self,
-        kind: types::DiagramKind,
-        attributes: &Spanned<Vec<Spanned<parser_types::Attribute<'a>>>>,
-    ) -> EResult<types::LayoutEngine> {
-        // Set the layout engine based on the diagram kind and config
-        let mut layout_engine = match kind {
-            types::DiagramKind::Component => self.cfg.layout.component,
-            types::DiagramKind::Sequence => self.cfg.layout.sequence,
-        };
-
-        // Look for layout_engine in attributes - this overrides config settings
-        for attr in attributes.inner() {
-            if attr.inner().name.inner() == &"layout_engine" {
-                let value = attr.inner().value.inner();
-                layout_engine = types::LayoutEngine::from_str(value).map_err(|_| {
-                    ElaborationDiagnosticError::from_spanned(
-                        format!("Invalid layout_engine value: '{}'", value),
-                        &attr.inner().value,
-                        "unsupported layout engine",
-                        Some(
-                            "Supported layout engines are: 'basic', 'force', 'sugiyama'"
-                                .to_string(),
-                        ),
-                    )
-                })?;
-            }
-        }
-
-        Ok(layout_engine)
-    }
-
     /// Creates a TypeId from a name, considering the parent context if available
     fn create_type_id(
         &self,
@@ -514,5 +450,66 @@ impl<'a> Builder<'a> {
         }
 
         Ok((color, width, arrow_style))
+    }
+
+    /// Extract diagram attributes (layout engine and background color)
+    fn extract_diagram_attributes(
+        &self,
+        kind: types::DiagramKind,
+        attrs: &Spanned<Vec<Spanned<parser_types::Attribute<'_>>>>,
+    ) -> EResult<(types::LayoutEngine, Option<Color>)> {
+        // Set the default layout engine based on the diagram kind and config
+        let mut layout_engine = match kind {
+            types::DiagramKind::Component => self.cfg.layout.component,
+            types::DiagramKind::Sequence => self.cfg.layout.sequence,
+        };
+
+        let mut background_color = None;
+
+        // Single pass through the attributes to extract both values
+        for attr in attrs.inner() {
+            match *attr.inner().name {
+                "layout_engine" => {
+                    layout_engine = Self::determine_layout_engine(attr)?;
+                }
+                "background_color" => {
+                    let color = Self::extract_background_color(attr)?;
+                    background_color = Some(color);
+                }
+                _ => {}
+            }
+        }
+
+        Ok((layout_engine, background_color))
+    }
+
+    /// Extract background color from an attribute
+    fn extract_background_color(
+        color_attr: &Spanned<parser_types::Attribute<'_>>,
+    ) -> EResult<Color> {
+        let color_str = *color_attr.inner().value;
+        Color::new(color_str).map_err(|err| {
+            ElaborationDiagnosticError::from_spanned(
+                format!("Invalid background_color '{color_str}': {err}"),
+                &color_attr.inner().value,
+                "invalid color",
+                Some("Use a valid CSS color".to_string()),
+            )
+        })
+    }
+
+    /// Determines the layout engine from an attribute
+    fn determine_layout_engine(
+        engine_attr: &Spanned<parser_types::Attribute<'_>>,
+    ) -> EResult<types::LayoutEngine> {
+        let value = engine_attr.inner().value.inner();
+        types::LayoutEngine::from_str(value).map_err(|_| {
+            ElaborationDiagnosticError::from_spanned(
+                format!("Invalid layout_engine value: '{value}'"),
+                &engine_attr.inner().value,
+                "unsupported layout engine",
+                Some("Supported layout engines are: 'basic', 'force', 'sugiyama'".to_string()),
+            )
+        })
     }
 }
