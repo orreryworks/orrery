@@ -32,6 +32,30 @@ impl<'a> Builder<'a> {
         }
     }
 
+    /// Extract background color from diagram attributes
+    /// Returns None if no background color is specified
+    fn extract_background_color(
+        &self,
+        attrs: &Spanned<Vec<Spanned<parser_types::Attribute<'_>>>>,
+    ) -> EResult<Option<Color>> {
+        // First try to extract from the attributes
+        for attr in attrs.inner() {
+            if *attr.name == "background_color" {
+                let color_str = *attr.value;
+                return Some(Color::new(color_str).map_err(|err| {
+                    ElaborationDiagnosticError::from_spanned(
+                        format!("Invalid background_color '{color_str}': {err}"),
+                        attr,
+                        "invalid color",
+                        Some("Use a valid CSS color".to_string()),
+                    )
+                }))
+                .transpose();
+            }
+        }
+        Ok(None)
+    }
+
     pub fn build(mut self, diag: &Spanned<parser_types::Element<'a>>) -> EResult<types::Diagram> {
         debug!("Building elaborated diagram");
         match diag.inner() {
@@ -75,11 +99,15 @@ impl<'a> Builder<'a> {
                 let kind = self.determine_diagram_kind(&diag.kind)?;
                 let layout_engine = self.determine_layout_engine(kind, &diag.attributes)?;
 
+                // Extract background color from attributes if specified
+                let background_color = self.extract_background_color(&diag.attributes)?;
+
                 info!(kind:?; "Diagram elaboration completed successfully");
                 Ok(types::Diagram {
                     kind,
                     scope,
                     layout_engine,
+                    background_color,
                 })
             }
             _ => Err(ElaborationDiagnosticError::from_spanned(
@@ -185,10 +213,14 @@ impl<'a> Builder<'a> {
                 let kind = self.determine_diagram_kind(&diag.kind)?;
                 let layout_engine = self.determine_layout_engine(kind, &diag.attributes)?;
 
+                // Extract background color from attributes if specified
+                let background_color = self.extract_background_color(&diag.attributes)?;
+
                 Ok(types::Diagram {
                     kind,
                     scope,
                     layout_engine,
+                    background_color,
                 })
             }
             _ => Err(ElaborationDiagnosticError::from_spanned(
@@ -395,10 +427,9 @@ impl<'a> Builder<'a> {
         parent_id: Option<&types::TypeId>,
         name: &Spanned<&str>,
     ) -> types::TypeId {
-        let name_str = name.inner().as_ref();
         parent_id.map_or_else(
-            || types::TypeId::from_name(name_str),
-            |parent| parent.create_nested(name_str),
+            || types::TypeId::from_name(name),
+            |parent| parent.create_nested(name),
         )
     }
 

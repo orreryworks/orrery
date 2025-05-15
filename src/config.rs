@@ -1,5 +1,6 @@
 use crate::{
     ast::LayoutEngine,
+    color::Color,
     error::{ConfigError, FilamentError},
 };
 use directories::ProjectDirs;
@@ -17,6 +18,10 @@ pub struct AppConfig {
     #[serde(default)]
     pub layout: LayoutConfig,
 
+    /// Style configuration section
+    #[serde(default)]
+    pub style: StyleConfig,
+
     #[serde(skip)]
     config_file_path: Option<PathBuf>,
 }
@@ -33,33 +38,15 @@ pub struct LayoutConfig {
     pub sequence: LayoutEngine,
 }
 
+/// Style configuration section
+#[derive(Debug, Default, Clone, Deserialize)]
+pub struct StyleConfig {
+    /// Default background color for diagrams
+    #[serde(default)]
+    background_color: Option<String>,
+}
+
 impl AppConfig {
-    /// Load configuration from a TOML file
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, FilamentError> {
-        let path = path.as_ref();
-
-        // Check if file exists
-        if !path.exists() {
-            return Err(FilamentError::Config(ConfigError::MissingFile(
-                path.to_path_buf(),
-            )));
-        }
-
-        // Read file content
-        let content = fs::read_to_string(path)?;
-
-        // Parse TOML content directly using serde
-        let mut config: AppConfig = toml::from_str(&content)
-            .map_err(ConfigError::from)
-            .map_err(FilamentError::Config)?;
-
-        // Store the config file path for potential future use
-        config.config_file_path = Some(path.to_path_buf());
-
-        // No need to validate layout engines as they're now enum values
-        Ok(config)
-    }
-
     pub fn find_and_load(explicit_path: Option<impl AsRef<Path>>) -> Result<Self, FilamentError> {
         // 1. Try the explicitly provided path first if available
         if let Some(path) = explicit_path {
@@ -93,5 +80,45 @@ impl AppConfig {
         // 4. If no config is found, return default config
         debug!("No configuration file found, using default configuration");
         Ok(AppConfig::default())
+    }
+
+    /// Load configuration from a TOML file
+    fn load(path: impl AsRef<Path>) -> Result<Self, FilamentError> {
+        let path = path.as_ref();
+
+        // Check if file exists
+        if !path.exists() {
+            return Err(FilamentError::Config(ConfigError::MissingFile(
+                path.to_path_buf(),
+            )));
+        }
+
+        // Read file content
+        let content = fs::read_to_string(path)?;
+
+        // Parse TOML content directly using serde
+        let mut config: AppConfig = toml::from_str(&content)
+            .map_err(ConfigError::from)
+            .map_err(FilamentError::Config)?;
+
+        // Store the config file path for potential future use
+        config.config_file_path = Some(path.to_path_buf());
+
+        // No need to validate layout engines as they're now enum values
+        Ok(config)
+    }
+}
+
+impl StyleConfig {
+    /// Get the background color from configuration
+    /// Returns None if no background color is configured
+    pub fn background_color(&self) -> Result<Option<Color>, ConfigError> {
+        self.background_color
+            .as_ref()
+            .map(|color| Color::new(color))
+            .transpose()
+            .map_err(|err| {
+                ConfigError::Validation(format!("Invalid background color in config: {err}"))
+            })
     }
 }

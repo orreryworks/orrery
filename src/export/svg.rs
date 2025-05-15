@@ -1,20 +1,64 @@
-use crate::{export, layout::common::Size};
+use crate::{
+    ast, color::Color, config::StyleConfig, error::FilamentError, export, layout::common::Size,
+};
 use log::{debug, error, info};
 use std::{fs::File, io::Write};
-use svg::Document;
+use svg::{Document, node::element::Rectangle};
+
+/// SVG exporter builder to configure and build the SVG exporter
+pub struct SvgBuilder<'a> {
+    file_name: String,
+    style: Option<&'a StyleConfig>,
+    diagram: Option<&'a ast::Diagram>,
+}
 
 /// Base SVG exporter structure with common properties and methods
 pub struct Svg {
-    pub file_name: String,
+    file_name: String,
+    background_color: Option<Color>,
 }
 
-impl Svg {
+impl<'a> SvgBuilder<'a> {
     pub fn new(file_name: &str) -> Self {
         Self {
             file_name: file_name.to_string(),
+            style: None,
+            diagram: None,
         }
     }
 
+    /// Set style configuration
+    pub fn with_style(mut self, style: &'a StyleConfig) -> Self {
+        self.style = Some(style);
+        self
+    }
+
+    /// Set diagram to extract styles from
+    pub fn with_diagram(mut self, diagram: &'a ast::Diagram) -> Self {
+        self.diagram = Some(diagram);
+        self
+    }
+
+    /// Build the SVG exporter with the configured options
+    pub fn build(self) -> Result<Svg, FilamentError> {
+        let mut background_color = None;
+
+        if let Some(diagram) = self.diagram {
+            if let Some(color) = &diagram.background_color {
+                background_color = Some(color.clone());
+            }
+        } else if let Some(style) = self.style {
+            background_color = style.background_color()?;
+        }
+
+        Ok(Svg {
+            file_name: self.file_name,
+            background_color,
+        })
+    }
+}
+
+impl Svg {
     /// Calculate the optimal size for the SVG based on content dimensions
     /// Adds a small margin around the content
     pub fn calculate_svg_dimensions(&self, content_size: &Size) -> Size {
@@ -26,6 +70,22 @@ impl Svg {
         debug!("Final SVG dimensions: {width}x{height}");
 
         Size { width, height }
+    }
+
+    /// Add background color to an SVG document if specified
+    pub fn add_background(&self, mut doc: Document, width: f32, height: f32) -> Document {
+        // Add background if specified in the SVG exporter
+        if let Some(bg_color) = &self.background_color {
+            let bg = Rectangle::new()
+                .set("x", 0)
+                .set("y", 0)
+                .set("width", width)
+                .set("height", height)
+                .set("fill", bg_color.to_string());
+            doc = doc.add(bg);
+        }
+
+        doc
     }
 
     /// Writes an SVG document to the specified file

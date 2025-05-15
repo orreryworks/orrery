@@ -63,8 +63,11 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
         "Graph built successfully",
     );
 
-    // Create SVG exporter that will use diagram dimensions
-    let svg_exporter = export::svg::Svg::new(&cfg.output);
+    // Create SVG exporter builder with diagram properties
+    let svg_exporter = export::svg::SvgBuilder::new(&cfg.output)
+        .with_style(&app_config.style)
+        .with_diagram(&elaborated_ast)
+        .build()?;
 
     // Process diagram based on its type
     match elaborated_ast.kind {

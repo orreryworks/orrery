@@ -87,6 +87,12 @@ frontend_app as "Frontend Application": Rectangle [fill_color="#e6f3ff"];
 user_database: Database;
 ```
 
+Diagrams can have a background color specified as an attribute:
+```
+// Diagram with a light blue background
+diagram component [background_color="#e6f3ff"];
+```
+
 ### 5.2 Relations
 
 Relations define connections between components:
@@ -120,6 +126,7 @@ Attributes customize the appearance and behavior of elements:
 - `line_width`: The thickness of lines/borders (numeric value)
 - `rounded`: Rounding radius for rectangle corners (numeric value)
 - `font_size`: Size of text labels (numeric value)
+- `background_color`: When used in a diagram declaration, sets the background color of the entire diagram
 
 ### 6.2 Relation-specific Attributes
 
@@ -165,7 +172,7 @@ Nested components are positioned within their parent container and maintain thei
 Filament supports multiple layout engines that can be specified using the `layout_engine` attribute in the diagram declaration:
 
 ```
-diagram component [layout_engine="force"];
+diagram component [layout_engine="force", background_color="#f5f5f5"];
 ```
 
 Available layout engines:
@@ -204,7 +211,7 @@ Filament diagrams are rendered as SVG files with the following characteristics:
 ### 11.1 Component Diagram Example
 
 ```
-diagram component [layout_engine="force"];
+diagram component [layout_engine="force", background_color="#f8f8f8"];
 
 type Database = Rectangle [fill_color="lightblue", rounded="10"];
 type Service = Rectangle [fill_color="#e6f3ff"];
@@ -278,9 +285,15 @@ The configuration file uses TOML syntax and supports the following settings:
 component = "sugiyama"
 # Default layout engine for sequence diagrams (basic)
 sequence = "basic"
+
+# Style configuration
+[style]
+# Default background color for diagrams
+background_color = "#f5f5f5"
 ```
 
-Layout engine values are case-sensitive and must match the supported enum values exactly.
+Layout engine values are case-sensitive and must match the supported enum values exactly. 
+Color values must be valid CSS color strings.
 
 ### 13.3 Layout Engine Values
 
@@ -292,13 +305,31 @@ The layout engine names in the configuration file are string representations of 
 | "force"      | Force-directed    | Component                    |
 | "sugiyama"   | Hierarchical      | Component                    |
 
-### 13.4 Layout Engines Priority
+### 13.4 Style Configuration
 
-When determining which layout engine to use, Filament follows this priority order:
+The style configuration section controls the visual appearance of diagrams:
+
+- `background_color`: Sets the default background color for all diagrams
+  - Accepts any valid CSS color string (e.g., `"#f5f5f5"`, `"white"`, `"rgb(240,240,240)"`)
+  - Can be overridden by the `background_color` attribute in individual diagram declarations
+
+### 13.5 Configuration Priority
+
+When determining which styles or layout engines to use, Filament follows this priority order:
+
+#### Layout Engine Priority
 
 1. Explicit layout engine in diagram declaration (`layout_engine` attribute)
 2. Default layout engine in configuration file (if found in any of the search locations)
 3. Built-in default (`basic`)
+
+#### Style Priority
+
+For styling attributes like background color:
+
+1. Explicit attribute in diagram declaration (e.g., `background_color` attribute)
+2. Default value in configuration file (if found in any of the search locations)
+3. Built-in default (transparent)
 
 ## 14. Command Line Usage
 

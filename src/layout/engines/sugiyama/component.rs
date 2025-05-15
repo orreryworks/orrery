@@ -737,6 +737,7 @@ mod tests {
             kind: ast::DiagramKind::Component,
             scope: ast::Scope::default(),
             layout_engine: ast::LayoutEngine::Sugiyama,
+            background_color: None,
         };
 
         // Create basic type definition for testing
@@ -825,6 +826,7 @@ mod tests {
             kind: ast::DiagramKind::Component,
             scope: ast::Scope::default(),
             layout_engine: ast::LayoutEngine::Sugiyama,
+            background_color: None,
         };
 
         // Create basic type definition for testing

@@ -95,6 +95,9 @@ pub enum ConfigError {
 
     #[error("Missing configuration file: {0}")]
     MissingFile(PathBuf),
+
+    #[error("Validation error: {0}")]
+    Validation(String),
 }
 
 impl FilamentError {

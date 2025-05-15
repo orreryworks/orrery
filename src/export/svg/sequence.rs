@@ -153,13 +153,16 @@ impl Svg {
         let svg_size = self.calculate_svg_dimensions(&content_size);
 
         // Create the SVG document with the calculated dimensions
-        let mut doc = Document::new()
+        let doc = Document::new()
             .set(
                 "viewBox",
                 format!("0 0 {} {}", svg_size.width, svg_size.height),
             )
             .set("width", svg_size.width)
             .set("height", svg_size.height);
+            
+        // Add background using the shared method
+        let mut doc = self.add_background(doc, svg_size.width, svg_size.height);
 
         // Create marker definitions iterator for each color used in messages
         let message_colors = layout.messages.iter().map(|m| &m.relation.color);

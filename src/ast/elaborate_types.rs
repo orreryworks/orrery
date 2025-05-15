@@ -183,6 +183,7 @@ pub struct Diagram {
     pub kind: DiagramKind,
     pub scope: Scope,
     pub layout_engine: LayoutEngine,
+    pub background_color: Option<Color>,
 }
 
 #[derive(Debug, Clone)]
