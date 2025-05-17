@@ -187,6 +187,64 @@ fn parse_type_definitions(input: Span) -> PResult<Vec<Spanned<types::TypeDefinit
     to_spanned(input, many0(parse_type_definition).parse(input))
 }
 
+fn parse_embedded_diagram(input: Span) -> PResult<types::Element> {
+    to_spanned(
+        input,
+        context(
+            "embedded_diagram",
+            map(
+                (
+                    delimited(ws_comments0, tag("embed"), ws_comments1),
+                    cut((
+                        parse_diagram_header,
+                        delimited(
+                            (ws_comments0, char('{'), ws_comments0),
+                            (parse_type_definitions, parse_elements),
+                            (ws_comments0, char('}')),
+                        ),
+                    )),
+                ),
+                |(_, (header_result, (type_definitions, elements)))| {
+                    let (kind, attributes) = header_result.into_inner();
+                    types::Element::Diagram(types::Diagram {
+                        kind,
+                        attributes,
+                        type_definitions,
+                        elements,
+                    })
+                },
+            ),
+        )
+        .parse(input),
+    )
+}
+
+fn parse_nested_elements(input: Span) -> PResult<Vec<Spanned<types::Element>>> {
+    to_spanned(
+        input,
+        context(
+            "block",
+            delimited(
+                ws_comments0,
+                map(
+                    opt(alt((
+                        // Standard nested block with elements
+                        map(
+                            delimited(char('{'), cut(parse_elements), char('}')),
+                            |elements| elements.into_inner(),
+                        ),
+                        // Embedded diagram
+                        map(parse_embedded_diagram, |embedded| vec![embedded]),
+                    ))),
+                    |elements| elements.unwrap_or_default(),
+                ),
+                ws_comments0,
+            ),
+        )
+        .parse(input),
+    )
+}
+
 fn parse_component(input: Span) -> PResult<types::Element> {
     to_spanned(
         input,
@@ -203,15 +261,11 @@ fn parse_component(input: Span) -> PResult<types::Element> {
                             ws_comments0,
                         )),
                         preceded(ws_comments0, char(':')),
-                        peek(not(char(':'))),
+                        peek(not(char(':'))), // Make sure it's not a double colon for namespaces
                         cut((
                             delimited(ws_comments0, parse_identifier, ws_comments0),
                             opt(parse_attributes),
-                            opt(delimited(
-                                preceded(ws_comments0, char('{')),
-                                parse_elements,
-                                preceded(ws_comments0, char('}')),
-                            )),
+                            parse_nested_elements,
                         )),
                     ),
                     semicolon,
@@ -222,7 +276,7 @@ fn parse_component(input: Span) -> PResult<types::Element> {
                         display_name,
                         type_name,
                         attributes: attributes.unwrap_or_default(),
-                        nested_elements: nested_elements.unwrap_or_default(),
+                        nested_elements,
                     }
                 },
             ),
@@ -307,18 +361,27 @@ fn parse_diagram_header(input: Span) -> PResult<DiagramHeader> {
         context(
             "header",
             map(
-                cut((
+                (
                     delimited(
                         pair(context("diagram_keyword", tag("diagram")), multispace1),
-                        context("diagram_type", parse_identifier),
+                        cut(context("diagram_type", parse_identifier)),
                         ws_comments0,
                     ),
                     opt(parse_attributes),
-                    semicolon,
-                )),
-                |(kind, attrs_opt, _)| (kind, attrs_opt.unwrap_or_default()),
+                ),
+                |(kind, attrs_opt)| (kind, attrs_opt.unwrap_or_default()),
             ),
         )
+        .parse(input),
+    )
+}
+
+fn parse_diagram_header_with_semicolon(input: Span) -> PResult<DiagramHeader> {
+    to_spanned(
+        input,
+        map(cut(terminated(parse_diagram_header, semicolon)), |header| {
+            header.into_inner()
+        })
         .parse(input),
     )
 }
@@ -329,7 +392,11 @@ fn parse_diagram(input: Span) -> PResult<types::Element> {
         map(
             all_consuming(delimited(
                 ws_comments0,
-                (parse_diagram_header, parse_type_definitions, parse_elements),
+                (
+                    parse_diagram_header_with_semicolon,
+                    parse_type_definitions,
+                    parse_elements,
+                ),
                 ws_comments0,
             )),
             |(header_result, type_definitions, elements)| {
@@ -651,6 +718,37 @@ mod tests {
 
     #[test]
     fn test_parse_component() {
+        // Test component with embedded diagram
+        let input = Span::new("auth_service: Service embed diagram sequence { client: Rectangle; };");
+        let (rest, component) = parse_component(input).unwrap();
+        assert_eq!(*rest.fragment(), "");
+        match component.into_inner() {
+            types::Element::Component {
+                name,
+                display_name,
+                type_name,
+                attributes,
+                nested_elements,
+            } => {
+                assert_eq!(*name, "auth_service");
+                assert_eq!(display_name, None);
+                assert_eq!(*type_name, "Service");
+                assert_eq!(attributes.len(), 0);
+                assert_eq!(nested_elements.len(), 1);
+                
+                // Check that the nested element is an embedded diagram
+                match nested_elements.into_inner()[0].inner() {
+                    types::Element::Diagram(diagram) => {
+                        assert_eq!(*diagram.kind, "sequence");
+                        // Verify the diagram has at least one element
+                        assert_eq!(diagram.elements.len(), 1);
+                    }
+                    _ => panic!("Expected embedded diagram"),
+                }
+            }
+            _ => panic!("Expected Component"),
+        }
+
         // Test basic component
         let input = Span::new("database: Rectangle;");
         let (rest, component) = parse_component(input).unwrap();
@@ -890,14 +988,14 @@ mod tests {
     #[test]
     fn test_parse_diagram_header() {
         // Test basic diagram header
-        let input = Span::new("diagram component;");
+        let input = Span::new("diagram component");
         let (rest, result) = parse_diagram_header(input).unwrap();
         let (kind, attrs) = result.into_inner();
         assert_eq!(*rest.fragment(), "");
         assert_eq!(*kind, "component");
         assert_eq!(attrs.len(), 0);
 
-        let input = Span::new("diagram sequence;");
+        let input = Span::new("diagram sequence");
         let (rest, result) = parse_diagram_header(input).unwrap();
         let (kind, attrs) = result.into_inner();
         assert_eq!(*rest.fragment(), "");
@@ -905,7 +1003,7 @@ mod tests {
         assert_eq!(attrs.len(), 0);
 
         // Test diagram header with attributes
-        let input = Span::new("diagram component [layout_engine=\"basic\"];");
+        let input = Span::new("diagram component [layout_engine=\"basic\"]");
         let (rest, result) = parse_diagram_header(input).unwrap();
         let (kind, attrs) = result.into_inner();
         assert_eq!(*rest.fragment(), "");
@@ -914,18 +1012,25 @@ mod tests {
         assert_eq!(*attrs[0].name, "layout_engine");
         assert_eq!(*attrs[0].value, "basic");
 
+        // Test header with semicolon
+        let input = Span::new("diagram component;");
+        let (rest, result) = parse_diagram_header_with_semicolon(input).unwrap();
+        let (kind, attrs) = result.into_inner();
+        assert_eq!(*rest.fragment(), "");
+        assert_eq!(*kind, "component");
+        assert_eq!(attrs.len(), 0);
+
         // Test invalid diagram headers
         assert!(parse_diagram_header(Span::new("diagram;")).is_err());
-        assert!(parse_diagram_header(Span::new("diagram component")).is_err());
-        assert!(parse_diagram_header(Span::new("diagramcomponent;")).is_err());
+        assert!(parse_diagram_header(Span::new("diagramcomponent")).is_err());
     }
 
     #[test]
     fn test_parse_diagram() {
         // Test minimal diagram
         let diagram_str = Span::new("diagram component;");
-        let (_rest, diagram) = parse_diagram(diagram_str).unwrap();
-        assert_eq!(*_rest.fragment(), "");
+        let (rest, diagram) = parse_diagram(diagram_str).unwrap();
+        assert_eq!(*rest.fragment(), "");
         match diagram.into_inner() {
             types::Element::Diagram(d) => {
                 assert_eq!(*d.kind, "component");
@@ -1009,7 +1114,7 @@ mod tests {
             };
         ",
         );
-        let (rest, diagram) = parse_diagram(diagram_str).unwrap();
+        let (_rest, diagram) = parse_diagram(diagram_str).unwrap();
         match diagram.into_inner() {
             types::Element::Diagram(d) => {
                 assert_eq!(*d.kind, "component");
@@ -1063,6 +1168,27 @@ mod tests {
             _ => panic!("Expected Diagram"),
         }
         assert_eq!(*rest.fragment(), "");
+    }
+
+    #[test]
+    fn test_parse_embedded_diagram() {
+        // Create a minimal test case by observing the actual embed diagram syntax from examples
+        // The parser expects whitespace before "embed" keyword (as it's typically used after a component type)
+        
+        // We're testing the parser directly, not through test_parse_component
+        let input_with_ws = Span::new(" embed diagram sequence { client: Rectangle; };");
+        let (rest, embedded) = parse_embedded_diagram(input_with_ws).unwrap();
+        assert_eq!(*rest.fragment(), ";");  // Parser doesn't consume the semicolon
+
+        match embedded.inner() {
+            types::Element::Diagram(diag) => {
+                assert_eq!(*diag.kind, "sequence");
+                assert_eq!(diag.elements.len(), 1);
+                
+                // We've verified we got a diagram with one element, which is sufficient
+            }
+            _ => panic!("Expected Diagram"),
+        }
     }
 
     #[test]

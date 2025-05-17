@@ -168,6 +168,7 @@ impl<'a> Builder<'a> {
     ) -> EResult<types::Diagram> {
         match diag.inner() {
             parser_types::Element::Diagram(diag) => {
+                // Create a block from the diagram elements
                 let block = self.build_block_from_elements(&diag.elements, None)?;
                 let scope = match block {
                     types::Block::None => types::Scope::default(),
@@ -199,6 +200,46 @@ impl<'a> Builder<'a> {
                 "invalid element",
                 None,
             )),
+        }
+    }
+
+    fn build_diagram_from_embedded_diagram(
+        &mut self,
+        element: &Spanned<parser_types::Element>,
+    ) -> EResult<types::Diagram> {
+        if let parser_types::Element::Diagram(diag) = element.inner() {
+            // Create a block from the diagram elements
+            let block = self.build_block_from_elements(&diag.elements, None)?;
+            let scope = match block {
+                types::Block::None => types::Scope::default(),
+                types::Block::Scope(scope) => scope,
+                types::Block::Diagram(_) => {
+                    return Err(ElaborationDiagnosticError::from_spanned(
+                        "Nested diagram not allowed".to_string(),
+                        &diag.kind,
+                        "invalid nesting",
+                        Some("Diagrams cannot be nested inside other diagrams".to_string()),
+                    ));
+                }
+            };
+
+            let kind = self.determine_diagram_kind(&diag.kind)?;
+            let (layout_engine, background_color) =
+                self.extract_diagram_attributes(kind, &diag.attributes)?;
+
+            Ok(types::Diagram {
+                kind,
+                scope,
+                layout_engine,
+                background_color,
+            })
+        } else {
+            Err(ElaborationDiagnosticError::from_spanned(
+                "Expected diagram element".to_string(),
+                element,
+                "invalid element",
+                None,
+            ))
         }
     }
 
@@ -264,8 +305,16 @@ impl<'a> Builder<'a> {
                             )
                         })?;
 
-                    // Process nested elements with the new ID as parent
-                    let block = self.build_block_from_elements(nested_elements, Some(&node_id))?;
+                    // Check if there's a nested diagram element
+                    let block = if nested_elements.len() == 1 && 
+                              matches!(nested_elements[0].inner(), parser_types::Element::Diagram(_)) {
+                        // Handle a single diagram element specially
+                        let elaborated_diagram = self.build_diagram_from_embedded_diagram(&nested_elements[0])?;
+                        types::Block::Diagram(elaborated_diagram)
+                    } else {
+                        // Process regular nested elements
+                        self.build_block_from_elements(nested_elements, Some(&node_id))?
+                    };
 
                     let node = types::Node {
                         id: node_id,

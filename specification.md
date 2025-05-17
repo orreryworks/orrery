@@ -158,6 +158,38 @@ parent_system: Rectangle {
 
 Nested components are positioned within their parent container and maintain their relationships.
 
+### 7.1 Embedded Diagrams
+
+Filament supports embedding different diagram types within components, allowing for richer multi-level visualizations. For example, you can embed a sequence diagram inside a component diagram to show the dynamic behavior of a component:
+
+```
+user_service: Rectangle embed diagram sequence {
+    client: Rectangle;
+    server: Rectangle;
+    database: Rectangle;
+
+    client -> server: "Request";
+    server -> database: "Query";
+    database -> server: "Results";
+    server -> client: "Response";
+};
+```
+
+Embedded diagrams use the following syntax:
+
+```
+<element_name> [as "Display Label"]: <type> [element_attributes...] embed diagram <diagram_kind> [diagram_attributes...] {
+    // Full diagram definition for the embedded diagram
+    // Elements and relations following the standard syntax for the specified diagram_kind
+};
+```
+
+When a component contains an embedded diagram:
+- The embedded diagram is rendered as part of the parent component
+- The embedded diagram follows the syntax and layout rules of its declared type
+- The parent component is sized appropriately to contain the embedded diagram
+- The embedded diagram can have its own attributes like `background_color` and `layout_engine`
+
 ## 8. Identifiers and Naming Conventions
 
 - Type identifiers must use CamelCase (e.g., `Database`, `UserService`)
@@ -246,6 +278,31 @@ data_store -> [color="green"] api_service;
 api_service -> [color="blue"] user_agent;
 ```
 
+### 11.3 Embedded Diagram Example
+
+```
+diagram component [background_color="#f8f8f8"];
+
+type Service = Rectangle [fill_color="#e6f3ff"];
+type Database = Rectangle [fill_color="lightblue", rounded="10"];
+
+user_interface: Oval [fill_color="#ffe6e6"];
+auth_service: Service embed diagram sequence {
+    client: Rectangle;
+    auth: Rectangle;
+    database: Rectangle;
+
+    client -> auth: "Login Request";
+    auth -> database: "Validate";
+    database -> auth: "Result";
+    auth -> client: "Auth Token";
+};
+database: Database;
+
+user_interface -> auth_service;
+auth_service -> database;
+```
+
 ## 12. Error Handling
 
 Filament provides error reporting for various issues:
@@ -330,6 +387,14 @@ For styling attributes like background color:
 1. Explicit attribute in diagram declaration (e.g., `background_color` attribute)
 2. Default value in configuration file (if found in any of the search locations)
 3. Built-in default (transparent)
+
+#### Embedded Diagram Priority
+
+For embedded diagrams:
+
+1. Attributes specified in the embedded diagram declaration take precedence over inherited attributes
+2. If not specified, embedded diagrams inherit layout engine settings from the configuration file
+3. If neither is available, embedded diagrams use their type-specific built-in defaults
 
 ## 14. Command Line Usage
 

@@ -1,0 +1,49 @@
+diagram component [background_color="#F8F8F8", layout_engine="force"];
+
+// Define custom types
+type Service = Rectangle [fill_color="#e6f3ff", rounded="5"];
+type Database = Rectangle [fill_color="lightblue", rounded="10", line_width="2"];
+type Client = Oval [fill_color="#ffe6e6"];
+
+// Main components
+user as "User": Client;
+api_gateway as "API Gateway": Service;
+
+// Component with embedded sequence diagram
+auth_service as "Authentication Service": Service embed diagram sequence {
+    client: Rectangle;
+    auth: Rectangle;
+    user_db: Rectangle;
+
+    client -> auth: "Login Request";
+    auth -> user_db: "Validate Credentials";
+    user_db -> auth: "User Data";
+    auth -> client: "JWT Token";
+};
+
+// Regular component with nested elements
+data_services as "Data Services": Service {
+    user_db: Database;
+    content_db: Database;
+    analytics_service: Service;
+
+    analytics_service -> user_db;
+    analytics_service -> content_db;
+};
+
+// Component with embedded component diagram
+frontend as "Frontend Application": Service embed diagram component [layout_engine="basic"] {
+    ui: Rectangle [fill_color="#ffcccc"];
+    state_manager: Rectangle [fill_color="#ccffcc"];
+    api_client: Rectangle [fill_color="#ccccff"];
+
+    ui -> state_manager;
+    state_manager -> api_client;
+};
+
+// Relations between main components
+user -> frontend;
+frontend -> api_gateway;
+api_gateway -> auth_service;
+api_gateway -> data_services;
+auth_service -> data_services: "Verify Access";
