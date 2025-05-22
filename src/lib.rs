@@ -56,7 +56,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
     // Process diagram based on its type
     // Build the diagram graph (common for all types)
     info!(diagram_kind:? = elaborated_ast.kind; "Building diagram graph");
-    let graph = graph::Graph::from_diagram(&elaborated_ast)?;
+    let graphs = graph::Collection::from_diagram(&elaborated_ast)?;
     debug!(
         // nodes_count = graph.node_count(),
         // edges_count = graph.edge_count();
@@ -75,7 +75,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
             // Calculating component layout
             info!("Calculating component layout");
             let layout_engine = layout::create_component_engine(elaborated_ast.layout_engine)?;
-            let layout = layout_engine.calculate(&graph);
+            let layout = layout_engine.calculate(graphs.hierarchy_in_post_order().next().unwrap()); // FIXME: this is temporary
             debug!(
                 components_len = layout.components.len(),
                 relations_len = layout.relations.len();
@@ -90,7 +90,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
             // Calculating sequence layout
             info!("Calculating sequence layout");
             let layout_engine = layout::create_sequence_engine(elaborated_ast.layout_engine)?;
-            let layout = layout_engine.calculate(&graph);
+            let layout = layout_engine.calculate(graphs.hierarchy_in_post_order().next().unwrap()); // FIXME: this is temporary
             debug!(
                 participants_len = layout.participants.len(),
                 messages_len = layout.messages.len();
