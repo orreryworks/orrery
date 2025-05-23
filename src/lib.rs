@@ -57,11 +57,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
     // Build the diagram graph (common for all types)
     info!(diagram_kind:? = elaborated_ast.kind; "Building diagram graph");
     let graphs = graph::Collection::from_diagram(&elaborated_ast)?;
-    debug!(
-        // nodes_count = graph.node_count(),
-        // edges_count = graph.edge_count();
-        "Graph built successfully",
-    );
+    debug!("Graph built successfully");
 
     // Create SVG exporter builder with diagram properties
     let svg_exporter = export::svg::SvgBuilder::new(&cfg.output)
@@ -69,13 +65,21 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
         .with_diagram(&elaborated_ast)
         .build()?;
 
+    // Create a configured engine builder for processing diagrams
+    let engine_builder = layout::EngineBuilder::new()
+        .with_component_padding(40.0)
+        .with_component_spacing(50.0)
+        .with_message_spacing(60.0)
+        .with_force_iterations(500);
+
+    // Process all diagrams in the hierarchy, from innermost to outermost
+    // Each embedded diagram uses its own layout engine as specified in its attributes
+    info!("Processing diagrams in hierarchy");
+    let (main_layout, _embedded_layouts) = engine_builder.build(&graphs); // FIXME: This is a temp and should use _embedded_loyouts.
+
     // Process diagram based on its type
-    match elaborated_ast.kind {
-        ast::DiagramKind::Component => {
-            // Calculating component layout
-            info!("Calculating component layout");
-            let layout_engine = layout::create_component_engine(elaborated_ast.layout_engine)?;
-            let layout = layout_engine.calculate(graphs.hierarchy_in_post_order().next().unwrap()); // FIXME: this is temporary
+    match main_layout {
+        layout::engines::LayoutResult::Component(layout) => {
             debug!(
                 components_len = layout.components.len(),
                 relations_len = layout.relations.len();
@@ -86,11 +90,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
             info!("Exporting component diagram to SVG");
             svg_exporter.export_component_layout(&layout)?;
         }
-        ast::DiagramKind::Sequence => {
-            // Calculating sequence layout
-            info!("Calculating sequence layout");
-            let layout_engine = layout::create_sequence_engine(elaborated_ast.layout_engine)?;
-            let layout = layout_engine.calculate(graphs.hierarchy_in_post_order().next().unwrap()); // FIXME: this is temporary
+        layout::engines::LayoutResult::Sequence(layout) => {
             debug!(
                 participants_len = layout.participants.len(),
                 messages_len = layout.messages.len();

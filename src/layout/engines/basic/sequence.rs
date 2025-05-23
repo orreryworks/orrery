@@ -8,7 +8,7 @@ use crate::{
     graph::Graph,
     layout::{
         common::{Component, Point},
-        engines::SequenceEngine,
+        engines::{EmbeddedLayouts, SequenceEngine},
         positioning::{self, calculate_element_size},
         sequence::{Layout, Message, Participant},
     },
@@ -39,6 +39,53 @@ impl Engine {
             text_padding: 15.0,
             label_padding: 20.0, // Extra padding for labels
         }
+    }
+    
+    /// Set the minimum width for participants
+    #[allow(dead_code)]
+    pub fn set_min_width(&mut self, width: f32) -> &mut Self {
+        self.min_participant_width = width;
+        self
+    }
+    
+    /// Set the minimum height for participants
+    #[allow(dead_code)]
+    pub fn set_min_height(&mut self, height: f32) -> &mut Self {
+        self.min_participant_height = height;
+        self
+    }
+    
+    /// Set the minimum spacing between participants
+    pub fn set_min_spacing(&mut self, spacing: f32) -> &mut Self {
+        self.min_spacing = spacing;
+        self
+    }
+    
+    /// Set the vertical spacing between messages
+    pub fn set_message_spacing(&mut self, spacing: f32) -> &mut Self {
+        self.message_spacing = spacing;
+        self
+    }
+    
+    /// Set the top margin of the diagram
+    #[allow(dead_code)]
+    pub fn set_top_margin(&mut self, margin: f32) -> &mut Self {
+        self.top_margin = margin;
+        self
+    }
+    
+    /// Set the text padding for participants
+    #[allow(dead_code)]
+    pub fn set_text_padding(&mut self, padding: f32) -> &mut Self {
+        self.text_padding = padding;
+        self
+    }
+    
+    /// Set the padding for message labels
+    #[allow(dead_code)]
+    pub fn set_label_padding(&mut self, padding: f32) -> &mut Self {
+        self.label_padding = padding;
+        self
     }
 
     /// Calculate additional spacing needed between participants based on message label sizes
@@ -72,7 +119,7 @@ impl Engine {
     }
 
     /// Calculate layout for a sequence diagram
-    pub fn calculate_layout<'a>(&self, graph: &'a Graph) -> Layout<'a> {
+    pub fn calculate_layout<'a>(&self, graph: &'a Graph<'a>, _embedded_layouts: &EmbeddedLayouts<'a>) -> Layout<'a> {
         let mut participants: Vec<Participant<'a>> = Vec::new();
         let mut participant_indices = HashMap::new();
 
@@ -183,7 +230,7 @@ impl Engine {
 }
 
 impl SequenceEngine for Engine {
-    fn calculate<'a>(&self, graph: &'a Graph) -> Layout<'a> {
-        self.calculate_layout(graph)
+    fn calculate<'a>(&self, graph: &'a Graph<'a>, embedded_layouts: &EmbeddedLayouts<'a>) -> Layout<'a> {
+        self.calculate_layout(graph, embedded_layouts)
     }
 }

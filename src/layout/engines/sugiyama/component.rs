@@ -9,7 +9,7 @@ use crate::{
     layout::{
         common::{Component, Point, Size},
         component::{Layout, LayoutRelation},
-        engines::ComponentEngine,
+        engines::{ComponentEngine, EmbeddedLayouts},
         positioning::calculate_element_size,
     },
 };
@@ -44,14 +44,53 @@ impl Engine {
             min_component_width: 100.0,
             min_component_height: 60.0,
             text_padding: 20.0,
-            horizontal_spacing: 60.0,
+            horizontal_spacing: 50.0,
             vertical_spacing: 80.0,
-            container_padding: 45.0,
+            container_padding: 40.0,
         }
+    }
+    
+    /// Set the minimum component width
+    #[allow(dead_code)]
+    pub fn set_min_width(&mut self, width: f32) -> &mut Self {
+        self.min_component_width = width;
+        self
+    }
+    
+    /// Set the minimum component height
+    #[allow(dead_code)]
+    pub fn set_min_height(&mut self, height: f32) -> &mut Self {
+        self.min_component_height = height;
+        self
+    }
+    
+    /// Set the text padding
+    #[allow(dead_code)]
+    pub fn set_text_padding(&mut self, padding: f32) -> &mut Self {
+        self.text_padding = padding;
+        self
+    }
+    
+    /// Set the horizontal spacing between components
+    pub fn set_horizontal_spacing(&mut self, spacing: f32) -> &mut Self {
+        self.horizontal_spacing = spacing;
+        self
+    }
+    
+    /// Set the vertical spacing between layers
+    pub fn set_vertical_spacing(&mut self, spacing: f32) -> &mut Self {
+        self.vertical_spacing = spacing;
+        self
+    }
+    
+    /// Set the padding inside container components
+    pub fn set_container_padding(&mut self, padding: f32) -> &mut Self {
+        self.container_padding = padding;
+        self
     }
 
     /// Build a map of parent-child relationships between nodes
-    fn build_hierarchy_map(&self, graph: &Graph) -> HashMap<NodeIndex, Vec<NodeIndex>> {
+    fn build_hierarchy_map<'a>(&self, graph: &Graph<'a>) -> HashMap<NodeIndex, Vec<NodeIndex>> {
         let mut hierarchy_map: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
         let mut node_id_map: HashMap<String, NodeIndex> = HashMap::new();
 
@@ -171,7 +210,7 @@ impl Engine {
         sizes[&node_idx].clone()
     }
 
-    fn calculate_layout<'a>(&self, graph: &'a Graph) -> Layout<'a> {
+    fn calculate_layout<'a>(&self, graph: &'a Graph<'a>, _embedded_layouts: &EmbeddedLayouts<'a>) -> Layout<'a> {
         // First, build a map of parent-child relationships
         // This will help us understand the hierarchy in the graph
         let hierarchy_map = self.build_hierarchy_map(graph);
@@ -712,8 +751,8 @@ impl Engine {
 }
 
 impl ComponentEngine for Engine {
-    fn calculate<'a>(&self, graph: &'a Graph) -> Layout<'a> {
-        self.calculate_layout(graph)
+    fn calculate<'a>(&self, graph: &'a Graph<'a>, embedded_layouts: &EmbeddedLayouts<'a>) -> Layout<'a> {
+        self.calculate_layout(graph, embedded_layouts)
     }
 }
 

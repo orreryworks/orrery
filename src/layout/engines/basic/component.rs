@@ -9,7 +9,7 @@ use crate::{
     layout::{
         common::{Component, Point, Size},
         component::{Layout, LayoutRelation},
-        engines::ComponentEngine,
+        engines::{ComponentEngine, EmbeddedLayouts, LayoutResult},
         positioning::calculate_element_size,
         text,
     },
@@ -26,6 +26,7 @@ pub struct Engine {
     min_component_width: f32,
     min_component_height: f32,
     text_padding: f32,
+    min_spacing: f32,
 }
 
 impl Engine {
@@ -36,17 +37,51 @@ impl Engine {
             min_component_width: 100.0,
             min_component_height: 60.0,
             text_padding: 20.0,
+            min_spacing: 40.0,
         }
+    }
+    
+    /// Set the padding around components
+    pub fn set_padding(&mut self, padding: f32) -> &mut Self {
+        self.padding = padding;
+        self
+    }
+    
+    /// Set the minimum width for components
+    #[allow(dead_code)]
+    pub fn set_min_width(&mut self, width: f32) -> &mut Self {
+        self.min_component_width = width;
+        self
+    }
+    
+    /// Set the minimum height for components
+    #[allow(dead_code)]
+    pub fn set_min_height(&mut self, height: f32) -> &mut Self {
+        self.min_component_height = height;
+        self
+    }
+    
+    /// Set the padding for text elements
+    #[allow(dead_code)]
+    pub fn set_text_padding(&mut self, padding: f32) -> &mut Self {
+        self.text_padding = padding;
+        self
+    }
+    
+    /// Set the minimum spacing between components
+    pub fn set_min_spacing(&mut self, spacing: f32) -> &mut Self {
+        self.min_spacing = spacing;
+        self
     }
 
     /// Calculate the layout for a component diagram
-    pub fn calculate_layout<'a>(&self, graph: &'a Graph) -> Layout<'a> {
+    pub fn calculate_layout<'a>(&self, graph: &'a Graph<'a>, embedded_layouts: &EmbeddedLayouts<'a>) -> Layout<'a> {
         // First, build a map of parent-child relationships
         // This will help us understand the hierarchy in the graph
         let hierarchy_map = self.build_hierarchy_map(graph);
 
-        // Calculate sizes for all components, adjusting for nested children
-        let component_sizes = self.calculate_component_sizes(graph, &hierarchy_map);
+        // Calculate sizes for all components, adjusting for nested children and embedded diagrams
+        let component_sizes = self.calculate_component_sizes(graph, &hierarchy_map, embedded_layouts);
 
         // Calculate positions for all components
         let positions = self.positions(graph, &component_sizes, &hierarchy_map);
@@ -103,7 +138,7 @@ impl Engine {
     }
 
     /// Build a map of parent-child relationships between nodes
-    fn build_hierarchy_map(&self, graph: &Graph) -> HashMap<NodeIndex, Vec<NodeIndex>> {
+    fn build_hierarchy_map<'a>(&self, graph: &Graph<'a>) -> HashMap<NodeIndex, Vec<NodeIndex>> {
         let mut hierarchy_map: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
         let mut node_id_map: HashMap<String, NodeIndex> = HashMap::new();
 
@@ -159,22 +194,45 @@ impl Engine {
     }
 
     /// Calculate component sizes considering nested elements
-    fn calculate_component_sizes(
+    /// Calculate sizes for all components, adjusting for nested children and embedded diagrams
+    fn calculate_component_sizes<'a>(
         &self,
-        graph: &Graph,
+        graph: &Graph<'a>,
         hierarchy_map: &HashMap<NodeIndex, Vec<NodeIndex>>,
+        embedded_layouts: &EmbeddedLayouts<'_>,
     ) -> HashMap<NodeIndex, Size> {
         let mut component_sizes: HashMap<NodeIndex, Size> = HashMap::new();
 
         // First, calculate base sizes for all nodes
         for node_idx in graph.node_indices() {
             let node = graph.node_weight(node_idx).unwrap();
-            let size = calculate_element_size(
-                node,
-                self.min_component_width,
-                self.min_component_height,
-                self.text_padding,
-            );
+            
+            // Check if this node has an embedded diagram
+            let size = if let ast::Block::Diagram(_) = &node.block {
+                // Since we process in post-order (innermost to outermost),
+                // embedded diagram layouts should already be calculated and available
+                if let Some(layout) = embedded_layouts.get(&node.id) {
+                    // Get the bounding box for the embedded layout
+                    self.get_layout_size(layout)
+                } else {
+                    // Fallback if no embedded layout is found (shouldn't happen in normal flow)
+                    calculate_element_size(
+                        node,
+                        self.min_component_width,
+                        self.min_component_height,
+                        self.text_padding,
+                    )
+                }
+            } else {
+                // Standard size calculation for regular nodes
+                calculate_element_size(
+                    node,
+                    self.min_component_width,
+                    self.min_component_height,
+                    self.text_padding,
+                )
+            };
+            
             component_sizes.insert(node_idx, size);
         }
 
@@ -253,9 +311,9 @@ impl Engine {
         sizes[&node_idx].clone()
     }
 
-    fn positions(
+    fn positions<'a>(
         &self,
-        graph: &Graph,
+        graph: &Graph<'a>,
         sizes: &HashMap<NodeIndex, Size>,
         hierarchy_map: &HashMap<NodeIndex, Vec<NodeIndex>>,
     ) -> HashMap<NodeIndex, Point> {
@@ -279,8 +337,8 @@ impl Engine {
         // Step 6: Position child nodes within their parent containers
         let mut result_positions = positions.clone();
         self.position_all_children(
-            &top_level_nodes,
             hierarchy_map,
+            &top_level_nodes,
             sizes,
             &mut result_positions,
         );
@@ -289,9 +347,9 @@ impl Engine {
     }
 
     /// Identify top-level nodes and create a simplified graph containing only those nodes
-    fn identify_top_level_nodes(
+    fn identify_top_level_nodes<'a>(
         &self,
-        graph: &Graph,
+        graph: &Graph<'a>,
         hierarchy_map: &HashMap<NodeIndex, Vec<NodeIndex>>,
     ) -> (
         Vec<NodeIndex>,
@@ -475,11 +533,11 @@ impl Engine {
         positions
     }
 
-    /// Position all children within their parent containers
+    /// Position all children nodes within their parent containers
     fn position_all_children(
         &self,
-        top_level_nodes: &[NodeIndex],
         hierarchy_map: &HashMap<NodeIndex, Vec<NodeIndex>>,
+        top_level_nodes: &[NodeIndex],
         sizes: &HashMap<NodeIndex, Size>,
         result_positions: &mut HashMap<NodeIndex, Point>,
     ) {
@@ -614,10 +672,56 @@ impl Engine {
 
         layers
     }
+    
+    /// Calculate the bounding box size for an embedded layout
+    fn get_layout_size(&self, layout: &LayoutResult<'_>) -> Size {
+        match layout {
+            LayoutResult::Component(component_layout) => {
+                // Calculate bounding box for all components
+                let mut max_width: f32 = 0.0;
+                let mut max_height: f32 = 0.0;
+                
+                for component in &component_layout.components {
+                    let right = component.position.x + component.size.width;
+                    let bottom = component.position.y + component.size.height;
+                    
+                    max_width = max_width.max(right);
+                    max_height = max_height.max(bottom);
+                }
+                
+                // Add padding for the container
+                Size {
+                    width: max_width + self.padding * 2.0,
+                    height: max_height + self.padding * 2.0,
+                }
+            },
+            LayoutResult::Sequence(sequence_layout) => {
+                // For sequence diagrams, calculate width based on participants
+                // and height based on the last message
+                let mut max_width: f32 = 0.0;
+                let mut max_height: f32 = 0.0;
+                
+                // Find the rightmost participant
+                for participant in &sequence_layout.participants {
+                    let right = participant.component.position.x + participant.component.size.width;
+                    max_width = max_width.max(right);
+                    
+                    // Use the maximum lifeline height
+                    max_height = max_height.max(participant.lifeline_end);
+                }
+                
+                // Add padding for the container
+                Size {
+                    width: max_width + self.padding * 2.0,
+                    height: max_height + self.padding * 2.0,
+                }
+            }
+        }
+    }
 }
 
 impl ComponentEngine for Engine {
-    fn calculate<'a>(&self, graph: &'a Graph) -> Layout<'a> {
-        self.calculate_layout(graph)
+    fn calculate<'a>(&self, graph: &'a Graph<'a>, embedded_layouts: &EmbeddedLayouts<'a>) -> Layout<'a> {
+        self.calculate_layout(graph, embedded_layouts)
     }
 }

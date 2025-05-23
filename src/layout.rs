@@ -1,8 +1,9 @@
 pub mod common;
 pub mod component;
-mod engines;
+pub mod engines; // FIXME: After implementing embedded diagrams for exporters, make this mod private.
 mod positioning;
 pub mod sequence;
 pub mod text;
 
-pub use engines::{create_component_engine, create_sequence_engine};
+// Public re-export of the engine builder for easier access
+pub use engines::EngineBuilder;

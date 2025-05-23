@@ -7,40 +7,50 @@ use petgraph::{
 };
 use std::collections::HashMap;
 
-pub struct Graph(DiGraph<ast::Node, ast::Relation>);
+pub struct Graph<'a> {
+    graph: DiGraph<ast::Node, ast::Relation>,
+    diagram: &'a ast::Diagram,
+}
 
-pub struct Collection {
-    hierarchy: DiGraph<Graph, ast::TypeId>,
+pub struct Collection<'a> {
+    hierarchy: DiGraph<Graph<'a>, ast::TypeId>,
     hierarchy_root: Option<NodeIndex>,
 }
 
-impl Graph {
-    fn new() -> Self {
-        Self(DiGraph::new())
+impl<'a> Graph<'a> {
+    fn new(diagram: &'a ast::Diagram) -> Self {
+        Self {
+            graph: DiGraph::new(),
+            diagram,
+        }
     }
 
     pub fn node_indices(&self) -> impl Iterator<Item = NodeIndex> {
-        self.0.node_indices()
+        self.graph.node_indices()
     }
 
     pub fn node_weight(&self, node_index: NodeIndex) -> Option<&ast::Node> {
-        self.0.node_weight(node_index)
+        self.graph.node_weight(node_index)
     }
 
     pub fn edge_indices(&self) -> impl Iterator<Item = EdgeIndex> {
-        self.0.edge_indices()
+        self.graph.edge_indices()
     }
 
     pub fn edge_weight(&self, edge_index: EdgeIndex) -> Option<&ast::Relation> {
-        self.0.edge_weight(edge_index)
+        self.graph.edge_weight(edge_index)
     }
 
     pub fn edge_endpoints(&self, edge_index: EdgeIndex) -> Option<(NodeIndex, NodeIndex)> {
-        self.0.edge_endpoints(edge_index)
+        self.graph.edge_endpoints(edge_index)
+    }
+
+    pub fn diagram(&self) -> &ast::Diagram {
+        self.diagram
     }
 
     fn add_node(&mut self, node: &ast::Node) -> NodeIndex {
-        self.0.add_node(node.clone())
+        self.graph.add_node(node.clone())
     }
 
     fn add_edge(
@@ -49,20 +59,20 @@ impl Graph {
         target: NodeIndex,
         relation: &ast::Relation,
     ) -> EdgeIndex {
-        self.0.add_edge(source, target, relation.clone())
+        self.graph.add_edge(source, target, relation.clone())
     }
 }
 
-impl Collection {
+impl<'a> Collection<'a> {
     /// Convert a diagram to a graph, recursively processing nested blocks
-    pub fn from_diagram(diagram: &ast::Diagram) -> Result<Self, FilamentError> {
+    pub fn from_diagram(diagram: &'a ast::Diagram) -> Result<Self, FilamentError> {
         let mut collection = Self {
             hierarchy: DiGraph::new(),
             hierarchy_root: None,
         };
 
         // Process all elements in the diagram recursively
-        let hierarchy_root = collection.process_diagram_block(&diagram.scope.elements)?;
+        let hierarchy_root = collection.process_diagram_block(diagram)?;
         collection.hierarchy_root = Some(hierarchy_root);
 
         Ok(collection)
@@ -87,7 +97,7 @@ impl Collection {
         &mut self,
         graph: &mut Graph,
         node_map: &mut HashMap<String, NodeIndex>,
-        elements: &[ast::Element],
+        elements: &'a [ast::Element],
     ) -> Result<Vec<(ast::TypeId, NodeIndex)>, FilamentError> {
         let mut hierarchy_children = vec![];
 
@@ -111,8 +121,7 @@ impl Collection {
                     }
                     ast::Block::Diagram(inner_diagram) => {
                         debug!("Processing nested diagram of kind {:?}", inner_diagram.kind);
-                        let inner_hierarchy_child =
-                            self.process_diagram_block(&inner_diagram.scope.elements)?;
+                        let inner_hierarchy_child = self.process_diagram_block(inner_diagram)?;
                         hierarchy_children.push((node.id.clone(), inner_hierarchy_child));
                     }
                     ast::Block::None => {}
@@ -142,11 +151,12 @@ impl Collection {
 
     fn process_diagram_block(
         &mut self,
-        elements: &[ast::Element],
+        diagram: &'a ast::Diagram,
     ) -> Result<NodeIndex, FilamentError> {
-        let mut graph = Graph::new();
+        let mut graph = Graph::new(diagram);
         let mut node_map = HashMap::new();
-        let hierarchy_children = self.process_elements(&mut graph, &mut node_map, elements)?;
+        let hierarchy_children =
+            self.process_elements(&mut graph, &mut node_map, &diagram.scope.elements)?;
 
         let hierarchy_idx = self.hierarchy.add_node(graph);
         for child in hierarchy_children {
