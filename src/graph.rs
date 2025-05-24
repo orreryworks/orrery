@@ -116,7 +116,7 @@ impl<'a> Collection<'a> {
                             scope.elements.len()
                         );
                         let mut inner_hierarchy_children =
-                            self.process_elements(graph, node_map, elements)?;
+                            self.process_elements(graph, node_map, &scope.elements)?;
                         hierarchy_children.append(&mut inner_hierarchy_children);
                     }
                     ast::Block::Diagram(inner_diagram) => {
