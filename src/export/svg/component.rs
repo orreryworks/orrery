@@ -5,10 +5,7 @@ use crate::{
     layout::component,
     layout::text,
 };
-use svg::{
-    Document,
-    node::element::{Group, Rectangle, Text},
-};
+use svg::node::element::{Group, Rectangle, Text};
 
 use super::Svg;
 
@@ -23,7 +20,7 @@ impl Svg {
         )
     }
 
-    fn render_component(&self, component: &Component) -> Group {
+    pub fn render_component(&self, component: &Component) -> Group {
         // Use the shape_type to render the appropriate shape via the renderer
         let type_def = &*component.node.type_definition;
 
@@ -42,7 +39,7 @@ impl Svg {
         )
     }
 
-    fn render_relation(
+    pub fn render_relation(
         &self,
         source: &Component,
         target: &Component,
@@ -107,7 +104,7 @@ impl Svg {
         group
     }
 
-    fn calculate_component_diagram_bounds(&self, l: &component::Layout) -> Bounds {
+    pub fn calculate_component_diagram_bounds(&self, l: &component::Layout) -> Bounds {
         // If there are no components, return default bounds
         if l.components.is_empty() {
             return Bounds::default();
@@ -120,59 +117,6 @@ impl Svg {
             .fold(l.components[0].bounds(), |acc, bounds| acc.merge(&bounds))
     }
 
-    pub fn render_component_diagram(&self, l: &component::Layout) -> Document {
-        // Calculate content dimensions using the bounds method
-        let content_bounds = self.calculate_component_diagram_bounds(l);
-        let content_size = content_bounds.to_size();
-
-        // Calculate final SVG dimensions (including margins)
-        let svg_size = self.calculate_svg_dimensions(&content_size);
-
-        // Create new document with calculated dimensions
-        let doc = Document::new()
-            .set(
-                "viewBox",
-                format!("0 0 {} {}", svg_size.width, svg_size.height),
-            )
-            .set("width", svg_size.width)
-            .set("height", svg_size.height);
-            
-        // Add background using the shared method
-        let mut doc = self.add_background(doc, svg_size.width, svg_size.height);
-
-        // Create marker definitions iterator for each color used in relations
-        let relation_colors = l.relations.iter().map(|r| &r.relation.color);
-
-        // Create marker definitions from collected colors
-        let defs = arrows::create_marker_definitions(relation_colors);
-
-        doc = doc.add(defs);
-
-        // Calculate padding to center the content
-        let margin = (svg_size.width - content_size.width) / 2.0;
-
-        // Position all components with a translation to account for the margins
-        let mut main_group = Group::new();
-
-        for component in &l.components {
-            // Create a positioned component by adjusting for margin
-            let positioned_component = self.render_component(component);
-            main_group = main_group.add(positioned_component);
-        }
-
-        for relation in &l.relations {
-            main_group = main_group.add(self.render_relation(
-                l.source(relation),
-                l.target(relation),
-                relation.relation,
-            ));
-        }
-
-        // Apply a translation to center the diagram and add margins
-        let transform_group = Group::new()
-            .set("transform", format!("translate({margin}, {margin})"))
-            .add(main_group);
-
-        doc.add(transform_group)
-    }
+    // This method was removed as it's no longer used directly - component rendering
+    // is now handled through the layered layout system
 }

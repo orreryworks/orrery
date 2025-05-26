@@ -75,33 +75,12 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
     // Process all diagrams in the hierarchy, from innermost to outermost
     // Each embedded diagram uses its own layout engine as specified in its attributes
     info!("Processing diagrams in hierarchy");
-    let (main_layout, _embedded_layouts) = engine_builder.build(&graphs); // FIXME: This is a temp and should use _embedded_loyouts.
 
-    // Process diagram based on its type
-    match main_layout {
-        layout::engines::LayoutResult::Component(layout) => {
-            debug!(
-                components_len = layout.components.len(),
-                relations_len = layout.relations.len();
-                "Layout calculated",
-            );
+    let layered_layout = engine_builder.build(&graphs);
 
-            // Export the component layout
-            info!("Exporting component diagram to SVG");
-            svg_exporter.export_component_layout(&layout)?;
-        }
-        layout::engines::LayoutResult::Sequence(layout) => {
-            debug!(
-                participants_len = layout.participants.len(),
-                messages_len = layout.messages.len();
-                "Layout calculated",
-            );
+    info!(layers_count = layered_layout.len(); "Layout calculated",);
 
-            // Export the sequence layout
-            info!("Exporting sequence diagram to SVG");
-            svg_exporter.export_sequence_layout(&layout)?;
-        }
-    }
+    svg_exporter.export_layered_layout(&layered_layout)?;
 
     // Common post-processing
     info!(output_file = cfg.output; "SVG exported successfully to");

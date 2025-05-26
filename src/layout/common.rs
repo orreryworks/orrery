@@ -47,7 +47,7 @@ impl Bounds {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Component<'a> {
     pub node: &'a ast::Node,
     pub position: Point,

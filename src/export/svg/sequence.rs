@@ -5,15 +5,12 @@ use crate::{
         sequence, text,
     },
 };
-use svg::{
-    Document,
-    node::element::{Group, Line, Rectangle, Text},
-};
+use svg::node::element::{Group, Line, Rectangle, Text};
 
 use super::{Svg, arrows, renderer};
 
 impl Svg {
-    fn render_participant(&self, participant: &sequence::Participant) -> Group {
+    pub fn render_participant(&self, participant: &sequence::Participant) -> Group {
         let group = Group::new();
         let component = &participant.component;
         let type_def = &*component.node.type_definition;
@@ -48,7 +45,7 @@ impl Svg {
         group.add(shape_group).add(lifeline)
     }
 
-    fn render_message(&self, message: &sequence::Message, layout: &sequence::Layout) -> Group {
+    pub fn render_message(&self, message: &sequence::Message, layout: &sequence::Layout) -> Group {
         let mut group = Group::new();
 
         let source = &layout.participants[message.source_index];
@@ -117,7 +114,7 @@ impl Svg {
         group
     }
 
-    fn calculate_sequence_diagram_bounds(&self, layout: &sequence::Layout) -> Bounds {
+    pub fn calculate_sequence_diagram_bounds(&self, layout: &sequence::Layout) -> Bounds {
         // Start with default bounds
         if layout.participants.is_empty() {
             return Bounds::default();
@@ -144,60 +141,6 @@ impl Svg {
         bounds
     }
 
-    pub fn render_sequence_diagram(&self, layout: &sequence::Layout) -> Document {
-        // Calculate content bounds
-        let content_bounds = self.calculate_sequence_diagram_bounds(layout);
-        let content_size = content_bounds.to_size();
-
-        // Calculate final SVG dimensions with margins
-        let svg_size = self.calculate_svg_dimensions(&content_size);
-
-        // Create the SVG document with the calculated dimensions
-        let doc = Document::new()
-            .set(
-                "viewBox",
-                format!("0 0 {} {}", svg_size.width, svg_size.height),
-            )
-            .set("width", svg_size.width)
-            .set("height", svg_size.height);
-            
-        // Add background using the shared method
-        let mut doc = self.add_background(doc, svg_size.width, svg_size.height);
-
-        // Create marker definitions iterator for each color used in messages
-        let message_colors = layout.messages.iter().map(|m| &m.relation.color);
-
-        // Create marker definitions from collected colors
-        let defs = arrows::create_marker_definitions(message_colors);
-
-        doc = doc.add(defs);
-
-        // Calculate margins for centering
-        let margin_x = (svg_size.width - content_size.width) / 2.0;
-        let margin_y = (svg_size.height - content_size.height) / 2.0;
-
-        // Create group for all diagram elements with offset to account for min_x and min_y
-        let mut diagram_group = Group::new();
-
-        // Render participants
-        for participant in &layout.participants {
-            diagram_group = diagram_group.add(self.render_participant(participant));
-        }
-
-        // Render messages
-        for message in &layout.messages {
-            diagram_group = diagram_group.add(self.render_message(message, layout));
-        }
-
-        // Add transformation to center the diagram
-        let transform = format!(
-            "translate({}, {})",
-            margin_x - content_bounds.min_x,
-            margin_y - content_bounds.min_y
-        );
-
-        let main_group = Group::new().set("transform", transform).add(diagram_group);
-
-        doc.add(main_group)
-    }
+    // This method was removed as it's no longer used directly - sequence diagram rendering
+    // is now handled through the layered layout system
 }

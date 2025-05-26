@@ -1,5 +1,10 @@
 use crate::{
-    ast, color::Color, config::StyleConfig, error::FilamentError, export, layout::common::Size,
+    ast,
+    color::Color,
+    config::StyleConfig,
+    error::FilamentError,
+    export,
+    layout::{common::Size, layer::LayeredLayout},
 };
 use log::{debug, error, info};
 use std::{fs::File, io::Write};
@@ -112,27 +117,15 @@ impl Svg {
 
 mod arrows;
 mod component;
+mod layer;
 mod renderer;
 mod sequence;
 
-// Single implementation of Exporter trait that delegates to specialized methods
+// Implementation of Exporter trait for SVG
 impl export::Exporter for Svg {
-    fn export_component_layout(
-        &self,
-        layout: &crate::layout::component::Layout,
-    ) -> Result<(), export::Error> {
-        let doc = self.render_component_diagram(layout);
-        debug!("SVG document rendered");
-
-        self.write_document(doc)
-    }
-
-    fn export_sequence_layout(
-        &self,
-        layout: &crate::layout::sequence::Layout,
-    ) -> Result<(), export::Error> {
-        let doc = self.render_sequence_diagram(layout);
-        debug!("SVG document rendered");
+    fn export_layered_layout(&self, layout: &LayeredLayout) -> Result<(), export::Error> {
+        let doc = self.render_layered_layout(layout);
+        debug!("SVG document rendered for layered layout");
 
         self.write_document(doc)
     }

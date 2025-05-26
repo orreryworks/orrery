@@ -1,18 +1,12 @@
 pub mod svg;
 
-use crate::layout::{component, sequence};
+use crate::layout::layer::LayeredLayout;
 
-// A single Exporter trait that works with any layout type
+// A single Exporter trait that works with layered diagrams
 pub trait Exporter {
-    fn export_component_layout(&self, _layout: &component::Layout) -> Result<(), Error> {
+    fn export_layered_layout(&self, _layout: &LayeredLayout) -> Result<(), Error> {
         Err(Error::Render(
-            "Component layout export not implemented".to_string(),
-        ))
-    }
-
-    fn export_sequence_layout(&self, _layout: &sequence::Layout) -> Result<(), Error> {
-        Err(Error::Render(
-            "Sequence layout export not implemented".to_string(),
+            "Layered layout export not implemented".to_string(),
         ))
     }
 }

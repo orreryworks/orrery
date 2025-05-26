@@ -1,7 +1,7 @@
 use crate::ast;
 use crate::layout::common::Component;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LayoutRelation<'a> {
     pub relation: &'a ast::Relation,
     pub(crate) source_index: usize,
@@ -19,7 +19,7 @@ impl<'a> LayoutRelation<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Layout<'a> {
     pub components: Vec<Component<'a>>,
     pub relations: Vec<LayoutRelation<'a>>,

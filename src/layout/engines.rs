@@ -5,6 +5,8 @@
 //! and sequence diagram types, with different algorithm options for each.
 //!
 //! The module uses a builder pattern for creating and configuring layout engines.
+//!
+//! The output format is LayeredLayout: A flattened structure with layers for easier rendering.
 
 // Layout engine modules with different implementations
 mod basic;
@@ -14,22 +16,26 @@ mod sugiyama;
 use crate::{
     ast::{DiagramKind, LayoutEngine, TypeId},
     graph::{Collection, Graph},
-    layout::{component, sequence},
+    layout::{
+        common::Point,
+        component,
+        layer::{Layer, LayerContent, LayeredLayout},
+        sequence,
+    },
 };
 use std::collections::HashMap;
 
-/// Map type containing pre-calculated layout information for embedded diagrams,
-/// indexed by the TypeId of the node containing the embedded diagram
-pub type EmbeddedLayouts<'a> = HashMap<TypeId, LayoutResult<'a>>;
-
 /// Enum to store different layout results based on diagram type
-/// Used both for returning the main diagram layout and for storing
-/// layouts of embedded diagrams that will be referenced by parent diagrams
+/// Contains the direct layout information without any embedded diagram data
 #[derive(Debug)]
 pub enum LayoutResult<'a> {
     Component(component::Layout<'a>),
     Sequence(sequence::Layout<'a>),
 }
+
+/// Map type containing pre-calculated layout information for embedded diagrams,
+/// indexed by the TypeId of the node containing the embedded diagram
+pub type EmbeddedLayouts<'a> = HashMap<TypeId, LayoutResult<'a>>;
 
 // Trait defining the interface for component diagram layout engines
 pub trait ComponentEngine {
@@ -75,7 +81,6 @@ pub struct EngineBuilder {
     min_component_spacing: f32,
     message_spacing: f32,
     force_simulation_iterations: usize,
-    //
 }
 
 impl EngineBuilder {
@@ -166,53 +171,58 @@ impl EngineBuilder {
         &**engine
     }
 
-    /// Process all graphs in the collection in post-order
+    /// Build a layered layout structure for rendering
     ///
-    /// 1. First processes all embedded (child) diagrams
-    /// 2. Then processes parent diagrams, using the layouts of embedded diagrams
-    ///
-    /// Each diagram can specify its own layout engine, which will be respected during processing.
-    pub fn build<'a>(
-        mut self,
-        collection: &'a Collection<'a>,
-    ) -> (LayoutResult<'a>, EmbeddedLayouts<'a>) {
-        let mut embedded_layouts = HashMap::new();
+    /// Flattens the diagram hierarchy into layers that can be rendered in sequence.
+    pub fn build<'a>(mut self, collection: &'a Collection<'a>) -> LayeredLayout<'a> {
+        let mut layered_layout = LayeredLayout::new();
 
-        // We'll get (type_id, graph) pairs, where type_id is None for the root
-        let mut main_layout = None;
+        let mut layout_info: HashMap<TypeId, LayoutResult<'a>> = HashMap::new();
 
-        // Process in post-order to ensure inner diagrams are processed before outer ones
-        // This means child diagrams are always processed before their parents
+        let mut z_index = 0u32;
+
+        // First phase: calculate all layouts
         for (type_id, graph) in collection.hierarchy_in_post_order() {
-            // Access the diagram directly from the graph
+            // Calculate the layout for this diagram using the appropriate engine
             let diagram = graph.diagram();
             let layout_result = match diagram.kind {
                 DiagramKind::Component => {
-                    // Get the appropriate component engine for this diagram
                     let engine = self.component_engine(diagram.layout_engine);
 
-                    let layout = engine.calculate(graph, &embedded_layouts);
+                    let layout = engine.calculate(graph, &layout_info);
                     LayoutResult::Component(layout)
                 }
                 DiagramKind::Sequence => {
-                    // Get the appropriate sequence engine for this diagram
                     let engine = self.sequence_engine(diagram.layout_engine);
 
-                    let layout = engine.calculate(graph, &embedded_layouts);
+                    let layout = engine.calculate(graph, &layout_info);
                     LayoutResult::Sequence(layout)
                 }
             };
 
-            // If this is the root graph (type_id is None), set it as the main layout
-            // Otherwise, add it to embedded_layouts for reference by parent diagrams
+            // Define position offset (currently always zero, but kept for future extension)
+            let offset = Point { x: 0.0, y: 0.0 };
+
+            // Create and add the layer
+            let layer = Layer {
+                z_index,
+                offset,
+                clip_bounds: None, // We could add clipping later if needed
+                content: match &layout_result {
+                    LayoutResult::Component(layout) => LayerContent::Component(layout.clone()),
+                    LayoutResult::Sequence(layout) => LayerContent::Sequence(layout.clone()),
+                },
+            };
+
+            layered_layout.add_layer(layer);
+            z_index += 1;
+
+            // Store the layout for embedded diagram references
             if let Some(id) = type_id {
-                embedded_layouts.insert(id.clone(), layout_result);
-            } else {
-                main_layout = Some(layout_result);
+                layout_info.insert(id.clone(), layout_result);
             }
         }
 
-        // The root layout should always exist
-        (main_layout.unwrap(), embedded_layouts)
+        layered_layout
     }
 }

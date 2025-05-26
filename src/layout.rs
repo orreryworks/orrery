@@ -1,6 +1,7 @@
 pub mod common;
 pub mod component;
-pub mod engines; // FIXME: After implementing embedded diagrams for exporters, make this mod private.
+mod engines;
+pub mod layer;
 mod positioning;
 pub mod sequence;
 pub mod text;
