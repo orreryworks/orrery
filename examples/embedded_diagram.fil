@@ -1,4 +1,4 @@
-diagram component [background_color="#F8F8F8", layout_engine="force"];
+diagram component [background_color="#F8F8F8", layout_engine="basic"];
 
 // Define custom types
 type Service = Rectangle [fill_color="#e6f3ff", rounded="5"];

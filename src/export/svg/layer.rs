@@ -36,7 +36,8 @@ impl Svg {
         doc = doc.add(defs);
 
         // Add clip paths for all layers that need clipping
-        for layer in &layout.layers {
+        // Each clip path gets a unique ID based on the layer's z-index
+        for layer in layout.iter_from_bottom() {
             if let Some(bounds) = &layer.clip_bounds {
                 let clip_id = format!("clip-layer-{}", layer.z_index);
                 let clip_path = self.create_clip_path(&clip_id, bounds);
@@ -59,7 +60,7 @@ impl Svg {
         );
 
         // Add each layer in order
-        for layer in &layout.layers {
+        for layer in layout.iter_from_bottom() {
             main_group = main_group.add(self.render_layer(layer));
         }
 
@@ -68,6 +69,13 @@ impl Svg {
     }
 
     /// Creates SVG clip path for a layer
+    ///
+    /// This generates an SVG Definitions element containing a ClipPath with the specified ID.
+    /// The clip path contains a rectangle that matches the provided bounds.
+    ///
+    /// # Parameters
+    /// * `clip_id` - Unique identifier for the clip path
+    /// * `bounds` - The bounds to use for clipping
     fn create_clip_path(&self, clip_id: &str, bounds: &Bounds) -> Definitions {
         let defs = Definitions::new();
 
@@ -83,14 +91,25 @@ impl Svg {
         defs.add(clip_path)
     }
 
-    /// Calculate the combined bounds of all layers
+    /// Calculate the combined bounds of all layers, considering their offsets
+    ///
+    /// This method computes the total bounding box that contains all layers in the layout,
+    /// accounting for layer offsets. This is used to determine the overall size needed
+    /// for the SVG document.
+    ///
+    /// # Returns
+    /// A Bounds object that encompasses all content in all layers
     fn calculate_layered_layout_bounds(&self, layout: &LayeredLayout) -> Bounds {
         if layout.is_empty() {
             return Bounds::default();
         }
 
-        // Start with the bounds of the first layer
-        let mut combined_bounds = match &layout.layers[0].content {
+        let mut layout_iter = layout.iter_from_bottom();
+        // Start with the bounds of the first (bottom) layer
+        let mut combined_bounds = match &layout_iter
+            .next()
+            .expect("Bottom layer should always exist").content // FIXME: Convert to Result.
+        {
             LayerContent::Component(comp_layout) => {
                 self.calculate_component_diagram_bounds(comp_layout)
             }
@@ -100,7 +119,7 @@ impl Svg {
         };
 
         // Merge with bounds of additional layers, adjusting for layer offset
-        for layer in &layout.layers[1..] {
+        for layer in layout_iter {
             let layer_bounds = match &layer.content {
                 LayerContent::Component(comp_layout) => {
                     self.calculate_component_diagram_bounds(comp_layout)
@@ -110,14 +129,10 @@ impl Svg {
                 }
             };
 
-            // Adjust bounds for layer offset
-            let offset_bounds = Bounds {
-                min_x: layer_bounds.min_x + layer.offset.x,
-                min_y: layer_bounds.min_y + layer.offset.y,
-                max_x: layer_bounds.max_x + layer.offset.x,
-                max_y: layer_bounds.max_y + layer.offset.y,
-            };
+            // Adjust bounds for layer offset by creating a translated copy
+            let offset_bounds = layer_bounds.translate(layer.offset);
 
+            // Merge with the combined bounds to include this layer
             combined_bounds = combined_bounds.merge(&offset_bounds);
         }
 
@@ -132,7 +147,7 @@ impl Svg {
         // Collect all unique colors used across all layers
         let mut all_colors = Vec::new();
 
-        for layer in &layout.layers {
+        for layer in layout.iter_from_bottom() {
             match &layer.content {
                 LayerContent::Component(comp_layout) => {
                     for relation in &comp_layout.relations {
@@ -152,6 +167,15 @@ impl Svg {
     }
 
     /// Render a single layer to SVG
+    ///
+    /// This method creates an SVG group for the layer, applies transformations and clipping,
+    /// and renders the layer's content (either component or sequence diagram).
+    ///
+    /// # Parameters
+    /// * `layer` - The layer to render
+    ///
+    /// # Returns
+    /// An SVG Group element containing the rendered layer
     fn render_layer(&self, layer: &Layer) -> Group {
         // Create a group for this layer
         let mut layer_group = Group::new();
@@ -164,14 +188,15 @@ impl Svg {
             );
         }
 
-        // Apply clipping if specified
+        // Apply clipping if specified for this layer
         if let Some(_bounds) = &layer.clip_bounds {
-            // Create a unique clip ID for this layer
+            // Create a unique clip ID for this layer based on its z-index
             let clip_id = format!("clip-layer-{}", layer.z_index);
+            // Apply the clip-path property referencing the previously defined clip path
             layer_group = layer_group.set("clip-path", format!("url(#{})", clip_id));
         }
 
-        // Render the layer content
+        // Render the layer content based on its type
         match &layer.content {
             LayerContent::Component(layout) => {
                 // Render all components
