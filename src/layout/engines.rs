@@ -14,10 +14,10 @@ mod force;
 mod sugiyama;
 
 use crate::{
-    ast::{DiagramKind, LayoutEngine, TypeId},
+    ast::{self, DiagramKind, LayoutEngine, TypeId},
     graph::{Collection, Graph},
     layout::{
-        common::{Point, Size},
+        common::{self, LayoutSizing, Point, Size},
         component,
         layer::{LayerContent, LayeredLayout},
         sequence,
@@ -33,9 +33,54 @@ pub enum LayoutResult<'a> {
     Sequence(sequence::Layout<'a>),
 }
 
+impl<'a> LayoutResult<'a> {
+    /// Calculate the size of this layout, using the appropriate sizing implementation
+    pub fn calculate_size(&self) -> common::Size {
+        match self {
+            LayoutResult::Component(layout) => {
+                let layout_ref: &dyn LayoutSizing = layout;
+                layout_ref.layout_size()
+            }
+            LayoutResult::Sequence(layout) => {
+                let layout_ref: &dyn LayoutSizing = layout;
+                layout_ref.layout_size()
+            }
+        }
+    }
+}
+
 /// Map type containing pre-calculated layout information for embedded diagrams,
 /// indexed by the TypeId of the node containing the embedded diagram
 pub type EmbeddedLayouts<'a> = HashMap<TypeId, LayoutResult<'a>>;
+
+/// Utility function to calculate the size of an embedded layout
+/// This provides a standard way for layout engines to get the size of embedded diagrams
+pub fn get_embedded_layout_size<'a>(
+    layout: &LayoutResult<'a>,
+    node: &ast::Node,
+    min_width: f32,
+    min_height: f32,
+    padding: f32,
+    text_padding: f32,
+) -> Size {
+    // Calculate text-based size for the container element
+    let text_size = crate::layout::positioning::calculate_element_size(
+        node,
+        min_width,
+        min_height,
+        text_padding,
+    );
+    
+    // Calculate embedded layout size
+    let embedded_size = layout.calculate_size().add_padding(padding);
+    
+    // Take the maximum of each dimension to ensure both text and embedded content fit
+    Size::new(
+        text_size.width.max(embedded_size.width),
+        text_size.height.max(embedded_size.height)
+    )
+    .max(Size::new(min_width, min_height))
+}
 
 // Trait defining the interface for component diagram layout engines
 pub trait ComponentEngine {

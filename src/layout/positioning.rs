@@ -97,11 +97,9 @@ pub fn calculate_element_size(
     padding: f32,
 ) -> Size {
     // Calculate text size based on the node's display text and font size
-    let text_size = text::calculate_text_size(node.display_text(), node.type_definition.font_size);
+    let size = text::calculate_text_size(node.display_text(), node.type_definition.font_size);
 
     // Add padding around the text and ensure minimum size
-    let width = padding.mul_add(2.0, text_size.width).max(min_width);
-    let height = padding.mul_add(2.0, text_size.height).max(min_height);
-
-    Size { width, height }
+    size.add_padding(padding)
+        .max(Size::new(min_width, min_height))
 }

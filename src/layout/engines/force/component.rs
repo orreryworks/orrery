@@ -9,7 +9,7 @@ use crate::{
     layout::{
         common::{Component, Point, Size},
         component::{Layout, LayoutRelation},
-        engines::{ComponentEngine, EmbeddedLayouts, LayoutResult},
+        engines::{self, ComponentEngine, EmbeddedLayouts},
         positioning::calculate_element_size,
     },
 };
@@ -51,61 +51,61 @@ impl Engine {
             padding: 40.0,
         }
     }
-    
+
     /// Set the number of iterations for the force simulation
     pub fn set_iterations(&mut self, iterations: usize) -> &mut Self {
         self.iterations = iterations;
         self
     }
-    
+
     /// Set the spring constant for edge forces
     #[allow(dead_code)]
     pub fn set_spring_constant(&mut self, constant: f32) -> &mut Self {
         self.spring_constant = constant;
         self
     }
-    
+
     /// Set the repulsion constant for node forces
     #[allow(dead_code)]
     pub fn set_repulsion_constant(&mut self, constant: f32) -> &mut Self {
         self.repulsion_constant = constant;
         self
     }
-    
+
     /// Set the damping factor for the simulation
     #[allow(dead_code)]
     pub fn set_damping_factor(&mut self, factor: f32) -> &mut Self {
         self.damping_factor = factor;
         self
     }
-    
+
     /// Set the minimum component width
     #[allow(dead_code)]
     pub fn set_min_width(&mut self, width: f32) -> &mut Self {
         self.min_component_width = width;
         self
     }
-    
+
     /// Set the minimum component height
     #[allow(dead_code)]
     pub fn set_min_height(&mut self, height: f32) -> &mut Self {
         self.min_component_height = height;
         self
     }
-    
+
     /// Set the text padding
     #[allow(dead_code)]
     pub fn set_text_padding(&mut self, padding: f32) -> &mut Self {
         self.text_padding = padding;
         self
     }
-    
+
     /// Set the minimum distance between components
     pub fn set_min_distance(&mut self, distance: f32) -> &mut Self {
         self.min_distance = distance;
         self
     }
-    
+
     /// Set the padding around components
     pub fn set_padding(&mut self, padding: f32) -> &mut Self {
         self.padding = padding;
@@ -113,19 +113,29 @@ impl Engine {
     }
 
     /// Calculate sizes for all components, considering embedded diagrams
-    fn calculate_component_sizes<'a>(&self, graph: &Graph<'a>, embedded_layouts: &EmbeddedLayouts) -> HashMap<NodeIndex, Size> {
+    fn calculate_component_sizes<'a>(
+        &self,
+        graph: &Graph<'a>,
+        embedded_layouts: &EmbeddedLayouts,
+    ) -> HashMap<NodeIndex, Size> {
         graph
             .node_indices()
             .map(|node_idx| {
                 let node = graph.node_weight(node_idx).unwrap();
-                
+
                 // Check if this node has an embedded diagram
                 let size = if let ast::Block::Diagram(_) = &node.block {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
                     if let Some(layout) = embedded_layouts.get(&node.id) {
-                        // Get the bounding box for the embedded layout
-                        self.get_layout_size(layout)
+                        engines::get_embedded_layout_size(
+                            layout,
+                            node,
+                            self.min_component_width,
+                            self.min_component_height,
+                            self.padding,
+                            self.text_padding,
+                        )
                     } else {
                         // Fallback if no embedded layout is found (shouldn't happen in normal flow)
                         calculate_element_size(
@@ -144,7 +154,7 @@ impl Engine {
                         self.text_padding,
                     )
                 };
-                
+
                 (node_idx, size)
             })
             .collect()
@@ -365,56 +375,14 @@ impl Engine {
             }
         }
     }
-    
-    /// Calculate the bounding box size for an embedded layout
-    fn get_layout_size(&self, layout: &LayoutResult<'_>) -> Size {
-        match layout {
-            LayoutResult::Component(component_layout) => {
-                // Calculate bounding box for all components
-                let mut max_width: f32 = 0.0;
-                let mut max_height: f32 = 0.0;
-                
-                for component in &component_layout.components {
-                    let right = component.position.x + component.size.width;
-                    let bottom = component.position.y + component.size.height;
-                    
-                    max_width = max_width.max(right);
-                    max_height = max_height.max(bottom);
-                }
-                
-                // Add padding for the container
-                Size {
-                    width: max_width + self.padding * 2.0,
-                    height: max_height + self.padding * 2.0,
-                }
-            },
-            LayoutResult::Sequence(sequence_layout) => {
-                // For sequence diagrams, calculate width based on participants
-                // and height based on the last message
-                let mut max_width: f32 = 0.0;
-                let mut max_height: f32 = 0.0;
-                
-                // Find the rightmost participant
-                for participant in &sequence_layout.participants {
-                    let right = participant.component.position.x + participant.component.size.width;
-                    max_width = max_width.max(right);
-                    
-                    // Use the maximum lifeline height
-                    max_height = max_height.max(participant.lifeline_end);
-                }
-                
-                // Add padding for the container
-                Size {
-                    width: max_width + self.padding * 2.0,
-                    height: max_height + self.padding * 2.0,
-                }
-            }
-        }
-    }
 }
 
 impl ComponentEngine for Engine {
-    fn calculate<'a>(&self, graph: &'a Graph<'a>, embedded_layouts: &EmbeddedLayouts<'a>) -> Layout<'a> {
+    fn calculate<'a>(
+        &self,
+        graph: &'a Graph<'a>,
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> Layout<'a> {
         // Calculate sizes for all components, considering embedded diagrams
         let component_sizes = self.calculate_component_sizes(graph, embedded_layouts);
 
@@ -432,7 +400,7 @@ impl ComponentEngine for Engine {
                 Some(Component {
                     node,
                     position: *position,
-                    size: size.clone(),
+                    size: *size,
                 })
             })
             .collect();

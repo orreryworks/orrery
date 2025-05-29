@@ -8,7 +8,7 @@ use crate::{
     graph::Graph,
     layout::{
         common::{Component, Point},
-        engines::{EmbeddedLayouts, SequenceEngine},
+        engines::{self, EmbeddedLayouts, SequenceEngine},
         positioning::{self, calculate_element_size},
         sequence::{Layout, Message, Participant},
     },
@@ -23,7 +23,7 @@ pub struct Engine {
     min_spacing: f32, // Minimum space between participants
     message_spacing: f32,
     top_margin: f32,
-    text_padding: f32,
+    padding: f32,
     label_padding: f32, // Padding to add for message labels
 }
 
@@ -36,51 +36,51 @@ impl Engine {
             min_spacing: 40.0, // Minimum spacing between participants
             message_spacing: 50.0,
             top_margin: 60.0,
-            text_padding: 15.0,
+            padding: 15.0,
             label_padding: 20.0, // Extra padding for labels
         }
     }
-    
+
     /// Set the minimum width for participants
     #[allow(dead_code)]
     pub fn set_min_width(&mut self, width: f32) -> &mut Self {
         self.min_participant_width = width;
         self
     }
-    
+
     /// Set the minimum height for participants
     #[allow(dead_code)]
     pub fn set_min_height(&mut self, height: f32) -> &mut Self {
         self.min_participant_height = height;
         self
     }
-    
+
     /// Set the minimum spacing between participants
     pub fn set_min_spacing(&mut self, spacing: f32) -> &mut Self {
         self.min_spacing = spacing;
         self
     }
-    
+
     /// Set the vertical spacing between messages
     pub fn set_message_spacing(&mut self, spacing: f32) -> &mut Self {
         self.message_spacing = spacing;
         self
     }
-    
+
     /// Set the top margin of the diagram
     #[allow(dead_code)]
     pub fn set_top_margin(&mut self, margin: f32) -> &mut Self {
         self.top_margin = margin;
         self
     }
-    
+
     /// Set the text padding for participants
     #[allow(dead_code)]
     pub fn set_text_padding(&mut self, padding: f32) -> &mut Self {
-        self.text_padding = padding;
+        self.padding = padding;
         self
     }
-    
+
     /// Set the padding for message labels
     #[allow(dead_code)]
     pub fn set_label_padding(&mut self, padding: f32) -> &mut Self {
@@ -119,21 +119,52 @@ impl Engine {
     }
 
     /// Calculate layout for a sequence diagram
-    pub fn calculate_layout<'a>(&self, graph: &'a Graph<'a>, _embedded_layouts: &EmbeddedLayouts<'a>) -> Layout<'a> {
+    pub fn calculate_layout<'a>(
+        &self,
+        graph: &'a Graph<'a>,
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> Layout<'a> {
         let mut participants: Vec<Participant<'a>> = Vec::new();
         let mut participant_indices = HashMap::new();
 
-        // Calculate text-based sizes for participants
+        // Calculate sizes for participants, accounting for embedded diagrams
         let participant_sizes: HashMap<_, _> = graph
             .node_indices()
             .map(|node_idx| {
                 let node = graph.node_weight(node_idx).unwrap();
-                let size = calculate_element_size(
-                    node,
-                    self.min_participant_width,
-                    self.min_participant_height,
-                    self.text_padding,
-                );
+
+                // Check if this node has an embedded diagram
+                let size = if let ast::Block::Diagram(_) = &node.block {
+                    // If this participant has an embedded diagram, use its layout size
+                    if let Some(layout) = embedded_layouts.get(&node.id) {
+                        // Use the shared utility function to calculate size
+                        engines::get_embedded_layout_size(
+                            layout,
+                            node,
+                            self.min_participant_width,
+                            self.min_participant_height,
+                            self.padding,
+                            self.padding, // Using padding for text_padding too
+                        )
+                    } else {
+                        // Fallback to text-based sizing if no embedded layout found
+                        calculate_element_size(
+                            node,
+                            self.min_participant_width,
+                            self.min_participant_height,
+                            self.padding,
+                        )
+                    }
+                } else {
+                    // Regular participant with no embedded diagram
+                    calculate_element_size(
+                        node,
+                        self.min_participant_width,
+                        self.min_participant_height,
+                        self.padding,
+                    )
+                };
+
                 (node_idx, size)
             })
             .collect();
@@ -159,7 +190,7 @@ impl Engine {
         let node_indices: Vec<_> = graph.node_indices().collect();
         let sizes: Vec<_> = node_indices
             .iter()
-            .map(|&idx| participant_sizes.get(&idx).unwrap().clone())
+            .map(|&idx| *participant_sizes.get(&idx).unwrap())
             .collect();
 
         // Calculate horizontal positions using positioning algorithms
@@ -169,7 +200,7 @@ impl Engine {
         // Create participants and store their indices
         for (i, node_idx) in node_indices.iter().enumerate() {
             let node = graph.node_weight(*node_idx).unwrap();
-            let size = participant_sizes.get(node_idx).unwrap().clone();
+            let size = *participant_sizes.get(node_idx).unwrap();
 
             participants.push(Participant {
                 component: Component {
@@ -229,8 +260,14 @@ impl Engine {
     }
 }
 
+impl Engine {}
+
 impl SequenceEngine for Engine {
-    fn calculate<'a>(&self, graph: &'a Graph<'a>, embedded_layouts: &EmbeddedLayouts<'a>) -> Layout<'a> {
+    fn calculate<'a>(
+        &self,
+        graph: &'a Graph<'a>,
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> Layout<'a> {
         self.calculate_layout(graph, embedded_layouts)
     }
 }

@@ -9,7 +9,7 @@ use crate::{
     layout::{
         common::{Component, Point, Size},
         component::{Layout, LayoutRelation},
-        engines::{ComponentEngine, EmbeddedLayouts},
+        engines::{self, ComponentEngine, EmbeddedLayouts},
         positioning::calculate_element_size,
     },
 };
@@ -155,7 +155,7 @@ impl Engine {
     ) -> Size {
         // If we've already processed this node, return its size
         if visited.contains(&node_idx) {
-            return sizes[&node_idx].clone();
+            return sizes[&node_idx];
         }
 
         // If this node has children, adjust its size based on children's sizes
@@ -163,7 +163,7 @@ impl Engine {
             if children.is_empty() {
                 // No children, just mark as visited and return current size
                 visited.insert(node_idx);
-                return sizes[&node_idx].clone();
+                return sizes[&node_idx];
             }
 
             // Process all children first to get their sizes
@@ -200,32 +200,60 @@ impl Engine {
             };
 
             // Update the size and mark as visited
-            sizes.insert(node_idx, new_size.clone());
+            sizes.insert(node_idx, new_size);
             visited.insert(node_idx);
             return new_size;
         }
 
         // No children, just mark as visited and return current size
         visited.insert(node_idx);
-        sizes[&node_idx].clone()
+        sizes[&node_idx]
     }
 
-    fn calculate_layout<'a>(&self, graph: &'a Graph<'a>, _embedded_layouts: &EmbeddedLayouts<'a>) -> Layout<'a> {
+    fn calculate_layout<'a>(&self, graph: &'a Graph<'a>, embedded_layouts: &EmbeddedLayouts<'a>) -> Layout<'a> {
         // First, build a map of parent-child relationships
         // This will help us understand the hierarchy in the graph
         let hierarchy_map = self.build_hierarchy_map(graph);
 
         // Calculate component sizes, adjusting for nested children
+        // Calculate base sizes for all components
         let mut component_sizes: HashMap<_, _> = graph
             .node_indices()
             .map(|node_idx| {
                 let node = graph.node_weight(node_idx).unwrap();
-                let size = calculate_element_size(
-                    node,
-                    self.min_component_width,
-                    self.min_component_height,
-                    self.text_padding,
-                );
+                
+                // Check if this node has an embedded diagram
+                let size = if let ast::Block::Diagram(_) = &node.block {
+                    // If this component has an embedded diagram, use its layout size
+                    if let Some(layout) = embedded_layouts.get(&node.id) {
+                        // Use the shared utility function to calculate size
+                        engines::get_embedded_layout_size(
+                            layout,
+                            node,
+                            self.min_component_width,
+                            self.min_component_height,
+                            self.container_padding,
+                            self.text_padding,
+                        )
+                    } else {
+                        // Fallback to text-based sizing if no embedded layout found
+                        calculate_element_size(
+                            node,
+                            self.min_component_width,
+                            self.min_component_height,
+                            self.text_padding,
+                        )
+                    }
+                } else {
+                    // Regular component with no embedded diagram
+                    calculate_element_size(
+                        node,
+                        self.min_component_width,
+                        self.min_component_height,
+                        self.text_padding,
+                    )
+                };
+                
                 (node_idx, size)
             })
             .collect();

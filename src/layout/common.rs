@@ -1,5 +1,11 @@
 use crate::ast;
 
+/// A trait for types that can calculate their own size
+pub trait LayoutSizing {
+    /// Calculate the size of this layout, possibly adding padding
+    fn layout_size(&self) -> Size;
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Point {
     pub x: f32,
@@ -42,6 +48,26 @@ impl Point {
 pub struct Size {
     pub width: f32,
     pub height: f32,
+}
+
+impl Size {
+    pub fn new(width: f32, height: f32) -> Self {
+        Self { width, height }
+    }
+
+    pub fn max(self, other: Size) -> Self {
+        Self {
+            width: self.width.max(other.width),
+            height: self.height.max(other.height),
+        }
+    }
+
+    pub fn add_padding(self, padding: f32) -> Self {
+        Self {
+            width: self.width + padding * 2.0,
+            height: self.height + padding * 2.0,
+        }
+    }
 }
 
 /// Represents a rectangular bounding box with minimum and maximum coordinates

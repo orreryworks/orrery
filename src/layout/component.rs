@@ -1,5 +1,7 @@
-use crate::ast;
-use crate::layout::common::Component;
+use crate::{
+    ast,
+    layout::common::{Component, LayoutSizing, Size},
+};
 
 #[derive(Debug, Clone)]
 pub struct LayoutRelation<'a> {
@@ -32,5 +34,25 @@ impl<'a> Layout<'a> {
 
     pub fn target(&self, lr: &LayoutRelation<'a>) -> &Component<'a> {
         &self.components[lr.target_index]
+    }
+}
+
+impl<'a> LayoutSizing for Layout<'a> {
+    fn layout_size(&self) -> Size {
+        // For component layouts, get the bounding box of all components
+        if self.components.is_empty() {
+            return Size::default();
+        }
+
+        // Calculate bounds from all components
+        let bounds = self
+            .components
+            .iter()
+            .skip(1)
+            .fold(self.components[0].bounds(), |acc, comp| {
+                acc.merge(&comp.bounds())
+            });
+
+        bounds.to_size()
     }
 }

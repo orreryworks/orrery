@@ -12,7 +12,12 @@ api_gateway as "API Gateway": Service;
 // Component with embedded sequence diagram
 auth_service as "Authentication Service": Service embed diagram sequence {
     client: Rectangle;
-    auth: Rectangle;
+    auth: Rectangle embed diagram component [layout_engine="basic"] {
+        auth_service: Rectangle;
+        user_db: Rectangle;
+
+        auth_service -> user_db: "Validate Credentials";
+    };
     user_db: Rectangle;
 
     client -> auth: "Login Request";
