@@ -5,7 +5,7 @@
 
 use crate::{
     ast,
-    layout::{common::Size, text},
+    layout::{geometry::Size, text},
 };
 use std::iter::IntoIterator;
 
@@ -27,7 +27,7 @@ where
     labels
         .into_iter()
         .flatten()
-        .map(|label| text::calculate_text_size(label, 14).width + padding)
+        .map(|label| text::calculate_text_size(label, 14).width() + padding)
         .max_by(|a, b| a.partial_cmp(b).unwrap())
         .unwrap_or(0.0)
 }
@@ -57,10 +57,10 @@ pub fn distribute_horizontally(
     for (i, size) in sizes.iter().enumerate() {
         // For the first element, we start at the given position
         if i == 0 {
-            x_position += size.width / 2.0;
+            x_position += size.width() / 2.0;
         } else {
             // For subsequent elements, we position based on previous element and spacing
-            let prev_width = sizes[i - 1].width;
+            let prev_width = sizes[i - 1].width();
 
             // Get any extra spacing from the provided array, or use 0.0
             let additional_spacing = extra_spacings
@@ -71,7 +71,7 @@ pub fn distribute_horizontally(
             let effective_spacing = min_spacing.max(additional_spacing);
 
             // Move position by half of previous width + spacing + half of current width
-            x_position += (prev_width / 2.0) + effective_spacing + (size.width / 2.0);
+            x_position += (prev_width / 2.0) + effective_spacing + (size.width() / 2.0);
         }
 
         positions.push(x_position);

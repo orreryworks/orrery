@@ -1,6 +1,6 @@
 use crate::{
     ast,
-    layout::common::{Component, LayoutSizing, Size},
+    layout::geometry::{Component, LayoutSizing, Size},
 };
 
 #[derive(Debug, Clone)]

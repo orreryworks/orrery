@@ -7,9 +7,9 @@ use crate::{
     ast,
     graph::Graph,
     layout::{
-        common::{Component, Point, Size},
         component::{Layout, LayoutRelation},
         engines::{self, ComponentEngine, EmbeddedLayouts},
+        geometry::{Component, Point, Size},
         positioning::calculate_element_size,
     },
 };
@@ -183,20 +183,13 @@ impl Engine {
                 let col = i % grid_size;
 
                 // Calculate base position with spacing based on component sizes
-                let base_x = col as f32 * cell_size;
-                let base_y = row as f32 * cell_size;
+                let base = Point::new(col as f32 * cell_size, row as f32 * cell_size);
 
                 // Add some randomness to avoid perfect grid alignment
-                let jitter_x = rng.random_range(-20.0..20.0);
-                let jitter_y = rng.random_range(-20.0..20.0);
+                let jitter =
+                    Point::new(rng.random_range(-20.0..20.0), rng.random_range(-20.0..20.0));
 
-                (
-                    node_idx,
-                    Point {
-                        x: base_x + jitter_x,
-                        y: base_y + jitter_y,
-                    },
-                )
+                (node_idx, base.add(jitter))
             })
             .collect()
     }
@@ -239,24 +232,21 @@ impl Engine {
                     let pos_i = positions[&node_i];
                     let pos_j = positions[&node_j];
 
-                    let dx = pos_i.x - pos_j.x;
-                    let dy = pos_i.y - pos_j.y;
+                    let trans = pos_i.sub(pos_j);
 
                     // Get component sizes to calculate appropriate distances
-                    let default_size = Size {
-                        width: self.min_component_width,
-                        height: self.min_component_height,
-                    };
-                    let size_i = component_sizes.get(&node_i).unwrap_or(&default_size);
-                    let size_j = component_sizes.get(&node_j).unwrap_or(&default_size);
+                    let default_size =
+                        Size::new(self.min_component_width, self.min_component_height);
+                    let size_i = *component_sizes.get(&node_i).unwrap_or(&default_size);
+                    let size_j = *component_sizes.get(&node_j).unwrap_or(&default_size);
 
                     // Calculate minimum distance based on component sizes plus padding
-                    let min_dist = (size_i.width + size_j.width + size_i.height + size_j.height)
-                        / 4.0
-                        + self.min_distance;
+                    let min_dist =
+                        (size_i.width() + size_j.width() + size_i.height() + size_j.height()) / 4.0
+                            + self.min_distance;
 
                     // Avoid division by zero
-                    let distance = (dx * dx + dy * dy).sqrt().max(1.0);
+                    let distance = trans.hypot().max(1.0);
 
                     // Stronger repulsion when components are too close
                     let force_factor = if distance < min_dist {
@@ -266,8 +256,8 @@ impl Engine {
                     };
 
                     // Normalize direction vector
-                    let force_x = force_factor * dx / distance;
-                    let force_y = force_factor * dy / distance;
+                    let force_x = force_factor * trans.x() / distance;
+                    let force_y = force_factor * trans.y() / distance;
 
                     // Add force to node_i
                     let (fx, fy) = forces[&node_i];
@@ -282,18 +272,17 @@ impl Engine {
                 if let (Some(&pos_source), Some(&pos_target)) =
                     (positions.get(&source), positions.get(&target))
                 {
-                    let dx = pos_source.x - pos_target.x;
-                    let dy = pos_source.y - pos_target.y;
+                    let dist = pos_source.sub(pos_target);
 
                     // Avoid division by zero
-                    let distance = (dx * dx + dy * dy).sqrt().max(1.0);
+                    let distance = dist.hypot().max(1.0);
 
                     // Spring force (proportional to distance)
                     let force = self.spring_constant * distance;
 
                     // Normalize direction vector
-                    let force_x = force * dx / distance;
-                    let force_y = force * dy / distance;
+                    let force_x = force * dist.x() / distance;
+                    let force_y = force * dist.y() / distance;
 
                     // Subtract force from source (pull towards target)
                     let (fx_source, fy_source) = forces[&source];
@@ -319,10 +308,7 @@ impl Engine {
                 let pos = positions[&node_idx];
                 positions.insert(
                     node_idx,
-                    Point {
-                        x: pos.x + new_vel_x,
-                        y: pos.y + new_vel_y,
-                    },
+                    Point::new(pos.x() + new_vel_x, pos.y() + new_vel_y),
                 );
             }
         }
@@ -346,10 +332,10 @@ impl Engine {
         let mut max_y = f32::MIN;
 
         for pos in positions.values() {
-            min_x = min_x.min(pos.x);
-            min_y = min_y.min(pos.y);
-            max_x = max_x.max(pos.x);
-            max_y = max_y.max(pos.y);
+            min_x = min_x.min(pos.x());
+            min_y = min_y.min(pos.y());
+            max_x = max_x.max(pos.x());
+            max_y = max_y.max(pos.y());
         }
 
         // Calculate center offset
@@ -358,8 +344,7 @@ impl Engine {
 
         // Center everything
         for pos in positions.values_mut() {
-            pos.x -= center_x;
-            pos.y -= center_y;
+            *pos = pos.sub(Point::new(center_x, center_y));
         }
 
         // Scale the layout if it's too large
@@ -370,8 +355,7 @@ impl Engine {
         if width > max_dimension || height > max_dimension {
             let scale_factor = max_dimension / width.max(height);
             for pos in positions.values_mut() {
-                pos.x *= scale_factor;
-                pos.y *= scale_factor;
+                *pos = pos.scale(scale_factor);
             }
         }
     }

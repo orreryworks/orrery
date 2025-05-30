@@ -8,8 +8,8 @@ pub trait LayoutSizing {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Point {
-    pub x: f32,
-    pub y: f32,
+    x: f32,
+    y: f32,
 }
 
 impl Point {
@@ -18,11 +18,63 @@ impl Point {
         Self { x, y }
     }
 
+    /// Returns the x-coordinate of the point
+    pub fn x(self) -> f32 {
+        self.x
+    }
+
+    /// Returns the y-coordinate of the point
+    pub fn y(self) -> f32 {
+        self.y
+    }
+
+    /// Checks if both x and y coordinates are zero
+    pub fn is_zero(self) -> bool {
+        self.x == 0.0 && self.y == 0.0
+    }
+
     /// Adds another point to this point, returning a new point
     pub fn add(self, other: Point) -> Self {
         Self {
             x: self.x + other.x,
             y: self.y + other.y,
+        }
+    }
+
+    /// Subtracts another point to this point, returning a new point
+    pub fn sub(self, other: Point) -> Self {
+        Self {
+            x: self.x - other.x,
+            y: self.y - other.y,
+        }
+    }
+
+    /// Calculates the midpoint between this point and another point
+    pub fn midpoint(self, other: Point) -> Self {
+        Self {
+            x: (self.x + other.x) / 2.0,
+            y: (self.y + other.y) / 2.0,
+        }
+    }
+
+    /// Calculates the hypotenuse (Euclidean distance from origin)
+    pub fn hypot(self) -> f32 {
+        self.x.hypot(self.y)
+    }
+
+    /// Multiplies both coordinates by the given factor
+    pub fn scale(self, factor: f32) -> Self {
+        Self {
+            x: self.x * factor,
+            y: self.y * factor,
+        }
+    }
+
+    /// Returns a new point with absolute values of both coordinates
+    pub fn abs(self) -> Self {
+        Self {
+            x: self.x.abs(),
+            y: self.y.abs(),
         }
     }
 
@@ -46,8 +98,8 @@ impl Point {
 /// Represents the dimensions of an element with width and height
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Size {
-    pub width: f32,
-    pub height: f32,
+    width: f32,
+    height: f32,
 }
 
 impl Size {
@@ -55,6 +107,17 @@ impl Size {
         Self { width, height }
     }
 
+    /// Returns the width dimension of this size
+    pub fn width(self) -> f32 {
+        self.width
+    }
+
+    /// Returns the height dimension of this size
+    pub fn height(self) -> f32 {
+        self.height
+    }
+
+    /// Returns a new Size with the maximum width and height between this size and another
     pub fn max(self, other: Size) -> Self {
         Self {
             width: self.width.max(other.width),
@@ -62,6 +125,9 @@ impl Size {
         }
     }
 
+    /// Returns a new Size with padding added to both width and height
+    ///
+    /// The padding is added on both sides, so the total increase is 2 * padding
     pub fn add_padding(self, padding: f32) -> Self {
         Self {
             width: self.width + padding * 2.0,
@@ -71,27 +137,53 @@ impl Size {
 }
 
 /// Represents a rectangular bounding box with minimum and maximum coordinates
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Bounds {
-    pub min_x: f32,
-    pub min_y: f32,
-    pub max_x: f32,
-    pub max_y: f32,
+    min_x: f32,
+    min_y: f32,
+    max_x: f32,
+    max_y: f32,
 }
 
 impl Bounds {
+    /// Returns the minimum x-coordinate of the bounds
+    pub fn min_x(self) -> f32 {
+        self.min_x
+    }
+
+    /// Returns the minimum y-coordinate of the bounds
+    pub fn min_y(self) -> f32 {
+        self.min_y
+    }
+
+    /// Returns the maximum x-coordinate of the bounds
+    #[allow(dead_code)]
+    pub fn max_x(self) -> f32 {
+        self.max_x
+    }
+
+    /// Returns the maximum y-coordinate of the bounds
+    pub fn max_y(self) -> f32 {
+        self.max_y
+    }
+
+    /// Sets the maximum y-coordinate of the bounds
+    pub fn set_max_y(&mut self, max_y: f32) {
+        self.max_y = max_y;
+    }
+
     /// Returns the width of the bounds
-    pub fn width(&self) -> f32 {
+    pub fn width(self) -> f32 {
         self.max_x - self.min_x
     }
 
     /// Returns the height of the bounds
-    pub fn height(&self) -> f32 {
+    pub fn height(self) -> f32 {
         self.max_y - self.min_y
     }
 
     /// Returns the top-left corner as a Point
-    pub fn min_point(&self) -> Point {
+    pub fn min_point(self) -> Point {
         Point {
             x: self.min_x,
             y: self.min_y,
@@ -99,7 +191,7 @@ impl Bounds {
     }
 
     /// Converts bounds to a Size object
-    pub fn to_size(&self) -> Size {
+    pub fn to_size(self) -> Size {
         Size {
             width: self.width(),
             height: self.height(),
@@ -107,6 +199,9 @@ impl Bounds {
     }
 
     /// Merges two bounds to create a larger bounds that contains both
+    /// 
+    /// The resulting bounds will have the minimum values of both bounds for min_x and min_y,
+    /// and the maximum values of both bounds for max_x and max_y.
     pub fn merge(&self, other: &Self) -> Self {
         Self {
             min_x: self.min_x.min(other.min_x),
@@ -138,6 +233,19 @@ impl Bounds {
             min_y: self.min_y - offset.y,
             max_x: self.max_x - offset.x,
             max_y: self.max_y - offset.y,
+        }
+    }
+
+    /// Expands the bounds by adding padding in all directions
+    /// 
+    /// This decreases the minimum coordinates and increases the maximum coordinates
+    /// by the padding amount, effectively growing the bounds in all directions.
+    pub fn add_padding(&self, padding: f32) -> Self {
+        Self {
+            min_x: self.min_x - padding,
+            min_y: self.min_y - padding,
+            max_x: self.max_x + padding,
+            max_y: self.max_y + padding,
         }
     }
 }

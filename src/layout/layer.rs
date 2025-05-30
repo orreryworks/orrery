@@ -1,6 +1,7 @@
 use crate::layout::{
-    common::{Bounds, Point, Size},
-    component, sequence,
+    component,
+    geometry::{Bounds, Point, Size},
+    sequence,
 };
 
 /// Content types that can be rendered in a layer

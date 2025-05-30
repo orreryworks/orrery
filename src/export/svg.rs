@@ -4,7 +4,7 @@ use crate::{
     config::StyleConfig,
     error::FilamentError,
     export,
-    layout::{common::Size, layer::LayeredLayout},
+    layout::{Size, layer::LayeredLayout},
 };
 use log::{debug, error, info};
 use std::{fs::File, io::Write};
@@ -69,23 +69,26 @@ impl Svg {
     pub fn calculate_svg_dimensions(&self, content_size: &Size) -> Size {
         // Add some margin to the content size
         let margin: f32 = 50.0;
-        let width = margin.mul_add(2.0, content_size.width); // content_size.width + margin * 2.0;
-        let height = margin.mul_add(2.0, content_size.height); // content_size.height + margin * 2.0;
+        let svg_size = content_size.add_padding(margin);
 
-        debug!("Final SVG dimensions: {width}x{height}");
+        debug!(
+            "Final SVG dimensions: {}x{}",
+            svg_size.width(),
+            svg_size.height()
+        );
 
-        Size { width, height }
+        svg_size
     }
 
     /// Add background color to an SVG document if specified
-    pub fn add_background(&self, mut doc: Document, width: f32, height: f32) -> Document {
+    pub fn add_background(&self, mut doc: Document, size: Size) -> Document {
         // Add background if specified in the SVG exporter
         if let Some(bg_color) = &self.background_color {
             let bg = Rectangle::new()
                 .set("x", 0)
                 .set("y", 0)
-                .set("width", width)
-                .set("height", height)
+                .set("width", size.width())
+                .set("height", size.height())
                 .set("fill", bg_color.to_string());
             doc = doc.add(bg);
         }

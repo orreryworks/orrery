@@ -7,9 +7,9 @@ use crate::{
     ast,
     graph::Graph,
     layout::{
-        common::{Component, Point, Size},
         component::{Layout, LayoutRelation},
         engines::{self, ComponentEngine, EmbeddedLayouts},
+        geometry::{Component, Point, Size},
         positioning::calculate_element_size,
         text,
     },
@@ -220,11 +220,11 @@ impl Engine {
                     // Use the shared utility function to calculate size
                     engines::get_embedded_layout_size(
                         layout,
-                        node, 
-                        self.min_component_width, 
+                        node,
+                        self.min_component_width,
                         self.min_component_height,
                         self.padding,
-                        self.text_padding
+                        self.text_padding,
                     )
                 } else {
                     // Fallback if no embedded layout is found (shouldn't happen in normal flow)
@@ -280,37 +280,31 @@ impl Engine {
             }
 
             // Process all children first to get their sizes
-            let mut max_width = 0.0f32;
-            let mut max_height = 0.0f32;
+            let mut max_size = Size::default();
 
             for &child_idx in children {
                 let child_size =
                     self.adjust_container_size(child_idx, hierarchy_map, sizes, visited);
-                max_width = max_width.max(child_size.width);
-                max_height = max_height.max(child_size.height);
+                max_size = max_size.max(child_size);
             }
 
             // Add padding and adjust for layout arrangement
             // Use a simple heuristic - whichever dimension has more elements
-            let container_padding = self.padding * 2.0; // Padding on all sides
-            let mut required_width = max_width + container_padding;
-            let mut required_height = max_height + container_padding;
+            let mut required_size = max_size.add_padding(self.padding);
 
             // If we have multiple children, consider arranging them in a grid
             if children.len() > 1 {
                 let sqrt_count = (children.len() as f64).sqrt().ceil() as usize;
-                required_width =
-                    max_width * sqrt_count as f32 + self.padding * (sqrt_count + 1) as f32;
-                required_height = max_height * children.len().div_ceil(sqrt_count) as f32
-                    + self.padding * (children.len().div_ceil(sqrt_count) + 1) as f32;
+                required_size = Size::new(
+                    max_size.width() * sqrt_count as f32 + self.padding * (sqrt_count + 1) as f32,
+                    max_size.height() * children.len().div_ceil(sqrt_count) as f32
+                        + self.padding * (children.len().div_ceil(sqrt_count) + 1) as f32,
+                );
             }
 
             // Get the current size and ensure it's big enough
             let current_size = &sizes[&node_idx];
-            let new_size = Size {
-                width: current_size.width.max(required_width),
-                height: current_size.height.max(required_height),
-            };
+            let new_size = current_size.max(required_size);
 
             // Update the size and mark as visited
             sizes.insert(node_idx, new_size);
@@ -421,7 +415,7 @@ impl Engine {
             .map(|layer| {
                 layer
                     .iter()
-                    .map(|&node_idx| sizes.get(&node_idx).unwrap().width)
+                    .map(|&node_idx| sizes.get(&node_idx).unwrap().width())
                     .max_by(|a, b| a.partial_cmp(b).unwrap())
                     .unwrap_or(self.min_component_width)
             })
@@ -443,7 +437,7 @@ impl Engine {
         // Adjust spacings based on relation labels
         for relation in top_level_relations {
             if let Some(label) = &relation.label {
-                let label_width = text::calculate_text_size(label, 14).width;
+                let label_width = text::calculate_text_size(label, 14).width();
 
                 // Find layers for source and target nodes
                 let (source_layer, target_layer) = self.find_node_layers(graph, relation, layers);
@@ -529,14 +523,14 @@ impl Engine {
             // Calculate heights for vertical positioning
             let mut y_pos = 0.0;
             for (j, &node_idx) in layer_nodes.iter().enumerate() {
-                let node_height = sizes.get(&node_idx).unwrap().height;
+                let node_height = sizes.get(&node_idx).unwrap().height();
 
                 if j > 0 {
                     y_pos += self.padding; // Space between components
                 }
 
                 let y = y_pos + node_height / 2.0;
-                positions.insert(node_idx, Point { x, y });
+                positions.insert(node_idx, Point::new(x, y));
 
                 y_pos += node_height;
             }
@@ -583,12 +577,10 @@ impl Engine {
         }
 
         // Get parent size
-        let parent_size = sizes.get(&parent_idx).unwrap();
+        let parent_size = *sizes.get(&parent_idx).unwrap();
 
         // Calculate area available for children
-        let container_padding = self.padding;
-        let available_width = container_padding.mul_add(-2.0, parent_size.width); // parent_size.width - (container_padding * 2.0)
-        let available_height = container_padding.mul_add(-2.0, parent_size.height); // parent_size.height - (container_padding * 2.0)
+        let available_size = parent_size.add_padding(-self.padding);
 
         // Determine layout arrangement (simple grid layout for now)
         let sqrt_count = (children.len() as f64).sqrt().ceil() as usize;
@@ -596,12 +588,12 @@ impl Engine {
         let rows = children.len().div_ceil(cols);
 
         // Calculate cell dimensions
-        let cell_width = available_width / cols as f32;
-        let cell_height = available_height / rows as f32;
+        let cell_width = available_size.width() / cols as f32;
+        let cell_height = available_size.height() / rows as f32;
 
         // Calculate starting point (top-left of container area)
-        let start_x = parent_pos.x - (parent_size.width / 2.0) + container_padding;
-        let start_y = parent_pos.y - (parent_size.height / 2.0) + container_padding;
+        let bounds = parent_pos.to_bounds(parent_size).add_padding(-self.padding);
+        let min_point = bounds.min_point();
 
         // Position each child
         for (i, &child_idx) in children.iter().enumerate() {
@@ -609,14 +601,11 @@ impl Engine {
             let col = i % cols;
 
             // Calculate center position of this cell
-            let cell_center_x = start_x + (col as f32 * cell_width) + (cell_width / 2.0);
-            let cell_center_y = start_y + (row as f32 * cell_height) + (cell_height / 2.0);
+            let cell_center_x = min_point.x() + (col as f32 * cell_width) + (cell_width / 2.0);
+            let cell_center_y = min_point.y() + (row as f32 * cell_height) + (cell_height / 2.0);
 
             // Position the child at the cell center
-            let child_pos = Point {
-                x: cell_center_x,
-                y: cell_center_y,
-            };
+            let child_pos = Point::new(cell_center_x, cell_center_y);
             result_positions.insert(child_idx, child_pos);
 
             // Recursively position this child's children (if any)

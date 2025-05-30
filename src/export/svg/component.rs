@@ -1,9 +1,9 @@
 use super::{arrows, renderer};
 use crate::{
     ast,
-    layout::common::{Bounds, Component, Point},
     layout::component,
     layout::text,
+    layout::{Bounds, Component, Point},
 };
 use svg::node::element::{Group, Rectangle, Text};
 
@@ -32,7 +32,7 @@ impl Svg {
         // Use the renderer to generate the SVG for the main component
         renderer.render_to_svg(
             component.position,
-            &component.size,
+            component.size,
             type_def,
             component.node.display_text(),
             has_nested_blocks,
@@ -67,9 +67,7 @@ impl Svg {
 
         // Add label if it exists
         if let Some(label) = &relation.label {
-            // Calculate midpoint for the label
-            let mid_x = (source_edge.x + target_edge.x) / 2.0;
-            let mid_y = (source_edge.y + target_edge.y) / 2.0;
+            let mid = source_edge.midpoint(target_edge);
 
             // Add a small offset to position the label above the line
             let offset_y = -10.0;
@@ -79,18 +77,18 @@ impl Svg {
 
             // Create a white background rectangle for better readability with correct dimensions
             let bg = Rectangle::new()
-                .set("x", mid_x - (text_size.width / 2.0) - 5.0) // Center and add padding
-                .set("y", mid_y + offset_y - (text_size.height / 2.0) - 5.0) // Position above the line
-                .set("width", text_size.width + 10.0) // Add padding to text width
-                .set("height", text_size.height + 10.0) // Add padding to text height
+                .set("x", mid.x() - (text_size.width() / 2.0) - 5.0) // Center and add padding
+                .set("y", mid.y() + offset_y - (text_size.height() / 2.0) - 5.0) // Position above the line
+                .set("width", text_size.width() + 10.0) // Add padding to text width
+                .set("height", text_size.height() + 10.0) // Add padding to text height
                 .set("fill", "white")
                 .set("fill-opacity", 0.8)
                 .set("rx", 3.0); // Slightly rounded corners
 
             // Create the text label
             let text = Text::new("Text")
-                .set("x", mid_x)
-                .set("y", mid_y + offset_y)
+                .set("x", mid.x())
+                .set("y", mid.y() + offset_y)
                 .set("text-anchor", "middle")
                 .set("dominant-baseline", "middle")
                 .set("font-family", "Arial")

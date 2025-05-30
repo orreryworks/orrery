@@ -1,7 +1,7 @@
 use crate::{
     ast::{ArrowStyle, RelationType},
     color::Color,
-    layout::common::Point,
+    layout::Point,
 };
 use svg::node::element::{Definitions, Marker, Path};
 
@@ -83,7 +83,7 @@ pub fn create_path_data_for_style(start: Point, end: Point, style: &ArrowStyle) 
 
 /// Create a path data string from two points
 pub fn create_path_data_from_points(start: Point, end: Point) -> String {
-    format!("M {} {} L {} {}", start.x, start.y, end.x, end.y)
+    format!("M {} {} L {} {}", start.x(), start.y(), end.x(), end.y())
 }
 
 /// Create a curved path data string from two points
@@ -91,15 +91,22 @@ pub fn create_path_data_from_points(start: Point, end: Point) -> String {
 pub fn create_curved_path_data_from_points(start: Point, end: Point) -> String {
     // For the control points, we'll use points positioned to create a smooth arc
     // between the start and end points
-    let ctrl1_x = start.x + (end.x - start.x) / 4.0;
-    let ctrl1_y = start.y - (end.y - start.y) / 2.0;
+    let ctrl1_x = start.x() + (end.x() - start.x()) / 4.0;
+    let ctrl1_y = start.y() - (end.y() - start.y()) / 2.0;
 
-    let ctrl2_x = end.x - (end.x - start.x) / 4.0;
-    let ctrl2_y = end.y + (start.y - end.y) / 2.0;
+    let ctrl2_x = end.x() - (end.x() - start.x()) / 4.0;
+    let ctrl2_y = end.y() + (start.y() - end.y()) / 2.0;
 
     format!(
         "M {} {} C {} {}, {} {}, {} {}",
-        start.x, start.y, ctrl1_x, ctrl1_y, ctrl2_x, ctrl2_y, end.x, end.y
+        start.x(),
+        start.y(),
+        ctrl1_x,
+        ctrl1_y,
+        ctrl2_x,
+        ctrl2_y,
+        end.x(),
+        end.y()
     )
 }
 
@@ -109,26 +116,33 @@ pub fn create_orthogonal_path_data_from_points(start: Point, end: Point) -> Stri
     // Determine whether to go horizontal first then vertical, or vertical first then horizontal
     // This decision is based on the relative positions of the start and end points
 
-    // Calculate absolute differences in x and y directions
-    let dx = (end.x - start.x).abs();
-    let dy = (end.y - start.y).abs();
+    let abs_dist = end.sub(start).abs();
+    let mid = start.midpoint(end);
 
     // If we're more horizontal than vertical, go horizontal first
-    if dx > dy {
-        // Go horizontal first (50% of the way), then vertical, then horizontal again
-        let mid_x1 = start.x + (end.x - start.x) * 0.5;
-
+    if abs_dist.x() > abs_dist.y() {
         format!(
             "M {} {} L {} {} L {} {} L {} {}",
-            start.x, start.y, mid_x1, start.y, mid_x1, end.y, end.x, end.y
+            start.x(),
+            start.y(),
+            mid.x(),
+            start.y(),
+            mid.x(),
+            end.y(),
+            end.x(),
+            end.y()
         )
     } else {
-        // Go vertical first (50% of the way), then horizontal, then vertical again
-        let mid_y1 = start.y + (end.y - start.y) * 0.5;
-
         format!(
             "M {} {} L {} {} L {} {} L {} {}",
-            start.x, start.y, start.x, mid_y1, end.x, mid_y1, end.x, end.y
+            start.x(),
+            start.y(),
+            start.x(),
+            mid.y(),
+            end.x(),
+            mid.y(),
+            end.x(),
+            end.y()
         )
     }
 }

@@ -17,8 +17,8 @@ use crate::{
     ast::{self, DiagramKind, LayoutEngine, TypeId},
     graph::{Collection, Graph},
     layout::{
-        common::{self, LayoutSizing, Point, Size},
         component,
+        geometry::{self, LayoutSizing, Point, Size},
         layer::{LayerContent, LayeredLayout},
         sequence,
     },
@@ -35,7 +35,7 @@ pub enum LayoutResult<'a> {
 
 impl<'a> LayoutResult<'a> {
     /// Calculate the size of this layout, using the appropriate sizing implementation
-    pub fn calculate_size(&self) -> common::Size {
+    pub fn calculate_size(&self) -> geometry::Size {
         match self {
             LayoutResult::Component(layout) => {
                 let layout_ref: &dyn LayoutSizing = layout;
@@ -70,16 +70,14 @@ pub fn get_embedded_layout_size<'a>(
         min_height,
         text_padding,
     );
-    
+
     // Calculate embedded layout size
     let embedded_size = layout.calculate_size().add_padding(padding);
-    
+
     // Take the maximum of each dimension to ensure both text and embedded content fit
-    Size::new(
-        text_size.width.max(embedded_size.width),
-        text_size.height.max(embedded_size.height)
-    )
-    .max(Size::new(min_width, min_height))
+    text_size
+        .max(embedded_size)
+        .max(Size::new(min_width, min_height))
 }
 
 // Trait defining the interface for component diagram layout engines

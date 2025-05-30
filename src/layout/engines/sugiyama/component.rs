@@ -7,9 +7,9 @@ use crate::{
     ast,
     graph::Graph,
     layout::{
-        common::{Component, Point, Size},
         component::{Layout, LayoutRelation},
         engines::{self, ComponentEngine, EmbeddedLayouts},
+        geometry::{Component, Point, Size},
         positioning::calculate_element_size,
     },
 };
@@ -49,40 +49,40 @@ impl Engine {
             container_padding: 40.0,
         }
     }
-    
+
     /// Set the minimum component width
     #[allow(dead_code)]
     pub fn set_min_width(&mut self, width: f32) -> &mut Self {
         self.min_component_width = width;
         self
     }
-    
+
     /// Set the minimum component height
     #[allow(dead_code)]
     pub fn set_min_height(&mut self, height: f32) -> &mut Self {
         self.min_component_height = height;
         self
     }
-    
+
     /// Set the text padding
     #[allow(dead_code)]
     pub fn set_text_padding(&mut self, padding: f32) -> &mut Self {
         self.text_padding = padding;
         self
     }
-    
+
     /// Set the horizontal spacing between components
     pub fn set_horizontal_spacing(&mut self, spacing: f32) -> &mut Self {
         self.horizontal_spacing = spacing;
         self
     }
-    
+
     /// Set the vertical spacing between layers
     pub fn set_vertical_spacing(&mut self, spacing: f32) -> &mut Self {
         self.vertical_spacing = spacing;
         self
     }
-    
+
     /// Set the padding inside container components
     pub fn set_container_padding(&mut self, padding: f32) -> &mut Self {
         self.container_padding = padding;
@@ -167,37 +167,33 @@ impl Engine {
             }
 
             // Process all children first to get their sizes
-            let mut max_width = 0.0f32;
-            let mut max_height = 0.0f32;
-
-            for &child_idx in children {
-                let child_size =
-                    self.adjust_container_size(child_idx, hierarchy_map, sizes, visited);
-                max_width = max_width.max(child_size.width);
-                max_height = max_height.max(child_size.height);
-            }
+            let max_size = children
+                .iter()
+                .map(|&child_idx| {
+                    self.adjust_container_size(child_idx, hierarchy_map, sizes, visited)
+                })
+                .fold(Size::default(), |max_size, child_size| {
+                    max_size.max(child_size)
+                });
 
             // Add padding and adjust for layout arrangement
             // Use a simple heuristic - whichever dimension has more elements
-            let container_padding = self.container_padding * 2.0; // Padding on all sides
-            let mut required_width = max_width + container_padding * 1.2;
-            let mut required_height = max_height + container_padding * 1.2;
+            let mut required_size = max_size.add_padding(self.container_padding * 0.6);
 
             // If we have multiple children, consider arranging them in a grid
             if children.len() > 1 {
                 let sqrt_count = (children.len() as f64).sqrt().ceil() as usize;
-                required_width = max_width * sqrt_count as f32
-                    + self.container_padding * (sqrt_count + 1) as f32;
-                required_height = max_height * children.len().div_ceil(sqrt_count) as f32
-                    + self.container_padding * (children.len().div_ceil(sqrt_count) + 1) as f32;
+                required_size = Size::new(
+                    max_size.width() * sqrt_count as f32
+                        + self.container_padding * (sqrt_count + 1) as f32,
+                    max_size.height() * children.len().div_ceil(sqrt_count) as f32
+                        + self.container_padding * (children.len().div_ceil(sqrt_count) + 1) as f32,
+                );
             }
 
             // Get the current size and ensure it's big enough
             let current_size = &sizes[&node_idx];
-            let new_size = Size {
-                width: current_size.width.max(required_width),
-                height: current_size.height.max(required_height),
-            };
+            let new_size = current_size.max(required_size);
 
             // Update the size and mark as visited
             sizes.insert(node_idx, new_size);
@@ -210,7 +206,11 @@ impl Engine {
         sizes[&node_idx]
     }
 
-    fn calculate_layout<'a>(&self, graph: &'a Graph<'a>, embedded_layouts: &EmbeddedLayouts<'a>) -> Layout<'a> {
+    fn calculate_layout<'a>(
+        &self,
+        graph: &'a Graph<'a>,
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> Layout<'a> {
         // First, build a map of parent-child relationships
         // This will help us understand the hierarchy in the graph
         let hierarchy_map = self.build_hierarchy_map(graph);
@@ -221,7 +221,7 @@ impl Engine {
             .node_indices()
             .map(|node_idx| {
                 let node = graph.node_weight(node_idx).unwrap();
-                
+
                 // Check if this node has an embedded diagram
                 let size = if let ast::Block::Diagram(_) = &node.block {
                     // If this component has an embedded diagram, use its layout size
@@ -253,7 +253,7 @@ impl Engine {
                         self.text_padding,
                     )
                 };
-                
+
                 (node_idx, size)
             })
             .collect();
@@ -341,7 +341,7 @@ impl Engine {
                             // Use smaller scaling factors to reduce padding
                             let x_pos = (x as f32) * self.horizontal_spacing * 1.0;
                             let y_pos = (y as f32) * self.vertical_spacing * 1.0;
-                            positions.insert(node_idx, Point { x: x_pos, y: y_pos });
+                            positions.insert(node_idx, Point::new(x_pos, y_pos));
                         }
                     }
 
@@ -407,13 +407,7 @@ impl Engine {
                 // For no-edge graphs, ensure adequate horizontal spacing and a margin from the top
                 let x = self.horizontal_spacing * 0.8
                     + (i as f32) * (self.min_component_width + self.horizontal_spacing * 0.5);
-                positions.insert(
-                    node_idx,
-                    Point {
-                        x,
-                        y: self.vertical_spacing * 0.8,
-                    },
-                );
+                positions.insert(node_idx, Point::new(x, self.vertical_spacing * 0.8));
             }
         }
 
@@ -445,15 +439,15 @@ impl Engine {
                 let node = graph.node_weight(node_idx).unwrap();
                 let position = final_positions
                     .get(&node_idx)
-                    .unwrap_or(&Point { x: 0.0, y: 0.0 });
-                let size = component_sizes.get(&node_idx).cloned().unwrap_or(Size {
-                    width: self.min_component_width,
-                    height: self.min_component_height,
-                });
+                    .map_or_else(Point::default, |p| *p);
+                let size = component_sizes.get(&node_idx).cloned().unwrap_or(Size::new(
+                    self.min_component_width,
+                    self.min_component_height,
+                ));
 
                 Component {
                     node,
-                    position: *position,
+                    position,
                     size,
                 }
             })
@@ -553,11 +547,10 @@ impl Engine {
         }
 
         // Get parent size
-        let parent_size = sizes.get(&parent_idx).unwrap();
+        let parent_size = *sizes.get(&parent_idx).unwrap();
 
         // Calculate area available for children
-        let available_width = parent_size.width - (self.container_padding * 2.0);
-        let available_height = parent_size.height - (self.container_padding * 2.0);
+        let available_size = parent_size.add_padding(self.container_padding);
 
         // Determine layout arrangement (simple grid layout for now)
         let sqrt_count = (children.len() as f64).sqrt().ceil() as usize;
@@ -566,12 +559,14 @@ impl Engine {
 
         // Calculate cell dimensions
         // Add a slight gap between cells for better visual separation
-        let cell_width = (available_width - (cols as f32 - 1.0) * 5.0) / cols as f32;
-        let cell_height = (available_height - (rows as f32 - 1.0) * 5.0) / rows as f32;
+        let cell_width = (available_size.width() - (cols as f32 - 1.0) * 5.0) / cols as f32;
+        let cell_height = (available_size.height() - (rows as f32 - 1.0) * 5.0) / rows as f32;
 
         // Calculate starting point (top-left of container area)
-        let start_x = parent_pos.x - (parent_size.width / 2.0) + self.container_padding;
-        let start_y = parent_pos.y - (parent_size.height / 2.0) + self.container_padding;
+        let bounds = parent_pos
+            .to_bounds(parent_size)
+            .add_padding(-self.container_padding);
+        let min_point = bounds.min_point();
 
         // Position each child
         for (i, &child_idx) in children.iter().enumerate() {
@@ -579,14 +574,13 @@ impl Engine {
             let col = i % cols;
 
             // Calculate center position of this cell with gap between cells
-            let cell_center_x = start_x + (col as f32 * (cell_width + 5.0)) + (cell_width / 2.0);
-            let cell_center_y = start_y + (row as f32 * (cell_height + 5.0)) + (cell_height / 2.0);
+            let cell_center_x =
+                min_point.x() + (col as f32 * (cell_width + 5.0)) + (cell_width / 2.0);
+            let cell_center_y =
+                min_point.y() + (row as f32 * (cell_height + 5.0)) + (cell_height / 2.0);
 
             // Position the child at the cell center
-            let child_pos = Point {
-                x: cell_center_x,
-                y: cell_center_y,
-            };
+            let child_pos = Point::new(cell_center_x, cell_center_y);
             result_positions.insert(child_idx, child_pos);
 
             // Recursively position this child's children (if any)
@@ -723,7 +717,7 @@ impl Engine {
 
                 for (i, &node) in nodes.iter().enumerate() {
                     let x = start_x + (i as f32) * spacing;
-                    positions.insert(node, Point { x, y });
+                    positions.insert(node, Point::new(x, y));
                 }
             }
         } else {
@@ -738,7 +732,7 @@ impl Engine {
                 let x = col as f32 * self.horizontal_spacing;
                 let y = row as f32 * self.vertical_spacing;
 
-                positions.insert(node_idx, Point { x, y });
+                positions.insert(node_idx, Point::new(x, y));
             }
         }
     }
@@ -750,11 +744,11 @@ impl Engine {
         let mut max_x = f32::MIN;
         let mut max_y = f32::MIN;
 
-        for &Point { x, y } in positions.values() {
-            min_x = min_x.min(x);
-            min_y = min_y.min(y);
-            max_x = max_x.max(x);
-            max_y = max_y.max(y);
+        for point in positions.values() {
+            min_x = min_x.min(point.x());
+            min_y = min_y.min(point.y());
+            max_x = max_x.max(point.x());
+            max_y = max_y.max(point.y());
         }
 
         // Calculate the offsets needed to ensure all coordinates are positive
@@ -772,14 +766,17 @@ impl Engine {
 
         // Apply the offset to all positions to ensure they're positive
         for position in positions.values_mut() {
-            position.x -= offset_x;
-            position.y -= offset_y;
+            *position = position.sub(Point::new(offset_x, offset_y));
         }
     }
 }
 
 impl ComponentEngine for Engine {
-    fn calculate<'a>(&self, graph: &'a Graph<'a>, embedded_layouts: &EmbeddedLayouts<'a>) -> Layout<'a> {
+    fn calculate<'a>(
+        &self,
+        graph: &'a Graph<'a>,
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> Layout<'a> {
         self.calculate_layout(graph, embedded_layouts)
     }
 }

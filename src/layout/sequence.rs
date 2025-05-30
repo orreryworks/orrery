@@ -1,6 +1,6 @@
 use crate::{
     ast,
-    layout::common::{Component, LayoutSizing, Size},
+    layout::geometry::{Component, LayoutSizing, Size},
 };
 
 #[derive(Debug, Clone)]
@@ -48,7 +48,7 @@ impl<'a> LayoutSizing for Layout<'a> {
 
         Size::new(
             bounds.width(),
-            max_y - bounds.min_y, // Height from top to bottom lifeline
+            max_y - bounds.min_y(), // Height from top to bottom lifeline
         )
     }
 }

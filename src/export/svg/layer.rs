@@ -1,5 +1,5 @@
 use crate::layout::{
-    common::Bounds,
+    Bounds,
     layer::{Layer, LayerContent, LayeredLayout},
 };
 use svg::{
@@ -23,13 +23,13 @@ impl Svg {
         let doc = Document::new()
             .set(
                 "viewBox",
-                format!("0 0 {} {}", svg_size.width, svg_size.height),
+                format!("0 0 {} {}", svg_size.width(), svg_size.height()),
             )
-            .set("width", svg_size.width)
-            .set("height", svg_size.height);
+            .set("width", svg_size.width())
+            .set("height", svg_size.height());
 
         // Add background
-        let mut doc = self.add_background(doc, svg_size.width, svg_size.height);
+        let mut doc = self.add_background(doc, svg_size);
 
         // Add marker definitions for all layers
         let defs = self.create_marker_definitions_for_all_layers(layout);
@@ -46,16 +46,16 @@ impl Svg {
         }
 
         // Calculate margins for centering
-        let margin_x = (svg_size.width - content_size.width) / 2.0;
-        let margin_y = (svg_size.height - content_size.height) / 2.0;
+        let margin_x = (svg_size.width() - content_size.width()) / 2.0;
+        let margin_y = (svg_size.height() - content_size.height()) / 2.0;
 
         // Create a main group with translation to center content and adjust for min bounds
         let mut main_group = Group::new().set(
             "transform",
             format!(
                 "translate({}, {})",
-                margin_x - content_bounds.min_x,
-                margin_y - content_bounds.min_y
+                margin_x - content_bounds.min_x(),
+                margin_y - content_bounds.min_y()
             ),
         );
 
@@ -81,8 +81,8 @@ impl Svg {
 
         // Create a clip path with a rectangle matching the bounds
         let clip_rect = Rectangle::new()
-            .set("x", bounds.min_x)
-            .set("y", bounds.min_y)
+            .set("x", bounds.min_x())
+            .set("y", bounds.min_y())
             .set("width", bounds.width())
             .set("height", bounds.height());
 
@@ -181,10 +181,10 @@ impl Svg {
         let mut layer_group = Group::new();
 
         // Apply offset transformation if not at origin
-        if layer.offset.x != 0.0 || layer.offset.y != 0.0 {
+        if !layer.offset.is_zero() {
             layer_group = layer_group.set(
                 "transform",
-                format!("translate({}, {})", layer.offset.x, layer.offset.y),
+                format!("translate({}, {})", layer.offset.x(), layer.offset.y()),
             );
         }
 

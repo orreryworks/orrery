@@ -7,8 +7,8 @@ use crate::{
     ast,
     graph::Graph,
     layout::{
-        common::{Component, Point},
         engines::{self, EmbeddedLayouts, SequenceEngine},
+        geometry::{Component, Point},
         positioning::{self, calculate_element_size},
         sequence::{Layout, Message, Participant},
     },
@@ -205,10 +205,7 @@ impl Engine {
             participants.push(Participant {
                 component: Component {
                     node,
-                    position: Point {
-                        x: x_positions[i],
-                        y: self.top_margin,
-                    },
+                    position: Point::new(x_positions[i], self.top_margin),
                     size,
                 },
                 lifeline_end: self.top_margin, // Will be updated later
@@ -222,7 +219,7 @@ impl Engine {
         let mut current_y = self.top_margin
             + participants
                 .iter()
-                .map(|p| p.component.size.height)
+                .map(|p| p.component.size.height())
                 .max_by(|a, b| a.partial_cmp(b).unwrap())
                 .unwrap_or(self.min_participant_height)
             + self.message_spacing;

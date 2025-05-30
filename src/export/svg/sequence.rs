@@ -1,8 +1,7 @@
 use crate::{
     ast,
     layout::{
-        common::{Bounds, Point},
-        sequence, text,
+        sequence, text, {Bounds, Point},
     },
 };
 use svg::node::element::{Group, Line, Rectangle, Text};
@@ -23,20 +22,21 @@ impl Svg {
         // Use the renderer to generate the SVG for the participant
         let shape_group = renderer.render_to_svg(
             component.position,
-            &component.size,
+            component.size,
             type_def,
             component.node.display_text(),
             has_nested_blocks,
         );
 
         // Calculate where the lifeline should start (bottom of the shape)
-        let lifeline_start_y = component.position.y + component.size.height / 2.0;
+        let component_bounds = component.position.to_bounds(component.size);
+        let lifeline_start_y = component_bounds.max_y();
 
         // Lifeline
         let lifeline = Line::new()
-            .set("x1", component.position.x)
+            .set("x1", component.position.x())
             .set("y1", lifeline_start_y)
-            .set("x2", component.position.x)
+            .set("x2", component.position.x())
             .set("y2", participant.lifeline_end)
             .set("stroke", &type_def.line_color)
             .set("stroke-width", 1)
@@ -51,19 +51,13 @@ impl Svg {
         let source = &layout.participants[message.source_index];
         let target = &layout.participants[message.target_index];
 
-        let source_x = source.component.position.x;
-        let target_x = target.component.position.x;
+        let source_x = source.component.position.x();
+        let target_x = target.component.position.x();
         let message_y = message.y_position;
 
         // Create points for the message line
-        let start_point = Point {
-            x: source_x,
-            y: message_y,
-        };
-        let end_point = Point {
-            x: target_x,
-            y: message_y,
-        };
+        let start_point = Point::new(source_x, message_y);
+        let end_point = Point::new(target_x, message_y);
 
         // Create the path with appropriate markers - always use straight style for sequence diagrams
         let path = arrows::create_path(
@@ -89,10 +83,10 @@ impl Svg {
 
             // Create a white background rectangle for better readability with correct dimensions
             let bg = Rectangle::new()
-                .set("x", mid_x - (text_size.width / 2.0) - 5.0) // Center and add padding
-                .set("y", label_y - (text_size.height / 2.0) - 5.0) // Position above the line
-                .set("width", text_size.width + 10.0) // Add padding to text width
-                .set("height", text_size.height + 10.0) // Add padding to text height
+                .set("x", mid_x - (text_size.width() / 2.0) - 5.0) // Center and add padding
+                .set("y", label_y - (text_size.height() / 2.0) - 5.0) // Position above the line
+                .set("width", text_size.width() + 10.0) // Add padding to text width
+                .set("height", text_size.height() + 10.0) // Add padding to text height
                 .set("fill", "white")
                 .set("fill-opacity", 0.8)
                 .set("rx", 3.0); // Slightly rounded corners
@@ -132,11 +126,13 @@ impl Svg {
                 acc.merge(&bounds)
             });
 
-        bounds.max_y = layout
-            .participants
-            .iter()
-            .map(|p| p.lifeline_end) // Bottom of lifelines
-            .fold(f32::MIN, f32::max);
+        bounds.set_max_y(
+            layout
+                .participants
+                .iter()
+                .map(|p| p.lifeline_end) // Bottom of lifelines
+                .fold(f32::MIN, f32::max),
+        );
 
         bounds
     }

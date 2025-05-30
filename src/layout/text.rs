@@ -2,7 +2,7 @@ use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
 use log::info;
 use std::sync::{Arc, Mutex};
 
-use crate::layout::common::Size;
+use crate::layout::geometry::Size;
 
 /// TextManager handles text measurement and font operations
 /// It maintains a reusable FontSystem instance to avoid expensive recreation
@@ -79,10 +79,7 @@ impl TextManager {
             total_height = metrics.line_height;
         }
 
-        Size {
-            width: max_width,
-            height: total_height,
-        }
+        Size::new(max_width, total_height)
     }
 }
 
