@@ -3,6 +3,7 @@ use crate::layout::{
     geometry::{Bounds, Point, Size},
     sequence,
 };
+use log::debug;
 
 /// Content types that can be rendered in a layer
 #[derive(Debug)]
@@ -83,6 +84,13 @@ impl<'a> LayeredLayout<'a> {
         // Calculate the bounds of the container
         let container_bounds = container_position.to_bounds(container_size);
 
+        debug!(
+            container_position:?, container_size:?, container_bounds:?, padding,
+            container_idx, container_offset:?=container_layer.offset, container_clip_bounds:?=container_layer.clip_bounds,
+            embedded_idx, embedded_offset:?=embedded_layer.offset, embedded_clip_bounds:?=embedded_layer.clip_bounds;
+            "Embedded layer before adjustment",
+        );
+
         // Apply three transformations to position the embedded diagram:
         // 1. Add the container layer's offset (for nested containers)
         // 2. Add the container's top-left position
@@ -99,6 +107,11 @@ impl<'a> LayeredLayout<'a> {
             .translate(Point::new(-padding, -padding));
 
         embedded_layer.clip_bounds = Some(padded_clip_bounds);
+
+        debug!(
+            offset:?=embedded_layer.offset, clip_bounds:?=embedded_layer.clip_bounds;
+            "Adjusted embedded layer",
+        );
     }
 
     /// Returns the number of layers

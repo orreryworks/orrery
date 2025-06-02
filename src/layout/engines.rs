@@ -23,6 +23,7 @@ use crate::{
         sequence,
     },
 };
+use log::trace;
 use std::collections::HashMap;
 
 /// Enum to store different layout results based on diagram type
@@ -311,7 +312,9 @@ impl EngineBuilder {
         }
 
         // Second phase: Apply position adjustments and set up clipping bounds for embedded diagrams
-        for (container_idx, container_position, container_size, embedded_idx) in embedded_diagrams {
+        for (container_idx, container_position, container_size, embedded_idx) in
+            embedded_diagrams.into_iter().rev()
+        {
             layered_layout.adjust_relative_position(
                 container_idx,
                 container_position,
@@ -320,6 +323,8 @@ impl EngineBuilder {
                 self.component_padding,
             );
         }
+
+        trace!(layered_layout:?; "Built layered layout");
 
         layered_layout
     }
