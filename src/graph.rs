@@ -29,6 +29,15 @@ impl<'a> Graph<'a> {
         self.graph.node_indices()
     }
 
+    pub fn nodes_with_indices(&self) -> impl Iterator<Item = (NodeIndex, &ast::Node)> {
+        self.graph.node_indices().map(|idx| {
+            (
+                idx,
+                self.graph.node_weight(idx).expect("Node idx should exist"),
+            )
+        })
+    }
+
     pub fn node_weight(&self, node_index: NodeIndex) -> Option<&ast::Node> {
         self.graph.node_weight(node_index)
     }

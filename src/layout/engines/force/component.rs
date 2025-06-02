@@ -10,7 +10,7 @@ use crate::{
         component::{Layout, LayoutRelation},
         engines::{self, ComponentEngine, EmbeddedLayouts},
         geometry::{Component, Point, Size},
-        positioning::calculate_element_size,
+        positioning::calculate_bounded_text_size,
     },
 };
 use petgraph::graph::NodeIndex;
@@ -96,6 +96,7 @@ impl Engine {
     /// Set the text padding
     #[allow(dead_code)]
     pub fn set_text_padding(&mut self, padding: f32) -> &mut Self {
+        // TODO: Do I need this padding?
         self.text_padding = padding;
         self
     }
@@ -127,27 +128,20 @@ impl Engine {
                 let size = if let ast::Block::Diagram(_) = &node.block {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
-                    if let Some(layout) = embedded_layouts.get(&node.id) {
-                        engines::get_embedded_layout_size(
-                            layout,
-                            node,
-                            self.min_component_width,
-                            self.min_component_height,
-                            self.padding,
-                            self.text_padding,
-                        )
-                    } else {
-                        // Fallback if no embedded layout is found (shouldn't happen in normal flow)
-                        calculate_element_size(
-                            node,
-                            self.min_component_width,
-                            self.min_component_height,
-                            self.text_padding,
-                        )
-                    }
+                    let layout = embedded_layouts
+                        .get(&node.id)
+                        .expect("Embedded layout not found");
+                    engines::get_embedded_layout_size(
+                        layout,
+                        node,
+                        self.min_component_width,
+                        self.min_component_height,
+                        self.padding,
+                        self.text_padding,
+                    )
                 } else {
                     // Standard size calculation for regular nodes
-                    calculate_element_size(
+                    calculate_bounded_text_size(
                         node,
                         self.min_component_width,
                         self.min_component_height,

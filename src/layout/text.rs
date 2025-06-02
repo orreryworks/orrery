@@ -28,6 +28,10 @@ impl TextManager {
     /// Calculate the actual size of text in pixels using cosmic-text
     /// This provides an accurate measurement based on real font metrics and shaping
     pub fn calculate_text_size(&self, text: &str, font_size: usize) -> Size {
+        if text.is_empty() {
+            return Size::default();
+        }
+
         // Lock the FontSystem for use
         let mut font_system = self.font_system.lock().unwrap();
 
@@ -35,13 +39,11 @@ impl TextManager {
         let font_size_px = font_size as f32 * 1.33;
 
         // Create metrics with font size and approximate line height
-        let line_height = font_size_px * 1.2;
+        let line_height = font_size_px * 1.15;
         let metrics = Metrics::new(font_size_px, line_height);
 
         // Create a buffer with the metrics
         let mut buffer = Buffer::new(&mut font_system, metrics);
-
-        // Borrow buffer with font system for more convenient method calls
         let mut buffer = buffer.borrow_with(&mut font_system);
 
         // Set up text attributes
@@ -75,7 +77,7 @@ impl TextManager {
             }
         } else {
             // Default size if no runs available
-            max_width = text.len() as f32 * (font_size_px * 0.6);
+            max_width = text.len() as f32 * (font_size_px * 0.55);
             total_height = metrics.line_height;
         }
 

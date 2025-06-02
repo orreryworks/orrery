@@ -10,7 +10,7 @@ use crate::{
         component::{Layout, LayoutRelation},
         engines::{self, ComponentEngine, EmbeddedLayouts},
         geometry::{Component, Point, Size},
-        positioning::calculate_element_size,
+        positioning::calculate_bounded_text_size,
         text,
     },
 };
@@ -21,6 +21,7 @@ use petgraph::{
 use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Basic component layout engine implementation that implements the ComponentLayoutEngine trait
+#[derive(Default)]
 pub struct Engine {
     padding: f32,
     min_component_width: f32,
@@ -33,11 +34,10 @@ impl Engine {
     /// Create a new basic component layout engine
     pub fn new() -> Self {
         Self {
-            padding: 40.0,
             min_component_width: 100.0,
             min_component_height: 60.0,
             text_padding: 20.0,
-            min_spacing: 40.0,
+            ..Self::default()
         }
     }
 
@@ -142,55 +142,34 @@ impl Engine {
         }
     }
 
-    /// Build a map of parent-child relationships between nodes
+    /// Build a map of parent-child relationships between nodes.
+    /// This does not include relations within embedded diagrams.
     fn build_hierarchy_map<'a>(&self, graph: &Graph<'a>) -> HashMap<NodeIndex, Vec<NodeIndex>> {
         let mut hierarchy_map: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
-        let mut node_id_map: HashMap<String, NodeIndex> = HashMap::new();
+        let mut node_id_map: HashMap<ast::TypeId, NodeIndex> = HashMap::new();
 
         // First, create a mapping of node ID strings to node indices
-        for node_idx in graph.node_indices() {
-            let node = graph.node_weight(node_idx).unwrap();
-            node_id_map.insert(node.id.to_string(), node_idx);
+        for (node_idx, node) in graph.nodes_with_indices() {
+            node_id_map.insert(node.id.clone(), node_idx);
         }
 
         // Then, for each node, determine its children based on block content
-        for node_idx in graph.node_indices() {
-            let node = graph.node_weight(node_idx).unwrap();
-
+        for (node_idx, node) in graph.nodes_with_indices() {
             // Skip nodes that don't have blocks
-            match &node.block {
-                ast::Block::None => {}
-                ast::Block::Scope(scope) => {
-                    // Find all nodes that are part of this node's scope
-                    let mut children = Vec::new();
+            if let ast::Block::Scope(scope) = &node.block {
+                // Find all nodes that are part of this node's scope
+                let mut children = Vec::new();
 
-                    for element in &scope.elements {
-                        if let ast::Element::Node(inner_node) = element {
-                            if let Some(&child_idx) = node_id_map.get(&inner_node.id.to_string()) {
-                                children.push(child_idx);
-                            }
+                for element in &scope.elements {
+                    if let ast::Element::Node(inner_node) = element {
+                        if let Some(&child_idx) = node_id_map.get(&inner_node.id) {
+                            children.push(child_idx);
                         }
-                    }
-
-                    if !children.is_empty() {
-                        hierarchy_map.insert(node_idx, children);
                     }
                 }
-                ast::Block::Diagram(diagram) => {
-                    // Find all nodes that are part of this node's diagram
-                    let mut children = Vec::new();
 
-                    for element in &diagram.scope.elements {
-                        if let ast::Element::Node(inner_node) = element {
-                            if let Some(&child_idx) = node_id_map.get(&inner_node.id.to_string()) {
-                                children.push(child_idx);
-                            }
-                        }
-                    }
-
-                    if !children.is_empty() {
-                        hierarchy_map.insert(node_idx, children);
-                    }
+                if !children.is_empty() {
+                    hierarchy_map.insert(node_idx, children);
                 }
             }
         }
@@ -216,28 +195,21 @@ impl Engine {
             let size = if let ast::Block::Diagram(_) = &node.block {
                 // Since we process in post-order (innermost to outermost),
                 // embedded diagram layouts should already be calculated and available
-                if let Some(layout) = embedded_layouts.get(&node.id) {
-                    // Use the shared utility function to calculate size
-                    engines::get_embedded_layout_size(
-                        layout,
-                        node,
-                        self.min_component_width,
-                        self.min_component_height,
-                        self.padding,
-                        self.text_padding,
-                    )
-                } else {
-                    // Fallback if no embedded layout is found (shouldn't happen in normal flow)
-                    calculate_element_size(
-                        node,
-                        self.min_component_width,
-                        self.min_component_height,
-                        self.text_padding,
-                    )
-                }
+                let layout = embedded_layouts
+                    .get(&node.id)
+                    .expect("Embedded layout not found");
+                // Use the shared utility function to calculate size
+                engines::get_embedded_layout_size(
+                    layout,
+                    node,
+                    self.min_component_width,
+                    self.min_component_height,
+                    self.padding,
+                    self.text_padding,
+                )
             } else {
                 // Standard size calculation for regular nodes
-                calculate_element_size(
+                calculate_bounded_text_size(
                     node,
                     self.min_component_width,
                     self.min_component_height,
@@ -272,7 +244,7 @@ impl Engine {
         }
 
         // If this node has children, adjust its size based on children's sizes
-        if let Some(children) = hierarchy_map.get(&node_idx) {
+        let size = if let Some(children) = hierarchy_map.get(&node_idx) {
             if children.is_empty() {
                 // No children, just mark as visited and return current size
                 visited.insert(node_idx);
@@ -288,19 +260,19 @@ impl Engine {
                 max_size = max_size.max(child_size);
             }
 
-            // Add padding and adjust for layout arrangement
-            // Use a simple heuristic - whichever dimension has more elements
-            let mut required_size = max_size.add_padding(self.padding);
-
             // If we have multiple children, consider arranging them in a grid
-            if children.len() > 1 {
-                let sqrt_count = (children.len() as f64).sqrt().ceil() as usize;
-                required_size = Size::new(
-                    max_size.width() * sqrt_count as f32 + self.padding * (sqrt_count + 1) as f32,
-                    max_size.height() * children.len().div_ceil(sqrt_count) as f32
-                        + self.padding * (children.len().div_ceil(sqrt_count) + 1) as f32,
-                );
-            }
+            let required_size = if children.len() > 1 {
+                let columns_count = (children.len() as f64).sqrt().ceil() as usize;
+                let rows_count = children.len().div_ceil(columns_count);
+                Size::new(
+                    max_size.width() * columns_count as f32
+                        + self.padding * (columns_count + 1) as f32,
+                    max_size.height() * rows_count as f32 + self.padding * (rows_count + 1) as f32,
+                )
+            } else {
+                // Single child, just use its size
+                max_size.add_padding(self.padding)
+            };
 
             // Get the current size and ensure it's big enough
             let current_size = &sizes[&node_idx];
@@ -308,13 +280,14 @@ impl Engine {
 
             // Update the size and mark as visited
             sizes.insert(node_idx, new_size);
-            visited.insert(node_idx);
-            return new_size;
-        }
+            new_size
+        } else {
+            // No children
+            sizes[&node_idx]
+        };
 
-        // No children, just mark as visited and return current size
         visited.insert(node_idx);
-        sizes[&node_idx]
+        size
     }
 
     fn positions<'a>(

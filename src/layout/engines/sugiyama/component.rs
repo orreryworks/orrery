@@ -10,7 +10,7 @@ use crate::{
         component::{Layout, LayoutRelation},
         engines::{self, ComponentEngine, EmbeddedLayouts},
         geometry::{Component, Point, Size},
-        positioning::calculate_element_size,
+        positioning::calculate_bounded_text_size,
     },
 };
 
@@ -159,7 +159,7 @@ impl Engine {
         }
 
         // If this node has children, adjust its size based on children's sizes
-        if let Some(children) = hierarchy_map.get(&node_idx) {
+        let size = if let Some(children) = hierarchy_map.get(&node_idx) {
             if children.is_empty() {
                 // No children, just mark as visited and return current size
                 visited.insert(node_idx);
@@ -167,29 +167,28 @@ impl Engine {
             }
 
             // Process all children first to get their sizes
-            let max_size = children
-                .iter()
-                .map(|&child_idx| {
-                    self.adjust_container_size(child_idx, hierarchy_map, sizes, visited)
-                })
-                .fold(Size::default(), |max_size, child_size| {
-                    max_size.max(child_size)
-                });
+            let mut max_size = Size::default();
 
-            // Add padding and adjust for layout arrangement
-            // Use a simple heuristic - whichever dimension has more elements
-            let mut required_size = max_size.add_padding(self.container_padding * 0.6);
+            for &child_idx in children {
+                let child_size =
+                    self.adjust_container_size(child_idx, hierarchy_map, sizes, visited);
+                max_size = max_size.max(child_size);
+            }
 
             // If we have multiple children, consider arranging them in a grid
-            if children.len() > 1 {
-                let sqrt_count = (children.len() as f64).sqrt().ceil() as usize;
-                required_size = Size::new(
-                    max_size.width() * sqrt_count as f32
-                        + self.container_padding * (sqrt_count + 1) as f32,
-                    max_size.height() * children.len().div_ceil(sqrt_count) as f32
-                        + self.container_padding * (children.len().div_ceil(sqrt_count) + 1) as f32,
-                );
-            }
+            let required_size = if children.len() > 1 {
+                let columns_count = (children.len() as f64).sqrt().ceil() as usize;
+                let rows_count = children.len().div_ceil(columns_count);
+                Size::new(
+                    max_size.width() * columns_count as f32
+                        + self.container_padding * (columns_count + 1) as f32,
+                    max_size.height() * rows_count as f32
+                        + self.container_padding * (rows_count + 1) as f32,
+                )
+            } else {
+                // Single child, just use its size
+                max_size.add_padding(self.container_padding)
+            };
 
             // Get the current size and ensure it's big enough
             let current_size = &sizes[&node_idx];
@@ -197,13 +196,14 @@ impl Engine {
 
             // Update the size and mark as visited
             sizes.insert(node_idx, new_size);
-            visited.insert(node_idx);
-            return new_size;
-        }
+            new_size
+        } else {
+            // No children
+            sizes[&node_idx]
+        };
 
-        // No children, just mark as visited and return current size
         visited.insert(node_idx);
-        sizes[&node_idx]
+        size
     }
 
     fn calculate_layout<'a>(
@@ -237,7 +237,7 @@ impl Engine {
                         )
                     } else {
                         // Fallback to text-based sizing if no embedded layout found
-                        calculate_element_size(
+                        calculate_bounded_text_size(
                             node,
                             self.min_component_width,
                             self.min_component_height,
@@ -246,7 +246,7 @@ impl Engine {
                     }
                 } else {
                     // Regular component with no embedded diagram
-                    calculate_element_size(
+                    calculate_bounded_text_size(
                         node,
                         self.min_component_width,
                         self.min_component_height,

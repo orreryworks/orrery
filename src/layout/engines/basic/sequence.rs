@@ -9,7 +9,7 @@ use crate::{
     layout::{
         engines::{self, EmbeddedLayouts, SequenceEngine},
         geometry::{Component, Point},
-        positioning::{self, calculate_element_size},
+        positioning::{self, calculate_bounded_text_size},
         sequence::{Layout, Message, Participant},
     },
 };
@@ -148,7 +148,7 @@ impl Engine {
                         )
                     } else {
                         // Fallback to text-based sizing if no embedded layout found
-                        calculate_element_size(
+                        calculate_bounded_text_size(
                             node,
                             self.min_participant_width,
                             self.min_participant_height,
@@ -157,7 +157,7 @@ impl Engine {
                     }
                 } else {
                     // Regular participant with no embedded diagram
-                    calculate_element_size(
+                    calculate_bounded_text_size(
                         node,
                         self.min_participant_width,
                         self.min_participant_height,
@@ -195,7 +195,7 @@ impl Engine {
 
         // Calculate horizontal positions using positioning algorithms
         let x_positions =
-            positioning::distribute_horizontally(&sizes, self.min_spacing, Some(&spacings), 0.0);
+            positioning::distribute_horizontally(&sizes, self.min_spacing, Some(&spacings));
 
         // Create participants and store their indices
         for (i, node_idx) in node_indices.iter().enumerate() {

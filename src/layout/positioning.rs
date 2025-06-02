@@ -49,10 +49,9 @@ pub fn distribute_horizontally(
     sizes: &[Size],
     min_spacing: f32,
     extra_spacings: Option<&[f32]>,
-    start_position: f32,
 ) -> Vec<f32> {
     let mut positions = Vec::with_capacity(sizes.len());
-    let mut x_position = start_position;
+    let mut x_position: f32 = 0.0;
 
     for (i, size) in sizes.iter().enumerate() {
         // For the first element, we start at the given position
@@ -90,7 +89,7 @@ pub fn distribute_horizontally(
 ///
 /// # Returns
 /// The calculated size with applied constraints
-pub fn calculate_element_size(
+pub fn calculate_bounded_text_size(
     node: &ast::Node,
     min_width: f32,
     min_height: f32,

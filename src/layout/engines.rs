@@ -36,16 +36,10 @@ pub enum LayoutResult<'a> {
 
 impl<'a> LayoutResult<'a> {
     /// Calculate the size of this layout, using the appropriate sizing implementation
-    pub fn calculate_size(&self) -> geometry::Size {
+    fn calculate_size(&self) -> geometry::Size {
         match self {
-            LayoutResult::Component(layout) => {
-                let layout_ref: &dyn LayoutSizing = layout;
-                layout_ref.layout_size()
-            }
-            LayoutResult::Sequence(layout) => {
-                let layout_ref: &dyn LayoutSizing = layout;
-                layout_ref.layout_size()
-            }
+            LayoutResult::Component(layout) => layout.layout_size(),
+            LayoutResult::Sequence(layout) => layout.layout_size(),
         }
     }
 }
@@ -65,7 +59,7 @@ pub fn get_embedded_layout_size<'a>(
     text_padding: f32,
 ) -> Size {
     // Calculate text-based size for the container element
-    let text_size = crate::layout::positioning::calculate_element_size(
+    let text_size = crate::layout::positioning::calculate_bounded_text_size(
         node,
         min_width,
         min_height,
@@ -73,12 +67,15 @@ pub fn get_embedded_layout_size<'a>(
     );
 
     // Calculate embedded layout size
-    let embedded_size = layout.calculate_size().add_padding(padding);
+    let embedded_size = layout.calculate_size();
 
     // Take the maximum of each dimension to ensure both text and embedded content fit
-    text_size
-        .max(embedded_size)
-        .max(Size::new(min_width, min_height))
+    // TODO: This should be a geometry opertaion.
+    Size::new(
+        text_size.width().max(embedded_size.width()) + padding * 2.0,
+        padding.max(text_size.height()) + embedded_size.height() + padding,
+    )
+    .max(Size::new(min_width, min_height))
 }
 
 // Trait defining the interface for component diagram layout engines
@@ -115,6 +112,7 @@ pub trait SequenceEngine {
 
 /// Builder for creating and configuring layout engines.
 /// Builder is not reuseable after build() is called.
+#[derive(Default)]
 pub struct EngineBuilder {
     // Cache for reusing engines with the same configuration
     component_engines: HashMap<LayoutEngine, Box<dyn ComponentEngine>>,
@@ -130,14 +128,7 @@ pub struct EngineBuilder {
 impl EngineBuilder {
     /// Create a new engine builder with default engine cache and configuration
     pub fn new() -> Self {
-        Self {
-            component_engines: HashMap::new(),
-            sequence_engines: HashMap::new(),
-            component_padding: 40.0,
-            min_component_spacing: 40.0,
-            message_spacing: 50.0,
-            force_simulation_iterations: 300,
-        }
+        Self::default()
     }
 
     /// Set the padding around components
@@ -181,9 +172,10 @@ impl EngineBuilder {
                     LayoutEngine::Force => {
                         let mut e = force::Component::new();
                         // Configure the force-directed engine
-                        e.set_padding(self.component_padding);
-                        e.set_min_distance(self.min_component_spacing);
-                        e.set_iterations(self.force_simulation_iterations);
+                        e.set_padding(self.component_padding)
+                            .set_text_padding(self.message_spacing)
+                            .set_min_distance(self.min_component_spacing)
+                            .set_iterations(self.force_simulation_iterations);
                         Box::new(e)
                     }
                     LayoutEngine::Sugiyama => {
@@ -253,6 +245,7 @@ impl EngineBuilder {
             };
 
             // Create and add the layer with the calculated layout
+            // PERFORMANCE: Get rid of clone() if possible.
             let layer_content = match &layout_result {
                 LayoutResult::Component(layout) => LayerContent::Component(layout.clone()),
                 LayoutResult::Sequence(layout) => LayerContent::Sequence(layout.clone()),
