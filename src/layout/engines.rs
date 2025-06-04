@@ -68,14 +68,17 @@ pub fn get_embedded_layout_size<'a>(
 
     // Calculate embedded layout size
     let embedded_size = layout.calculate_size();
+    let content_size = Size::new(
+        text_size.width().max(embedded_size.width()) + padding * 2.0,
+        padding.max(text_size.height()) + embedded_size.height() + padding,
+    );
 
     // Take the maximum of each dimension to ensure both text and embedded content fit
     // TODO: This should be a geometry opertaion.
-    Size::new(
-        text_size.width().max(embedded_size.width()) + padding * 2.0,
-        padding.max(text_size.height()) + embedded_size.height() + padding,
-    )
-    .max(Size::new(min_width, min_height))
+    node.type_definition
+        .shape_type
+        .calculate_shape_size(content_size)
+        .max(Size::new(min_width, min_height)) // TODO: Do I need this?
 }
 
 // Trait defining the interface for component diagram layout engines

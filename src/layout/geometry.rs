@@ -134,6 +134,14 @@ impl Size {
             height: self.height + padding * 2.0,
         }
     }
+
+    /// Multiplies both dimension by the given factor
+    pub fn scale(self, factor: f32) -> Self {
+        Self {
+            width: self.width * factor,
+            height: self.height * factor,
+        }
+    }
 }
 
 /// Represents a rectangular bounding box with minimum and maximum coordinates
@@ -199,7 +207,7 @@ impl Bounds {
     }
 
     /// Merges two bounds to create a larger bounds that contains both
-    /// 
+    ///
     /// The resulting bounds will have the minimum values of both bounds for min_x and min_y,
     /// and the maximum values of both bounds for max_x and max_y.
     pub fn merge(&self, other: &Self) -> Self {
@@ -237,7 +245,7 @@ impl Bounds {
     }
 
     /// Expands the bounds by adding padding in all directions
-    /// 
+    ///
     /// This decreases the minimum coordinates and increases the maximum coordinates
     /// by the padding amount, effectively growing the bounds in all directions.
     pub fn add_padding(&self, padding: f32) -> Self {
@@ -326,7 +334,7 @@ mod tests {
     fn test_point_hypot() {
         let point = Point::new(3.0, 4.0);
         assert_eq!(point.hypot(), 5.0);
-        
+
         let origin = Point::new(0.0, 0.0);
         assert_eq!(origin.hypot(), 0.0);
     }
@@ -345,7 +353,7 @@ mod tests {
         let abs_point = point.abs();
         assert_eq!(abs_point.x(), 2.5);
         assert_eq!(abs_point.y(), 3.0);
-        
+
         let point2 = Point::new(1.0, -4.0);
         let abs_point2 = point2.abs();
         assert_eq!(abs_point2.x(), 1.0);
@@ -357,8 +365,8 @@ mod tests {
         let center = Point::new(10.0, 20.0);
         let size = Size::new(6.0, 8.0);
         let bounds = center.to_bounds(size);
-        
-        assert_eq!(bounds.min_x(), 7.0);  // 10 - 3
+
+        assert_eq!(bounds.min_x(), 7.0); // 10 - 3
         assert_eq!(bounds.min_y(), 16.0); // 20 - 4
         assert_eq!(bounds.max_x(), 13.0); // 10 + 3
         assert_eq!(bounds.max_y(), 24.0); // 20 + 4
@@ -383,7 +391,7 @@ mod tests {
         let size1 = Size::new(10.0, 20.0);
         let size2 = Size::new(15.0, 18.0);
         let max_size = size1.max(size2);
-        
+
         assert_eq!(max_size.width(), 15.0);
         assert_eq!(max_size.height(), 20.0);
     }
@@ -392,9 +400,39 @@ mod tests {
     fn test_size_add_padding() {
         let size = Size::new(10.0, 20.0);
         let padded = size.add_padding(5.0);
-        
-        assert_eq!(padded.width(), 20.0);  // 10 + 5*2
+
+        assert_eq!(padded.width(), 20.0); // 10 + 5*2
         assert_eq!(padded.height(), 30.0); // 20 + 5*2
+    }
+
+    #[test]
+    fn test_size_scale() {
+        let size = Size::new(10.0, 20.0);
+
+        // Test positive scaling
+        let scaled = size.scale(2.0);
+        assert_eq!(scaled.width(), 20.0);
+        assert_eq!(scaled.height(), 40.0);
+
+        // Test fractional scaling
+        let scaled_half = size.scale(0.5);
+        assert_eq!(scaled_half.width(), 5.0);
+        assert_eq!(scaled_half.height(), 10.0);
+
+        // Test zero scaling
+        let scaled_zero = size.scale(0.0);
+        assert_eq!(scaled_zero.width(), 0.0);
+        assert_eq!(scaled_zero.height(), 0.0);
+
+        // Test negative scaling
+        let scaled_neg = size.scale(-1.0);
+        assert_eq!(scaled_neg.width(), -10.0);
+        assert_eq!(scaled_neg.height(), -20.0);
+
+        // Test scaling by 1 (identity)
+        let scaled_one = size.scale(1.0);
+        assert_eq!(scaled_one.width(), size.width());
+        assert_eq!(scaled_one.height(), size.height());
     }
 
     #[test]
@@ -405,7 +443,7 @@ mod tests {
             max_x: 5.0,
             max_y: 8.0,
         };
-        
+
         assert_eq!(bounds.min_x(), 1.0);
         assert_eq!(bounds.min_y(), 2.0);
         assert_eq!(bounds.max_x(), 5.0);
@@ -420,7 +458,7 @@ mod tests {
             max_x: 10.0,
             max_y: 10.0,
         };
-        
+
         bounds.set_max_y(15.0);
         assert_eq!(bounds.max_y(), 15.0);
     }
@@ -433,7 +471,7 @@ mod tests {
             max_x: 7.0,
             max_y: 11.0,
         };
-        
+
         assert_eq!(bounds.width(), 5.0);
         assert_eq!(bounds.height(), 8.0);
     }
@@ -446,7 +484,7 @@ mod tests {
             max_x: 7.0,
             max_y: 11.0,
         };
-        
+
         let min_point = bounds.min_point();
         assert_eq!(min_point.x(), 2.0);
         assert_eq!(min_point.y(), 3.0);
@@ -460,7 +498,7 @@ mod tests {
             max_x: 6.0,
             max_y: 9.0,
         };
-        
+
         let size = bounds.to_size();
         assert_eq!(size.width(), 5.0);
         assert_eq!(size.height(), 7.0);
@@ -474,14 +512,14 @@ mod tests {
             max_x: 5.0,
             max_y: 6.0,
         };
-        
+
         let bounds2 = Bounds {
             min_x: 3.0,
             min_y: 0.0,
             max_x: 8.0,
             max_y: 4.0,
         };
-        
+
         let merged = bounds1.merge(&bounds2);
         assert_eq!(merged.min_x(), 1.0);
         assert_eq!(merged.min_y(), 0.0);
@@ -497,10 +535,10 @@ mod tests {
             max_x: 5.0,
             max_y: 6.0,
         };
-        
+
         let offset = Point::new(3.0, -1.0);
         let translated = bounds.translate(offset);
-        
+
         assert_eq!(translated.min_x(), 4.0);
         assert_eq!(translated.min_y(), 1.0);
         assert_eq!(translated.max_x(), 8.0);
@@ -515,10 +553,10 @@ mod tests {
             max_x: 9.0,
             max_y: 7.0,
         };
-        
+
         let offset = Point::new(2.0, 1.0);
         let inverse_translated = bounds.inverse_translate(offset);
-        
+
         assert_eq!(inverse_translated.min_x(), 3.0);
         assert_eq!(inverse_translated.min_y(), 2.0);
         assert_eq!(inverse_translated.max_x(), 7.0);
@@ -533,9 +571,9 @@ mod tests {
             max_x: 6.0,
             max_y: 8.0,
         };
-        
+
         let padded = bounds.add_padding(1.0);
-        
+
         assert_eq!(padded.min_x(), 1.0);
         assert_eq!(padded.min_y(), 2.0);
         assert_eq!(padded.max_x(), 7.0);
@@ -559,12 +597,12 @@ mod tests {
         let position = Point::new(10.0, 15.0);
         let size = Size::new(8.0, 12.0);
         let bounds = position.to_bounds(size);
-        
+
         // Verify bounds calculation (position as center)
-        assert_eq!(bounds.min_x(), 6.0);   // 10 - 4
-        assert_eq!(bounds.min_y(), 9.0);   // 15 - 6
-        assert_eq!(bounds.max_x(), 14.0);  // 10 + 4
-        assert_eq!(bounds.max_y(), 21.0);  // 15 + 6
+        assert_eq!(bounds.min_x(), 6.0); // 10 - 4
+        assert_eq!(bounds.min_y(), 9.0); // 15 - 6
+        assert_eq!(bounds.max_x(), 14.0); // 10 + 4
+        assert_eq!(bounds.max_y(), 21.0); // 15 + 6
         assert_eq!(bounds.width(), 8.0);
         assert_eq!(bounds.height(), 12.0);
     }
@@ -575,21 +613,21 @@ mod tests {
         let zero_point = Point::new(0.0, 0.0);
         let zero_size = Size::new(0.0, 0.0);
         let zero_bounds = zero_point.to_bounds(zero_size);
-        
+
         assert_eq!(zero_bounds.width(), 0.0);
         assert_eq!(zero_bounds.height(), 0.0);
-        
+
         // Test with negative values
         let neg_point = Point::new(-5.0, -3.0);
         let abs_neg = neg_point.abs();
         assert_eq!(abs_neg.x(), 5.0);
         assert_eq!(abs_neg.y(), 3.0);
-        
+
         // Test scaling by zero
         let point = Point::new(10.0, 20.0);
         let scaled_zero = point.scale(0.0);
         assert!(scaled_zero.is_zero());
-        
+
         // Test scaling by negative value
         let scaled_neg = point.scale(-1.0);
         assert_eq!(scaled_neg.x(), -10.0);
@@ -600,17 +638,17 @@ mod tests {
     fn test_mathematical_properties() {
         let p1 = Point::new(3.0, 4.0);
         let p2 = Point::new(1.0, 2.0);
-        
+
         // Test addition commutativity
         assert_eq!(p1.add(p2).x(), p2.add(p1).x());
         assert_eq!(p1.add(p2).y(), p2.add(p1).y());
-        
+
         // Test subtraction
         let diff = p1.sub(p2);
         let sum_back = diff.add(p2);
         assert!((sum_back.x() - p1.x()).abs() < f32::EPSILON);
         assert!((sum_back.y() - p1.y()).abs() < f32::EPSILON);
-        
+
         // Test midpoint properties
         let mid = p1.midpoint(p2);
         let dist1 = p1.sub(mid).hypot();

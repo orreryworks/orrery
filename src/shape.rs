@@ -8,6 +8,10 @@ pub trait Shape {
 
     /// Get a string identifier for this shape type
     fn name(&self) -> &'static str;
+
+    /// Calculate the size of the shape needed to contain the given content size
+    /// This allows shapes to add padding or adjust dimensions based on their specific requirements
+    fn calculate_shape_size(&self, content_size: Size) -> Size;
 }
 
 pub struct Rectangle;
@@ -91,6 +95,10 @@ impl Shape for Rectangle {
     fn name(&self) -> &'static str {
         "Rectangle"
     }
+
+    fn calculate_shape_size(&self, content_size: Size) -> Size {
+        content_size.max(Size::new(10.0, 10.0))
+    }
 }
 
 impl Shape for Oval {
@@ -138,5 +146,12 @@ impl Shape for Oval {
 
     fn name(&self) -> &'static str {
         "Oval"
+    }
+
+    fn calculate_shape_size(&self, content_size: Size) -> Size {
+        // The largest rectangle that fits in an ellipse with semi-axes (a,b) has dimensions:
+        // width = a√2, height = b√2
+        let sqrt_2 = 2.0_f32.sqrt();
+        content_size.scale(sqrt_2).max(Size::new(10.0, 10.0))
     }
 }
