@@ -5,6 +5,7 @@ type Database = Rectangle [fill_color = "#B3E5FC", line_color = "#0288D1", round
 type Service = Rectangle [fill_color = "#FFECB3", line_color = "#FFA000", rounded = "10"];
 type Frontend = Oval [fill_color = "#E8F5E9", line_color = "#388E3C"];
 type Container = Rectangle [fill_color = "#F5F5F5", line_color = "#9E9E9E", rounded = "3"];
+type OvalContainer = Oval [fill_color = "#F5F5F5", line_color = "#9E9E9E"];
 type ExternalAPI = Oval [fill_color = "#BBDEFB", line_color = "#1976D2"];
 
 // Define the top-level architecture
@@ -23,7 +24,7 @@ cloud_server: Container {
     };
 
     // Database server with nested components
-    db_server: Container {
+    db_server: OvalContainer {
         primary_db: Database;
         replica_db: Database;
         cache: Service [fill_color = "#B2DFDB"];
@@ -48,18 +49,18 @@ browser -> cdn;
 
 // Cross-level relations using the hierarchical ID syntax (parent::child)
 // Browser directly accessing specific components inside cloud_server
-browser -> [line_color = "#E91E63"] cloud_server::web_server::api_gateway;
+browser -> [color = "#E91E63"] cloud_server::web_server::api_gateway;
 
 // External auth service connecting to internal components
-auth_service -> [line_color = "#673AB7"] cloud_server::web_server::app_logic;
+auth_service -> [color = "#673AB7"] cloud_server::web_server::app_logic;
 
 // Direct connection from nested component to external service
 cloud_server::web_server::api_gateway -> auth_service;
 
 // Connection between deeply nested components across different parent containers
-cloud_server::web_server::app_logic -> [line_color = "#009688"] cloud_server::db_server::primary_db;
+cloud_server::web_server::app_logic -> [color = "#009688"] cloud_server::db_server::primary_db;
 
 // External monitoring connected to multiple internal components
-monitoring -> [line_color = "#FF9800"] cloud_server::web_server;
+monitoring -> [color = "#FF9800"] cloud_server::web_server;
 monitoring -> cloud_server::db_server::primary_db;
-cloud_server::db_server::cache -> [line_color = "#4CAF50"] cdn;
+cloud_server::db_server::cache -> [color = "#4CAF50"] cdn;
