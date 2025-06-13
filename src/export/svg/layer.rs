@@ -1,7 +1,12 @@
-use crate::layout::{
-    Bounds,
-    layer::{Layer, LayerContent, LayeredLayout},
+use crate::{
+    color::Color,
+    layout::{
+        Bounds, LayoutSizing, component,
+        layer::{ContentStack, Layer, LayeredLayout, LayoutContent},
+        sequence,
+    },
 };
+use log::debug;
 use svg::{
     Document,
     node::element::{ClipPath, Definitions, Group, Rectangle},
@@ -106,28 +111,15 @@ impl Svg {
 
         let mut layout_iter = layout.iter_from_bottom();
         // Start with the bounds of the first (bottom) layer
-        let mut combined_bounds = match &layout_iter
-            .next()
-            .expect("Bottom layer should always exist").content // FIXME: Convert to Result.
-        {
-            LayerContent::Component(comp_layout) => {
-                self.calculate_component_diagram_bounds(comp_layout)
-            }
-            LayerContent::Sequence(seq_layout) => {
-                self.calculate_sequence_diagram_bounds(seq_layout)
-            }
-        };
+        let mut combined_bounds = self.calculate_layer_bounds(
+            layout_iter
+                .next()
+                .expect("Bottom layer should always exist"), // FIXME: Convert to Result.
+        );
 
         // Merge with bounds of additional layers, adjusting for layer offset
         for layer in layout_iter {
-            let layer_bounds = match &layer.content {
-                LayerContent::Component(comp_layout) => {
-                    self.calculate_component_diagram_bounds(comp_layout)
-                }
-                LayerContent::Sequence(seq_layout) => {
-                    self.calculate_sequence_diagram_bounds(seq_layout)
-                }
-            };
+            let layer_bounds = self.calculate_layer_bounds(layer);
 
             // Adjust bounds for layer offset by creating a translated copy
             let offset_bounds = layer_bounds.translate(layer.offset);
@@ -139,6 +131,18 @@ impl Svg {
         combined_bounds
     }
 
+    /// Calculate bounds for a single layer
+    fn calculate_layer_bounds(&self, layer: &Layer) -> Bounds {
+        match &layer.content {
+            LayoutContent::Component(comp_layout) => {
+                self.calculate_component_diagram_bounds(comp_layout)
+            }
+            LayoutContent::Sequence(seq_layout) => {
+                self.calculate_sequence_diagram_bounds(seq_layout)
+            }
+        }
+    }
+
     /// Create marker definitions for all layers
     fn create_marker_definitions_for_all_layers(
         &self,
@@ -148,22 +152,35 @@ impl Svg {
         let mut all_colors = Vec::new();
 
         for layer in layout.iter_from_bottom() {
-            match &layer.content {
-                LayerContent::Component(comp_layout) => {
-                    for relation in &comp_layout.relations {
-                        all_colors.push(&relation.relation.color);
-                    }
-                }
-                LayerContent::Sequence(seq_layout) => {
-                    for message in &seq_layout.messages {
-                        all_colors.push(&message.relation.color);
-                    }
-                }
-            }
+            self.collect_layer_colors(&layer.content, &mut all_colors);
         }
 
         // Create marker definitions for all collected colors
         super::arrows::create_marker_definitions(all_colors.into_iter())
+    }
+
+    /// Collect colors from a single layer's content
+    fn collect_layer_colors<'a>(
+        &self,
+        content: &'a LayoutContent<'a>,
+        colors: &mut Vec<&'a Color>,
+    ) {
+        match content {
+            LayoutContent::Component(comp_layout) => {
+                for positioned_content in comp_layout.iter() {
+                    for relation in &positioned_content.content().relations {
+                        colors.push(&relation.relation().color);
+                    }
+                }
+            }
+            LayoutContent::Sequence(seq_layout) => {
+                for positioned_content in seq_layout.iter() {
+                    for message in &positioned_content.content().messages {
+                        colors.push(&message.relation.color);
+                    }
+                }
+            }
+        }
     }
 
     /// Render a single layer to SVG
@@ -197,35 +214,89 @@ impl Svg {
         }
 
         // Render the layer content based on its type
-        match &layer.content {
-            LayerContent::Component(layout) => {
-                // Render all components
-                for component in &layout.components {
-                    layer_group = layer_group.add(self.render_component(component));
-                }
+        self.render_layer_content(&layer.content)
+            .into_iter()
+            .fold(layer_group, |group, content_group| group.add(content_group))
+    }
 
-                // Render all relations
-                for relation in &layout.relations {
-                    layer_group = layer_group.add(self.render_relation(
-                        layout.source(relation),
-                        layout.target(relation),
-                        relation.relation,
-                    ));
-                }
-            }
-            LayerContent::Sequence(layout) => {
-                // Render all participants
-                for participant in &layout.participants {
-                    layer_group = layer_group.add(self.render_participant(participant));
-                }
+    /// Render layer content by dispatching to appropriate content-specific renderer
+    fn render_layer_content(&self, content: &LayoutContent) -> Vec<Group> {
+        match content {
+            LayoutContent::Component(layout) => self
+                .render_content_stack(layout, |svg, content| svg.render_component_content(content)),
+            LayoutContent::Sequence(layout) => self
+                .render_content_stack(layout, |svg, content| svg.render_sequence_content(content)),
+        }
+    }
 
-                // Render all messages
-                for message in &layout.messages {
-                    layer_group = layer_group.add(self.render_message(message, layout));
-                }
+    /// Generic function to render a ContentStack with positioned content
+    fn render_content_stack<T: LayoutSizing>(
+        &self,
+        content_stack: &ContentStack<T>,
+        render_fn: impl Fn(&Self, &T) -> Vec<Group>,
+    ) -> Vec<Group> {
+        let mut groups = Vec::with_capacity(content_stack.len());
+        // Render all positioned content in the stack (reverse order for proper layering)
+        for positioned_content in content_stack.iter().rev() {
+            let offset = positioned_content.offset();
+            let content = positioned_content.content();
+            debug!(offset:?; "Rendering positioned content");
+
+            // Create a group for this positioned content with its offset applied
+            let mut positioned_group = Group::new();
+
+            // Apply the positioned content's offset as a transform
+            if !positioned_content.offset().is_zero() {
+                positioned_group = positioned_group.set(
+                    "transform",
+                    format!("translate({}, {})", offset.x(), offset.y()),
+                );
             }
+
+            // Use the provided render function to render the content
+            positioned_group = render_fn(self, content)
+                .into_iter()
+                .fold(positioned_group, |group, content_group| {
+                    group.add(content_group)
+                });
+
+            // Add the positioned group to the layer
+            groups.push(positioned_group);
+        }
+        groups
+    }
+
+    /// Render component-specific content
+    fn render_component_content(&self, content: &component::Layout) -> Vec<Group> {
+        let mut groups = Vec::with_capacity(content.components.len() + content.relations.len());
+        // Render all components within this positioned content
+        for component in &content.components {
+            groups.push(self.render_component(component));
         }
 
-        layer_group
+        // Render all relations within this positioned content
+        for relation in &content.relations {
+            groups.push(self.render_relation(
+                content.source(relation),
+                content.target(relation),
+                relation.relation(),
+            ));
+        }
+        groups
+    }
+
+    /// Render sequence-specific content
+    fn render_sequence_content(&self, content: &sequence::Layout) -> Vec<Group> {
+        let mut groups = Vec::with_capacity(content.participants.len() + content.messages.len());
+        // Render all participants within this positioned content
+        for participant in &content.participants {
+            groups.push(self.render_participant(participant));
+        }
+
+        // Render all messages within this positioned content
+        for message in &content.messages {
+            groups.push(self.render_message(message, content));
+        }
+        groups
     }
 }

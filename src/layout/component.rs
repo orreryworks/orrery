@@ -3,21 +3,40 @@ use crate::{
     layout::geometry::{Component, LayoutSizing, Size},
 };
 
+/// Represents a relation (connection) in a component layout with positional information.
+///
+/// LayoutRelation wraps an AST relation with additional layout-specific data,
+/// including the indices of the source and target components within the layout.
+/// This allows the layout system to efficiently reference components when
+/// positioning and rendering relations.
 #[derive(Debug, Clone)]
 pub struct LayoutRelation<'a> {
-    pub relation: &'a ast::Relation,
-    pub(crate) source_index: usize,
-    pub(crate) target_index: usize,
+    relation: &'a ast::Relation,
+    source_index: usize,
+    target_index: usize,
 }
 
 impl<'a> LayoutRelation<'a> {
-    /// Creates a new LayoutRelation
+    /// Creates a new LayoutRelation with the given relation and component indices.
+    ///
+    /// # Arguments
+    /// * `relation` - Reference to the AST relation being laid out
+    /// * `source_index` - Index of the source component in the layout
+    /// * `target_index` - Index of the target component in the layout
     pub fn new(relation: &'a ast::Relation, source_index: usize, target_index: usize) -> Self {
         Self {
             relation,
             source_index,
             target_index,
         }
+    }
+
+    /// Returns a reference to the underlying AST relation.
+    ///
+    /// This provides access to the relation's properties such as type,
+    /// attributes, and labels for rendering purposes.
+    pub fn relation(&self) -> &ast::Relation {
+        self.relation
     }
 }
 

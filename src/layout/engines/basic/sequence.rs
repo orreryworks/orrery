@@ -9,6 +9,7 @@ use crate::{
     layout::{
         engines::{self, EmbeddedLayouts, SequenceEngine},
         geometry::{Component, Point},
+        layer::{ContentStack, PositionedContent},
         positioning::{self, calculate_bounded_text_size},
         sequence::{Layout, Message, Participant},
     },
@@ -123,22 +124,20 @@ impl Engine {
         &self,
         graph: &'a Graph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Layout<'a> {
+    ) -> ContentStack<Layout<'a>> {
         let mut participants: Vec<Participant<'a>> = Vec::new();
         let mut participant_indices = HashMap::new();
 
         // Calculate sizes for participants, accounting for embedded diagrams
         let participant_sizes: HashMap<_, _> = graph
-            .node_indices()
-            .map(|node_idx| {
-                let node = graph.node_weight(node_idx).unwrap();
-
+            .nodes_with_indices()
+            .map(|(node_idx, node)| {
                 // Check if this node has an embedded diagram
                 let size = if let ast::Block::Diagram(_) = &node.block {
                     // If this participant has an embedded diagram, use its layout size
                     if let Some(layout) = embedded_layouts.get(&node.id) {
                         // Use the shared utility function to calculate size
-                        engines::get_embedded_layout_size(
+                        engines::embedded_layout_size(
                             layout,
                             node,
                             self.min_participant_width,
@@ -187,10 +186,9 @@ impl Engine {
         }
 
         // Get list of node indices and their sizes
-        let node_indices: Vec<_> = graph.node_indices().collect();
-        let sizes: Vec<_> = node_indices
-            .iter()
-            .map(|&idx| *participant_sizes.get(&idx).unwrap())
+        let sizes: Vec<_> = graph
+            .node_indices()
+            .map(|idx| *participant_sizes.get(&idx).unwrap())
             .collect();
 
         // Calculate horizontal positions using positioning algorithms
@@ -198,9 +196,8 @@ impl Engine {
             positioning::distribute_horizontally(&sizes, self.min_spacing, Some(&spacings));
 
         // Create participants and store their indices
-        for (i, node_idx) in node_indices.iter().enumerate() {
-            let node = graph.node_weight(*node_idx).unwrap();
-            let size = *participant_sizes.get(node_idx).unwrap();
+        for (i, (node_idx, node)) in graph.nodes_with_indices().enumerate() {
+            let size = *participant_sizes.get(&node_idx).unwrap();
 
             participants.push(Participant {
                 component: Component {
@@ -211,7 +208,7 @@ impl Engine {
                 lifeline_end: self.top_margin, // Will be updated later
             });
 
-            participant_indices.insert(*node_idx, i);
+            participant_indices.insert(node_idx, i);
         }
 
         // Calculate message positions and update lifeline ends
@@ -250,10 +247,14 @@ impl Engine {
             participant.lifeline_end = current_y + self.message_spacing;
         }
 
-        Layout {
+        let layout = Layout {
             participants,
             messages,
-        }
+        };
+
+        let mut content_stack = ContentStack::new();
+        content_stack.push(PositionedContent::new(layout));
+        content_stack
     }
 }
 
@@ -264,7 +265,7 @@ impl SequenceEngine for Engine {
         &self,
         graph: &'a Graph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Layout<'a> {
+    ) -> ContentStack<Layout<'a>> {
         self.calculate_layout(graph, embedded_layouts)
     }
 }

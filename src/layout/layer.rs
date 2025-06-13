@@ -5,11 +5,13 @@ use crate::layout::{
 };
 use log::debug;
 
-/// Content types that can be rendered in a layer
+use super::LayoutSizing;
+
+/// Content types that can be laid out in a layer
 #[derive(Debug)]
-pub enum LayerContent<'a> {
-    Component(component::Layout<'a>),
-    Sequence(sequence::Layout<'a>),
+pub enum LayoutContent<'a> {
+    Component(ContentStack<component::Layout<'a>>),
+    Sequence(ContentStack<sequence::Layout<'a>>),
 }
 
 /// A rendering layer containing either component or sequence diagram content
@@ -21,7 +23,7 @@ pub struct Layer<'a> {
     /// Optional clipping boundary to keep content within parent
     pub clip_bounds: Option<Bounds>,
     /// The content of this layer
-    pub content: LayerContent<'a>,
+    pub content: LayoutContent<'a>, // TODO: Remove this one.
 }
 
 /// Collection of all diagram layers for rendering
@@ -45,7 +47,7 @@ impl<'a> LayeredLayout<'a> {
     ///
     /// The z_index is assigned based on the layer's position in the stack,
     /// with higher indices (newer layers) appearing on top.
-    pub fn add_layer(&mut self, content: LayerContent<'a>) -> usize {
+    pub fn add_layer(&mut self, content: LayoutContent<'a>) -> usize {
         let z_index = self.layers.len();
 
         self.layers.push(Layer {
@@ -128,5 +130,112 @@ impl<'a> LayeredLayout<'a> {
     /// This ordering is appropriate for rendering, where bottom layers should be drawn first
     pub fn iter_from_bottom(&'a self) -> impl Iterator<Item = &'a Layer<'a>> {
         self.layers.iter().rev()
+    }
+}
+
+/// A stack of positioned content items for layout management.
+///
+/// ContentStack manages a collection of positioned content items, where each item
+/// has both content and an offset position.
+#[derive(Debug, Clone)]
+pub struct ContentStack<T: LayoutSizing>(Vec<PositionedContent<T>>);
+
+impl<T> ContentStack<T>
+where
+    T: LayoutSizing,
+{
+    /// Creates a new empty content stack.
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    /// Returns a reference to the positioned content at the given index without bounds checking.
+    ///
+    /// # Safety
+    /// The caller must ensure that the index is within bounds.
+    pub fn get_unchecked(&self, index: usize) -> &PositionedContent<T> {
+        &self.0[index]
+    }
+
+    /// Returns a mutable reference to the positioned content at the given index without bounds checking.
+    ///
+    /// # Safety
+    /// The caller must ensure that the index is within bounds.
+    pub fn get_mut_unchecked(&mut self, index: usize) -> &mut PositionedContent<T> {
+        &mut self.0[index]
+    }
+
+    /// Adds a positioned content item to the stack.
+    pub fn push(&mut self, positioned_content: PositionedContent<T>) {
+        self.0.push(positioned_content);
+    }
+
+    /// Returns the layout size of this content stack.
+    ///
+    /// For a content stack, this returns the size of the last positioned content item,
+    /// as it represents the final computed layout. If the stack is empty, returns
+    /// a default (zero) size.
+    pub fn layout_size(&self) -> Size {
+        // For content stack, return the size of the last positioned content's content
+        self.0
+            .last()
+            .map(|content| content.layout_size())
+            .unwrap_or_default()
+    }
+
+    /// Returns an iterator over the positioned content items.
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &PositionedContent<T>> {
+        self.0.iter()
+    }
+
+    /// Returns the number of positioned content items in the stack.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+/// A content item with an associated position offset.
+///
+/// PositionedContent wraps layout content with positional information,
+/// allowing content to be placed at specific coordinates within a larger layout.
+#[derive(Debug, Clone)]
+pub struct PositionedContent<T>
+where
+    T: LayoutSizing,
+{
+    offset: Point,
+    content: T,
+}
+
+impl<T> PositionedContent<T>
+where
+    T: LayoutSizing,
+{
+    /// Creates new positioned content with the given content and default (zero) offset.
+    pub fn new(content: T) -> Self {
+        Self {
+            content,
+            offset: Point::default(),
+        }
+    }
+
+    /// Returns the position offset for this content.
+    pub fn offset(&self) -> Point {
+        self.offset
+    }
+
+    /// Returns a reference to the content.
+    pub fn content(&self) -> &T {
+        &self.content
+    }
+
+    /// Sets the position offset for this content.
+    pub fn set_offset(&mut self, offset: Point) {
+        self.offset = offset;
+    }
+
+    /// Returns the layout size of the contained content.
+    pub fn layout_size(&self) -> Size {
+        self.content.layout_size()
     }
 }

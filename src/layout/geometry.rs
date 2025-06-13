@@ -248,6 +248,7 @@ impl Bounds {
     ///
     /// This decreases the minimum coordinates and increases the maximum coordinates
     /// by the padding amount, effectively growing the bounds in all directions.
+    #[allow(dead_code)]
     pub fn add_padding(&self, padding: f32) -> Self {
         Self {
             min_x: self.min_x - padding,

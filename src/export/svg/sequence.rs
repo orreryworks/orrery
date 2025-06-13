@@ -1,6 +1,7 @@
 use crate::{
     ast,
     layout::{
+        layer::ContentStack,
         sequence, text, {Bounds, Point},
     },
 };
@@ -108,33 +109,39 @@ impl Svg {
         group
     }
 
-    pub fn calculate_sequence_diagram_bounds(&self, layout: &sequence::Layout) -> Bounds {
-        // Start with default bounds
-        if layout.participants.is_empty() {
-            return Bounds::default();
-        }
+    pub fn calculate_sequence_diagram_bounds(
+        &self,
+        content_stack: &ContentStack<sequence::Layout>,
+    ) -> Bounds {
+        let last_positioned_content = content_stack.iter().last();
+        last_positioned_content
+            .map(|positioned_content| {
+                let layout = &positioned_content.content();
 
-        // For sequence diagrams, the bounds are defined by:
-        // - The leftmost and rightmost participant positions
-        // - The top of the first participant and the bottom of the lifelines
-        let mut bounds = layout
-            .participants
-            .iter()
-            .skip(1)
-            .map(|p| p.component.bounds())
-            .fold(layout.participants[0].component.bounds(), |acc, bounds| {
-                acc.merge(&bounds)
-            });
+                if layout.participants.is_empty() {
+                    return Bounds::default();
+                }
 
-        bounds.set_max_y(
-            layout
-                .participants
-                .iter()
-                .map(|p| p.lifeline_end) // Bottom of lifelines
-                .fold(f32::MIN, f32::max),
-        );
+                let mut content_bounds = layout
+                    .participants
+                    .iter()
+                    .skip(1)
+                    .map(|p| p.component.bounds())
+                    .fold(layout.participants[0].component.bounds(), |acc, bounds| {
+                        acc.merge(&bounds)
+                    });
 
-        bounds
+                content_bounds.set_max_y(
+                    layout
+                        .participants
+                        .iter()
+                        .map(|p| p.lifeline_end)
+                        .fold(0.0, f32::max),
+                );
+
+                content_bounds
+            })
+            .unwrap_or_default()
     }
 
     // This method was removed as it's no longer used directly - sequence diagram rendering

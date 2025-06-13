@@ -2,6 +2,7 @@ use super::{arrows, renderer};
 use crate::{
     ast,
     layout::component,
+    layout::layer::ContentStack,
     layout::text,
     layout::{Bounds, Component, Point},
 };
@@ -102,19 +103,28 @@ impl Svg {
         group
     }
 
-    pub fn calculate_component_diagram_bounds(&self, l: &component::Layout) -> Bounds {
-        // If there are no components, return default bounds
-        if l.components.is_empty() {
-            return Bounds::default();
-        }
+    pub fn calculate_component_diagram_bounds(
+        &self,
+        content_stack: &ContentStack<component::Layout>,
+    ) -> Bounds {
+        let last_positioned_content = content_stack.iter().last();
+        last_positioned_content
+            .map(|positioned_content| {
+                let layout = &positioned_content.content();
 
-        l.components
-            .iter()
-            .skip(1)
-            .map(|component| component.bounds())
-            .fold(l.components[0].bounds(), |acc, bounds| acc.merge(&bounds))
+                if layout.components.is_empty() {
+                    return Bounds::default();
+                }
+
+                layout
+                    .components
+                    .iter()
+                    .skip(1)
+                    .map(|component| component.bounds())
+                    .fold(layout.components[0].bounds(), |acc, bounds| {
+                        acc.merge(&bounds)
+                    })
+            })
+            .unwrap_or_default()
     }
-
-    // This method was removed as it's no longer used directly - component rendering
-    // is now handled through the layered layout system
 }

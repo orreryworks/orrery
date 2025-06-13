@@ -18,20 +18,23 @@ use crate::{
     graph::{Collection, Graph},
     layout::{
         component,
-        geometry::{self, LayoutSizing, Point, Size},
-        layer::{LayerContent, LayeredLayout},
+        geometry::{self, Point, Size},
+        layer::{LayeredLayout, LayoutContent},
         sequence,
     },
 };
 use log::trace;
 use std::collections::HashMap;
 
+use super::layer::ContentStack;
+
 /// Enum to store different layout results based on diagram type
 /// Contains the direct layout information without any embedded diagram data
 #[derive(Debug)]
 pub enum LayoutResult<'a> {
-    Component(component::Layout<'a>),
-    Sequence(sequence::Layout<'a>),
+    // TODO: Do I need this?
+    Component(ContentStack<component::Layout<'a>>),
+    Sequence(ContentStack<sequence::Layout<'a>>),
 }
 
 impl<'a> LayoutResult<'a> {
@@ -50,8 +53,27 @@ pub type EmbeddedLayouts<'a> = HashMap<TypeId, LayoutResult<'a>>;
 
 /// Utility function to calculate the size of an embedded layout
 /// This provides a standard way for layout engines to get the size of embedded diagrams
-pub fn get_embedded_layout_size<'a>(
+pub fn embedded_layout_size<'a>(
     layout: &LayoutResult<'a>,
+    node: &ast::Node,
+    min_width: f32,
+    min_height: f32,
+    padding: f32,
+    text_padding: f32,
+) -> Size {
+    let embedded_size = layout.calculate_size();
+    layout_size_from_nested_size(
+        embedded_size,
+        node,
+        min_width,
+        min_height,
+        padding,
+        text_padding,
+    )
+}
+
+pub fn layout_size_from_nested_size(
+    nested_size: Size, // NOTE: Can we convert this to a generic function?
     node: &ast::Node,
     min_width: f32,
     min_height: f32,
@@ -65,12 +87,9 @@ pub fn get_embedded_layout_size<'a>(
         min_height,
         text_padding,
     );
-
-    // Calculate embedded layout size
-    let embedded_size = layout.calculate_size();
     let content_size = Size::new(
-        text_size.width().max(embedded_size.width()) + padding * 2.0,
-        padding.max(text_size.height()) + embedded_size.height() + padding,
+        text_size.width().max(nested_size.width()) + padding * 2.0,
+        padding.max(text_size.height()) + nested_size.height() + padding,
     );
 
     // Take the maximum of each dimension to ensure both text and embedded content fit
@@ -94,7 +113,7 @@ pub trait ComponentEngine {
         &self,
         graph: &'a Graph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> component::Layout<'a>;
+    ) -> ContentStack<component::Layout<'a>>;
 }
 
 /// Trait defining the interface for sequence diagram layout engines
@@ -110,7 +129,7 @@ pub trait SequenceEngine {
         &self,
         graph: &'a Graph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> sequence::Layout<'a>;
+    ) -> ContentStack<sequence::Layout<'a>>;
 }
 
 /// Builder for creating and configuring layout engines.
@@ -229,7 +248,7 @@ impl EngineBuilder {
         let mut embedded_diagrams: Vec<(usize, Point, Size, usize)> = Vec::new();
 
         // First phase: calculate all layouts
-        for (type_id, graph) in collection.hierarchy_in_post_order() {
+        for (type_id, graph) in collection.diagram_tree_in_post_order() {
             // Calculate the layout for this diagram using the appropriate engine
             let diagram = graph.diagram();
             let layout_result = match diagram.kind {
@@ -250,8 +269,8 @@ impl EngineBuilder {
             // Create and add the layer with the calculated layout
             // PERFORMANCE: Get rid of clone() if possible.
             let layer_content = match &layout_result {
-                LayoutResult::Component(layout) => LayerContent::Component(layout.clone()),
-                LayoutResult::Sequence(layout) => LayerContent::Sequence(layout.clone()),
+                LayoutResult::Component(layout) => LayoutContent::Component(layout.clone()),
+                LayoutResult::Sequence(layout) => LayoutContent::Sequence(layout.clone()),
             };
 
             // Add the layer to the layered layout and get its assigned index
@@ -265,36 +284,41 @@ impl EngineBuilder {
             if !container_element_to_layer.is_empty() {
                 match &layout_result {
                     LayoutResult::Component(layout) => {
-                        // Check for embedded diagrams in component layout
-                        for component in &layout.components {
-                            if let Some(embedded_idx) =
-                                container_element_to_layer.get(&component.node.id)
-                            {
-                                // Store information needed to position the embedded diagram within its container:
-                                // (container layer index, container position, container size, embedded diagram layer index)
-                                embedded_diagrams.push((
-                                    layer_idx,
-                                    component.position,
-                                    component.size,
-                                    *embedded_idx,
-                                ));
+                        // Check for embedded diagrams in each positioned content
+                        for positioned_content in layout.iter() {
+                            // Check for embedded diagrams in each positioned content
+                            for component in &positioned_content.content().components {
+                                if let Some(embedded_idx) =
+                                    container_element_to_layer.get(&component.node.id)
+                                {
+                                    // Store information needed to position the embedded diagram within its container:
+                                    // (container layer index, container position, container size, embedded diagram layer index)
+                                    embedded_diagrams.push((
+                                        layer_idx,
+                                        component.position,
+                                        component.size,
+                                        *embedded_idx,
+                                    ));
+                                }
                             }
                         }
                     }
                     LayoutResult::Sequence(layout) => {
                         // Check for embedded diagrams in sequence layout
-                        for participant in &layout.participants {
-                            if let Some(embedded_idx) =
-                                container_element_to_layer.get(&participant.component.node.id)
-                            {
-                                // Store information needed to position the embedded diagram within a sequence participant:
-                                // (container layer index, participant position, participant size, embedded diagram layer index)
-                                embedded_diagrams.push((
-                                    layer_idx,
-                                    participant.component.position,
-                                    participant.component.size,
-                                    *embedded_idx,
-                                ));
+                        for positioned_content in layout.iter() {
+                            for participant in &positioned_content.content().participants {
+                                if let Some(embedded_idx) =
+                                    container_element_to_layer.get(&participant.component.node.id)
+                                {
+                                    // Store information needed to position the embedded diagram within a sequence participant:
+                                    // (container layer index, participant position, participant size, embedded diagram layer index)
+                                    embedded_diagrams.push((
+                                        layer_idx,
+                                        participant.component.position,
+                                        participant.component.size,
+                                        *embedded_idx,
+                                    ));
+                                }
                             }
                         }
                     }

@@ -1,15 +1,16 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use log::{debug, warn};
-use petgraph::{algo::toposort, graph::NodeIndex};
+use log::{debug, error};
+use petgraph::graph::NodeIndex;
 
 use crate::{
     ast,
-    graph::Graph,
+    graph::{ContainmentScope, Graph},
     layout::{
         component::{Layout, LayoutRelation},
         engines::{self, ComponentEngine, EmbeddedLayouts},
         geometry::{Component, Point, Size},
+        layer::{ContentStack, PositionedContent},
         positioning::calculate_bounded_text_size,
     },
 };
@@ -89,209 +90,241 @@ impl Engine {
         self
     }
 
-    /// Build a map of parent-child relationships between nodes
-    fn build_hierarchy_map<'a>(&self, graph: &Graph<'a>) -> HashMap<NodeIndex, Vec<NodeIndex>> {
-        let mut hierarchy_map: HashMap<NodeIndex, Vec<NodeIndex>> = HashMap::new();
-        let mut node_id_map: HashMap<String, NodeIndex> = HashMap::new();
-
-        // First, create a mapping of node ID strings to node indices
-        for node_idx in graph.node_indices() {
-            let node = graph.node_weight(node_idx).unwrap();
-            node_id_map.insert(node.id.to_string(), node_idx);
-        }
-
-        // Then, for each node, determine its children based on block content
-        for node_idx in graph.node_indices() {
-            let node = graph.node_weight(node_idx).unwrap();
-
-            // Skip nodes that don't have blocks
-            match &node.block {
-                ast::Block::None => {}
-                ast::Block::Scope(scope) => {
-                    // Find all nodes that are part of this node's scope
-                    let mut children = Vec::new();
-
-                    for element in &scope.elements {
-                        if let ast::Element::Node(inner_node) = element {
-                            if let Some(&child_idx) = node_id_map.get(&inner_node.id.to_string()) {
-                                children.push(child_idx);
-                            }
-                        }
-                    }
-
-                    if !children.is_empty() {
-                        hierarchy_map.insert(node_idx, children);
-                    }
-                }
-                ast::Block::Diagram(diagram) => {
-                    // Find all nodes that are part of this node's diagram
-                    let mut children = Vec::new();
-
-                    for element in &diagram.scope.elements {
-                        if let ast::Element::Node(inner_node) = element {
-                            if let Some(&child_idx) = node_id_map.get(&inner_node.id.to_string()) {
-                                children.push(child_idx);
-                            }
-                        }
-                    }
-
-                    if !children.is_empty() {
-                        hierarchy_map.insert(node_idx, children);
-                    }
-                }
-            }
-        }
-
-        hierarchy_map
-    }
-
-    /// Recursively adjust container sizes to fit their children
-    fn adjust_container_size(
-        &self,
-        node_idx: NodeIndex,
-        hierarchy_map: &HashMap<NodeIndex, Vec<NodeIndex>>,
-        sizes: &mut HashMap<NodeIndex, Size>,
-        visited: &mut std::collections::HashSet<NodeIndex>,
-    ) -> Size {
-        // If we've already processed this node, return its size
-        if visited.contains(&node_idx) {
-            return sizes[&node_idx];
-        }
-
-        // If this node has children, adjust its size based on children's sizes
-        let size = if let Some(children) = hierarchy_map.get(&node_idx) {
-            if children.is_empty() {
-                // No children, just mark as visited and return current size
-                visited.insert(node_idx);
-                return sizes[&node_idx];
-            }
-
-            // Process all children first to get their sizes
-            let mut max_size = Size::default();
-
-            for &child_idx in children {
-                let child_size =
-                    self.adjust_container_size(child_idx, hierarchy_map, sizes, visited);
-                max_size = max_size.max(child_size);
-            }
-
-            // If we have multiple children, consider arranging them in a grid
-            let required_size = if children.len() > 1 {
-                let columns_count = (children.len() as f64).sqrt().ceil() as usize;
-                let rows_count = children.len().div_ceil(columns_count);
-                Size::new(
-                    max_size.width() * columns_count as f32
-                        + self.container_padding * (columns_count + 1) as f32,
-                    max_size.height() * rows_count as f32
-                        + self.container_padding * (rows_count + 1) as f32,
-                )
-            } else {
-                // Single child, just use its size
-                max_size.add_padding(self.container_padding)
-            };
-
-            // Get the current size and ensure it's big enough
-            let current_size = &sizes[&node_idx];
-            let new_size = current_size.max(required_size);
-
-            // Update the size and mark as visited
-            sizes.insert(node_idx, new_size);
-            new_size
-        } else {
-            // No children
-            sizes[&node_idx]
-        };
-
-        visited.insert(node_idx);
-        size
-    }
-
     fn calculate_layout<'a>(
         &self,
         graph: &'a Graph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Layout<'a> {
-        // First, build a map of parent-child relationships
-        // This will help us understand the hierarchy in the graph
-        let hierarchy_map = self.build_hierarchy_map(graph);
+    ) -> ContentStack<Layout<'a>> {
+        let mut content_stack = ContentStack::<Layout<'a>>::new();
+        let mut positioned_content_sizes = HashMap::<NodeIndex, Size>::new();
 
-        // Calculate component sizes, adjusting for nested children
-        // Calculate base sizes for all components
-        let mut component_sizes: HashMap<_, _> = graph
-            .node_indices()
-            .map(|node_idx| {
-                let node = graph.node_weight(node_idx).unwrap();
+        for containment_scope in graph.containment_scopes() {
+            // Calculate component sizes for this containment scope
+            let component_sizes = self.calculate_component_sizes(
+                graph,
+                containment_scope,
+                &positioned_content_sizes,
+                embedded_layouts,
+            );
 
-                // Check if this node has an embedded diagram
-                let size = if let ast::Block::Diagram(_) = &node.block {
-                    // If this component has an embedded diagram, use its layout size
-                    if let Some(layout) = embedded_layouts.get(&node.id) {
-                        // Use the shared utility function to calculate size
-                        engines::get_embedded_layout_size(
-                            layout,
-                            node,
-                            self.min_component_width,
-                            self.min_component_height,
-                            self.container_padding,
-                            self.text_padding,
-                        )
-                    } else {
-                        // Fallback to text-based sizing if no embedded layout found
-                        calculate_bounded_text_size(
-                            node,
-                            self.min_component_width,
-                            self.min_component_height,
-                            self.text_padding,
-                        )
+            // Calculate positions for components in this scope
+            let positions = self.positions(graph, containment_scope, &component_sizes);
+
+            // Build components with positions and sizes
+            let components: Vec<Component<'a>> = graph
+                .containment_scope_nodes_with_indices(containment_scope)
+                .map(|(node_idx, node)| {
+                    let position = positions.get(&node_idx).unwrap();
+                    let size = *component_sizes.get(&node_idx).unwrap();
+                    Component {
+                        node,
+                        position: *position,
+                        size,
                     }
-                } else {
-                    // Regular component with no embedded diagram
+                })
+                .collect();
+
+            // Map node IDs to their component indices
+            let component_indices: HashMap<_, _> = components
+                .iter()
+                .enumerate()
+                .map(|(idx, component)| (&component.node.id, idx))
+                .collect();
+
+            // Build the list of relations between components
+            let relations: Vec<LayoutRelation<'a>> = graph
+                .containment_scope_relations(containment_scope)
+                .filter_map(|relation| {
+                    // Only include relations between visible components
+                    // (not including relations within inner blocks)
+                    if let (Some(&source_index), Some(&target_index)) = (
+                        component_indices.get(&relation.source),
+                        component_indices.get(&relation.target),
+                    ) {
+                        Some(LayoutRelation::new(relation, source_index, target_index))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            let positioned_content = PositionedContent::new(Layout {
+                components,
+                relations,
+            });
+
+            if let Some(container) = containment_scope.container() {
+                // If this layer is a container, we need to adjust its size based on its contents
+                let size = positioned_content.layout_size();
+                positioned_content_sizes.insert(container, size);
+            }
+            content_stack.push(positioned_content);
+        }
+
+        self.adjust_positioned_contents_offset(graph, &mut content_stack);
+        content_stack
+    }
+
+    fn adjust_positioned_contents_offset<'a>(
+        &self,
+        graph: &'a Graph<'a>,
+        content_stack: &mut ContentStack<Layout<'a>>,
+    ) {
+        let container_indices: HashMap<_, _> = graph
+            .containment_scopes()
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, scope)| scope.container().map(|container| (container, idx)))
+            .collect();
+
+        for (source_idx, source_scope) in graph.containment_scopes().iter().enumerate().rev() {
+            for (node_idx, destination_idx) in source_scope.node_indices().filter_map(|node_idx| {
+                container_indices
+                    .get(&node_idx)
+                    .map(|&destination_idx| (node_idx, destination_idx))
+            }) {
+                if source_idx == destination_idx {
+                    // If the source and destination are the same, skip
+                    error!(index = source_idx; "Source and destination indices are the same");
+                    continue;
+                }
+                let source = content_stack.get_unchecked(source_idx);
+                let node = graph
+                    .node_weight(node_idx)
+                    .expect("Node index must be valid");
+
+                // Find the component in the source layer that matches the node
+                let source_component = source
+                    .content()
+                    .components
+                    .iter()
+                    .find(|component| component.node.id == node.id)
+                    .expect("Component must exist in source layer");
+                let target_offset = source
+                    .offset()
+                    .add(source_component.bounds().min_point())
+                    .add(Point::new(self.container_padding, self.container_padding)); // TODO: This does not account for text.
+                // source.content.components
+                debug!(
+                    node_id:? = node.id,
+                    source_offset:? = source.offset();
+                    "Adjusting positioned content offset [source]",
+                );
+                let target = content_stack.get_mut_unchecked(destination_idx);
+                debug!(
+                    node_id:? = node.id,
+                    original_offset:? = target.offset(),
+                    new_offset:? = target_offset;
+                    "Adjusting positioned content offset [target]",
+                );
+                target.set_offset(target_offset);
+            }
+        }
+    }
+
+    /// Calculate component sizes for a containment scope
+    fn calculate_component_sizes<'a>(
+        &self,
+        graph: &Graph<'a>,
+        containment_scope: &ContainmentScope,
+        positioned_content_sizes: &HashMap<NodeIndex, Size>,
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> HashMap<NodeIndex, Size> {
+        let mut component_sizes: HashMap<NodeIndex, Size> = HashMap::new();
+
+        for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
+            let size = match node.block {
+                ast::Block::Diagram(_) => {
+                    // Since we process in post-order (innermost to outermost),
+                    // embedded diagram layouts should already be calculated and available
+                    let layout = embedded_layouts
+                        .get(&node.id)
+                        .expect("Embedded layout not found");
+                    // Use the shared utility function to calculate size
+                    engines::embedded_layout_size(
+                        layout,
+                        node,
+                        self.min_component_width,
+                        self.min_component_height,
+                        self.container_padding,
+                        self.text_padding,
+                    )
+                }
+                ast::Block::Scope(_) => {
+                    let positioned_content_size = *positioned_content_sizes
+                        .get(&node_idx)
+                        .expect("Scope size not found");
+                    engines::layout_size_from_nested_size(
+                        positioned_content_size,
+                        node,
+                        self.min_component_width,
+                        self.min_component_height,
+                        self.container_padding,
+                        self.text_padding,
+                    )
+                }
+                ast::Block::None => {
+                    // Standard size calculation for regular nodes
                     calculate_bounded_text_size(
                         node,
                         self.min_component_width,
                         self.min_component_height,
                         self.text_padding,
                     )
-                };
+                }
+            };
 
-                (node_idx, size)
-            })
-            .collect();
-
-        // Adjust container sizes to accommodate nested components
-        let mut visited = std::collections::HashSet::new();
-        for node_idx in graph.node_indices() {
-            self.adjust_container_size(
-                node_idx,
-                &hierarchy_map,
-                &mut component_sizes,
-                &mut visited,
-            );
+            component_sizes.insert(node_idx, size);
         }
 
+        component_sizes
+    }
+
+    /// Calculate positions for components in a containment scope
+    fn positions<'a>(
+        &self,
+        graph: &Graph<'a>,
+        containment_scope: &ContainmentScope,
+        _component_sizes: &HashMap<NodeIndex, Size>,
+    ) -> HashMap<NodeIndex, Point> {
         // Prepare layout
         let mut positions = HashMap::new();
-        let mut using_fallback = false;
 
         // Convert our graph to a format suitable for the Sugiyama algorithm
         let mut edges = Vec::new();
         let mut node_ids = HashMap::new();
 
+        // Get nodes for this containment scope
+        let scope_nodes: Vec<_> = graph
+            .containment_scope_nodes_with_indices(containment_scope)
+            .collect();
+
         // Map node indices to u32 IDs for rust-sugiyama
-        for (i, node_idx) in graph.node_indices().enumerate() {
+        for (i, (node_idx, _)) in scope_nodes.iter().enumerate() {
             let id = i as u32;
-            node_ids.insert(node_idx, id);
+            node_ids.insert(*node_idx, id);
         }
 
-        // Extract edges
-        for edge_idx in graph.edge_indices() {
-            if let Some((source, target)) = graph.edge_endpoints(edge_idx) {
-                let source_id = *node_ids.get(&source).unwrap();
-                let target_id = *node_ids.get(&target).unwrap();
+        // Extract edges for this containment scope
+        for relation in graph.containment_scope_relations(containment_scope) {
+            // Find source and target node indices
+            let source_node_idx = scope_nodes
+                .iter()
+                .find(|(_, node)| node.id == relation.source)
+                .map(|(idx, _)| *idx);
+            let target_node_idx = scope_nodes
+                .iter()
+                .find(|(_, node)| node.id == relation.target)
+                .map(|(idx, _)| *idx);
 
-                // Skip self-loops
-                if source_id != target_id {
-                    edges.push((source_id, target_id));
+            if let (Some(source_idx), Some(target_idx)) = (source_node_idx, target_node_idx) {
+                if let (Some(&source_id), Some(&target_id)) =
+                    (node_ids.get(&source_idx), node_ids.get(&target_idx))
+                {
+                    // Skip self-loops
+                    if source_id != target_id {
+                        edges.push((source_id, target_id));
+                    }
                 }
             }
         }
@@ -347,46 +380,27 @@ impl Engine {
 
                     // If mapping failed for all nodes, fall back to hierarchical layout
                     if positions.is_empty() {
-                        debug!(
-                            "Failed to map any rust-sugiyama positions back to graph nodes. Using fallback layout."
-                        );
-                        self.fallback_hierarchical_layout(graph, &mut positions);
-                        using_fallback = true;
+                        panic!("Failed to map any rust-sugiyama positions back to graph nodes.");
                     }
                 }
 
                 // Empty results case
                 Ok(results) if results.is_empty() => {
-                    debug!(
-                        "Rust-sugiyama returned empty layout results. Using fallback hierarchical layout."
-                    );
-                    self.fallback_hierarchical_layout(graph, &mut positions);
-                    using_fallback = true;
+                    panic!("Rust-sugiyama returned empty layout results.");
                 }
 
                 // Unexpected success case
                 Ok(_) => {
-                    debug!(
-                        "Rust-sugiyama returned unexpected result format. Using fallback hierarchical layout."
-                    );
-                    self.fallback_hierarchical_layout(graph, &mut positions);
-                    using_fallback = true;
+                    panic!("Rust-sugiyama returned unexpected result format.");
                 }
 
                 // Error/panic case
                 Err(err) => {
                     if let Some(panic_msg) = err.downcast_ref::<String>() {
-                        warn!(
-                            "Rust-sugiyama layout engine panicked: {}. Using fallback hierarchical layout.",
-                            panic_msg
-                        );
+                        panic!("Rust-sugiyama layout engine panicked: {panic_msg}.");
                     } else {
-                        warn!(
-                            "Rust-sugiyama layout engine panicked with unknown error. Using fallback hierarchical layout."
-                        );
+                        panic!("Rust-sugiyama layout engine panicked with unknown error.");
                     }
-                    self.fallback_hierarchical_layout(graph, &mut positions);
-                    using_fallback = true;
                 }
             }
 
@@ -396,345 +410,21 @@ impl Engine {
             }
 
             debug!(
-                "Layout generated with {} positioned nodes (using fallback: {}) and positive coordinates",
+                "Layout generated with {} positioned nodes and positive coordinates",
                 positions.len(),
-                using_fallback
             );
-        } else if !graph.node_indices().count().eq(&0) {
+        } else if !scope_nodes.is_empty() {
             // No edges but we have nodes - arrange them horizontally with positive coordinates
             debug!("Graph has no edges. Arranging nodes horizontally with positive coordinates.");
-            for (i, node_idx) in graph.node_indices().enumerate() {
+            for (i, (node_idx, _)) in scope_nodes.iter().enumerate() {
                 // For no-edge graphs, ensure adequate horizontal spacing and a margin from the top
                 let x = self.horizontal_spacing * 0.8
                     + (i as f32) * (self.min_component_width + self.horizontal_spacing * 0.5);
-                positions.insert(node_idx, Point::new(x, self.vertical_spacing * 0.8));
+                positions.insert(*node_idx, Point::new(x, self.vertical_spacing * 0.8));
             }
         }
 
-        // Identify top-level nodes for the Sugiyama layout
-        let top_level_nodes = self.identify_top_level_nodes(graph, &hierarchy_map);
-
-        // If we have top-level nodes, position them first, then position children
-        let final_positions = if !top_level_nodes.is_empty() {
-            // Clone the positions to avoid borrow issues
-            let mut final_positions = positions.clone();
-
-            // Position child nodes within their parent containers
-            self.position_all_children(
-                &top_level_nodes,
-                &hierarchy_map,
-                &component_sizes,
-                &mut final_positions,
-            );
-
-            final_positions
-        } else {
-            positions
-        };
-
-        // Create components with positions and sizes
-        let components: Vec<Component<'a>> = graph
-            .node_indices()
-            .map(|node_idx| {
-                let node = graph.node_weight(node_idx).unwrap();
-                let position = final_positions
-                    .get(&node_idx)
-                    .map_or_else(Point::default, |p| *p);
-                let size = component_sizes.get(&node_idx).cloned().unwrap_or(Size::new(
-                    self.min_component_width,
-                    self.min_component_height,
-                ));
-
-                Component {
-                    node,
-                    position,
-                    size,
-                }
-            })
-            .collect();
-
-        // Map node indices to component indices
-        let component_indices: HashMap<_, _> = components
-            .iter()
-            .enumerate()
-            .map(|(idx, component)| (&component.node.id, idx))
-            .collect();
-
-        // Build the list of relations between components
-        let relations: Vec<LayoutRelation<'a>> = graph
-            .edge_indices()
-            .filter_map(|edge_idx| {
-                let relation = graph.edge_weight(edge_idx).unwrap();
-
-                if let (Some(&source_index), Some(&target_index)) = (
-                    component_indices.get(&relation.source),
-                    component_indices.get(&relation.target),
-                ) {
-                    Some(LayoutRelation {
-                        relation,
-                        source_index,
-                        target_index,
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        Layout {
-            components,
-            relations,
-        }
-    }
-
-    /// Identify top-level nodes (nodes that aren't children of other nodes)
-    fn identify_top_level_nodes(
-        &self,
-        graph: &Graph,
-        hierarchy_map: &HashMap<NodeIndex, Vec<NodeIndex>>,
-    ) -> Vec<NodeIndex> {
-        // Identify all nodes that are children of some other node
-        let mut is_child = std::collections::HashSet::new();
-        for children in hierarchy_map.values() {
-            for &child in children {
-                is_child.insert(child);
-            }
-        }
-
-        // Find top-level nodes (nodes that aren't children)
-        graph
-            .node_indices()
-            .filter(|&idx| !is_child.contains(&idx))
-            .collect()
-    }
-
-    /// Position all children within their parent containers
-    fn position_all_children(
-        &self,
-        top_level_nodes: &[NodeIndex],
-        hierarchy_map: &HashMap<NodeIndex, Vec<NodeIndex>>,
-        sizes: &HashMap<NodeIndex, Size>,
-        result_positions: &mut HashMap<NodeIndex, Point>,
-    ) {
-        for &node_idx in top_level_nodes {
-            if let Some(children) = hierarchy_map.get(&node_idx) {
-                if let Some(&parent_pos) = result_positions.get(&node_idx) {
-                    self.position_children_within_parent(
-                        node_idx,
-                        parent_pos,
-                        children,
-                        sizes,
-                        hierarchy_map,
-                        result_positions,
-                    );
-                }
-            }
-        }
-    }
-
-    /// Helper method to position children within their parent container without borrowing conflicts
-    fn position_children_within_parent(
-        &self,
-        parent_idx: NodeIndex,
-        parent_pos: Point,
-        children: &[NodeIndex],
-        sizes: &HashMap<NodeIndex, Size>,
-        hierarchy_map: &HashMap<NodeIndex, Vec<NodeIndex>>,
-        result_positions: &mut HashMap<NodeIndex, Point>,
-    ) {
-        if children.is_empty() {
-            return;
-        }
-
-        // Get parent size
-        let parent_size = *sizes.get(&parent_idx).unwrap();
-
-        // Calculate area available for children
-        let available_size = parent_size.add_padding(self.container_padding);
-
-        // Determine layout arrangement (simple grid layout for now)
-        let sqrt_count = (children.len() as f64).sqrt().ceil() as usize;
-        let cols = sqrt_count;
-        let rows = children.len().div_ceil(cols);
-
-        // Calculate cell dimensions
-        // Add a slight gap between cells for better visual separation
-        let cell_width = (available_size.width() - (cols as f32 - 1.0) * 5.0) / cols as f32;
-        let cell_height = (available_size.height() - (rows as f32 - 1.0) * 5.0) / rows as f32;
-
-        // Calculate starting point (top-left of container area)
-        let bounds = parent_pos
-            .to_bounds(parent_size)
-            .add_padding(-self.container_padding);
-        let min_point = bounds.min_point();
-
-        // Position each child
-        for (i, &child_idx) in children.iter().enumerate() {
-            let row = i / cols;
-            let col = i % cols;
-
-            // Calculate center position of this cell with gap between cells
-            let cell_center_x =
-                min_point.x() + (col as f32 * (cell_width + 5.0)) + (cell_width / 2.0);
-            let cell_center_y =
-                min_point.y() + (row as f32 * (cell_height + 5.0)) + (cell_height / 2.0);
-
-            // Position the child at the cell center
-            let child_pos = Point::new(cell_center_x, cell_center_y);
-            result_positions.insert(child_idx, child_pos);
-
-            // Recursively position this child's children (if any)
-            if let Some(grandchildren) = hierarchy_map.get(&child_idx) {
-                self.position_children_within_parent(
-                    child_idx,
-                    child_pos,
-                    grandchildren,
-                    sizes,
-                    hierarchy_map,
-                    result_positions,
-                );
-            }
-        }
-    }
-
-    fn fallback_hierarchical_layout(
-        &self,
-        graph: &Graph,
-        positions: &mut HashMap<NodeIndex, Point>,
-    ) {
-        // Create a new DiGraph for topological sort
-        let mut digraph = petgraph::graph::DiGraph::<(), ()>::new();
-        let mut node_mapping = HashMap::new();
-
-        // Add nodes to the digraph
-        for node_idx in graph.node_indices() {
-            let new_idx = digraph.add_node(());
-            node_mapping.insert(node_idx, new_idx);
-        }
-
-        // Add edges to the digraph
-        for edge_idx in graph.edge_indices() {
-            if let Some((source, target)) = graph.edge_endpoints(edge_idx) {
-                if let (Some(&src_idx), Some(&tgt_idx)) =
-                    (node_mapping.get(&source), node_mapping.get(&target))
-                {
-                    digraph.add_edge(src_idx, tgt_idx, ());
-                }
-            }
-        }
-
-        // Attempt a topological sort
-        let topo_sort = toposort(&digraph, None);
-
-        // If topological sort succeeded, use it for layering
-        if let Ok(sorted_nodes) = topo_sort {
-            // Map sorted nodes back to original indices
-            let reverse_mapping: HashMap<_, _> =
-                node_mapping.iter().map(|(&k, &v)| (v, k)).collect();
-
-            // Map the nodes from topological sort back to original indices
-            let mapped_nodes: Vec<_> = sorted_nodes
-                .into_iter()
-                .filter_map(|n| reverse_mapping.get(&n).copied())
-                .collect();
-
-            // Group nodes by their distance from roots (sources)
-            let mut layers: HashMap<usize, Vec<NodeIndex>> = HashMap::new();
-            let mut node_layers: HashMap<NodeIndex, usize> = HashMap::new();
-
-            // Find source nodes (no incoming edges)
-            let source_nodes: HashSet<NodeIndex> = graph
-                .node_indices()
-                .filter(|&node_idx| {
-                    // A node is a source if no edges point to it
-                    !graph.edge_indices().any(|edge_idx| {
-                        graph
-                            .edge_endpoints(edge_idx)
-                            .map(|(_, target)| target == node_idx)
-                            .unwrap_or(false)
-                    })
-                })
-                .collect();
-
-            // Assign layer 0 to source nodes
-            for &node in &source_nodes {
-                node_layers.insert(node, 0);
-                layers.entry(0).or_default().push(node);
-            }
-
-            // For each node in topological order, assign a layer
-            for &node in &mapped_nodes {
-                // Skip source nodes, they're already processed
-                if source_nodes.contains(&node) {
-                    continue;
-                }
-
-                // Find max layer of predecessors + 1
-                let mut max_layer = 0;
-
-                // Find all edges pointing to this node
-                for edge_idx in graph.edge_indices() {
-                    if let Some((source, target)) = graph.edge_endpoints(edge_idx) {
-                        if target == node {
-                            let predecessor = source;
-                            let pred_layer = *node_layers.get(&predecessor).unwrap_or(&0);
-                            max_layer = max_layer.max(pred_layer + 1);
-                        }
-                    }
-                }
-
-                // Assign this node to its layer
-                node_layers.insert(node, max_layer);
-                layers.entry(max_layer).or_default().push(node);
-            }
-
-            // Calculate y-position for each layer
-            let mut y_positions = HashMap::new();
-            let mut current_y = 0.0;
-
-            // Sort layers by their index
-            let mut layer_indices: Vec<usize> = layers.keys().cloned().collect();
-            layer_indices.sort();
-
-            // Assign y-positions to each layer
-            for layer_idx in layer_indices {
-                // Store the y-position for this layer
-                y_positions.insert(layer_idx, current_y);
-
-                // Update y for the next layer
-                current_y += self.vertical_spacing;
-            }
-
-            // Calculate x-positions for each node within its layer
-            for (layer_idx, nodes) in &layers {
-                let y = *y_positions.get(layer_idx).unwrap_or(&0.0);
-
-                // For each layer, spread the nodes horizontally
-                let node_count = nodes.len();
-                let spacing = self.horizontal_spacing;
-                let total_width = (node_count as f32 - 1.0) * spacing;
-                let start_x = -total_width / 2.0;
-
-                for (i, &node) in nodes.iter().enumerate() {
-                    let x = start_x + (i as f32) * spacing;
-                    positions.insert(node, Point::new(x, y));
-                }
-            }
-        } else {
-            // If topological sort failed (cyclic graph), fall back to a grid layout
-            let node_count = graph.node_indices().count();
-            let grid_size = (node_count as f32).sqrt().ceil() as usize;
-
-            for (i, node_idx) in graph.node_indices().enumerate() {
-                let row = i / grid_size;
-                let col = i % grid_size;
-
-                let x = col as f32 * self.horizontal_spacing;
-                let y = row as f32 * self.vertical_spacing;
-
-                positions.insert(node_idx, Point::new(x, y));
-            }
-        }
+        positions
     }
 
     fn center_layout(&self, positions: &mut HashMap<NodeIndex, Point>) {
@@ -776,7 +466,7 @@ impl ComponentEngine for Engine {
         &self,
         graph: &'a Graph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Layout<'a> {
+    ) -> ContentStack<Layout<'a>> {
         self.calculate_layout(graph, embedded_layouts)
     }
 }
