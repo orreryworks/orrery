@@ -1,5 +1,5 @@
 use crate::{ast, error::FilamentError};
-use log::debug;
+use log::{debug, trace};
 use petgraph::{
     Direction,
     graph::{DiGraph, EdgeIndex, NodeIndex},
@@ -11,6 +11,7 @@ use std::collections::HashMap;
 ///
 /// A containment scope groups nodes and relations that belong to the same
 /// hierarchical level, optionally within a container node.
+#[derive(Debug)]
 pub struct ContainmentScope {
     container: Option<NodeIndex>,
     nodes: Vec<NodeIndex>,
@@ -53,16 +54,19 @@ impl ContainmentScope {
 /// This structure contains the graph representation of nodes and relations
 /// from a Filament diagram, along with organizational information about
 /// containment scopes.
+#[derive(Debug)]
 pub struct Graph<'a> {
     graph: DiGraph<ast::Node, ast::Relation>,
     diagram: &'a ast::Diagram,
     containment_scopes: Vec<ContainmentScope>,
+    node_id_map: HashMap<ast::TypeId, NodeIndex>, // Maps node IDs to their indices
 }
 
 /// Represents a collection of interconnected diagrams with hierarchical relationships.
 ///
 /// This structure manages multiple diagrams that may contain embedded sub-diagrams,
 /// organizing them into a tree structure.
+#[derive(Debug)]
 pub struct Collection<'a> {
     diagram_tree: DiGraph<Graph<'a>, ast::TypeId>,
     root_diagram: Option<NodeIndex>,
@@ -74,6 +78,7 @@ impl<'a> Graph<'a> {
             graph: DiGraph::new(),
             diagram,
             containment_scopes: Vec::new(),
+            node_id_map: HashMap::new(),
         }
     }
 
@@ -98,8 +103,10 @@ impl<'a> Graph<'a> {
         })
     }
 
-    pub fn node_weight(&self, node_index: NodeIndex) -> Option<&ast::Node> {
-        self.graph.node_weight(node_index)
+    pub fn node_from_idx(&self, node_index: NodeIndex) -> &ast::Node {
+        self.graph
+            .node_weight(node_index)
+            .expect("Node index should exist")
     }
 
     pub fn edge_indices(&self) -> impl Iterator<Item = EdgeIndex> {
@@ -200,6 +207,8 @@ impl<'a> Collection<'a> {
         let root_diagram = collection.add_diagram_to_tree(diagram)?;
         collection.root_diagram = Some(root_diagram);
 
+        trace!(collection:?; "Created collection from diagram");
+
         Ok(collection)
     }
 
@@ -223,7 +232,6 @@ impl<'a> Collection<'a> {
     fn process_containment_scope(
         &mut self,
         graph: &mut Graph,
-        node_map: &mut HashMap<String, NodeIndex>,
         elements: &'a [ast::Element],
         container: Option<NodeIndex>,
     ) -> Result<Vec<(ast::TypeId, NodeIndex)>, FilamentError> {
@@ -236,7 +244,7 @@ impl<'a> Collection<'a> {
             if let ast::Element::Node(node) = element {
                 let node_idx = graph.add_node(node);
                 // Use ToString trait to convert TypeId to String
-                node_map.insert(node.id.to_string(), node_idx);
+                graph.node_id_map.insert(node.id.clone(), node_idx);
                 containment_scope.add_node(node_idx);
 
                 // Process the node's inner block recursively
@@ -246,12 +254,8 @@ impl<'a> Collection<'a> {
                             "Processing nested scope with {} elements",
                             scope.elements.len()
                         );
-                        let mut inner_hierarchy_children = self.process_containment_scope(
-                            graph,
-                            node_map,
-                            &scope.elements,
-                            Some(node_idx),
-                        )?;
+                        let mut inner_hierarchy_children =
+                            self.process_containment_scope(graph, &scope.elements, Some(node_idx))?;
                         hierarchy_children.append(&mut inner_hierarchy_children);
                     }
                     ast::Block::Diagram(inner_diagram) => {
@@ -268,8 +272,8 @@ impl<'a> Collection<'a> {
         for element in elements {
             if let ast::Element::Relation(relation) = element {
                 if let (Some(&source_idx), Some(&target_idx)) = (
-                    node_map.get(&relation.source.to_string()),
-                    node_map.get(&relation.target.to_string()),
+                    graph.node_id_map.get(&relation.source),
+                    graph.node_id_map.get(&relation.target),
                 ) {
                     let edge_idx = graph.add_edge(source_idx, target_idx, relation);
                     containment_scope.add_relation(edge_idx);
@@ -292,13 +296,8 @@ impl<'a> Collection<'a> {
         diagram: &'a ast::Diagram,
     ) -> Result<NodeIndex, FilamentError> {
         let mut graph = Graph::new(diagram);
-        let mut node_map = HashMap::new();
-        let hierarchy_children = self.process_containment_scope(
-            &mut graph,
-            &mut node_map,
-            &diagram.scope.elements,
-            None,
-        )?;
+        let hierarchy_children =
+            self.process_containment_scope(&mut graph, &diagram.scope.elements, None)?;
 
         let hierarchy_idx = self.diagram_tree.add_node(graph);
         for child in hierarchy_children {

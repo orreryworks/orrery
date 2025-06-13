@@ -179,9 +179,7 @@ impl Engine {
                     continue;
                 }
                 let source = content_stack.get_unchecked(source_idx);
-                let node = graph
-                    .node_weight(node_idx)
-                    .expect("Node index must be valid");
+                let node = graph.node_from_idx(node_idx);
 
                 // Find the component in the source layer that matches the node
                 let source_component = source
@@ -359,7 +357,7 @@ impl Engine {
 
         for (layer_idx, layer_nodes) in layers.iter().enumerate() {
             for node_idx in layer_nodes {
-                let node = graph.node_weight(*node_idx).unwrap();
+                let node = graph.node_from_idx(*node_idx);
                 if node.id == relation.source {
                     source_layer = Some(layer_idx);
                 }
