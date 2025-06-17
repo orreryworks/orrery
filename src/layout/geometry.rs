@@ -261,10 +261,11 @@ impl Bounds {
 }
 
 /// Represents a diagram component with a reference to its AST node and positioning information
-#[derive(Debug)]
+/// TODO: Do I need Clone?!
+#[derive(Debug, Clone)]
 pub struct Component<'a> {
     pub node: &'a ast::Node,
-    pub shape: Box<dyn Shape>,
+    pub shape: Shape,
     pub position: Point,
 }
 
@@ -275,19 +276,6 @@ impl Component<'_> {
     /// and the bounds extend half the width/height in each direction.
     pub fn bounds(&self) -> Bounds {
         self.shape.bounds(self.position)
-    }
-}
-
-// Implement Clone manually since Box<dyn Shape> doesn't implement Clone
-// TODO: Do I need Clone?! Probably not!
-// Clone is needed because Layout<'a> derives Clone and contains Vec<Component<'a>>
-impl Clone for Component<'_> {
-    fn clone(&self) -> Self {
-        Self {
-            node: self.node,
-            shape: self.shape.clone_box(),
-            position: self.position,
-        }
     }
 }
 

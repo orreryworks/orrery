@@ -1,8 +1,3 @@
-use std::collections::HashMap;
-
-use log::{debug, error};
-use petgraph::graph::NodeIndex;
-
 use crate::{
     ast,
     graph::{ContainmentScope, Graph},
@@ -13,7 +8,11 @@ use crate::{
         layer::{ContentStack, PositionedContent},
         positioning::calculate_bounded_text_size,
     },
+    shape::Shape,
 };
+use log::{debug, error};
+use petgraph::graph::NodeIndex;
+use std::{collections::HashMap, rc::Rc};
 
 /// The Sugiyama layout engine for component diagrams
 /// Based on the Sugiyama algorithm for layered drawing of directed graphs
@@ -242,11 +241,11 @@ impl Engine {
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<NodeIndex, Size>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> HashMap<NodeIndex, Box<dyn crate::shape::Shape>> {
-        let mut component_shapes: HashMap<NodeIndex, Box<dyn crate::shape::Shape>> = HashMap::new();
+    ) -> HashMap<NodeIndex, Shape> {
+        let mut component_shapes: HashMap<NodeIndex, Shape> = HashMap::new();
 
         for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
-            let mut shape = node.type_definition.shape_type.new_shape();
+            let mut shape = Shape::new(Rc::clone(&node.type_definition.shape_type));
 
             match node.block {
                 ast::Block::Diagram(_) => {

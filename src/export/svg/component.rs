@@ -25,7 +25,7 @@ impl Svg {
         let has_nested_blocks = component.node.block.has_nested_blocks();
 
         // Get the appropriate renderer based on the shape type
-        let renderer = renderer::get_renderer(&*component.shape);
+        let renderer = renderer::get_renderer(&component.shape);
 
         // Use the renderer to generate the SVG for the main component
         renderer.render_to_svg(

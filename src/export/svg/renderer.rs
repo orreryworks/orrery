@@ -1,9 +1,14 @@
 use crate::{
     ast,
     layout::{Point, Size},
-    shape::{Oval, Rectangle, Shape},
+    shape::Shape,
 };
 use svg::node::element::{Ellipse, Group, Rectangle as SvgRectangle, Text};
+
+// Constants for rendering configuration
+const DEFAULT_TEXT_PADDING_FROM_TOP: f32 = 20.0;
+const OVAL_TEXT_POSITION_FACTOR: f32 = 0.5;
+const DEFAULT_FONT_FAMILY: &str = "Arial";
 
 /// Trait for rendering shapes to SVG
 pub trait ShapeRenderer {
@@ -25,16 +30,22 @@ pub trait ShapeRenderer {
 }
 
 /// Helper function to get a shape renderer based on the shape type
-pub fn get_renderer(shape_type: &dyn Shape) -> Box<dyn ShapeRenderer> {
+pub fn get_renderer(shape_type: &Shape) -> &'static dyn ShapeRenderer {
     match shape_type.name() {
-        "Rectangle" => Box::new(Rectangle::default()),
-        "Oval" => Box::new(Oval::default()),
-        _ => Box::new(Rectangle::default()), // Default to rectangle if unknown
+        "Rectangle" => &RECTANGLE_RENDERER,
+        "Oval" => &OVAL_RENDERER,
+        _ => &RECTANGLE_RENDERER, // Default to rectangle if unknown
     }
 }
 
+struct RectangleRenderer;
+struct OvalRenderer;
+
+static RECTANGLE_RENDERER: RectangleRenderer = RectangleRenderer;
+static OVAL_RENDERER: OvalRenderer = OvalRenderer;
+
 // Implement ShapeRenderer directly for RectangleShape
-impl ShapeRenderer for Rectangle {
+impl ShapeRenderer for RectangleRenderer {
     fn render_to_svg(
         &self,
         position: Point,
@@ -69,7 +80,7 @@ impl ShapeRenderer for Rectangle {
         // otherwise place it in the center of the rectangle
         let text_y = if has_nested_blocks {
             // Position text near the top with a small padding
-            rect_bounds.min_y() + 20.0 // 20px from the top edge
+            rect_bounds.min_y() + DEFAULT_TEXT_PADDING_FROM_TOP
         } else {
             // Center the text vertically
             position.y()
@@ -80,7 +91,7 @@ impl ShapeRenderer for Rectangle {
             .set("y", text_y)
             .set("text-anchor", "middle")
             .set("dominant-baseline", "middle")
-            .set("font-family", "Arial")
+            .set("font-family", DEFAULT_FONT_FAMILY)
             .set("font-size", type_def.font_size);
 
         group.add(rect).add(text_element)
@@ -88,7 +99,7 @@ impl ShapeRenderer for Rectangle {
 }
 
 // Implement ShapeRenderer directly for OvalShape
-impl ShapeRenderer for Oval {
+impl ShapeRenderer for OvalRenderer {
     fn render_to_svg(
         &self,
         position: Point,
@@ -121,8 +132,7 @@ impl ShapeRenderer for Oval {
         // otherwise place it in the center of the ellipse
         let text_y = if has_nested_blocks {
             // Position text near the top with a small padding (adjust based on oval shape)
-            // position text at 25% from the top
-            ry.mul_add(-0.5, position.y()) // position.y - (ry * 0.5)
+            ry.mul_add(-OVAL_TEXT_POSITION_FACTOR, position.y())
         } else {
             // Center the text vertically
             position.y()
@@ -133,7 +143,7 @@ impl ShapeRenderer for Oval {
             .set("y", text_y)
             .set("text-anchor", "middle")
             .set("dominant-baseline", "middle")
-            .set("font-family", "Arial")
+            .set("font-family", DEFAULT_FONT_FAMILY)
             .set("font-size", type_def.font_size);
 
         group.add(ellipse).add(text_element)

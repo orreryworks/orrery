@@ -77,7 +77,7 @@ impl<'a> LayeredLayout<'a> {
         &mut self,
         container_idx: usize,
         container_position: Point,
-        shape: &dyn Shape,
+        shape: &Shape,
         embedded_idx: usize,
         padding: f32,
     ) {

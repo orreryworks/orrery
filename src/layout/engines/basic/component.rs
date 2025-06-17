@@ -14,6 +14,7 @@ use crate::{
         positioning::calculate_bounded_text_size,
         text,
     },
+    shape::Shape,
 };
 use log::{debug, error};
 use petgraph::{
@@ -23,6 +24,7 @@ use petgraph::{
 use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet, VecDeque},
+    rc::Rc,
 };
 
 /// Basic component layout engine implementation that implements the ComponentLayoutEngine trait
@@ -224,11 +226,11 @@ impl Engine {
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<NodeIndex, Size>,
         embedded_layouts: &EmbeddedLayouts<'_>,
-    ) -> HashMap<NodeIndex, Box<dyn crate::shape::Shape>> {
-        let mut component_shapes: HashMap<NodeIndex, Box<dyn crate::shape::Shape>> = HashMap::new();
+    ) -> HashMap<NodeIndex, Shape> {
+        let mut component_shapes: HashMap<NodeIndex, Shape> = HashMap::new();
 
         for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
-            let mut shape = node.type_definition.shape_type.new_shape();
+            let mut shape = Shape::new(Rc::clone(&node.type_definition.shape_type));
 
             match node.block {
                 ast::Block::Diagram(_) => {

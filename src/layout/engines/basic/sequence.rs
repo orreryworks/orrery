@@ -13,9 +13,10 @@ use crate::{
         positioning::calculate_bounded_text_size,
         sequence::{Layout, Message, Participant},
     },
+    shape::Shape,
 };
 use petgraph::graph::NodeIndex;
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 /// Basic sequence layout engine implementation that implements the SequenceLayoutEngine trait
 pub struct Engine {
@@ -132,7 +133,7 @@ impl Engine {
         let mut participant_shapes: HashMap<_, _> = graph
             .nodes_with_indices()
             .map(|(node_idx, node)| {
-                let mut shape = node.type_definition.shape_type.new_shape();
+                let mut shape = Shape::new(Rc::clone(&node.type_definition.shape_type));
 
                 let content_size = if let ast::Block::Diagram(_) = &node.block {
                     // If this participant has an embedded diagram, use its layout size
