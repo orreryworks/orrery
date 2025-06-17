@@ -1,10 +1,6 @@
 use super::parser_types;
 use crate::ast::span::Spanned;
-use crate::{
-    color::Color,
-    error::ElaborationDiagnosticError,
-    shape::{Oval, Rectangle, Shape},
-};
+use crate::{color::Color, error::ElaborationDiagnosticError, shape};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::{fmt, rc::Rc, str::FromStr};
@@ -131,7 +127,7 @@ pub struct TypeDefinition {
     pub line_width: usize,
     pub rounded: usize,
     pub font_size: usize,
-    pub shape_type: Rc<dyn Shape>,
+    pub shape_type: Rc<dyn shape::ShapeDefinition>, // TODO: Rename
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -331,7 +327,7 @@ impl TypeDefinition {
                 line_width: 2,
                 rounded: 0,
                 font_size: 15,
-                shape_type: Rc::new(Rectangle) as Rc<dyn Shape>,
+                shape_type: Rc::new(shape::RectangleDefinition) as Rc<dyn shape::ShapeDefinition>,
             }),
             Rc::new(Self {
                 id: TypeId::from_name("Oval"),
@@ -340,7 +336,7 @@ impl TypeDefinition {
                 line_width: 2,
                 rounded: 0,
                 font_size: 15,
-                shape_type: Rc::new(Oval) as Rc<dyn Shape>,
+                shape_type: Rc::new(shape::OvalDefinition) as Rc<dyn shape::ShapeDefinition>,
             }),
         ]
     }

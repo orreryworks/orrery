@@ -89,6 +89,7 @@ pub fn distribute_horizontally(
 ///
 /// # Returns
 /// The calculated size with applied constraints
+/// TODO why do I need this anymore? Can I use shape instead?
 pub fn calculate_bounded_text_size(
     node: &ast::Node,
     min_width: f32,

@@ -7,10 +7,10 @@ use crate::{
     ast,
     graph::Graph,
     layout::{
-        engines::{self, EmbeddedLayouts, SequenceEngine},
-        geometry::{Component, Point},
+        engines::{EmbeddedLayouts, SequenceEngine},
+        geometry::{Component, Point, Size},
         layer::{ContentStack, PositionedContent},
-        positioning::{self, calculate_bounded_text_size},
+        positioning::calculate_bounded_text_size,
         sequence::{Layout, Message, Participant},
     },
 };
@@ -116,7 +116,7 @@ impl Engine {
 
         // Extract labels from relations and use shared function to calculate spacing
         let labels = relevant_messages.map(|relation| relation.label.as_ref());
-        positioning::calculate_label_spacing(labels, self.label_padding)
+        crate::layout::positioning::calculate_label_spacing(labels, self.label_padding)
     }
 
     /// Calculate layout for a sequence diagram
@@ -128,22 +128,26 @@ impl Engine {
         let mut participants: Vec<Participant<'a>> = Vec::new();
         let mut participant_indices = HashMap::new();
 
-        // Calculate sizes for participants, accounting for embedded diagrams
-        let participant_sizes: HashMap<_, _> = graph
+        // Create shapes directly for participants using shape-based sizing
+        let mut participant_shapes: HashMap<_, _> = graph
             .nodes_with_indices()
             .map(|(node_idx, node)| {
-                // Check if this node has an embedded diagram
-                let size = if let ast::Block::Diagram(_) = &node.block {
+                let mut shape = node.type_definition.shape_type.new_shape();
+
+                let content_size = if let ast::Block::Diagram(_) = &node.block {
                     // If this participant has an embedded diagram, use its layout size
                     if let Some(layout) = embedded_layouts.get(&node.id) {
-                        // Use the shared utility function to calculate size
-                        engines::embedded_layout_size(
-                            layout,
+                        let embedded_size = layout.calculate_size();
+                        let text_size = calculate_bounded_text_size(
                             node,
                             self.min_participant_width,
                             self.min_participant_height,
                             self.padding,
-                            self.padding, // Using padding for text_padding too
+                        );
+
+                        Size::new(
+                            text_size.width().max(embedded_size.width()),
+                            text_size.height() + embedded_size.height(),
                         )
                     } else {
                         // Fallback to text-based sizing if no embedded layout found
@@ -164,7 +168,9 @@ impl Engine {
                     )
                 };
 
-                (node_idx, size)
+                shape.set_content_size(content_size);
+                shape.set_padding(self.padding);
+                (node_idx, shape)
             })
             .collect();
 
@@ -188,22 +194,31 @@ impl Engine {
         // Get list of node indices and their sizes
         let sizes: Vec<_> = graph
             .node_indices()
-            .map(|idx| *participant_sizes.get(&idx).unwrap())
+            .map(|idx| {
+                let shape = participant_shapes.get(&idx).unwrap();
+                shape.shape_size().max(Size::new(
+                    self.min_participant_width,
+                    self.min_participant_height,
+                ))
+            })
             .collect();
 
         // Calculate horizontal positions using positioning algorithms
-        let x_positions =
-            positioning::distribute_horizontally(&sizes, self.min_spacing, Some(&spacings));
+        let x_positions = crate::layout::positioning::distribute_horizontally(
+            &sizes,
+            self.min_spacing,
+            Some(&spacings),
+        );
 
         // Create participants and store their indices
         for (i, (node_idx, node)) in graph.nodes_with_indices().enumerate() {
-            let size = *participant_sizes.get(&node_idx).unwrap();
+            let shape = participant_shapes.remove(&node_idx).unwrap();
 
             participants.push(Participant {
                 component: Component {
                     node,
+                    shape,
                     position: Point::new(x_positions[i], self.top_margin),
-                    size,
                 },
                 lifeline_end: self.top_margin, // Will be updated later
             });
@@ -216,7 +231,7 @@ impl Engine {
         let mut current_y = self.top_margin
             + participants
                 .iter()
-                .map(|p| p.component.size.height())
+                .map(|p| p.component.shape.shape_size().height())
                 .max_by(|a, b| a.partial_cmp(b).unwrap())
                 .unwrap_or(self.min_participant_height)
             + self.message_spacing;

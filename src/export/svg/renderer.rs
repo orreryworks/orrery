@@ -25,11 +25,11 @@ pub trait ShapeRenderer {
 }
 
 /// Helper function to get a shape renderer based on the shape type
-pub fn get_renderer(shape_type: &dyn Shape) -> &dyn ShapeRenderer {
+pub fn get_renderer(shape_type: &dyn Shape) -> Box<dyn ShapeRenderer> {
     match shape_type.name() {
-        "Rectangle" => &Rectangle,
-        "Oval" => &Oval,
-        _ => &Rectangle, // Default to rectangle if unknown
+        "Rectangle" => Box::new(Rectangle::default()),
+        "Oval" => Box::new(Oval::default()),
+        _ => Box::new(Rectangle::default()), // Default to rectangle if unknown
     }
 }
 

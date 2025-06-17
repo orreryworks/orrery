@@ -14,14 +14,15 @@ mod force;
 mod sugiyama;
 
 use crate::{
-    ast::{self, DiagramKind, LayoutEngine, TypeId},
+    ast::{DiagramKind, LayoutEngine, TypeId},
     graph::{Collection, Graph},
     layout::{
         component,
-        geometry::{self, Point, Size},
+        geometry::{self, Point},
         layer::{LayeredLayout, LayoutContent},
         sequence,
     },
+    shape::Shape,
 };
 use log::trace;
 use std::collections::HashMap;
@@ -30,7 +31,7 @@ use super::layer::ContentStack;
 
 /// Enum to store different layout results based on diagram type
 /// Contains the direct layout information without any embedded diagram data
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LayoutResult<'a> {
     // TODO: Do I need this?
     Component(ContentStack<component::Layout<'a>>),
@@ -50,55 +51,6 @@ impl<'a> LayoutResult<'a> {
 /// Map type containing pre-calculated layout information for embedded diagrams,
 /// indexed by the TypeId of the node containing the embedded diagram
 pub type EmbeddedLayouts<'a> = HashMap<TypeId, LayoutResult<'a>>;
-
-/// Utility function to calculate the size of an embedded layout
-/// This provides a standard way for layout engines to get the size of embedded diagrams
-pub fn embedded_layout_size<'a>(
-    layout: &LayoutResult<'a>,
-    node: &ast::Node,
-    min_width: f32,
-    min_height: f32,
-    padding: f32,
-    text_padding: f32,
-) -> Size {
-    let embedded_size = layout.calculate_size();
-    layout_size_from_nested_size(
-        embedded_size,
-        node,
-        min_width,
-        min_height,
-        padding,
-        text_padding,
-    )
-}
-
-pub fn layout_size_from_nested_size(
-    nested_size: Size, // NOTE: Can we convert this to a generic function?
-    node: &ast::Node,
-    min_width: f32,
-    min_height: f32,
-    padding: f32,
-    text_padding: f32,
-) -> Size {
-    // Calculate text-based size for the container element
-    let text_size = crate::layout::positioning::calculate_bounded_text_size(
-        node,
-        min_width,
-        min_height,
-        text_padding,
-    );
-    let content_size = Size::new(
-        text_size.width().max(nested_size.width()) + padding * 2.0,
-        padding.max(text_size.height()) + nested_size.height() + padding,
-    );
-
-    // Take the maximum of each dimension to ensure both text and embedded content fit
-    // TODO: This should be a geometry opertaion.
-    node.type_definition
-        .shape_type
-        .calculate_shape_size(content_size)
-        .max(Size::new(min_width, min_height)) // TODO: Do I need this?
-}
 
 // Trait defining the interface for component diagram layout engines
 pub trait ComponentEngine {
@@ -244,8 +196,8 @@ impl EngineBuilder {
         let mut container_element_to_layer: HashMap<TypeId, usize> = HashMap::new();
 
         // Track container-embedded diagram relationships for position adjustment in the second phase
-        // Format: (container_layer_idx, container_position, container_size, embedded_layer_idx)
-        let mut embedded_diagrams: Vec<(usize, Point, Size, usize)> = Vec::new();
+        // Format: (container_layer_idx, container_position, container_shape, embedded_layer_idx)
+        let mut embedded_diagrams: Vec<(usize, Point, Box<dyn Shape>, usize)> = Vec::new();
 
         // First phase: calculate all layouts
         for (type_id, graph) in collection.diagram_tree_in_post_order() {
@@ -292,11 +244,11 @@ impl EngineBuilder {
                                     container_element_to_layer.get(&component.node.id)
                                 {
                                     // Store information needed to position the embedded diagram within its container:
-                                    // (container layer index, container position, container size, embedded diagram layer index)
+                                    // (container layer index, container position, container shape, embedded diagram layer index)
                                     embedded_diagrams.push((
                                         layer_idx,
                                         component.position,
-                                        component.size,
+                                        component.shape.clone_box(),
                                         *embedded_idx,
                                     ));
                                 }
@@ -311,11 +263,11 @@ impl EngineBuilder {
                                     container_element_to_layer.get(&participant.component.node.id)
                                 {
                                     // Store information needed to position the embedded diagram within a sequence participant:
-                                    // (container layer index, participant position, participant size, embedded diagram layer index)
+                                    // (container layer index, participant position, participant shape, embedded diagram layer index)
                                     embedded_diagrams.push((
                                         layer_idx,
                                         participant.component.position,
-                                        participant.component.size,
+                                        participant.component.shape.clone_box(),
                                         *embedded_idx,
                                     ));
                                 }
@@ -332,13 +284,13 @@ impl EngineBuilder {
         }
 
         // Second phase: Apply position adjustments and set up clipping bounds for embedded diagrams
-        for (container_idx, container_position, container_size, embedded_idx) in
+        for (container_idx, container_position, shape, embedded_idx) in
             embedded_diagrams.into_iter().rev()
         {
             layered_layout.adjust_relative_position(
                 container_idx,
                 container_position,
-                container_size,
+                &*shape,
                 embedded_idx,
                 self.component_padding,
             );

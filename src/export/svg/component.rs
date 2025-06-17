@@ -13,27 +13,24 @@ use super::Svg;
 impl Svg {
     // Find the point where a line from the shape entity to an external point intersects with the shape entity's boundary
     fn find_intersection(&self, shape_entity: &Component, external_point: Point) -> Point {
-        let type_def = &*shape_entity.node.type_definition;
-        type_def.shape_type.find_intersection(
-            shape_entity.position,
-            external_point,
-            &shape_entity.size,
-        )
+        shape_entity
+            .shape
+            .find_intersection(shape_entity.position, external_point)
     }
 
     pub fn render_component(&self, component: &Component) -> Group {
-        // Use the shape_type to render the appropriate shape via the renderer
+        // Use the shape from the component to render the appropriate shape via the renderer
         let type_def = &*component.node.type_definition;
 
         let has_nested_blocks = component.node.block.has_nested_blocks();
 
         // Get the appropriate renderer based on the shape type
-        let renderer = renderer::get_renderer(&*type_def.shape_type);
+        let renderer = renderer::get_renderer(&*component.shape);
 
         // Use the renderer to generate the SVG for the main component
         renderer.render_to_svg(
             component.position,
-            component.size,
+            component.shape.shape_size(),
             type_def,
             component.node.display_text(),
             has_nested_blocks,

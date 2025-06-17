@@ -1,7 +1,10 @@
-use crate::layout::{
-    component,
-    geometry::{Bounds, Point, Size},
-    sequence,
+use crate::{
+    layout::{
+        component,
+        geometry::{Bounds, Point, Size},
+        sequence,
+    },
+    shape::Shape,
 };
 use log::debug;
 
@@ -74,7 +77,7 @@ impl<'a> LayeredLayout<'a> {
         &mut self,
         container_idx: usize,
         container_position: Point,
-        container_size: Size,
+        shape: &dyn Shape,
         embedded_idx: usize,
         padding: f32,
     ) {
@@ -84,10 +87,10 @@ impl<'a> LayeredLayout<'a> {
             .expect("container_idx and embedded_idx must be valid, distinct indices");
 
         // Calculate the bounds of the container
-        let container_bounds = container_position.to_bounds(container_size);
+        let container_bounds = shape.bounds(container_position);
 
         debug!(
-            container_position:?, container_size:?, container_bounds:?, padding,
+            container_position:?, shape:?, container_bounds:?, padding,
             container_idx, container_offset:?=container_layer.offset, container_clip_bounds:?=container_layer.clip_bounds,
             embedded_idx, embedded_offset:?=embedded_layer.offset, embedded_clip_bounds:?=embedded_layer.clip_bounds;
             "Embedded layer before adjustment",
@@ -101,7 +104,7 @@ impl<'a> LayeredLayout<'a> {
             .offset
             .add(container_layer.offset)
             .add(container_bounds.min_point())
-            .add(Point::new(padding, padding));
+            .add(shape.shape_to_container_min_point());
 
         // Set clip bounds with padding
         let padded_clip_bounds = container_bounds

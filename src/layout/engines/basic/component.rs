@@ -8,7 +8,7 @@ use crate::{
     graph::{ContainmentScope, Graph},
     layout::{
         component::{Layout, LayoutRelation},
-        engines::{self, ComponentEngine, EmbeddedLayouts},
+        engines::{ComponentEngine, EmbeddedLayouts},
         geometry::{Component, Point, Size},
         layer::{ContentStack, PositionedContent},
         positioning::calculate_bounded_text_size,
@@ -89,27 +89,34 @@ impl Engine {
         let mut positioned_content_sizes = HashMap::<NodeIndex, Size>::new();
 
         for containment_scope in graph.containment_scopes() {
-            // Calculate sizes for all components, adjusting for nested children and embedded diagrams
-            let component_sizes = self.calculate_component_sizes(
+            // Calculate component shapes - they contain all sizing information
+            let mut component_shapes = self.calculate_component_shapes(
                 graph,
                 containment_scope,
                 &positioned_content_sizes,
                 embedded_layouts,
             );
 
+            // Extract sizes from shapes for position calculation
+            let component_sizes: HashMap<NodeIndex, Size> = component_shapes
+                .iter()
+                .map(|(idx, shape)| (*idx, shape.shape_size()))
+                .collect();
+
             // Calculate positions for components
             let positions = self.positions(graph, containment_scope, &component_sizes);
 
-            // Build the final component list with proper node references
+            // Build the final component list using the pre-configured shapes
             let components: Vec<Component<'a>> = graph
                 .containment_scope_nodes_with_indices(containment_scope)
                 .map(|(node_idx, node)| {
-                    let position = positions.get(&node_idx).unwrap();
-                    let size = *component_sizes.get(&node_idx).unwrap();
+                    let position = *positions.get(&node_idx).unwrap();
+                    let shape = component_shapes.remove(&node_idx).unwrap();
+
                     Component {
                         node,
-                        position: *position,
-                        size,
+                        shape,
+                        position,
                     }
                 })
                 .collect();
@@ -210,64 +217,80 @@ impl Engine {
         }
     }
 
-    /// Calculate component sizes considering nested elements
-    /// Calculate sizes for all components, adjusting for nested children and embedded diagrams
-    fn calculate_component_sizes<'a>(
+    /// Calculate component shapes with proper content size and padding
+    fn calculate_component_shapes<'a>(
         &self,
         graph: &Graph<'a>,
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<NodeIndex, Size>,
         embedded_layouts: &EmbeddedLayouts<'_>,
-    ) -> HashMap<NodeIndex, Size> {
-        let mut component_sizes: HashMap<NodeIndex, Size> = HashMap::new();
+    ) -> HashMap<NodeIndex, Box<dyn crate::shape::Shape>> {
+        let mut component_shapes: HashMap<NodeIndex, Box<dyn crate::shape::Shape>> = HashMap::new();
 
         for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
-            // Check if this node has an embedded diagram
-            let size = match node.block {
+            let mut shape = node.type_definition.shape_type.new_shape();
+
+            match node.block {
                 ast::Block::Diagram(_) => {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
                     let layout = embedded_layouts
                         .get(&node.id)
                         .expect("Embedded layout not found");
-                    // Use the shared utility function to calculate size
-                    engines::embedded_layout_size(
-                        layout,
+
+                    let embedded_size = layout.calculate_size();
+                    let text_size = calculate_bounded_text_size(
                         node,
                         self.min_component_width,
                         self.min_component_height,
-                        self.padding,
                         self.text_padding,
-                    )
+                    );
+
+                    let content_size = Size::new(
+                        text_size.width().max(embedded_size.width()),
+                        text_size.height() + embedded_size.height(),
+                    );
+
+                    shape.set_content_size(content_size);
+                    shape.set_padding(self.padding);
                 }
                 ast::Block::Scope(_) => {
                     let positioned_content_size = *positioned_content_sizes
                         .get(&node_idx)
                         .expect("Scope size not found");
-                    engines::layout_size_from_nested_size(
-                        positioned_content_size,
+
+                    let text_size = calculate_bounded_text_size(
                         node,
                         self.min_component_width,
                         self.min_component_height,
-                        self.padding,
                         self.text_padding,
-                    )
+                    );
+
+                    let content_size = Size::new(
+                        text_size.width().max(positioned_content_size.width()),
+                        text_size.height() + positioned_content_size.height(),
+                    );
+
+                    shape.set_content_size(content_size);
+                    shape.set_padding(self.padding);
                 }
                 ast::Block::None => {
-                    // Standard size calculation for regular nodes
-                    calculate_bounded_text_size(
+                    let content_size = calculate_bounded_text_size(
                         node,
                         self.min_component_width,
                         self.min_component_height,
                         self.text_padding,
-                    )
-                }
-            };
+                    );
 
-            component_sizes.insert(node_idx, size);
+                    shape.set_content_size(content_size);
+                    shape.set_padding(self.text_padding);
+                }
+            }
+
+            component_shapes.insert(node_idx, shape);
         }
 
-        component_sizes
+        component_shapes
     }
 
     /// Calculate positions for components in a containment scope
