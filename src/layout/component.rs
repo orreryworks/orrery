@@ -1,7 +1,12 @@
 use crate::{
-    ast,
-    layout::geometry::{Component, LayoutSizing, Size},
+    ast, graph,
+    layout::{
+        geometry::{Component, LayoutSizing, Size},
+        layer,
+    },
 };
+use log::{debug, error};
+use std::collections::HashMap;
 
 /// Represents a relation (connection) in a component layout with positional information.
 ///
@@ -73,5 +78,62 @@ impl<'a> LayoutSizing for Layout<'a> {
             });
 
         bounds.to_size()
+    }
+}
+
+/// Adjusts the offset of positioned contents in a content stack based on containment relationships.
+///
+/// This method handles the proper positioning of nested elements within their containers.
+// TODO: Once added enough abstractions, make this a method on ContentStack.
+pub fn adjust_positioned_contents_offset<'a>(
+    content_stack: &mut layer::ContentStack<Layout<'a>>,
+    graph: &'a graph::Graph<'a>,
+) {
+    let container_indices: HashMap<_, _> = graph
+        .containment_scopes()
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, scope)| scope.container().map(|container| (container, idx)))
+        .collect();
+
+    for (source_idx, source_scope) in graph.containment_scopes().iter().enumerate().rev() {
+        for (node_idx, destination_idx) in source_scope.node_indices().filter_map(|node_idx| {
+            container_indices
+                .get(&node_idx)
+                .map(|&destination_idx| (node_idx, destination_idx))
+        }) {
+            if source_idx == destination_idx {
+                // If the source and destination are the same, skip
+                error!(index = source_idx; "Source and destination indices are the same");
+                continue;
+            }
+            let source = content_stack.get_unchecked(source_idx);
+            let node = graph.node_from_idx(node_idx);
+
+            // Find the component in the source layer that matches the node
+            let source_component = source
+                .content()
+                .components
+                .iter()
+                .find(|component| component.node.id == node.id)
+                .expect("Component must exist in source layer");
+            let target_offset = source
+                .offset()
+                .add(source_component.bounds().min_point())
+                .add(source_component.shape.shape_to_container_min_point()); // TODO: This does not account for text.
+            debug!(
+                node_id:? = node.id,
+                source_offset:? = source.offset();
+                "Adjusting positioned content offset [source]",
+            );
+            let target = content_stack.get_mut_unchecked(destination_idx);
+            debug!(
+                node_id:? = node.id,
+                original_offset:? = target.offset(),
+                new_offset:? = target_offset;
+                "Adjusting positioned content offset [target]",
+            );
+            target.set_offset(target_offset);
+        }
     }
 }

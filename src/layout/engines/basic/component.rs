@@ -7,7 +7,7 @@ use crate::{
     ast,
     graph::{ContainmentScope, Graph},
     layout::{
-        component::{Layout, LayoutRelation},
+        component::{Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
         geometry::{Component, Point, Size},
         layer::{ContentStack, PositionedContent},
@@ -16,7 +16,6 @@ use crate::{
     },
     shape::Shape,
 };
-use log::{debug, error};
 use petgraph::{
     Direction,
     graph::{DiGraph, EdgeIndex, NodeIndex},
@@ -142,63 +141,9 @@ impl Engine {
             content_stack.push(positioned_content);
         }
 
-        self.adjust_positioned_contents_offset(graph, &mut content_stack);
+        adjust_positioned_contents_offset(&mut content_stack, graph);
+
         content_stack
-    }
-
-    fn adjust_positioned_contents_offset<'a>(
-        &self,
-        graph: &'a Graph<'a>,
-        content_stack: &mut ContentStack<Layout<'a>>,
-    ) {
-        let container_indices: HashMap<_, _> = graph
-            .containment_scopes()
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, scope)| scope.container().map(|container| (container, idx)))
-            .collect();
-
-        for (source_idx, source_scope) in graph.containment_scopes().iter().enumerate().rev() {
-            for (node_idx, destination_idx) in source_scope.node_indices().filter_map(|node_idx| {
-                container_indices
-                    .get(&node_idx)
-                    .map(|&destination_idx| (node_idx, destination_idx))
-            }) {
-                if source_idx == destination_idx {
-                    // If the source and destination are the same, skip
-                    error!(index = source_idx; "Source and destination indices are the same");
-                    continue;
-                }
-                let source = content_stack.get_unchecked(source_idx);
-                let node = graph.node_from_idx(node_idx);
-
-                // Find the component in the source layer that matches the node
-                let source_component = source
-                    .content()
-                    .components
-                    .iter()
-                    .find(|component| component.node.id == node.id)
-                    .expect("Component must exist in source layer");
-                let target_offset = source
-                    .offset()
-                    .add(source_component.bounds().min_point())
-                    .add(Point::new(self.padding, self.padding)); // TODO: This does not account for text.
-                // source.content.components
-                debug!(
-                    node_id:? = node.id,
-                    source_offset:? = source.offset();
-                    "Adjusting positioned content offset [source]",
-                );
-                let target = content_stack.get_mut_unchecked(destination_idx);
-                debug!(
-                    node_id:? = node.id,
-                    original_offset:? = target.offset(),
-                    new_offset:? = target_offset;
-                    "Adjusting positioned content offset [target]",
-                );
-                target.set_offset(target_offset);
-            }
-        }
     }
 
     /// Calculate component shapes with proper content size and padding

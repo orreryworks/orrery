@@ -11,7 +11,7 @@ use crate::{
         geometry::{Component, Point, Size},
         layer::{ContentStack, PositionedContent},
         positioning::calculate_bounded_text_size,
-        sequence::{Layout, Message, Participant},
+        sequence::{Layout, Message, Participant, adjust_positioned_contents_offset},
     },
     shape::Shape,
 };
@@ -234,11 +234,12 @@ impl Engine {
 
         let mut content_stack = ContentStack::new();
         content_stack.push(PositionedContent::new(layout));
+
+        adjust_positioned_contents_offset(&mut content_stack, graph);
+
         content_stack
     }
 }
-
-impl Engine {}
 
 impl SequenceEngine for Engine {
     fn calculate<'a>(

@@ -1,14 +1,12 @@
 use crate::{
     layout::{
         component,
-        geometry::{Bounds, Point, Size},
+        geometry::{Bounds, LayoutSizing, Point, Size},
         sequence,
     },
     shape::Shape,
 };
 use log::debug;
-
-use super::LayoutSizing;
 
 /// Content types that can be laid out in a layer
 #[derive(Debug)]
