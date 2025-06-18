@@ -161,7 +161,7 @@ impl Engine {
         let mut component_shapes: HashMap<NodeIndex, Shape> = HashMap::new();
 
         for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
-            let mut shape = Shape::new(Rc::clone(&node.type_definition.shape_type));
+            let mut shape = Shape::new(Rc::clone(&node.type_definition.shape_definition));
 
             let content_size = match node.block {
                 ast::Block::Diagram(_) => {

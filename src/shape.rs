@@ -1,4 +1,8 @@
-use crate::layout::{Bounds, Point, Size};
+use crate::{
+    color::Color,
+    layout::{Bounds, Point, Size},
+};
+use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 
 /// A trait for shape definitions that provide stateless calculations
@@ -13,18 +17,104 @@ pub trait ShapeDefinition: std::fmt::Debug {
     /// Calculate the shape size needed to contain the given content size with padding
     fn calculate_shape_size(&self, content_size: Size, padding: f32) -> Size;
 
+    fn clone_new_rc(&self) -> Rc<RefCell<dyn ShapeDefinition>>;
+
+    /// Set the fill color for the rectangle
+    fn set_fill_color(&mut self, _color: Option<Color>) -> Result<(), &'static str> {
+        Err("fill_color is not supported for this shape")
+    }
+
+    /// Set the line color for the rectangle
+    fn set_line_color(&mut self, _color: Color) -> Result<(), &'static str> {
+        Err("line_color is not supported for this shape")
+    }
+
+    /// Set the line width for the rectangle
+    fn set_line_width(&mut self, _width: usize) -> Result<(), &'static str> {
+        Err("line_width is not supported for this shape")
+    }
+
+    /// Set the corner rounding for the rectangle
+    fn set_rounded(&mut self, _radius: usize) -> Result<(), &'static str> {
+        Err("rounded corners are not supported for this shape")
+    }
+
+    /// Get the fill color of the rectangle
+    fn fill_color(&self) -> Option<Color> {
+        unimplemented!("fill_color is not supported for this shape")
+    }
+
+    /// Get the line color of the rectangle
+    fn line_color(&self) -> Color {
+        unimplemented!("line_color is not supported for this shape")
+    }
+
+    /// Get the line width of the rectangle
+    fn line_width(&self) -> usize {
+        unimplemented!("line_width is not supported for this shape")
+    }
+
+    /// Get the corner rounding of the rectangle
+    fn rounded(&self) -> usize {
+        unimplemented!("rounded corners are not supported for this shape")
+    }
+
     fn min_content_size(&self) -> Size {
         Size::new(10.0, 10.0) // Default minimum size for content
     }
 }
 
 /// Rectangle shape definition
-#[derive(Default)]
-pub struct RectangleDefinition;
+#[derive(Debug, Clone)]
+pub struct RectangleDefinition {
+    fill_color: Option<Color>,
+    line_color: Color,
+    line_width: usize,
+    rounded: usize,
+}
 
 /// Oval shape definition
-#[derive(Default)]
-pub struct OvalDefinition;
+#[derive(Debug, Clone)]
+pub struct OvalDefinition {
+    fill_color: Option<Color>,
+    line_color: Color,
+    line_width: usize,
+}
+
+impl Default for RectangleDefinition {
+    fn default() -> Self {
+        Self {
+            fill_color: None,
+            line_color: Color::default(),
+            line_width: 2,
+            rounded: 0,
+        }
+    }
+}
+
+impl Default for OvalDefinition {
+    fn default() -> Self {
+        Self {
+            fill_color: None,
+            line_color: Color::default(),
+            line_width: 2,
+        }
+    }
+}
+
+impl RectangleDefinition {
+    /// Create a new rectangle definition with default values
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl OvalDefinition {
+    /// Create a new oval definition with default values
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
 
 impl ShapeDefinition for RectangleDefinition {
     fn find_intersection(&self, a: Point, b: Point, a_size: &Size) -> Point {
@@ -108,13 +198,45 @@ impl ShapeDefinition for RectangleDefinition {
         let min_size = Size::new(10.0, 10.0);
         content_size.add_padding(padding).max(min_size)
     }
-}
 
-impl std::fmt::Debug for RectangleDefinition {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ShapeDefinition")
-            .field("name", &self.name())
-            .finish()
+    fn clone_new_rc(&self) -> Rc<RefCell<dyn ShapeDefinition>> {
+        Rc::new(RefCell::new(self.clone()))
+    }
+
+    fn fill_color(&self) -> Option<Color> {
+        self.fill_color.clone()
+    }
+
+    fn line_color(&self) -> Color {
+        self.line_color.clone()
+    }
+
+    fn line_width(&self) -> usize {
+        self.line_width
+    }
+
+    fn rounded(&self) -> usize {
+        self.rounded
+    }
+
+    fn set_fill_color(&mut self, color: Option<Color>) -> Result<(), &'static str> {
+        self.fill_color = color;
+        Ok(())
+    }
+
+    fn set_line_color(&mut self, color: Color) -> Result<(), &'static str> {
+        self.line_color = color;
+        Ok(())
+    }
+
+    fn set_line_width(&mut self, width: usize) -> Result<(), &'static str> {
+        self.line_width = width;
+        Ok(())
+    }
+
+    fn set_rounded(&mut self, radius: usize) -> Result<(), &'static str> {
+        self.rounded = radius;
+        Ok(())
     }
 }
 
@@ -176,27 +298,50 @@ impl ShapeDefinition for OvalDefinition {
             .add_padding(padding)
             .max(min_size)
     }
-}
 
-impl std::fmt::Debug for OvalDefinition {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ShapeDefinition")
-            .field("name", &self.name())
-            .finish()
+    fn clone_new_rc(&self) -> Rc<RefCell<dyn ShapeDefinition>> {
+        Rc::new(RefCell::new(self.clone()))
+    }
+
+    fn fill_color(&self) -> Option<Color> {
+        self.fill_color.clone()
+    }
+
+    fn line_color(&self) -> Color {
+        self.line_color.clone()
+    }
+
+    fn line_width(&self) -> usize {
+        self.line_width
+    }
+
+    fn set_fill_color(&mut self, color: Option<Color>) -> Result<(), &'static str> {
+        self.fill_color = color;
+        Ok(())
+    }
+
+    fn set_line_color(&mut self, color: Color) -> Result<(), &'static str> {
+        self.line_color = color;
+        Ok(())
+    }
+
+    fn set_line_width(&mut self, width: usize) -> Result<(), &'static str> {
+        self.line_width = width;
+        Ok(())
     }
 }
 
 /// A shape instance that combines a definition with content size and padding
 #[derive(Debug, Clone)]
 pub struct Shape {
-    definition: Rc<dyn ShapeDefinition>,
+    definition: Rc<RefCell<dyn ShapeDefinition>>,
     content_size: Size,
     padding: f32,
 }
 
 impl Shape {
-    pub fn new(definition: Rc<dyn ShapeDefinition>) -> Self {
-        let content_size = definition.min_content_size();
+    pub fn new(definition: Rc<RefCell<dyn ShapeDefinition>>) -> Self {
+        let content_size = definition.borrow().min_content_size();
         Self {
             definition,
             content_size,
@@ -204,8 +349,12 @@ impl Shape {
         }
     }
 
+    pub fn definition(&self) -> Ref<dyn ShapeDefinition> {
+        self.definition.borrow()
+    }
+
     pub fn name(&self) -> &'static str {
-        self.definition.name()
+        self.definition.borrow().name()
     }
 
     pub fn content_size(&self) -> Size {
@@ -215,6 +364,7 @@ impl Shape {
     /// Size of the shape needed to contain the given content size
     pub fn shape_size(&self) -> Size {
         self.definition
+            .borrow()
             .calculate_shape_size(self.content_size, self.padding)
     }
 
@@ -230,7 +380,9 @@ impl Shape {
 
     /// Find the intersection point where a line from point a to point b intersects with this shape
     pub fn find_intersection(&self, a: Point, b: Point) -> Point {
-        self.definition.find_intersection(a, b, &self.shape_size())
+        self.definition
+            .borrow()
+            .find_intersection(a, b, &self.shape_size())
     }
 
     /// Calculate the minimum point offset for positioning content within this shape's container.

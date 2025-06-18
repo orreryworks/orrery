@@ -115,7 +115,7 @@ impl Engine {
         let mut participant_shapes: HashMap<_, _> = graph
             .nodes_with_indices()
             .map(|(node_idx, node)| {
-                let mut shape = Shape::new(Rc::clone(&node.type_definition.shape_type));
+                let mut shape = Shape::new(Rc::clone(&node.type_definition.shape_definition));
 
                 let content_size = if let ast::Block::Diagram(_) = &node.block {
                     // If this participant has an embedded diagram, use its layout size

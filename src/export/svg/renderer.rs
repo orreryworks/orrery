@@ -1,8 +1,4 @@
-use crate::{
-    ast,
-    layout::{Point, Size},
-    shape::Shape,
-};
+use crate::{ast, layout::Point, shape::Shape};
 use svg::node::element::{Ellipse, Group, Rectangle as SvgRectangle, Text};
 
 // Constants for rendering configuration
@@ -22,7 +18,7 @@ pub trait ShapeRenderer {
     fn render_to_svg(
         &self,
         position: Point,
-        size: Size,
+        shape: &Shape,
         type_def: &ast::TypeDefinition,
         text: &str,
         has_nested_blocks: bool,
@@ -49,12 +45,14 @@ impl ShapeRenderer for RectangleRenderer {
     fn render_to_svg(
         &self,
         position: Point,
-        size: Size,
+        shape: &Shape,
         type_def: &ast::TypeDefinition,
         text: &str,
         has_nested_blocks: bool,
     ) -> Group {
         let group = Group::new();
+        let size = shape.shape_size();
+        let shape_def = shape.definition();
 
         // Calculate the actual top-left position for the rectangle
         // (position is the center of the component)
@@ -66,12 +64,12 @@ impl ShapeRenderer for RectangleRenderer {
             .set("y", rect_bounds.min_y())
             .set("width", size.width())
             .set("height", size.height())
-            .set("stroke", type_def.line_color.to_string())
-            .set("stroke-width", type_def.line_width)
+            .set("stroke", shape_def.line_color().to_string())
+            .set("stroke-width", shape_def.line_width())
             .set("fill", "white")
-            .set("rx", type_def.rounded);
+            .set("rx", shape_def.rounded());
 
-        if let Some(fill_color) = &type_def.fill_color {
+        if let Some(fill_color) = shape_def.fill_color() {
             rect = rect.set("fill", fill_color.to_string());
         }
 
@@ -103,12 +101,14 @@ impl ShapeRenderer for OvalRenderer {
     fn render_to_svg(
         &self,
         position: Point,
-        size: Size,
+        shape: &Shape,
         type_def: &ast::TypeDefinition,
         text: &str,
         has_nested_blocks: bool,
     ) -> Group {
         let group = Group::new();
+        let size = shape.shape_size();
+        let shape_def = shape.definition();
 
         // Use ellipse which takes center point (cx, cy) plus radiuses (rx, ry)
         let rx = size.width() / 2.0;
@@ -119,11 +119,11 @@ impl ShapeRenderer for OvalRenderer {
             .set("cy", position.y())
             .set("rx", rx)
             .set("ry", ry)
-            .set("stroke", type_def.line_color.to_string())
-            .set("stroke-width", type_def.line_width)
+            .set("stroke", shape_def.line_color().to_string())
+            .set("stroke-width", shape_def.line_width())
             .set("fill", "white");
 
-        if let Some(fill_color) = &type_def.fill_color {
+        if let Some(fill_color) = shape_def.fill_color() {
             ellipse = ellipse.set("fill", fill_color.to_string());
         }
 

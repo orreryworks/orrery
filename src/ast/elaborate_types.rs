@@ -2,8 +2,12 @@ use super::parser_types;
 use crate::ast::span::Spanned;
 use crate::{color::Color, error::ElaborationDiagnosticError, shape};
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
-use std::{fmt, rc::Rc, str::FromStr};
+use std::cell::RefCell;
+use std::{
+    fmt::{self, Display},
+    rc::Rc,
+    str::FromStr,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeId(String);
@@ -119,15 +123,10 @@ pub enum DiagramKind {
     Sequence,
 }
 
-#[derive(Clone)]
 pub struct TypeDefinition {
     pub id: TypeId,
-    pub fill_color: Option<Color>,
-    pub line_color: Color,
-    pub line_width: usize,
-    pub rounded: usize,
     pub font_size: usize,
-    pub shape_type: Rc<dyn shape::ShapeDefinition>, // TODO: Rename
+    pub shape_definition: Rc<RefCell<dyn shape::ShapeDefinition>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -224,17 +223,23 @@ impl fmt::Display for TypeId {
     }
 }
 
+impl Clone for TypeDefinition {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            font_size: self.font_size,
+            shape_definition: self.shape_definition.borrow().clone_new_rc(),
+        }
+    }
+}
+
 // Implement Debug manually for TypeDefinition since we can't derive it due to the dyn ShapeType
 impl std::fmt::Debug for TypeDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TypeDefinition")
             .field("id", &self.id)
-            .field("fill_color", &self.fill_color)
-            .field("line_color", &self.line_color)
-            .field("line_width", &self.line_width)
-            .field("rounded", &self.rounded)
             .field("font_size", &self.font_size)
-            .field("shape_type", &self.shape_type.name())
+            .field("shape_definition", &self.shape_definition.borrow())
             .finish()
     }
 }
@@ -245,71 +250,107 @@ impl TypeDefinition {
         base: &Self,
         attributes: &[Spanned<parser_types::Attribute>],
     ) -> Result<Self, ElaborationDiagnosticError> {
-        let mut type_def = base.clone();
+        let mut type_def = base.clone(); // TODO: custom clone.
         type_def.id = id;
         // Process attributes with descriptive errors
-        for attr in Attribute::new_from_parser(attributes) {
-            let name = attr.name.0.as_str();
-            let value = attr.value.as_str();
+        {
+            let mut shape_def = type_def.shape_definition.borrow_mut();
+            for attr in Attribute::new_from_parser(attributes) {
+                let name = attr.name.0.as_str();
+                let value = attr.value.as_str();
 
-            match name {
-                "fill_color" => {
-                    type_def.fill_color = Some(Color::new(value).map_err(|err| {
-                        ElaborationDiagnosticError::from_spanned(
-                            format!("Invalid fill_color '{value}': {err}"),
+                match name {
+                    "fill_color" => {
+                        let val = Color::new(value).map_err(|err| {
+                            ElaborationDiagnosticError::from_spanned(
+                                format!("Invalid fill_color '{value}': {err}"),
+                                &attr,
+                                "invalid color",
+                                Some("Use a CSS color".to_string()),
+                            )
+                        })?;
+                        // Access the value from the RefCell
+                        shape_def.set_fill_color(Some(val)).map_err(|err| {
+                            ElaborationDiagnosticError::from_spanned(
+                                err.to_string(),
+                                &attr,
+                                "unsupported attribute",
+                                None,
+                            )
+                        })?;
+                    }
+                    "line_color" => {
+                        let val = Color::new(value).map_err(|err| {
+                            ElaborationDiagnosticError::from_spanned(
+                                format!("Invalid line_color '{value}': {err}"),
+                                &attr,
+                                "invalid color",
+                                Some("Use a CSS color".to_string()),
+                            )
+                        })?;
+                        shape_def.set_line_color(val).map_err(|err| {
+                            ElaborationDiagnosticError::from_spanned(
+                                err.to_string(),
+                                &attr,
+                                "unsupported attribute",
+                                None,
+                            )
+                        })?;
+                    }
+                    "line_width" => {
+                        let val = value.parse::<usize>().map_err(|_| {
+                            ElaborationDiagnosticError::from_spanned(
+                                format!("Invalid line_width '{value}'"),
+                                &attr,
+                                "invalid positive integer",
+                                Some("Use a positive integer".to_string()),
+                            )
+                        })?;
+                        shape_def.set_line_width(val).map_err(|err| {
+                            ElaborationDiagnosticError::from_spanned(
+                                err.to_string(),
+                                &attr,
+                                "unsupported attribute",
+                                None,
+                            )
+                        })?;
+                    }
+                    "rounded" => {
+                        let val = value.parse::<usize>().map_err(|_| {
+                            ElaborationDiagnosticError::from_spanned(
+                                format!("Invalid rounded '{value}'"),
+                                &attr,
+                                "invalid positive integer",
+                                Some("Use a positive integer".to_string()),
+                            )
+                        })?;
+                        shape_def.set_rounded(val).map_err(|err| {
+                            ElaborationDiagnosticError::from_spanned(
+                                err.to_string(),
+                                &attr,
+                                "unsupported attribute",
+                                None,
+                            )
+                        })?;
+                    }
+                    "font_size" => {
+                        type_def.font_size = value.parse::<usize>().map_err(|_| {
+                            ElaborationDiagnosticError::from_spanned(
+                                format!("Invalid font_size '{value}'"),
+                                &attr,
+                                "invalid positive integer",
+                                Some("Use a positive integer".to_string()),
+                            )
+                        })?;
+                    }
+                    _ => {
+                        return Err(ElaborationDiagnosticError::from_spanned(
+                            format!("Unsupported type definition attribute '{}'", name),
                             &attr,
-                            "invalid color",
-                            Some("Use a CSS color".to_string()),
-                        )
-                    })?);
-                }
-                "line_color" => {
-                    type_def.line_color = Color::new(value).map_err(|err| {
-                        ElaborationDiagnosticError::from_spanned(
-                            format!("Invalid line_color '{value}': {err}"),
-                            &attr,
-                            "invalid color",
-                            Some("Use a CSS color".to_string()),
-                        )
-                    })?;
-                }
-                "line_width" => {
-                    type_def.line_width = value.parse::<usize>().map_err(|_| {
-                        ElaborationDiagnosticError::from_spanned(
-                            format!("Invalid line_width '{value}'"),
-                            &attr,
-                            "invalid positive integer",
-                            Some("Use a positive integer".to_string()),
-                        )
-                    })?;
-                }
-                "rounded" => {
-                    type_def.rounded = value.parse::<usize>().map_err(|_| {
-                        ElaborationDiagnosticError::from_spanned(
-                            format!("Invalid rounded '{value}'"),
-                            &attr,
-                            "invalid positive integer",
-                            Some("Use a positive integer".to_string()),
-                        )
-                    })?;
-                }
-                "font_size" => {
-                    type_def.font_size = value.parse::<usize>().map_err(|_| {
-                        ElaborationDiagnosticError::from_spanned(
-                            format!("Invalid font_size '{value}'"),
-                            &attr,
-                            "invalid positive integer",
-                            Some("Use a positive integer".to_string()),
-                        )
-                    })?;
-                }
-                _ => {
-                    return Err(ElaborationDiagnosticError::from_spanned(
-                        format!("Unsupported type definition attribute '{}'", name),
-                        &attr,
-                        "unsupported attribute",
-                        None,
-                    ));
+                            "unsupported attribute",
+                            None,
+                        ));
+                    }
                 }
             }
         }
@@ -318,25 +359,18 @@ impl TypeDefinition {
     }
 
     pub fn defaults() -> Vec<Rc<Self>> {
-        let black = Color::default();
         vec![
             Rc::new(Self {
                 id: TypeId::from_name("Rectangle"),
-                fill_color: None,
-                line_color: black.clone(),
-                line_width: 2,
-                rounded: 0,
                 font_size: 15,
-                shape_type: Rc::new(shape::RectangleDefinition) as Rc<dyn shape::ShapeDefinition>,
+                shape_definition: Rc::new(RefCell::new(shape::RectangleDefinition::new()))
+                    as Rc<RefCell<dyn shape::ShapeDefinition>>,
             }),
             Rc::new(Self {
                 id: TypeId::from_name("Oval"),
-                fill_color: None,
-                line_color: black,
-                line_width: 2,
-                rounded: 0,
                 font_size: 15,
-                shape_type: Rc::new(shape::OvalDefinition) as Rc<dyn shape::ShapeDefinition>,
+                shape_definition: Rc::new(RefCell::new(shape::OvalDefinition::new()))
+                    as Rc<RefCell<dyn shape::ShapeDefinition>>,
             }),
         ]
     }

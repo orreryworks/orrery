@@ -19,7 +19,6 @@ impl Svg {
     }
 
     pub fn render_component(&self, component: &Component) -> Group {
-        // Use the shape from the component to render the appropriate shape via the renderer
         let type_def = &*component.node.type_definition;
 
         let has_nested_blocks = component.node.block.has_nested_blocks();
@@ -30,7 +29,7 @@ impl Svg {
         // Use the renderer to generate the SVG for the main component
         renderer.render_to_svg(
             component.position,
-            component.shape.shape_size(),
+            &component.shape,
             type_def,
             component.node.display_text(),
             has_nested_blocks,

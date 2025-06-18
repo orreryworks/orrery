@@ -13,6 +13,7 @@ impl Svg {
     pub fn render_participant(&self, participant: &sequence::Participant) -> Group {
         let group = Group::new();
         let component = &participant.component;
+        let shape_def = component.shape.definition();
         let type_def = &*component.node.type_definition;
 
         let has_nested_blocks = component.node.block.has_nested_blocks();
@@ -23,7 +24,7 @@ impl Svg {
         // Use the renderer to generate the SVG for the participant
         let shape_group = renderer.render_to_svg(
             component.position,
-            component.shape.shape_size(),
+            &component.shape,
             type_def,
             component.node.display_text(),
             has_nested_blocks,
@@ -39,7 +40,7 @@ impl Svg {
             .set("y1", lifeline_start_y)
             .set("x2", component.position.x())
             .set("y2", participant.lifeline_end)
-            .set("stroke", &type_def.line_color)
+            .set("stroke", &shape_def.line_color())
             .set("stroke-width", 1)
             .set("stroke-dasharray", "4");
 
