@@ -31,8 +31,6 @@ use std::{
 #[derive(Default)]
 pub struct Engine {
     padding: f32,
-    min_component_width: f32,
-    min_component_height: f32,
     text_padding: f32,
     min_spacing: f32,
 }
@@ -41,8 +39,6 @@ impl Engine {
     /// Create a new basic component layout engine
     pub fn new() -> Self {
         Self {
-            min_component_width: 100.0,
-            min_component_height: 60.0,
             text_padding: 20.0,
             ..Self::default()
         }
@@ -51,20 +47,6 @@ impl Engine {
     /// Set the padding around components
     pub fn set_padding(&mut self, padding: f32) -> &mut Self {
         self.padding = padding;
-        self
-    }
-
-    /// Set the minimum width for components
-    #[allow(dead_code)]
-    pub fn set_min_width(&mut self, width: f32) -> &mut Self {
-        self.min_component_width = width;
-        self
-    }
-
-    /// Set the minimum height for components
-    #[allow(dead_code)]
-    pub fn set_min_height(&mut self, height: f32) -> &mut Self {
-        self.min_component_height = height;
         self
     }
 
@@ -232,7 +214,7 @@ impl Engine {
         for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
             let mut shape = Shape::new(Rc::clone(&node.type_definition.shape_type));
 
-            match node.block {
+            let content_size = match node.block {
                 ast::Block::Diagram(_) => {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
@@ -241,54 +223,30 @@ impl Engine {
                         .expect("Embedded layout not found");
 
                     let embedded_size = layout.calculate_size();
-                    let text_size = calculate_bounded_text_size(
-                        node,
-                        self.min_component_width,
-                        self.min_component_height,
-                        self.text_padding,
-                    );
+                    let text_size = calculate_bounded_text_size(node, self.text_padding);
 
-                    let content_size = Size::new(
+                    Size::new(
                         text_size.width().max(embedded_size.width()),
                         text_size.height() + embedded_size.height(),
-                    );
-
-                    shape.set_content_size(content_size);
-                    shape.set_padding(self.padding);
+                    )
                 }
                 ast::Block::Scope(_) => {
                     let positioned_content_size = *positioned_content_sizes
                         .get(&node_idx)
                         .expect("Scope size not found");
 
-                    let text_size = calculate_bounded_text_size(
-                        node,
-                        self.min_component_width,
-                        self.min_component_height,
-                        self.text_padding,
-                    );
+                    let text_size = calculate_bounded_text_size(node, self.text_padding);
 
-                    let content_size = Size::new(
+                    Size::new(
                         text_size.width().max(positioned_content_size.width()),
                         text_size.height() + positioned_content_size.height(),
-                    );
-
-                    shape.set_content_size(content_size);
-                    shape.set_padding(self.padding);
+                    )
                 }
-                ast::Block::None => {
-                    let content_size = calculate_bounded_text_size(
-                        node,
-                        self.min_component_width,
-                        self.min_component_height,
-                        self.text_padding,
-                    );
+                ast::Block::None => calculate_bounded_text_size(node, self.text_padding),
+            };
 
-                    shape.set_content_size(content_size);
-                    shape.set_padding(self.text_padding);
-                }
-            }
-
+            shape.expand_content_size_to(content_size);
+            shape.set_padding(self.text_padding);
             component_shapes.insert(node_idx, shape);
         }
 
@@ -335,7 +293,7 @@ impl Engine {
                     .iter()
                     .map(|&node_idx| sizes.get(&node_idx).unwrap().width())
                     .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Less))
-                    .unwrap_or(self.min_component_width)
+                    .unwrap_or_default()
             })
             .collect();
 

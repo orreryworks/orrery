@@ -18,12 +18,6 @@ use std::{collections::HashMap, rc::Rc};
 /// Based on the Sugiyama algorithm for layered drawing of directed graphs
 /// Uses the rust-sugiyama implementation with fallback to a simple hierarchical layout
 pub struct Engine {
-    /// Minimum width for components
-    min_component_width: f32,
-
-    /// Minimum height for components
-    min_component_height: f32,
-
     /// Padding around text elements
     text_padding: f32,
 
@@ -41,27 +35,11 @@ impl Engine {
     /// Create a new Sugiyama component layout engine
     pub fn new() -> Self {
         Self {
-            min_component_width: 100.0,
-            min_component_height: 60.0,
             text_padding: 20.0,
             horizontal_spacing: 50.0,
             vertical_spacing: 80.0,
             container_padding: 40.0,
         }
-    }
-
-    /// Set the minimum component width
-    #[allow(dead_code)]
-    pub fn set_min_width(&mut self, width: f32) -> &mut Self {
-        self.min_component_width = width;
-        self
-    }
-
-    /// Set the minimum component height
-    #[allow(dead_code)]
-    pub fn set_min_height(&mut self, height: f32) -> &mut Self {
-        self.min_component_height = height;
-        self
     }
 
     /// Set the text padding
@@ -109,15 +87,7 @@ impl Engine {
             // Extract sizes from shapes for position calculation
             let component_sizes: HashMap<NodeIndex, Size> = component_shapes
                 .iter()
-                .map(|(idx, shape)| {
-                    let size = shape.shape_size();
-                    // Apply minimum size constraints
-                    let final_size = size.max(Size::new(
-                        self.min_component_width,
-                        self.min_component_height,
-                    ));
-                    (*idx, final_size)
-                })
+                .map(|(idx, shape)| (*idx, shape.shape_size()))
                 .collect();
 
             // Calculate positions for components in this scope
@@ -247,7 +217,7 @@ impl Engine {
         for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
             let mut shape = Shape::new(Rc::clone(&node.type_definition.shape_type));
 
-            match node.block {
+            let content_size = match node.block {
                 ast::Block::Diagram(_) => {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
@@ -256,54 +226,30 @@ impl Engine {
                         .expect("Embedded layout not found");
 
                     let embedded_size = layout.calculate_size();
-                    let text_size = calculate_bounded_text_size(
-                        node,
-                        self.min_component_width,
-                        self.min_component_height,
-                        self.text_padding,
-                    );
+                    let text_size = calculate_bounded_text_size(node, self.text_padding);
 
-                    let content_size = Size::new(
+                    Size::new(
                         text_size.width().max(embedded_size.width()),
                         text_size.height() + embedded_size.height(),
-                    );
-
-                    shape.set_content_size(content_size);
-                    shape.set_padding(self.container_padding);
+                    )
                 }
                 ast::Block::Scope(_) => {
                     let positioned_content_size = *positioned_content_sizes
                         .get(&node_idx)
                         .expect("Scope size not found");
 
-                    let text_size = calculate_bounded_text_size(
-                        node,
-                        self.min_component_width,
-                        self.min_component_height,
-                        self.text_padding,
-                    );
+                    let text_size = calculate_bounded_text_size(node, self.text_padding);
 
-                    let content_size = Size::new(
+                    Size::new(
                         text_size.width().max(positioned_content_size.width()),
                         text_size.height() + positioned_content_size.height(),
-                    );
-
-                    shape.set_content_size(content_size);
-                    shape.set_padding(self.container_padding);
+                    )
                 }
-                ast::Block::None => {
-                    let content_size = calculate_bounded_text_size(
-                        node,
-                        self.min_component_width,
-                        self.min_component_height,
-                        self.text_padding,
-                    );
+                ast::Block::None => calculate_bounded_text_size(node, self.text_padding),
+            };
 
-                    shape.set_content_size(content_size);
-                    shape.set_padding(self.text_padding);
-                }
-            }
-
+            shape.expand_content_size_to(content_size);
+            shape.set_padding(self.container_padding);
             component_shapes.insert(node_idx, shape);
         }
 
@@ -448,8 +394,8 @@ impl Engine {
             debug!("Graph has no edges. Arranging nodes horizontally with positive coordinates.");
             for (i, (node_idx, _)) in scope_nodes.iter().enumerate() {
                 // For no-edge graphs, ensure adequate horizontal spacing and a margin from the top
-                let x = self.horizontal_spacing * 0.8
-                    + (i as f32) * (self.min_component_width + self.horizontal_spacing * 0.5);
+                let x =
+                    self.horizontal_spacing * 0.8 + (i as f32) * (self.horizontal_spacing * 0.5);
                 positions.insert(*node_idx, Point::new(x, self.vertical_spacing * 0.8));
             }
         }

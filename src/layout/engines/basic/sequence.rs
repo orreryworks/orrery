@@ -20,8 +20,6 @@ use std::{collections::HashMap, rc::Rc};
 
 /// Basic sequence layout engine implementation that implements the SequenceLayoutEngine trait
 pub struct Engine {
-    min_participant_width: f32,
-    min_participant_height: f32,
     min_spacing: f32, // Minimum space between participants
     message_spacing: f32,
     top_margin: f32,
@@ -33,28 +31,12 @@ impl Engine {
     /// Create a new basic sequence layout engine
     pub fn new() -> Self {
         Self {
-            min_participant_width: 80.0,
-            min_participant_height: 30.0,
             min_spacing: 40.0, // Minimum spacing between participants
             message_spacing: 50.0,
             top_margin: 60.0,
             padding: 15.0,
             label_padding: 20.0, // Extra padding for labels
         }
-    }
-
-    /// Set the minimum width for participants
-    #[allow(dead_code)]
-    pub fn set_min_width(&mut self, width: f32) -> &mut Self {
-        self.min_participant_width = width;
-        self
-    }
-
-    /// Set the minimum height for participants
-    #[allow(dead_code)]
-    pub fn set_min_height(&mut self, height: f32) -> &mut Self {
-        self.min_participant_height = height;
-        self
     }
 
     /// Set the minimum spacing between participants
@@ -139,12 +121,7 @@ impl Engine {
                     // If this participant has an embedded diagram, use its layout size
                     if let Some(layout) = embedded_layouts.get(&node.id) {
                         let embedded_size = layout.calculate_size();
-                        let text_size = calculate_bounded_text_size(
-                            node,
-                            self.min_participant_width,
-                            self.min_participant_height,
-                            self.padding,
-                        );
+                        let text_size = calculate_bounded_text_size(node, self.padding);
 
                         Size::new(
                             text_size.width().max(embedded_size.width()),
@@ -152,24 +129,14 @@ impl Engine {
                         )
                     } else {
                         // Fallback to text-based sizing if no embedded layout found
-                        calculate_bounded_text_size(
-                            node,
-                            self.min_participant_width,
-                            self.min_participant_height,
-                            self.padding,
-                        )
+                        calculate_bounded_text_size(node, self.padding)
                     }
                 } else {
                     // Regular participant with no embedded diagram
-                    calculate_bounded_text_size(
-                        node,
-                        self.min_participant_width,
-                        self.min_participant_height,
-                        self.padding,
-                    )
+                    calculate_bounded_text_size(node, self.padding)
                 };
 
-                shape.set_content_size(content_size);
+                shape.expand_content_size_to(content_size);
                 shape.set_padding(self.padding);
                 (node_idx, shape)
             })
@@ -197,10 +164,7 @@ impl Engine {
             .node_indices()
             .map(|idx| {
                 let shape = participant_shapes.get(&idx).unwrap();
-                shape.shape_size().max(Size::new(
-                    self.min_participant_width,
-                    self.min_participant_height,
-                ))
+                shape.shape_size()
             })
             .collect();
 
@@ -234,7 +198,7 @@ impl Engine {
                 .iter()
                 .map(|p| p.component.shape.shape_size().height())
                 .max_by(|a, b| a.partial_cmp(b).unwrap())
-                .unwrap_or(self.min_participant_height)
+                .unwrap_or_default()
             + self.message_spacing;
 
         for edge_idx in graph.edge_indices() {

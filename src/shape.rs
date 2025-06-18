@@ -12,14 +12,18 @@ pub trait ShapeDefinition: std::fmt::Debug {
 
     /// Calculate the shape size needed to contain the given content size with padding
     fn calculate_shape_size(&self, content_size: Size, padding: f32) -> Size;
+
+    fn min_content_size(&self) -> Size {
+        Size::new(10.0, 10.0) // Default minimum size for content
+    }
 }
 
 /// Rectangle shape definition
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct RectangleDefinition;
 
 /// Oval shape definition
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct OvalDefinition;
 
 impl ShapeDefinition for RectangleDefinition {
@@ -192,9 +196,10 @@ pub struct Shape {
 
 impl Shape {
     pub fn new(definition: Rc<dyn ShapeDefinition>) -> Self {
+        let content_size = definition.min_content_size();
         Self {
             definition,
-            content_size: Size::default(),
+            content_size,
             padding: 0.0,
         }
     }
@@ -213,9 +218,9 @@ impl Shape {
             .calculate_shape_size(self.content_size, self.padding)
     }
 
-    /// Set the content size for this shape
-    pub fn set_content_size(&mut self, content_size: Size) {
-        self.content_size = content_size;
+    /// Expand the content size for this shape to the given size if it's bigger
+    pub fn expand_content_size_to(&mut self, content_size: Size) {
+        self.content_size = self.content_size.max(content_size);
     }
 
     /// Set the padding for this shape

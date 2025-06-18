@@ -90,16 +90,10 @@ pub fn distribute_horizontally(
 /// # Returns
 /// The calculated size with applied constraints
 /// TODO why do I need this anymore? Can I use shape instead?
-pub fn calculate_bounded_text_size(
-    node: &ast::Node,
-    min_width: f32,
-    min_height: f32,
-    padding: f32,
-) -> Size {
+pub fn calculate_bounded_text_size(node: &ast::Node, padding: f32) -> Size {
     // Calculate text size based on the node's display text and font size
     let size = text::calculate_text_size(node.display_text(), node.type_definition.font_size);
 
     // Add padding around the text and ensure minimum size
     size.add_padding(padding)
-        .max(Size::new(min_width, min_height))
 }
