@@ -7,9 +7,11 @@ use std::rc::Rc;
 
 mod oval;
 mod rectangle;
+mod text;
 
 pub use oval::OvalDefinition;
 pub use rectangle::RectangleDefinition;
+pub use text::TextDefinition;
 
 /// A trait for shape definitions that provide stateless calculations
 pub trait ShapeDefinition: std::fmt::Debug {

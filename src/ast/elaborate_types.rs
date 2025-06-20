@@ -2,8 +2,8 @@ use super::parser_types;
 use crate::ast::span::Spanned;
 use crate::{color::Color, error::ElaborationDiagnosticError, shape};
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 use std::{
+    cell::RefCell,
     fmt::{self, Display},
     rc::Rc,
     str::FromStr,
@@ -123,9 +123,10 @@ pub enum DiagramKind {
     Sequence,
 }
 
+#[derive(Debug)]
 pub struct TypeDefinition {
     pub id: TypeId,
-    pub font_size: usize,
+    pub text_definition: Rc<RefCell<shape::TextDefinition>>,
     pub shape_definition: Rc<RefCell<dyn shape::ShapeDefinition>>,
 }
 
@@ -227,20 +228,9 @@ impl Clone for TypeDefinition {
     fn clone(&self) -> Self {
         Self {
             id: self.id.clone(),
-            font_size: self.font_size,
+            text_definition: Rc::new(RefCell::new(self.text_definition.borrow().clone())),
             shape_definition: self.shape_definition.borrow().clone_new_rc(),
         }
-    }
-}
-
-// Implement Debug manually for TypeDefinition since we can't derive it due to the dyn ShapeType
-impl std::fmt::Debug for TypeDefinition {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TypeDefinition")
-            .field("id", &self.id)
-            .field("font_size", &self.font_size)
-            .field("shape_definition", &self.shape_definition.borrow())
-            .finish()
     }
 }
 
@@ -334,7 +324,8 @@ impl TypeDefinition {
                         })?;
                     }
                     "font_size" => {
-                        type_def.font_size = value.parse::<usize>().map_err(|_| {
+                        let mut text_def = type_def.text_definition.borrow_mut();
+                        let val = value.parse::<u16>().map_err(|_| {
                             ElaborationDiagnosticError::from_spanned(
                                 format!("Invalid font_size '{value}'"),
                                 &attr,
@@ -342,6 +333,7 @@ impl TypeDefinition {
                                 Some("Use a positive integer".to_string()),
                             )
                         })?;
+                        text_def.set_font_size(val);
                     }
                     _ => {
                         return Err(ElaborationDiagnosticError::from_spanned(
@@ -362,13 +354,13 @@ impl TypeDefinition {
         vec![
             Rc::new(Self {
                 id: TypeId::from_name("Rectangle"),
-                font_size: 15,
+                text_definition: Rc::new(RefCell::new(shape::TextDefinition::new())),
                 shape_definition: Rc::new(RefCell::new(shape::RectangleDefinition::new()))
                     as Rc<RefCell<dyn shape::ShapeDefinition>>,
             }),
             Rc::new(Self {
                 id: TypeId::from_name("Oval"),
-                font_size: 15,
+                text_definition: Rc::new(RefCell::new(shape::TextDefinition::new())),
                 shape_definition: Rc::new(RefCell::new(shape::OvalDefinition::new()))
                     as Rc<RefCell<dyn shape::ShapeDefinition>>,
             }),

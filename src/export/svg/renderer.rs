@@ -1,4 +1,8 @@
-use crate::{ast, layout::Point, shape::Shape};
+use crate::{
+    layout::Point,
+    shape::{Shape, TextDefinition},
+};
+use std::cell::Ref;
 use svg::node::element::{Ellipse, Group, Rectangle as SvgRectangle, Text};
 
 // Constants for rendering configuration
@@ -19,7 +23,7 @@ pub trait ShapeRenderer {
         &self,
         position: Point,
         shape: &Shape,
-        type_def: &ast::TypeDefinition,
+        text_def: Ref<TextDefinition>,
         text: &str,
         has_nested_blocks: bool,
     ) -> Group;
@@ -46,7 +50,7 @@ impl ShapeRenderer for RectangleRenderer {
         &self,
         position: Point,
         shape: &Shape,
-        type_def: &ast::TypeDefinition,
+        text_def: Ref<TextDefinition>,
         text: &str,
         has_nested_blocks: bool,
     ) -> Group {
@@ -90,7 +94,7 @@ impl ShapeRenderer for RectangleRenderer {
             .set("text-anchor", "middle")
             .set("dominant-baseline", "middle")
             .set("font-family", DEFAULT_FONT_FAMILY)
-            .set("font-size", type_def.font_size);
+            .set("font-size", text_def.font_size());
 
         group.add(rect).add(text_element)
     }
@@ -102,7 +106,7 @@ impl ShapeRenderer for OvalRenderer {
         &self,
         position: Point,
         shape: &Shape,
-        type_def: &ast::TypeDefinition,
+        text_def: Ref<TextDefinition>,
         text: &str,
         has_nested_blocks: bool,
     ) -> Group {
@@ -144,7 +148,7 @@ impl ShapeRenderer for OvalRenderer {
             .set("text-anchor", "middle")
             .set("dominant-baseline", "middle")
             .set("font-family", DEFAULT_FONT_FAMILY)
-            .set("font-size", type_def.font_size);
+            .set("font-size", text_def.font_size());
 
         group.add(ellipse).add(text_element)
     }

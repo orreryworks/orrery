@@ -27,7 +27,7 @@ impl TextManager {
 
     /// Calculate the actual size of text in pixels using cosmic-text
     /// This provides an accurate measurement based on real font metrics and shaping
-    pub fn calculate_text_size(&self, text: &str, font_size: usize) -> Size {
+    pub fn calculate_text_size(&self, text: &str, font_size: u16) -> Size {
         if text.is_empty() {
             return Size::default();
         }
@@ -91,6 +91,6 @@ lazy_static::lazy_static! {
 }
 
 /// Simplified convenience function that delegates to the TEXT_MANAGER
-pub fn calculate_text_size(text: &str, font_size: usize) -> Size {
+pub fn calculate_text_size(text: &str, font_size: u16) -> Size {
     TEXT_MANAGER.calculate_text_size(text, font_size)
 }

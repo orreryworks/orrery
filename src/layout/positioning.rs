@@ -92,7 +92,10 @@ pub fn distribute_horizontally(
 /// TODO why do I need this anymore? Can I use shape instead?
 pub fn calculate_bounded_text_size(node: &ast::Node, padding: f32) -> Size {
     // Calculate text size based on the node's display text and font size
-    let size = text::calculate_text_size(node.display_text(), node.type_definition.font_size);
+    let size = text::calculate_text_size(
+        node.display_text(),
+        node.type_definition.text_definition.borrow().font_size(),
+    );
 
     // Add padding around the text and ensure minimum size
     size.add_padding(padding)

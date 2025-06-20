@@ -30,7 +30,7 @@ impl Svg {
         renderer.render_to_svg(
             component.position,
             &component.shape,
-            type_def,
+            type_def.text_definition.borrow(),
             component.node.display_text(),
             has_nested_blocks,
         )
