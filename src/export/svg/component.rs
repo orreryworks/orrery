@@ -1,14 +1,13 @@
-use super::{arrows, renderer};
+use super::{Svg, arrows, renderer};
 use crate::{
     ast,
     layout::component,
     layout::layer::ContentStack,
-    layout::text,
     layout::{Bounds, Component, Point},
+    shape,
 };
+use std::{cell::RefCell, rc::Rc};
 use svg::node::element::{Group, Rectangle, Text};
-
-use super::Svg;
 
 impl Svg {
     // Find the point where a line from the shape entity to an external point intersects with the shape entity's boundary
@@ -69,8 +68,13 @@ impl Svg {
             // Add a small offset to position the label above the line
             let offset_y = -10.0;
 
+            // HACK: Fix it
+            let mut text_def = shape::TextDefinition::new();
+            text_def.set_font_size(14);
+            let text_def = Rc::new(RefCell::new(text_def));
+            let text = shape::Text::new(text_def, label.clone());
             // Calculate text dimensions
-            let text_size = text::calculate_text_size(label, 14);
+            let text_size = text.calculate_size();
 
             // Create a white background rectangle for better readability with correct dimensions
             let bg = Rectangle::new()

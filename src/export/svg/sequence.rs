@@ -1,13 +1,14 @@
+use super::{Svg, arrows, renderer};
 use crate::{
     ast,
     layout::{
         layer::ContentStack,
-        sequence, text, {Bounds, Point},
+        sequence, {Bounds, Point},
     },
+    shape,
 };
+use std::{cell::RefCell, rc::Rc};
 use svg::node::element::{Group, Line, Rectangle, Text};
-
-use super::{Svg, arrows, renderer};
 
 impl Svg {
     pub fn render_participant(&self, participant: &sequence::Participant) -> Group {
@@ -80,8 +81,13 @@ impl Svg {
             let mid_x = (source_x + target_x) / 2.0;
             let label_y = message_y - 15.0; // 15px above the message line
 
-            // Calculate text dimensions using cosmic-text
-            let text_size = text::calculate_text_size(label, 14);
+            // HACK: Fix it
+            let mut text_def = shape::TextDefinition::new();
+            text_def.set_font_size(14);
+            let text_def = Rc::new(RefCell::new(text_def));
+            let text = shape::Text::new(text_def, label.clone());
+            // Calculate text dimensions
+            let text_size = text.calculate_size();
 
             // Create a white background rectangle for better readability with correct dimensions
             let bg = Rectangle::new()
