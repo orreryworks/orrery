@@ -7,13 +7,13 @@ use crate::{
     ast,
     graph::{ContainmentScope, Graph},
     layout::{
-        component::{Layout, LayoutRelation, adjust_positioned_contents_offset},
+        component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
-        geometry::{Component, Point, Size},
+        geometry::{Point, Size},
         layer::{ContentStack, PositionedContent},
         positioning::calculate_bounded_text_size,
     },
-    shape::Shape,
+    shape::{Shape, Text},
 };
 use log::debug;
 use petgraph::graph::NodeIndex;
@@ -404,12 +404,12 @@ impl ComponentEngine for Engine {
                 .map(|(node_idx, node)| {
                     let position = *positions.get(&node_idx).unwrap();
                     let shape = component_shapes.remove(&node_idx).unwrap();
+                    let text = Text::new(
+                        Rc::clone(&node.type_definition.text_definition),
+                        node.display_text().to_string(),
+                    );
 
-                    Component {
-                        node,
-                        shape,
-                        position,
-                    }
+                    Component::new(node, shape, text, position)
                 })
                 .collect();
 
@@ -417,7 +417,7 @@ impl ComponentEngine for Engine {
             let component_indices: HashMap<_, _> = components
                 .iter()
                 .enumerate()
-                .map(|(idx, component)| (&component.node.id, idx))
+                .map(|(idx, component)| (component.node_id(), idx))
                 .collect();
 
             // Build the list of relations between components

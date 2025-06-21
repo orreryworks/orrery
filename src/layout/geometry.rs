@@ -1,6 +1,3 @@
-use crate::ast;
-use crate::shape::Shape;
-
 /// A trait for types that can calculate their own size
 pub trait LayoutSizing {
     /// Calculate the size of this layout, possibly adding padding
@@ -257,25 +254,6 @@ impl Bounds {
             max_x: self.max_x + padding,
             max_y: self.max_y + padding,
         }
-    }
-}
-
-/// Represents a diagram component with a reference to its AST node and positioning information
-/// TODO: Do I need Clone?!
-#[derive(Debug, Clone)]
-pub struct Component<'a> {
-    pub node: &'a ast::Node,
-    pub shape: Shape,
-    pub position: Point,
-}
-
-impl Component<'_> {
-    /// Calculates the bounds of this component
-    ///
-    /// The position is treated as the center of the component,
-    /// and the bounds extend half the width/height in each direction.
-    pub fn bounds(&self) -> Bounds {
-        self.shape.bounds(self.position)
     }
 }
 

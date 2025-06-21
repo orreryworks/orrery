@@ -1,12 +1,82 @@
 use crate::{
     ast, graph,
     layout::{
-        geometry::{Component, LayoutSizing, Size},
+        geometry::{self, LayoutSizing, Size},
         layer,
     },
+    shape,
 };
 use log::{debug, error};
 use std::collections::HashMap;
+
+/// Represents a diagram component with a reference to its AST node and positioning information
+/// TODO: Do I need Clone?!
+/// Find a better name and location for this struct.
+#[derive(Debug, Clone)]
+pub struct Component<'a> {
+    node: &'a ast::Node, // TODO: Can I get rid of this?
+    shape: shape::Shape,
+    text: shape::Text,
+    position: geometry::Point,
+}
+
+impl Component<'_> {
+    /// Creates a new component with the specified properties.
+    pub fn new<'a>(
+        node: &'a ast::Node,
+        shape: shape::Shape,
+        text: shape::Text,
+        position: geometry::Point,
+    ) -> Component<'a> {
+        Component {
+            node,
+            shape,
+            text,
+            position,
+        }
+    }
+
+    /// Returns a reference to the component's shape.
+    pub fn shape(&self) -> &shape::Shape {
+        &self.shape
+    }
+
+    /// Returns a reference to the component's text styling and content.
+    pub fn text(&self) -> &shape::Text {
+        &self.text
+    }
+
+    /// Returns the center position of the component.
+    ///
+    /// The position represents the center point of the component in the layout
+    /// coordinate system.
+    pub fn position(&self) -> geometry::Point {
+        self.position
+    }
+
+    /// Calculates the bounds of this component
+    ///
+    /// The position is treated as the center of the component,
+    /// and the bounds extend half the width/height in each direction.
+    pub fn bounds(&self) -> geometry::Bounds {
+        self.shape.bounds(self.position)
+    }
+
+    /// Returns the unique identifier of the AST node this component represents.
+    // TODO: Can I get rid of this method?
+    pub fn node_id(&self) -> &ast::TypeId {
+        &self.node.id
+    }
+
+    /// Checks whether this component contains nested diagram blocks.
+    ///
+    /// Returns `true` if the component's AST node contains nested blocks that
+    /// represent sub-diagrams or container structures, `false` otherwise.
+    // TODO: Remove this method.
+    pub fn has_nested_blocks(&self) -> bool {
+        self.node.block.has_nested_blocks()
+    }
+}
 
 /// Represents a relation (connection) in a component layout with positional information.
 ///
@@ -45,6 +115,11 @@ impl<'a> LayoutRelation<'a> {
     }
 }
 
+/// Represents a complete layout of components and their relationships.
+///
+/// A `Layout` contains all the positioned components and their connecting relations
+/// for a diagram. It provides methods to access related components and calculate
+/// overall layout dimensions.
 #[derive(Debug, Clone)]
 pub struct Layout<'a> {
     pub components: Vec<Component<'a>>,
@@ -52,10 +127,12 @@ pub struct Layout<'a> {
 }
 
 impl<'a> Layout<'a> {
+    /// Returns a reference to the source component of the given relation.
     pub fn source(&self, lr: &LayoutRelation<'a>) -> &Component<'a> {
         &self.components[lr.source_index]
     }
 
+    /// Returns a reference to the target component of the given relation.
     pub fn target(&self, lr: &LayoutRelation<'a>) -> &Component<'a> {
         &self.components[lr.target_index]
     }
@@ -83,7 +160,22 @@ impl<'a> LayoutSizing for Layout<'a> {
 
 /// Adjusts the offset of positioned contents in a content stack based on containment relationships.
 ///
-/// This method handles the proper positioning of nested elements within their containers.
+/// This function handles the proper positioning of nested elements within their containers.
+///
+/// # Arguments
+/// * `content_stack` - Mutable reference to the content stack containing all layout layers
+/// * `graph` - Reference to the containment graph that defines parent-child relationships
+///
+/// # Behavior
+/// The function processes containment scopes in reverse order to ensure proper nesting.
+/// For each nested element, it:
+/// 1. Finds the container component in the source layer
+/// 2. Calculates the target offset based on the container's bounds and shape properties
+/// 3. Updates the destination layer's offset to position the nested content correctly
+///
+/// # Panics
+/// Panics if a component referenced in the containment graph is not found in its
+/// corresponding layout layer.
 // TODO: Once added enough abstractions, make this a method on ContentStack.
 pub fn adjust_positioned_contents_offset<'a>(
     content_stack: &mut layer::ContentStack<Layout<'a>>,

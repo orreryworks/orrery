@@ -241,14 +241,14 @@ impl EngineBuilder {
                             // Check for embedded diagrams in each positioned content
                             for component in &positioned_content.content().components {
                                 if let Some(embedded_idx) =
-                                    container_element_to_layer.get(&component.node.id)
+                                    container_element_to_layer.get(component.node_id())
                                 {
                                     // Store information needed to position the embedded diagram within its container:
                                     // (container layer index, container position, container shape, embedded diagram layer index)
                                     embedded_diagrams.push((
                                         layer_idx,
-                                        component.position,
-                                        component.shape.clone(),
+                                        component.position(),
+                                        component.shape().clone(),
                                         *embedded_idx,
                                     ));
                                 }
@@ -260,14 +260,14 @@ impl EngineBuilder {
                         for positioned_content in layout.iter() {
                             for participant in &positioned_content.content().participants {
                                 if let Some(embedded_idx) =
-                                    container_element_to_layer.get(&participant.component.node.id)
+                                    container_element_to_layer.get(participant.component.node_id())
                                 {
                                     // Store information needed to position the embedded diagram within a sequence participant:
                                     // (container layer index, participant position, participant shape, embedded diagram layer index)
                                     embedded_diagrams.push((
                                         layer_idx,
-                                        participant.component.position,
-                                        participant.component.shape.clone(),
+                                        participant.component.position(),
+                                        participant.component.shape().clone(),
                                         *embedded_idx,
                                     ));
                                 }

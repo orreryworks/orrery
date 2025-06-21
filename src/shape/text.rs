@@ -35,6 +35,7 @@ impl Default for TextDefinition {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Text {
     definition: Rc<RefCell<TextDefinition>>,
     content: String,
@@ -146,9 +147,4 @@ impl TextManager {
 // Create a global instance for use throughout the application
 lazy_static::lazy_static! {
     static ref TEXT_MANAGER: TextManager = TextManager::new();
-}
-
-/// Simplified convenience function that delegates to the TEXT_MANAGER
-fn calculate_text_size(text: &str, font_size: u16) -> Size {
-    TEXT_MANAGER.calculate_text_size(text, font_size)
 }

@@ -1,7 +1,8 @@
 use crate::{
     ast, graph,
     layout::{
-        geometry::{Component, LayoutSizing, Size},
+        component,
+        geometry::{LayoutSizing, Size},
         layer,
     },
 };
@@ -10,7 +11,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct Participant<'a> {
-    pub component: Component<'a>,
+    pub component: component::Component<'a>,
     pub lifeline_end: f32, // y-coordinate where lifeline ends
 }
 
@@ -92,7 +93,7 @@ pub fn adjust_positioned_contents_offset<'a>(
                 .content()
                 .participants
                 .iter()
-                .find(|participant| participant.component.node.id == node.id)
+                .find(|participant| *participant.component.node_id() == node.id)
                 .expect("Participant must exist in source layer");
 
             let target_offset = source
@@ -101,7 +102,7 @@ pub fn adjust_positioned_contents_offset<'a>(
                 .add(
                     source_participant
                         .component
-                        .shape
+                        .shape()
                         .shape_to_container_min_point(),
                 ); // TODO: This does not account for text.
 

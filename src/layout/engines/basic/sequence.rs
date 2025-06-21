@@ -7,13 +7,14 @@ use crate::{
     ast,
     graph::Graph,
     layout::{
+        component::Component,
         engines::{EmbeddedLayouts, SequenceEngine},
-        geometry::{Component, Point, Size},
+        geometry::{Point, Size},
         layer::{ContentStack, PositionedContent},
         positioning::calculate_bounded_text_size,
         sequence::{Layout, Message, Participant, adjust_positioned_contents_offset},
     },
-    shape::Shape,
+    shape::{Shape, Text},
 };
 use petgraph::graph::NodeIndex;
 use std::{collections::HashMap, rc::Rc};
@@ -178,13 +179,14 @@ impl Engine {
         // Create participants and store their indices
         for (i, (node_idx, node)) in graph.nodes_with_indices().enumerate() {
             let shape = participant_shapes.remove(&node_idx).unwrap();
+            let text = Text::new(
+                Rc::clone(&node.type_definition.text_definition),
+                node.display_text().to_string(),
+            );
+            let position = Point::new(x_positions[i], self.top_margin);
 
             participants.push(Participant {
-                component: Component {
-                    node,
-                    shape,
-                    position: Point::new(x_positions[i], self.top_margin),
-                },
+                component: Component::new(node, shape, text, position),
                 lifeline_end: self.top_margin, // Will be updated later
             });
 
@@ -196,7 +198,7 @@ impl Engine {
         let mut current_y = self.top_margin
             + participants
                 .iter()
-                .map(|p| p.component.shape.shape_size().height())
+                .map(|p| p.component.shape().shape_size().height())
                 .max_by(|a, b| a.partial_cmp(b).unwrap())
                 .unwrap_or_default()
             + self.message_spacing;

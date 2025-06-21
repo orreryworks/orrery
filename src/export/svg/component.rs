@@ -3,7 +3,7 @@ use crate::{
     ast,
     layout::component,
     layout::layer::ContentStack,
-    layout::{Bounds, Component, Point},
+    layout::{Bounds, Point},
     shape,
 };
 use std::{cell::RefCell, rc::Rc};
@@ -11,42 +11,43 @@ use svg::node::element::{Group, Rectangle, Text};
 
 impl Svg {
     // Find the point where a line from the shape entity to an external point intersects with the shape entity's boundary
-    fn find_intersection(&self, shape_entity: &Component, external_point: Point) -> Point {
+    fn find_intersection(
+        &self,
+        shape_entity: &component::Component,
+        external_point: Point,
+    ) -> Point {
         shape_entity
-            .shape
-            .find_intersection(shape_entity.position, external_point)
+            .shape()
+            .find_intersection(shape_entity.position(), external_point)
     }
 
-    pub fn render_component(&self, component: &Component) -> Group {
-        let type_def = &*component.node.type_definition;
-
-        let has_nested_blocks = component.node.block.has_nested_blocks();
+    pub fn render_component(&self, component: &component::Component) -> Group {
+        let has_nested_blocks = component.has_nested_blocks();
 
         // Get the appropriate renderer based on the shape type
-        let renderer = renderer::get_renderer(&component.shape);
+        let renderer = renderer::get_renderer(component.shape());
 
         // Use the renderer to generate the SVG for the main component
         renderer.render_to_svg(
-            component.position,
-            &component.shape,
-            type_def.text_definition.borrow(),
-            component.node.display_text(),
+            component.position(),
+            component.shape(),
+            component.text(),
             has_nested_blocks,
         )
     }
 
     pub fn render_relation(
         &self,
-        source: &Component,
-        target: &Component,
+        source: &component::Component,
+        target: &component::Component,
         relation: &ast::Relation,
     ) -> Group {
         // Create a group to hold both the path and label
         let mut group = Group::new();
 
         // Calculate intersection points where the line meets each shape's boundary
-        let source_edge = self.find_intersection(source, target.position);
-        let target_edge = self.find_intersection(target, source.position);
+        let source_edge = self.find_intersection(source, target.position());
+        let target_edge = self.find_intersection(target, source.position());
 
         // Create the path with appropriate markers
         let path = arrows::create_path(

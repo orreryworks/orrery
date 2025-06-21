@@ -1,9 +1,8 @@
 use crate::{
     layout::Point,
-    shape::{Shape, TextDefinition},
+    shape::{Shape, Text},
 };
-use std::cell::Ref;
-use svg::node::element::{Ellipse, Group, Rectangle as SvgRectangle, Text};
+use svg::node::element::{Ellipse, Group, Rectangle as SvgRectangle, Text as SvgText};
 
 // Constants for rendering configuration
 const DEFAULT_TEXT_PADDING_FROM_TOP: f32 = 20.0;
@@ -14,22 +13,33 @@ const DEFAULT_FONT_FAMILY: &str = "Arial";
 pub trait ShapeRenderer {
     /// Render a shape to SVG based on the given properties
     ///
-    /// * `position` - The center position of the shape
-    /// * `size` - The size of the shape
-    /// * `type_def` - The type definition containing styling information
-    /// * `text` - The text to display (component name)
-    /// * `has_nested_blocks` - Whether this component contains nested blocks
+    /// # Arguments
+    /// * `position` - The center position of the shape in the coordinate system
+    /// * `shape` - The shape definition including size, type, and styling properties
+    /// * `text` - The text content and formatting to be rendered within the shape
+    /// * `has_nested_blocks` - Whether this component contains nested diagram elements
+    ///
+    /// # Returns
+    /// An SVG `Group` element containing the rendered shape and text
     fn render_to_svg(
         &self,
         position: Point,
         shape: &Shape,
-        text_def: Ref<TextDefinition>,
-        text: &str,
+        text: &Text,
         has_nested_blocks: bool,
     ) -> Group;
 }
 
-/// Helper function to get a shape renderer based on the shape type
+/// Returns the appropriate shape renderer for the given shape type.
+///
+/// This function acts as a factory method that selects the correct renderer
+/// implementation based on the shape's type.
+///
+/// # Arguments
+/// * `shape_type` - The shape whose renderer should be returned
+///
+/// # Returns
+/// A reference to a static renderer instance that can handle the given shape type.
 pub fn get_renderer(shape_type: &Shape) -> &'static dyn ShapeRenderer {
     match shape_type.name() {
         "Rectangle" => &RECTANGLE_RENDERER,
@@ -38,7 +48,10 @@ pub fn get_renderer(shape_type: &Shape) -> &'static dyn ShapeRenderer {
     }
 }
 
+/// Renderer implementation for rectangular shapes.
 struct RectangleRenderer;
+
+/// Renderer implementation for oval/elliptical shapes.
 struct OvalRenderer;
 
 static RECTANGLE_RENDERER: RectangleRenderer = RectangleRenderer;
@@ -50,13 +63,13 @@ impl ShapeRenderer for RectangleRenderer {
         &self,
         position: Point,
         shape: &Shape,
-        text_def: Ref<TextDefinition>,
-        text: &str,
+        text: &Text,
         has_nested_blocks: bool,
     ) -> Group {
         let group = Group::new();
         let size = shape.shape_size();
         let shape_def = shape.definition();
+        let text_def = text.definition();
 
         // Calculate the actual top-left position for the rectangle
         // (position is the center of the component)
@@ -88,7 +101,7 @@ impl ShapeRenderer for RectangleRenderer {
             position.y()
         };
 
-        let text_element = Text::new(text)
+        let text_element = SvgText::new(text.content())
             .set("x", position.x())
             .set("y", text_y)
             .set("text-anchor", "middle")
@@ -106,13 +119,13 @@ impl ShapeRenderer for OvalRenderer {
         &self,
         position: Point,
         shape: &Shape,
-        text_def: Ref<TextDefinition>,
-        text: &str,
+        text: &Text,
         has_nested_blocks: bool,
     ) -> Group {
         let group = Group::new();
         let size = shape.shape_size();
         let shape_def = shape.definition();
+        let text_def = text.definition();
 
         // Use ellipse which takes center point (cx, cy) plus radiuses (rx, ry)
         let rx = size.width() / 2.0;
@@ -142,7 +155,7 @@ impl ShapeRenderer for OvalRenderer {
             position.y()
         };
 
-        let text_element = Text::new(text)
+        let text_element = SvgText::new(text.content())
             .set("x", position.x())
             .set("y", text_y)
             .set("text-anchor", "middle")

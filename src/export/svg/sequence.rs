@@ -14,32 +14,31 @@ impl Svg {
     pub fn render_participant(&self, participant: &sequence::Participant) -> Group {
         let group = Group::new();
         let component = &participant.component;
-        let shape_def = component.shape.definition();
-        let type_def = &*component.node.type_definition;
+        let shape_def = component.shape().definition();
 
-        let has_nested_blocks = component.node.block.has_nested_blocks();
+        let has_nested_blocks = component.has_nested_blocks();
 
         // Use the shape from the component to render the appropriate shape via the renderer
-        let renderer = renderer::get_renderer(&component.shape);
+        let renderer = renderer::get_renderer(component.shape());
 
         // Use the renderer to generate the SVG for the participant
         let shape_group = renderer.render_to_svg(
-            component.position,
-            &component.shape,
-            type_def.text_definition.borrow(),
-            component.node.display_text(),
+            component.position(),
+            component.shape(),
+            component.text(),
             has_nested_blocks,
         );
 
         // Calculate where the lifeline should start (bottom of the shape)
         let component_bounds = component.bounds();
         let lifeline_start_y = component_bounds.max_y();
+        let position = component.position();
 
         // Lifeline
         let lifeline = Line::new()
-            .set("x1", component.position.x())
+            .set("x1", position.x())
             .set("y1", lifeline_start_y)
-            .set("x2", component.position.x())
+            .set("x2", position.x())
             .set("y2", participant.lifeline_end)
             .set("stroke", &shape_def.line_color())
             .set("stroke-width", 1)
@@ -54,8 +53,8 @@ impl Svg {
         let source = &layout.participants[message.source_index];
         let target = &layout.participants[message.target_index];
 
-        let source_x = source.component.position.x();
-        let target_x = target.component.position.x();
+        let source_x = source.component.position().x();
+        let target_x = target.component.position().x();
         let message_y = message.y_position;
 
         // Create points for the message line
