@@ -8,7 +8,7 @@ use crate::{
         layer::{ContentStack, PositionedContent},
         positioning::calculate_bounded_text_size,
     },
-    shape::{Shape, Text},
+    shape::Shape,
 };
 use log::debug;
 use petgraph::graph::NodeIndex;
@@ -99,12 +99,8 @@ impl Engine {
                 .map(|(node_idx, node)| {
                     let position = *positions.get(&node_idx).unwrap();
                     let shape = component_shapes.remove(&node_idx).unwrap();
-                    let text = Text::new(
-                        Rc::clone(&node.type_definition.text_definition),
-                        node.display_text().to_string(),
-                    );
 
-                    Component::new(node, shape, text, position)
+                    Component::new(node, shape, position)
                 })
                 .collect();
 

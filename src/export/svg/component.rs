@@ -1,12 +1,9 @@
 use super::{Svg, arrows, renderer};
 use crate::{
-    ast,
     layout::component,
     layout::layer::ContentStack,
-    layout::{Bounds, Point},
-    shape,
+    layout::{Bounds, Point, Size},
 };
-use std::{cell::RefCell, rc::Rc};
 use svg::node::element::{Group, Rectangle, Text};
 
 impl Svg {
@@ -40,7 +37,7 @@ impl Svg {
         &self,
         source: &component::Component,
         target: &component::Component,
-        relation: &ast::Relation,
+        relation: &component::LayoutRelation,
     ) -> Group {
         // Create a group to hold both the path and label
         let mut group = Group::new();
@@ -49,33 +46,30 @@ impl Svg {
         let source_edge = self.find_intersection(source, target.position());
         let target_edge = self.find_intersection(target, source.position());
 
+        let ast_relation = relation.relation();
         // Create the path with appropriate markers
         let path = arrows::create_path(
             source_edge,
             target_edge,
-            &relation.relation_type,
-            &relation.color,
-            relation.width,
-            &relation.arrow_style,
+            &ast_relation.relation_type,
+            &ast_relation.color,
+            ast_relation.width,
+            &ast_relation.arrow_style,
         );
 
         // Add the path to the group
         group = group.add(path);
 
         // Add label if it exists
-        if let Some(label) = &relation.label {
+        if let Some(label) = &ast_relation.label {
             let mid = source_edge.midpoint(target_edge);
 
             // Add a small offset to position the label above the line
             let offset_y = -10.0;
 
-            // HACK: Fix it
-            let mut text_def = shape::TextDefinition::new();
-            text_def.set_font_size(14);
-            let text_def = Rc::new(RefCell::new(text_def));
-            let text = shape::Text::new(text_def, label.clone());
             // Calculate text dimensions
-            let text_size = text.calculate_size();
+            let text = relation.text();
+            let text_size = text.map_or(Size::default(), |text| text.calculate_size());
 
             // Create a white background rectangle for better readability with correct dimensions
             let bg = Rectangle::new()

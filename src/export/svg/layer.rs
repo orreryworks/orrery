@@ -279,7 +279,7 @@ impl Svg {
             groups.push(self.render_relation(
                 content.source(relation),
                 content.target(relation),
-                relation.relation(),
+                relation,
             ));
         }
         groups

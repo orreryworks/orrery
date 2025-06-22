@@ -7,7 +7,7 @@ use crate::{
     shape,
 };
 use log::{debug, error};
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 /// Represents a diagram component with a reference to its AST node and positioning information
 /// TODO: Do I need Clone?!
@@ -25,9 +25,13 @@ impl Component<'_> {
     pub fn new<'a>(
         node: &'a ast::Node,
         shape: shape::Shape,
-        text: shape::Text,
         position: geometry::Point,
     ) -> Component<'a> {
+        // TODO: Can we construct the shape here?
+        let text = shape::Text::new(
+            Rc::clone(&node.type_definition.text_definition),
+            node.display_text().to_string(),
+        );
         Component {
             node,
             shape,
@@ -89,6 +93,7 @@ pub struct LayoutRelation<'a> {
     relation: &'a ast::Relation,
     source_index: usize,
     target_index: usize,
+    text: Option<shape::Text>, // Optional text label for the relation
 }
 
 impl<'a> LayoutRelation<'a> {
@@ -99,10 +104,19 @@ impl<'a> LayoutRelation<'a> {
     /// * `source_index` - Index of the source component in the layout
     /// * `target_index` - Index of the target component in the layout
     pub fn new(relation: &'a ast::Relation, source_index: usize, target_index: usize) -> Self {
+        let text = relation.label.as_ref().map(|label| {
+            // HACK: move it to the ast::Relation.
+            let mut text_def = shape::TextDefinition::new();
+            text_def.set_font_size(14);
+            let text_def = Rc::new(RefCell::new(text_def));
+
+            shape::Text::new(text_def, label.clone())
+        });
         Self {
             relation,
             source_index,
             target_index,
+            text,
         }
     }
 
@@ -112,6 +126,10 @@ impl<'a> LayoutRelation<'a> {
     /// attributes, and labels for rendering purposes.
     pub fn relation(&self) -> &ast::Relation {
         self.relation
+    }
+
+    pub fn text(&self) -> Option<&shape::Text> {
+        self.text.as_ref()
     }
 }
 

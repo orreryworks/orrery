@@ -14,7 +14,7 @@ use crate::{
         positioning::calculate_bounded_text_size,
         sequence::{Layout, Message, Participant, adjust_positioned_contents_offset},
     },
-    shape::{Shape, Text},
+    shape::Shape,
 };
 use petgraph::graph::NodeIndex;
 use std::{collections::HashMap, rc::Rc};
@@ -179,14 +179,10 @@ impl Engine {
         // Create participants and store their indices
         for (i, (node_idx, node)) in graph.nodes_with_indices().enumerate() {
             let shape = participant_shapes.remove(&node_idx).unwrap();
-            let text = Text::new(
-                Rc::clone(&node.type_definition.text_definition),
-                node.display_text().to_string(),
-            );
             let position = Point::new(x_positions[i], self.top_margin);
 
             participants.push(Participant {
-                component: Component::new(node, shape, text, position),
+                component: Component::new(node, shape, position),
                 lifeline_end: self.top_margin, // Will be updated later
             });
 
