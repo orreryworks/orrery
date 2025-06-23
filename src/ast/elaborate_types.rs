@@ -3,7 +3,7 @@ use crate::ast::span::Spanned;
 use crate::{color::Color, error::ElaborationDiagnosticError, shape};
 use serde::{Deserialize, Serialize};
 use std::{
-    cell::RefCell,
+    cell::{Ref, RefCell},
     fmt::{self, Display},
     rc::Rc,
     str::FromStr,
@@ -69,41 +69,13 @@ impl Node {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ArrowStyle {
-    Straight,
-    Curved,
-    Orthogonal,
-}
-
-impl Default for ArrowStyle {
-    fn default() -> Self {
-        Self::Straight
-    }
-}
-
-impl FromStr for ArrowStyle {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "straight" => Ok(Self::Straight),
-            "curved" => Ok(Self::Curved),
-            "orthogonal" => Ok(Self::Orthogonal),
-            _ => Err("Invalid arrow style"),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Relation {
     pub source: TypeId,
     pub target: TypeId,
     pub relation_type: RelationType,
-    pub color: Color,
-    pub width: usize,
-    pub arrow_style: ArrowStyle,
     label: Option<String>,
+    arrow_definition: Rc<RefCell<shape::ArrowDefinition>>,
     text_definition: Rc<RefCell<shape::TextDefinition>>,
 }
 
@@ -112,20 +84,16 @@ impl Relation {
         source: TypeId,
         target: TypeId,
         relation_type: RelationType,
-        color: Color,
-        width: usize,
-        arrow_style: ArrowStyle,
         label: Option<String>,
+        arrow_definition: Rc<RefCell<shape::ArrowDefinition>>,
         text_definition: Rc<RefCell<shape::TextDefinition>>,
     ) -> Self {
         Self {
             source,
             target,
             relation_type,
-            color,
-            width,
-            arrow_style,
             label,
+            arrow_definition,
             text_definition,
         }
     }
@@ -134,6 +102,11 @@ impl Relation {
         self.label
             .as_ref()
             .map(|label| shape::Text::new(Rc::clone(&self.text_definition), label.clone()))
+    }
+
+    /// Gets a reference to the arrow definition
+    pub fn arrow_definition(&self) -> Ref<shape::ArrowDefinition> {
+        self.arrow_definition.borrow()
     }
 }
 

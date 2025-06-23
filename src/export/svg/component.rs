@@ -47,14 +47,13 @@ impl Svg {
         let target_edge = self.find_intersection(target, source.position());
 
         let ast_relation = relation.relation();
+        let arrow_def = ast_relation.arrow_definition();
         // Create the path with appropriate markers
         let path = arrows::create_path(
             source_edge,
             target_edge,
             &ast_relation.relation_type,
-            &ast_relation.color,
-            ast_relation.width,
-            &ast_relation.arrow_style,
+            arrow_def,
         );
 
         // Add the path to the group

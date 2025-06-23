@@ -1,10 +1,7 @@
 use super::{Svg, arrows, renderer};
-use crate::{
-    ast,
-    layout::{
-        layer::ContentStack,
-        sequence, {Bounds, Point},
-    },
+use crate::layout::{
+    layer::ContentStack,
+    sequence, {Bounds, Point},
 };
 use svg::node::element::{Group, Line, Rectangle, Text};
 
@@ -60,13 +57,12 @@ impl Svg {
         let end_point = Point::new(target_x, message_y);
 
         // Create the path with appropriate markers - always use straight style for sequence diagrams
+        let arrow_def = message.relation.arrow_definition();
         let path = arrows::create_path(
             start_point,
             end_point,
             &message.relation.relation_type,
-            &message.relation.color,
-            message.relation.width,
-            &ast::ArrowStyle::Straight,
+            arrow_def,
         );
 
         // Add the path to the group

@@ -156,27 +156,23 @@ impl Svg {
         }
 
         // Create marker definitions for all collected colors
-        super::arrows::create_marker_definitions(all_colors.into_iter())
+        super::arrows::create_marker_definitions(all_colors.iter())
     }
 
     /// Collect colors from a single layer's content
-    fn collect_layer_colors<'a>(
-        &self,
-        content: &'a LayoutContent<'a>,
-        colors: &mut Vec<&'a Color>,
-    ) {
+    fn collect_layer_colors(&self, content: &LayoutContent, colors: &mut Vec<Color>) {
         match content {
             LayoutContent::Component(comp_layout) => {
                 for positioned_content in comp_layout.iter() {
                     for relation in &positioned_content.content().relations {
-                        colors.push(&relation.relation().color);
+                        colors.push(relation.relation().arrow_definition().color().clone());
                     }
                 }
             }
             LayoutContent::Sequence(seq_layout) => {
                 for positioned_content in seq_layout.iter() {
                     for message in &positioned_content.content().messages {
-                        colors.push(&message.relation.color);
+                        colors.push(message.relation.arrow_definition().color().clone());
                     }
                 }
             }

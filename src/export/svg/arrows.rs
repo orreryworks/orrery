@@ -1,8 +1,5 @@
-use crate::{
-    ast::{ArrowStyle, RelationType},
-    color::Color,
-    layout::Point,
-};
+use crate::{ast::RelationType, color::Color, layout::Point, shape};
+use std::cell::Ref;
 use svg::node::element::{Definitions, Marker, Path};
 
 /// Creates marker definitions for SVG arrows based on the colors in use
@@ -73,11 +70,11 @@ pub fn get_markers_for_relation(
 }
 
 /// Create a path data string for the given arrow style
-pub fn create_path_data_for_style(start: Point, end: Point, style: &ArrowStyle) -> String {
+pub fn create_path_data_for_style(start: Point, end: Point, style: &shape::ArrowStyle) -> String {
     match style {
-        ArrowStyle::Straight => create_path_data_from_points(start, end),
-        ArrowStyle::Curved => create_curved_path_data_from_points(start, end),
-        ArrowStyle::Orthogonal => create_orthogonal_path_data_from_points(start, end),
+        shape::ArrowStyle::Straight => create_path_data_from_points(start, end),
+        shape::ArrowStyle::Curved => create_curved_path_data_from_points(start, end),
+        shape::ArrowStyle::Orthogonal => create_orthogonal_path_data_from_points(start, end),
     }
 }
 
@@ -152,19 +149,19 @@ pub fn create_path(
     start: Point,
     end: Point,
     relation_type: &RelationType,
-    color: &Color,
-    width: usize,
-    arrow_style: &ArrowStyle,
+    arrow_def: Ref<shape::ArrowDefinition>,
 ) -> Path {
+    let color = arrow_def.color();
+
     // Generate path data based on arrow style
-    let path_data = create_path_data_for_style(start, end, arrow_style);
+    let path_data = create_path_data_for_style(start, end, arrow_def.arrow_style());
 
     // Create the path with the generated data
     let mut path = Path::new()
         .set("d", path_data)
         .set("fill", "none")
         .set("stroke", color.to_string())
-        .set("stroke-width", width);
+        .set("stroke-width", arrow_def.width());
 
     // Get marker references for this specific color
     let (start_marker, end_marker) = get_markers_for_relation(relation_type, color);

@@ -342,7 +342,8 @@ impl<'a> Builder<'a> {
                     attributes,
                     label,
                 } => {
-                    let (color, width, arrow_style) = self.parse_relation_attributes(attributes)?;
+                    let arrow_definition =
+                        self.create_arrow_definition_from_attributes(attributes)?;
 
                     // Create source and target IDs based on parent context if present
                     let source_id = self.create_type_id(parent_id, source);
@@ -352,10 +353,8 @@ impl<'a> Builder<'a> {
                         source_id,
                         target_id,
                         types::RelationType::from_str(relation_type),
-                        color,
-                        width,
-                        arrow_style,
                         label.as_ref().map(|l| l.to_string()),
+                        Rc::new(RefCell::new(arrow_definition)),
                         Rc::clone(&relation_text_def),
                     )));
                 }
@@ -445,62 +444,54 @@ impl<'a> Builder<'a> {
         )
     }
 
-    /// Parses relation attributes and returns color, width, and arrow style
-    fn parse_relation_attributes(
+    /// Parses relation attributes and creates an ArrowDefinition
+    fn create_arrow_definition_from_attributes(
         &self,
         attributes: &Spanned<Vec<Spanned<parser_types::Attribute<'_>>>>,
-    ) -> EResult<(Color, usize, types::ArrowStyle)> {
-        let mut color = Color::default();
-        let mut width = 1;
-        let mut arrow_style = types::ArrowStyle::default();
+    ) -> EResult<shape::ArrowDefinition> {
+        let mut arrow_def = shape::ArrowDefinition::new();
 
         // Process attributes with better error handling
         for attr in attributes.inner() {
             match *attr.name {
                 "color" => {
-                    color = match Color::new(&attr.value) {
-                        Ok(color) => color,
-                        Err(err) => {
-                            return Err(ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid color value '{}': {err}", attr.value,),
-                                &attr.value,
-                                "invalid color",
-                                Some("Color must be a valid CSS color value".to_string()),
-                            ));
-                        }
-                    }
+                    let color = Color::new(&attr.value).map_err(|err| {
+                        ElaborationDiagnosticError::from_spanned(
+                            format!("Invalid color value '{}': {err}", attr.value,),
+                            &attr.value,
+                            "invalid color",
+                            Some("Color must be a valid CSS color value".to_string()),
+                        )
+                    })?;
+                    arrow_def.set_color(color);
                 }
                 "width" => {
-                    width = match attr.value.parse::<usize>() {
-                        Ok(width) => width,
-                        Err(_) => {
-                            return Err(ElaborationDiagnosticError::from_spanned(
-                                format!(
-                                    "Invalid width value '{}': expected a positive integer",
-                                    attr.value
-                                ),
-                                &attr.value,
-                                "invalid width",
-                                Some("Width must be a positive integer".to_string()),
-                            ));
-                        }
-                    };
+                    let width = attr.value.parse::<usize>().map_err(|_| {
+                        ElaborationDiagnosticError::from_spanned(
+                            format!(
+                                "Invalid width value '{}': expected a positive integer",
+                                attr.value
+                            ),
+                            &attr.value,
+                            "invalid width",
+                            Some("Width must be a positive integer".to_string()),
+                        )
+                    })?;
+                    arrow_def.set_width(width);
                 }
                 "style" => {
-                    arrow_style = match types::ArrowStyle::from_str(&attr.value) {
-                        Ok(style) => style,
-                        Err(_) => {
-                            return Err(ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid arrow style '{}'", attr.value),
-                                &attr.value,
-                                "invalid style",
-                                Some(
-                                    "Arrow style must be 'straight', 'curved', or 'orthogonal'"
-                                        .to_string(),
-                                ),
-                            ));
-                        }
-                    };
+                    let arrow_style = shape::ArrowStyle::from_str(&attr.value).map_err(|_| {
+                        ElaborationDiagnosticError::from_spanned(
+                            format!("Invalid arrow style '{}'", attr.value),
+                            &attr.value,
+                            "invalid style",
+                            Some(
+                                "Arrow style must be 'straight', 'curved', or 'orthogonal'"
+                                    .to_string(),
+                            ),
+                        )
+                    })?;
+                    arrow_def.set_arrow_style(arrow_style);
                 }
                 _ => {
                     return Err(ElaborationDiagnosticError::from_spanned(
@@ -513,7 +504,7 @@ impl<'a> Builder<'a> {
             }
         }
 
-        Ok((color, width, arrow_style))
+        Ok(arrow_def)
     }
 
     /// Extract diagram attributes (layout engine and background color)

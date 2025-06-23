@@ -5,10 +5,12 @@ use crate::{
 use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 
+mod arrow;
 mod oval;
 mod rectangle;
 mod text;
 
+pub use arrow::{ArrowDefinition, ArrowStyle};
 pub use oval::OvalDefinition;
 pub use rectangle::RectangleDefinition;
 pub use text::{Text, TextDefinition};
