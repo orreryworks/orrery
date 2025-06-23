@@ -1,13 +1,12 @@
 use crate::{
     layout::Point,
-    shape::{Shape, Text},
+    shape::{Drawable, Shape, Text},
 };
-use svg::node::element::{Ellipse, Group, Rectangle as SvgRectangle, Text as SvgText};
+use svg::node::element as svg_element;
 
 // Constants for rendering configuration
 const DEFAULT_TEXT_PADDING_FROM_TOP: f32 = 20.0;
 const OVAL_TEXT_POSITION_FACTOR: f32 = 0.5;
-const DEFAULT_FONT_FAMILY: &str = "Arial";
 
 /// Trait for rendering shapes to SVG
 pub trait ShapeRenderer {
@@ -27,7 +26,7 @@ pub trait ShapeRenderer {
         shape: &Shape,
         text: &Text,
         has_nested_blocks: bool,
-    ) -> Group;
+    ) -> svg_element::Group;
 }
 
 /// Returns the appropriate shape renderer for the given shape type.
@@ -65,35 +64,18 @@ impl ShapeRenderer for RectangleRenderer {
         shape: &Shape,
         text: &Text,
         has_nested_blocks: bool,
-    ) -> Group {
-        let group = Group::new();
+    ) -> svg_element::Group {
+        let group = svg_element::Group::new();
         let size = shape.shape_size();
-        let shape_def = shape.definition();
-        let text_def = text.definition();
 
-        // Calculate the actual top-left position for the rectangle
-        // (position is the center of the component)
-        let rect_bounds = position.to_bounds(size);
-
-        // Main rectangle
-        let mut rect = SvgRectangle::new()
-            .set("x", rect_bounds.min_x())
-            .set("y", rect_bounds.min_y())
-            .set("width", size.width())
-            .set("height", size.height())
-            .set("stroke", shape_def.line_color().to_string())
-            .set("stroke-width", shape_def.line_width())
-            .set("fill", "white")
-            .set("rx", shape_def.rounded());
-
-        if let Some(fill_color) = shape_def.fill_color() {
-            rect = rect.set("fill", fill_color.to_string());
-        }
+        let rect = shape.render_to_svg(position);
 
         // Component name
         // If this component has nested blocks, position the text near the top
         // otherwise place it in the center of the rectangle
         let text_y = if has_nested_blocks {
+            let rect_bounds = position.to_bounds(size);
+
             // Position text near the top with a small padding
             rect_bounds.min_y() + DEFAULT_TEXT_PADDING_FROM_TOP
         } else {
@@ -101,13 +83,7 @@ impl ShapeRenderer for RectangleRenderer {
             position.y()
         };
 
-        let text_element = SvgText::new(text.content())
-            .set("x", position.x())
-            .set("y", text_y)
-            .set("text-anchor", "middle")
-            .set("dominant-baseline", "middle")
-            .set("font-family", DEFAULT_FONT_FAMILY)
-            .set("font-size", text_def.font_size());
+        let text_element = text.render_to_svg(Point::new(position.x(), text_y));
 
         group.add(rect).add(text_element)
     }
@@ -121,33 +97,18 @@ impl ShapeRenderer for OvalRenderer {
         shape: &Shape,
         text: &Text,
         has_nested_blocks: bool,
-    ) -> Group {
-        let group = Group::new();
+    ) -> svg_element::Group {
+        let group = svg_element::Group::new();
         let size = shape.shape_size();
-        let shape_def = shape.definition();
-        let text_def = text.definition();
 
-        // Use ellipse which takes center point (cx, cy) plus radiuses (rx, ry)
-        let rx = size.width() / 2.0;
-        let ry = size.height() / 2.0;
-
-        let mut ellipse = Ellipse::new()
-            .set("cx", position.x())
-            .set("cy", position.y())
-            .set("rx", rx)
-            .set("ry", ry)
-            .set("stroke", shape_def.line_color().to_string())
-            .set("stroke-width", shape_def.line_width())
-            .set("fill", "white");
-
-        if let Some(fill_color) = shape_def.fill_color() {
-            ellipse = ellipse.set("fill", fill_color.to_string());
-        }
+        let ellipse = shape.render_to_svg(position);
 
         // Component name
         // If this component has nested blocks, position the text near the top
         // otherwise place it in the center of the ellipse
         let text_y = if has_nested_blocks {
+            let ry = size.height() / 2.0;
+
             // Position text near the top with a small padding (adjust based on oval shape)
             ry.mul_add(-OVAL_TEXT_POSITION_FACTOR, position.y())
         } else {
@@ -155,13 +116,7 @@ impl ShapeRenderer for OvalRenderer {
             position.y()
         };
 
-        let text_element = SvgText::new(text.content())
-            .set("x", position.x())
-            .set("y", text_y)
-            .set("text-anchor", "middle")
-            .set("dominant-baseline", "middle")
-            .set("font-family", DEFAULT_FONT_FAMILY)
-            .set("font-size", text_def.font_size());
+        let text_element = text.render_to_svg(Point::new(position.x(), text_y));
 
         group.add(ellipse).add(text_element)
     }

@@ -15,6 +15,15 @@ pub use oval::OvalDefinition;
 pub use rectangle::RectangleDefinition;
 pub use text::{Text, TextDefinition};
 
+/// Trait for rendering objects to SVG format
+///
+/// This trait provides a common interface for converting geometric objects
+/// (shapes, text, etc.) into SVG elements that can be included in the final diagram.
+pub trait Drawable {
+    /// Render this object to an SVG node at the specified position
+    fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node>;
+}
+
 /// A trait for shape definitions that provide stateless calculations
 pub trait ShapeDefinition: std::fmt::Debug {
     /// Get a string identifier for this shape type
@@ -26,6 +35,8 @@ pub trait ShapeDefinition: std::fmt::Debug {
 
     /// Calculate the shape size needed to contain the given content size with padding
     fn calculate_shape_size(&self, content_size: Size, padding: f32) -> Size;
+
+    fn render_to_svg(&self, size: Size, position: Point) -> Box<dyn svg::Node>;
 
     fn clone_new_rc(&self) -> Rc<RefCell<dyn ShapeDefinition>>;
 
@@ -150,5 +161,13 @@ impl Shape {
     /// Calculates the bounds of this shape based on the center position.
     pub fn bounds(&self, position: Point) -> Bounds {
         position.to_bounds(self.shape_size())
+    }
+}
+
+impl Drawable for Shape {
+    fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
+        let size = self.shape_size();
+        let shape_def = self.definition.borrow();
+        shape_def.render_to_svg(size, position)
     }
 }

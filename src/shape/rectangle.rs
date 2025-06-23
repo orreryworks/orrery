@@ -3,8 +3,8 @@ use crate::{
     color::Color,
     layout::{Point, Size},
 };
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
+use svg::{self, node::element as svg_element};
 
 /// Rectangle shape definition
 #[derive(Debug, Clone)]
@@ -154,5 +154,28 @@ impl ShapeDefinition for RectangleDefinition {
     fn set_rounded(&mut self, radius: usize) -> Result<(), &'static str> {
         self.rounded = radius;
         Ok(())
+    }
+
+    fn render_to_svg(&self, size: Size, position: Point) -> Box<dyn svg::Node> {
+        // Calculate the actual top-left position for the rectangle
+        // (position is the center of the component)
+        let rect_bounds = position.to_bounds(size);
+
+        // Main rectangle
+        let mut rect = svg_element::Rectangle::new()
+            .set("x", rect_bounds.min_x())
+            .set("y", rect_bounds.min_y())
+            .set("width", size.width())
+            .set("height", size.height())
+            .set("stroke", self.line_color().to_string())
+            .set("stroke-width", self.line_width())
+            .set("fill", "white")
+            .set("rx", self.rounded());
+
+        if let Some(fill_color) = self.fill_color() {
+            rect = rect.set("fill", fill_color.to_string());
+        }
+
+        rect.into()
     }
 }

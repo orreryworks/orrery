@@ -3,8 +3,8 @@ use crate::{
     color::Color,
     layout::{Point, Size},
 };
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
+use svg::{self, node::element as svg_element};
 
 /// Oval shape definition
 #[derive(Debug, Clone)]
@@ -119,5 +119,26 @@ impl ShapeDefinition for OvalDefinition {
     fn set_line_width(&mut self, width: usize) -> Result<(), &'static str> {
         self.line_width = width;
         Ok(())
+    }
+
+    fn render_to_svg(&self, size: Size, position: Point) -> Box<dyn svg::Node> {
+        // Use ellipse which takes center point (cx, cy) plus radiuses (rx, ry)
+        let rx = size.width() / 2.0;
+        let ry = size.height() / 2.0;
+
+        let mut ellipse = svg_element::Ellipse::new()
+            .set("cx", position.x())
+            .set("cy", position.y())
+            .set("rx", rx)
+            .set("ry", ry)
+            .set("stroke", self.line_color().to_string())
+            .set("stroke-width", self.line_width())
+            .set("fill", "white");
+
+        if let Some(fill_color) = self.fill_color() {
+            ellipse = ellipse.set("fill", fill_color.to_string());
+        }
+
+        ellipse.into()
     }
 }

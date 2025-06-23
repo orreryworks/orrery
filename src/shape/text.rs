@@ -1,4 +1,7 @@
-use crate::layout::Size;
+use crate::{
+    layout::{Point, Size},
+    shape::Drawable,
+};
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
 use log::info;
 use std::{
@@ -6,6 +9,9 @@ use std::{
     rc::Rc,
     sync::{Arc, Mutex},
 };
+use svg::{self, node::element as svg_element};
+
+const DEFAULT_FONT_FAMILY: &str = "Arial";
 
 #[derive(Debug, Clone)]
 pub struct TextDefinition {
@@ -60,6 +66,22 @@ impl Text {
     /// Calculate the size required to display this text
     pub fn calculate_size(&self) -> Size {
         TEXT_MANAGER.calculate_text_size(&self.content, self.definition.borrow().font_size())
+    }
+}
+
+impl Drawable for Text {
+    fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
+        let text_def = self.definition.borrow();
+
+        let rendered = svg_element::Text::new(self.content())
+            .set("x", position.x())
+            .set("y", position.y())
+            .set("text-anchor", "middle")
+            .set("dominant-baseline", "middle")
+            .set("font-family", DEFAULT_FONT_FAMILY)
+            .set("font-size", text_def.font_size());
+
+        rendered.into()
     }
 }
 
