@@ -99,7 +99,7 @@ impl Engine {
             });
 
         // Extract labels from relations and use shared function to calculate spacing
-        let labels = relevant_messages.map(|relation| relation.label.as_ref());
+        let labels = relevant_messages.map(|relation| relation.text());
         crate::layout::positioning::calculate_label_spacing(labels, self.label_padding)
     }
 

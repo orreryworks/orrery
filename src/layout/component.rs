@@ -7,7 +7,7 @@ use crate::{
     shape,
 };
 use log::{debug, error};
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 /// Represents a diagram component with a reference to its AST node and positioning information
 /// TODO: Do I need Clone?!
@@ -104,14 +104,7 @@ impl<'a> LayoutRelation<'a> {
     /// * `source_index` - Index of the source component in the layout
     /// * `target_index` - Index of the target component in the layout
     pub fn new(relation: &'a ast::Relation, source_index: usize, target_index: usize) -> Self {
-        let text = relation.label.as_ref().map(|label| {
-            // HACK: move it to the ast::Relation.
-            let mut text_def = shape::TextDefinition::new();
-            text_def.set_font_size(14);
-            let text_def = Rc::new(RefCell::new(text_def));
-
-            shape::Text::new(text_def, label.clone())
-        });
+        let text = relation.text();
         Self {
             relation,
             source_index,

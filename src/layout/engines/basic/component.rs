@@ -13,14 +13,13 @@ use crate::{
         layer::{ContentStack, PositionedContent},
         positioning::calculate_bounded_text_size,
     },
-    shape::{self, Shape, Text},
+    shape::Shape,
 };
 use petgraph::{
     Direction,
     graph::{DiGraph, EdgeIndex, NodeIndex},
 };
 use std::{
-    cell::RefCell,
     cmp::Ordering,
     collections::{HashMap, HashSet, VecDeque},
     rc::Rc,
@@ -241,15 +240,9 @@ impl Engine {
         // Initialize spacings with default padding
         let mut layer_spacings = vec![self.padding; layers.len().saturating_sub(1)];
 
-        // HACK: fix it.
-        let mut text_def = shape::TextDefinition::new();
-        text_def.set_font_size(14);
-        let text_def = Rc::new(RefCell::new(text_def));
-
         // Adjust spacings based on relation labels
         for relation in graph.containment_scope_relations(containment_scope) {
-            if let Some(label) = &relation.label {
-                let text = Text::new(Rc::clone(&text_def), label.clone());
+            if let Some(text) = relation.text() {
                 let label_width = text.calculate_size().width();
 
                 // Find layers for source and target nodes

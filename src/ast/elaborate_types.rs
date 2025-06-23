@@ -103,7 +103,38 @@ pub struct Relation {
     pub color: Color,
     pub width: usize,
     pub arrow_style: ArrowStyle,
-    pub label: Option<String>,
+    label: Option<String>,
+    text_definition: Rc<RefCell<shape::TextDefinition>>,
+}
+
+impl Relation {
+    pub fn new(
+        source: TypeId,
+        target: TypeId,
+        relation_type: RelationType,
+        color: Color,
+        width: usize,
+        arrow_style: ArrowStyle,
+        label: Option<String>,
+        text_definition: Rc<RefCell<shape::TextDefinition>>,
+    ) -> Self {
+        Self {
+            source,
+            target,
+            relation_type,
+            color,
+            width,
+            arrow_style,
+            label,
+            text_definition,
+        }
+    }
+
+    pub fn text(&self) -> Option<shape::Text> {
+        self.label
+            .as_ref()
+            .map(|label| shape::Text::new(Rc::clone(&self.text_definition), label.clone()))
+    }
 }
 
 #[derive(Debug, Clone)]

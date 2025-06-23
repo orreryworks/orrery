@@ -1,9 +1,9 @@
 use super::{elaborate_types as types, parser_types};
 use crate::{
-    ast::span::Spanned, color::Color, config::AppConfig, error::ElaborationDiagnosticError,
+    ast::span::Spanned, color::Color, config::AppConfig, error::ElaborationDiagnosticError, shape,
 };
 use log::{debug, info, trace};
-use std::{collections::HashMap, rc::Rc, str::FromStr};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, str::FromStr};
 
 /// Type alias for Result with ElaborationDiagnosticError as the error type
 type EResult<T> = Result<T, ElaborationDiagnosticError>;
@@ -285,6 +285,11 @@ impl<'a> Builder<'a> {
         parent_id: Option<&types::TypeId>,
     ) -> EResult<types::Scope> {
         let mut elements = Vec::new();
+
+        // HACK: use an actual relation type.
+        let relation_text_def = Rc::new(RefCell::new(shape::TextDefinition::new()));
+        relation_text_def.borrow_mut().set_font_size(14);
+
         for parser_elm in parser_elements {
             match parser_elm.inner() {
                 parser_types::Element::Component {
@@ -306,10 +311,14 @@ impl<'a> Builder<'a> {
                         })?;
 
                     // Check if there's a nested diagram element
-                    let block = if nested_elements.len() == 1 && 
-                              matches!(nested_elements[0].inner(), parser_types::Element::Diagram(_)) {
+                    let block = if nested_elements.len() == 1
+                        && matches!(
+                            nested_elements[0].inner(),
+                            parser_types::Element::Diagram(_)
+                        ) {
                         // Handle a single diagram element specially
-                        let elaborated_diagram = self.build_diagram_from_embedded_diagram(&nested_elements[0])?;
+                        let elaborated_diagram =
+                            self.build_diagram_from_embedded_diagram(&nested_elements[0])?;
                         types::Block::Diagram(elaborated_diagram)
                     } else {
                         // Process regular nested elements
@@ -339,15 +348,16 @@ impl<'a> Builder<'a> {
                     let source_id = self.create_type_id(parent_id, source);
                     let target_id = self.create_type_id(parent_id, target);
 
-                    elements.push(types::Element::Relation(types::Relation {
-                        source: source_id,
-                        target: target_id,
-                        relation_type: types::RelationType::from_str(relation_type),
+                    elements.push(types::Element::Relation(types::Relation::new(
+                        source_id,
+                        target_id,
+                        types::RelationType::from_str(relation_type),
                         color,
                         width,
                         arrow_style,
-                        label: label.as_ref().map(|l| l.to_string()),
-                    }));
+                        label.as_ref().map(|l| l.to_string()),
+                        Rc::clone(&relation_text_def),
+                    )));
                 }
                 parser_types::Element::Diagram(_) => {
                     // This should never happen since we already filtered out invalid elements

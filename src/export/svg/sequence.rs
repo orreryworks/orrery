@@ -5,9 +5,7 @@ use crate::{
         layer::ContentStack,
         sequence, {Bounds, Point},
     },
-    shape,
 };
-use std::{cell::RefCell, rc::Rc};
 use svg::node::element::{Group, Line, Rectangle, Text};
 
 impl Svg {
@@ -75,17 +73,12 @@ impl Svg {
         group = group.add(path);
 
         // Add label if it exists
-        if let Some(label) = &message.relation.label {
+        if let Some(text) = message.relation.text() {
+            let text_def = text.definition();
             // Calculate position for the label (slightly above the message line)
             let mid_x = (source_x + target_x) / 2.0;
             let label_y = message_y - 15.0; // 15px above the message line
 
-            // HACK: Fix it
-            let mut text_def = shape::TextDefinition::new();
-            text_def.set_font_size(14);
-            let text_def = Rc::new(RefCell::new(text_def));
-            let text = shape::Text::new(text_def, label.clone());
-            // Calculate text dimensions
             let text_size = text.calculate_size();
 
             // Create a white background rectangle for better readability with correct dimensions
@@ -105,8 +98,8 @@ impl Svg {
                 .set("text-anchor", "middle")
                 .set("dominant-baseline", "middle")
                 .set("font-family", "Arial")
-                .set("font-size", 14)
-                .add(svg::node::Text::new(label));
+                .set("font-size", text_def.font_size())
+                .add(svg::node::Text::new(text.content()));
 
             // Add background and text to the group
             group = group.add(bg).add(text);

@@ -2,7 +2,7 @@ use super::{Svg, arrows, renderer};
 use crate::{
     layout::component,
     layout::layer::ContentStack,
-    layout::{Bounds, Point, Size},
+    layout::{Bounds, Point},
 };
 use svg::node::element::{Group, Rectangle, Text};
 
@@ -61,15 +61,14 @@ impl Svg {
         group = group.add(path);
 
         // Add label if it exists
-        if let Some(label) = &ast_relation.label {
+        if let Some(text) = relation.text() {
+            let text_def = text.definition();
             let mid = source_edge.midpoint(target_edge);
 
             // Add a small offset to position the label above the line
             let offset_y = -10.0;
 
-            // Calculate text dimensions
-            let text = relation.text();
-            let text_size = text.map_or(Size::default(), |text| text.calculate_size());
+            let text_size = text.calculate_size();
 
             // Create a white background rectangle for better readability with correct dimensions
             let bg = Rectangle::new()
@@ -88,8 +87,8 @@ impl Svg {
                 .set("text-anchor", "middle")
                 .set("dominant-baseline", "middle")
                 .set("font-family", "Arial")
-                .set("font-size", 14)
-                .add(svg::node::Text::new(label));
+                .set("font-size", text_def.font_size())
+                .add(svg::node::Text::new(text.content()));
 
             // Add background and text to the group
             group = group.add(bg).add(text);

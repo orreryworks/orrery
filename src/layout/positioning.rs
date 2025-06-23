@@ -4,7 +4,7 @@
 //! It contains reusable positioning logic that can be used by different layout engines.
 
 use crate::{ast, layout::geometry::Size, shape};
-use std::{cell::RefCell, iter::IntoIterator, rc::Rc};
+use std::{iter::IntoIterator, rc::Rc};
 
 /// Calculate additional spacing needed based on text labels
 ///
@@ -17,21 +17,15 @@ use std::{cell::RefCell, iter::IntoIterator, rc::Rc};
 ///
 /// # Returns
 /// The width needed for the widest label plus padding, or 0 if no labels
-pub fn calculate_label_spacing<'a, I>(labels: I, padding: f32) -> f32
+pub fn calculate_label_spacing<I>(texts: I, padding: f32) -> f32
 where
-    I: IntoIterator<Item = Option<&'a String>>,
+    I: IntoIterator<Item = Option<shape::Text>>,
 {
     // HACK: This is hacky, fix it.
-    let mut text_def = shape::TextDefinition::new();
-    text_def.set_font_size(14);
-    let text_def = Rc::new(RefCell::new(text_def));
-    labels
+    texts
         .into_iter()
         .flatten()
-        .map(|label| {
-            let text = shape::Text::new(Rc::clone(&text_def), label.clone());
-            text.calculate_size().width() + padding
-        })
+        .map(|text| text.calculate_size().width() + padding)
         .max_by(|a, b| a.partial_cmp(b).unwrap())
         .unwrap_or(0.0)
 }
