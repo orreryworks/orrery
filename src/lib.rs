@@ -1,11 +1,12 @@
 mod ast;
 mod color;
 mod config;
+mod draw;
 mod error;
 mod export;
+mod geometry;
 mod graph;
 mod layout;
-mod shape;
 
 use clap::Parser;
 use config::AppConfig;

@@ -4,17 +4,16 @@
 //! using a simple, deterministic algorithm.
 
 use crate::{
-    ast,
+    ast, draw,
+    geometry::{Point, Size},
     graph::Graph,
     layout::{
         component::Component,
         engines::{EmbeddedLayouts, SequenceEngine},
-        geometry::{Point, Size},
         layer::{ContentStack, PositionedContent},
         positioning::calculate_bounded_text_size,
         sequence::{Layout, Message, Participant, adjust_positioned_contents_offset},
     },
-    shape::Shape,
 };
 use petgraph::graph::NodeIndex;
 use std::{collections::HashMap, rc::Rc};
@@ -116,7 +115,7 @@ impl Engine {
         let mut participant_shapes: HashMap<_, _> = graph
             .nodes_with_indices()
             .map(|(node_idx, node)| {
-                let mut shape = Shape::new(Rc::clone(&node.type_definition.shape_definition));
+                let mut shape = draw::Shape::new(Rc::clone(&node.type_definition.shape_definition));
 
                 let content_size = if let ast::Block::Diagram(_) = &node.block {
                     // If this participant has an embedded diagram, use its layout size

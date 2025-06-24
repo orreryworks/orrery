@@ -1,6 +1,6 @@
 use crate::{
-    layout::{Point, Size},
-    shape::Drawable,
+    draw::Drawable,
+    geometry::{Point, Size},
 };
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
 use log::info;

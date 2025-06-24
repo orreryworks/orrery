@@ -1,6 +1,6 @@
 use super::{elaborate_types as types, parser_types};
 use crate::{
-    ast::span::Spanned, color::Color, config::AppConfig, error::ElaborationDiagnosticError, shape,
+    ast::span::Spanned, color::Color, config::AppConfig, draw, error::ElaborationDiagnosticError,
 };
 use log::{debug, info, trace};
 use std::{cell::RefCell, collections::HashMap, rc::Rc, str::FromStr};
@@ -287,7 +287,7 @@ impl<'a> Builder<'a> {
         let mut elements = Vec::new();
 
         // HACK: use an actual relation type.
-        let relation_text_def = Rc::new(RefCell::new(shape::TextDefinition::new()));
+        let relation_text_def = Rc::new(RefCell::new(draw::TextDefinition::new()));
         relation_text_def.borrow_mut().set_font_size(14);
 
         for parser_elm in parser_elements {
@@ -448,8 +448,8 @@ impl<'a> Builder<'a> {
     fn create_arrow_definition_from_attributes(
         &self,
         attributes: &Spanned<Vec<Spanned<parser_types::Attribute<'_>>>>,
-    ) -> EResult<shape::ArrowDefinition> {
-        let mut arrow_def = shape::ArrowDefinition::new();
+    ) -> EResult<draw::ArrowDefinition> {
+        let mut arrow_def = draw::ArrowDefinition::new();
 
         // Process attributes with better error handling
         for attr in attributes.inner() {
@@ -480,7 +480,7 @@ impl<'a> Builder<'a> {
                     arrow_def.set_width(width);
                 }
                 "style" => {
-                    let arrow_style = shape::ArrowStyle::from_str(&attr.value).map_err(|_| {
+                    let arrow_style = draw::ArrowStyle::from_str(&attr.value).map_err(|_| {
                         ElaborationDiagnosticError::from_spanned(
                             format!("Invalid arrow style '{}'", attr.value),
                             &attr.value,

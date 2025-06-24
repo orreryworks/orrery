@@ -15,14 +15,14 @@ mod sugiyama;
 
 use crate::{
     ast::{DiagramKind, LayoutEngine, TypeId},
+    draw,
+    geometry::{self, Point},
     graph::{Collection, Graph},
     layout::{
         component,
-        geometry::{self, Point},
         layer::{LayeredLayout, LayoutContent},
         sequence,
     },
-    shape::Shape,
 };
 use log::trace;
 use std::collections::HashMap;
@@ -197,7 +197,7 @@ impl EngineBuilder {
 
         // Track container-embedded diagram relationships for position adjustment in the second phase
         // Format: (container_layer_idx, container_position, container_shape, embedded_layer_idx)
-        let mut embedded_diagrams: Vec<(usize, Point, Shape, usize)> = Vec::new();
+        let mut embedded_diagrams: Vec<(usize, Point, draw::Shape, usize)> = Vec::new();
 
         // First phase: calculate all layouts
         for (type_id, graph) in collection.diagram_tree_in_post_order() {

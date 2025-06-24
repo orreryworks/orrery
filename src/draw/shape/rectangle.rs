@@ -1,7 +1,7 @@
 use super::ShapeDefinition;
 use crate::{
     color::Color,
-    layout::{Point, Size},
+    geometry::{Point, Size},
 };
 use std::{cell::RefCell, rc::Rc};
 use svg::{self, node::element as svg_element};

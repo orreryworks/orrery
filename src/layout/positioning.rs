@@ -3,7 +3,7 @@
 //! This module provides algorithms for calculating element positions in diagrams.
 //! It contains reusable positioning logic that can be used by different layout engines.
 
-use crate::{ast, layout::geometry::Size, shape};
+use crate::{ast, draw, geometry::Size};
 use std::{iter::IntoIterator, rc::Rc};
 
 /// Calculate additional spacing needed based on text labels
@@ -19,7 +19,7 @@ use std::{iter::IntoIterator, rc::Rc};
 /// The width needed for the widest label plus padding, or 0 if no labels
 pub fn calculate_label_spacing<I>(texts: I, padding: f32) -> f32
 where
-    I: IntoIterator<Item = Option<shape::Text>>,
+    I: IntoIterator<Item = Option<draw::Text>>,
 {
     // HACK: This is hacky, fix it.
     texts
@@ -90,7 +90,7 @@ pub fn distribute_horizontally(
 /// TODO why do I need this anymore? Can I use shape instead?
 pub fn calculate_bounded_text_size(node: &ast::Node, padding: f32) -> Size {
     // Calculate text size based on the node's display text and font size
-    let text = shape::Text::new(
+    let text = draw::Text::new(
         Rc::clone(&node.type_definition.text_definition),
         node.display_text().to_string(),
     );

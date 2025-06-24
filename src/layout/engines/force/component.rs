@@ -4,16 +4,15 @@
 //! for component diagrams.
 
 use crate::{
-    ast,
+    ast, draw,
+    geometry::{Point, Size},
     graph::{ContainmentScope, Graph},
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
-        geometry::{Point, Size},
         layer::{ContentStack, PositionedContent},
         positioning::calculate_bounded_text_size,
     },
-    shape::Shape,
 };
 use log::debug;
 use petgraph::graph::NodeIndex;
@@ -105,11 +104,11 @@ impl Engine {
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<NodeIndex, Size>,
         embedded_layouts: &EmbeddedLayouts<'_>,
-    ) -> HashMap<NodeIndex, Shape> {
-        let mut component_shapes: HashMap<NodeIndex, Shape> = HashMap::new();
+    ) -> HashMap<NodeIndex, draw::Shape> {
+        let mut component_shapes: HashMap<NodeIndex, draw::Shape> = HashMap::new();
 
         for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
-            let mut shape = Shape::new(Rc::clone(&node.type_definition.shape_definition));
+            let mut shape = draw::Shape::new(Rc::clone(&node.type_definition.shape_definition));
             let content_size = match node.block {
                 ast::Block::Diagram(_) => {
                     // Since we process in post-order (innermost to outermost),

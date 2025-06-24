@@ -1,10 +1,8 @@
 use crate::{
-    layout::{
-        component,
-        geometry::{Bounds, LayoutSizing, Point, Size},
-        sequence,
-    },
-    shape::Shape,
+    draw,
+    geometry::{Bounds, LayoutSizing, Point, Size},
+    layout::component,
+    layout::sequence,
 };
 use log::debug;
 
@@ -75,7 +73,7 @@ impl<'a> LayeredLayout<'a> {
         &mut self,
         container_idx: usize,
         container_position: Point,
-        shape: &Shape,
+        shape: &draw::Shape,
         embedded_idx: usize,
         padding: f32,
     ) {

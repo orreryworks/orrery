@@ -1,4 +1,4 @@
-use crate::{ast::RelationType, color::Color, layout::Point, shape};
+use crate::{ast::RelationType, color::Color, draw, geometry::Point};
 use std::cell::Ref;
 use svg::node::element::{Definitions, Marker, Path};
 
@@ -70,11 +70,11 @@ pub fn get_markers_for_relation(
 }
 
 /// Create a path data string for the given arrow style
-pub fn create_path_data_for_style(start: Point, end: Point, style: &shape::ArrowStyle) -> String {
+pub fn create_path_data_for_style(start: Point, end: Point, style: &draw::ArrowStyle) -> String {
     match style {
-        shape::ArrowStyle::Straight => create_path_data_from_points(start, end),
-        shape::ArrowStyle::Curved => create_curved_path_data_from_points(start, end),
-        shape::ArrowStyle::Orthogonal => create_orthogonal_path_data_from_points(start, end),
+        draw::ArrowStyle::Straight => create_path_data_from_points(start, end),
+        draw::ArrowStyle::Curved => create_curved_path_data_from_points(start, end),
+        draw::ArrowStyle::Orthogonal => create_orthogonal_path_data_from_points(start, end),
     }
 }
 
@@ -149,7 +149,7 @@ pub fn create_path(
     start: Point,
     end: Point,
     relation_type: &RelationType,
-    arrow_def: Ref<shape::ArrowDefinition>,
+    arrow_def: Ref<draw::ArrowDefinition>,
 ) -> Path {
     let color = arrow_def.color();
 

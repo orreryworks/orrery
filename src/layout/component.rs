@@ -1,10 +1,8 @@
 use crate::{
-    ast, graph,
-    layout::{
-        geometry::{self, LayoutSizing, Size},
-        layer,
-    },
-    shape,
+    ast, draw,
+    geometry::{self, LayoutSizing, Size},
+    graph,
+    layout::layer,
 };
 use log::{debug, error};
 use std::{collections::HashMap, rc::Rc};
@@ -15,8 +13,8 @@ use std::{collections::HashMap, rc::Rc};
 #[derive(Debug, Clone)]
 pub struct Component<'a> {
     node: &'a ast::Node, // TODO: Can I get rid of this?
-    shape: shape::Shape,
-    text: shape::Text,
+    shape: draw::Shape,
+    text: draw::Text,
     position: geometry::Point,
 }
 
@@ -24,11 +22,11 @@ impl Component<'_> {
     /// Creates a new component with the specified properties.
     pub fn new<'a>(
         node: &'a ast::Node,
-        shape: shape::Shape,
+        shape: draw::Shape,
         position: geometry::Point,
     ) -> Component<'a> {
         // TODO: Can we construct the shape here?
-        let text = shape::Text::new(
+        let text = draw::Text::new(
             Rc::clone(&node.type_definition.text_definition),
             node.display_text().to_string(),
         );
@@ -41,12 +39,12 @@ impl Component<'_> {
     }
 
     /// Returns a reference to the component's shape.
-    pub fn shape(&self) -> &shape::Shape {
+    pub fn shape(&self) -> &draw::Shape {
         &self.shape
     }
 
     /// Returns a reference to the component's text styling and content.
-    pub fn text(&self) -> &shape::Text {
+    pub fn text(&self) -> &draw::Text {
         &self.text
     }
 
@@ -93,7 +91,7 @@ pub struct LayoutRelation<'a> {
     relation: &'a ast::Relation,
     source_index: usize,
     target_index: usize,
-    text: Option<shape::Text>, // Optional text label for the relation
+    text: Option<draw::Text>, // Optional text label for the relation
 }
 
 impl<'a> LayoutRelation<'a> {
@@ -121,7 +119,7 @@ impl<'a> LayoutRelation<'a> {
         self.relation
     }
 
-    pub fn text(&self) -> Option<&shape::Text> {
+    pub fn text(&self) -> Option<&draw::Text> {
         self.text.as_ref()
     }
 }

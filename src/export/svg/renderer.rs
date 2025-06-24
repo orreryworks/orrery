@@ -1,6 +1,6 @@
 use crate::{
-    layout::Point,
-    shape::{Drawable, Shape, Text},
+    draw::{self, Drawable},
+    geometry::Point,
 };
 use svg::node::element as svg_element;
 
@@ -23,8 +23,8 @@ pub trait ShapeRenderer {
     fn render_to_svg(
         &self,
         position: Point,
-        shape: &Shape,
-        text: &Text,
+        shape: &draw::Shape,
+        text: &draw::Text,
         has_nested_blocks: bool,
     ) -> svg_element::Group;
 }
@@ -39,7 +39,7 @@ pub trait ShapeRenderer {
 ///
 /// # Returns
 /// A reference to a static renderer instance that can handle the given shape type.
-pub fn get_renderer(shape_type: &Shape) -> &'static dyn ShapeRenderer {
+pub fn get_renderer(shape_type: &draw::Shape) -> &'static dyn ShapeRenderer {
     match shape_type.name() {
         "Rectangle" => &RECTANGLE_RENDERER,
         "Oval" => &OVAL_RENDERER,
@@ -61,8 +61,8 @@ impl ShapeRenderer for RectangleRenderer {
     fn render_to_svg(
         &self,
         position: Point,
-        shape: &Shape,
-        text: &Text,
+        shape: &draw::Shape,
+        text: &draw::Text,
         has_nested_blocks: bool,
     ) -> svg_element::Group {
         let group = svg_element::Group::new();
@@ -94,8 +94,8 @@ impl ShapeRenderer for OvalRenderer {
     fn render_to_svg(
         &self,
         position: Point,
-        shape: &Shape,
-        text: &Text,
+        shape: &draw::Shape,
+        text: &draw::Text,
         has_nested_blocks: bool,
     ) -> svg_element::Group {
         let group = svg_element::Group::new();

@@ -1,8 +1,8 @@
 use super::{Svg, arrows, renderer};
 use crate::{
+    geometry::{Bounds, Point},
     layout::component,
     layout::layer::ContentStack,
-    layout::{Bounds, Point},
 };
 use svg::node::element::{Group, Rectangle, Text};
 

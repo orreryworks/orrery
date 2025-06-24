@@ -1,10 +1,6 @@
 use crate::{
-    ast,
-    color::Color,
-    config::StyleConfig,
-    error::FilamentError,
-    export,
-    layout::{Size, layer::LayeredLayout},
+    ast, color::Color, config::StyleConfig, error::FilamentError, export, geometry::Size,
+    layout::layer::LayeredLayout,
 };
 use log::{debug, error, info};
 use std::{fs::File, io::Write};

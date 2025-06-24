@@ -1,7 +1,7 @@
 use super::{Svg, arrows, renderer};
-use crate::layout::{
-    layer::ContentStack,
-    sequence, {Bounds, Point},
+use crate::{
+    geometry::{Bounds, Point},
+    layout::{layer::ContentStack, sequence},
 };
 use svg::node::element::{Group, Line, Rectangle, Text};
 

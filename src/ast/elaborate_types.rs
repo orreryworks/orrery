@@ -1,6 +1,6 @@
 use super::parser_types;
 use crate::ast::span::Spanned;
-use crate::{color::Color, error::ElaborationDiagnosticError, shape};
+use crate::{color::Color, draw, error::ElaborationDiagnosticError};
 use serde::{Deserialize, Serialize};
 use std::{
     cell::{Ref, RefCell},
@@ -75,8 +75,8 @@ pub struct Relation {
     pub target: TypeId,
     pub relation_type: RelationType,
     label: Option<String>,
-    arrow_definition: Rc<RefCell<shape::ArrowDefinition>>,
-    text_definition: Rc<RefCell<shape::TextDefinition>>,
+    arrow_definition: Rc<RefCell<draw::ArrowDefinition>>,
+    text_definition: Rc<RefCell<draw::TextDefinition>>,
 }
 
 impl Relation {
@@ -85,8 +85,8 @@ impl Relation {
         target: TypeId,
         relation_type: RelationType,
         label: Option<String>,
-        arrow_definition: Rc<RefCell<shape::ArrowDefinition>>,
-        text_definition: Rc<RefCell<shape::TextDefinition>>,
+        arrow_definition: Rc<RefCell<draw::ArrowDefinition>>,
+        text_definition: Rc<RefCell<draw::TextDefinition>>,
     ) -> Self {
         Self {
             source,
@@ -98,14 +98,14 @@ impl Relation {
         }
     }
 
-    pub fn text(&self) -> Option<shape::Text> {
+    pub fn text(&self) -> Option<draw::Text> {
         self.label
             .as_ref()
-            .map(|label| shape::Text::new(Rc::clone(&self.text_definition), label.clone()))
+            .map(|label| draw::Text::new(Rc::clone(&self.text_definition), label.clone()))
     }
 
     /// Gets a reference to the arrow definition
-    pub fn arrow_definition(&self) -> Ref<shape::ArrowDefinition> {
+    pub fn arrow_definition(&self) -> Ref<draw::ArrowDefinition> {
         self.arrow_definition.borrow()
     }
 }
@@ -130,8 +130,8 @@ pub enum DiagramKind {
 #[derive(Debug)]
 pub struct TypeDefinition {
     pub id: TypeId,
-    pub text_definition: Rc<RefCell<shape::TextDefinition>>,
-    pub shape_definition: Rc<RefCell<dyn shape::ShapeDefinition>>,
+    pub text_definition: Rc<RefCell<draw::TextDefinition>>,
+    pub shape_definition: Rc<RefCell<dyn draw::ShapeDefinition>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -358,15 +358,15 @@ impl TypeDefinition {
         vec![
             Rc::new(Self {
                 id: TypeId::from_name("Rectangle"),
-                text_definition: Rc::new(RefCell::new(shape::TextDefinition::new())),
-                shape_definition: Rc::new(RefCell::new(shape::RectangleDefinition::new()))
-                    as Rc<RefCell<dyn shape::ShapeDefinition>>,
+                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
+                shape_definition: Rc::new(RefCell::new(draw::RectangleDefinition::new()))
+                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
             }),
             Rc::new(Self {
                 id: TypeId::from_name("Oval"),
-                text_definition: Rc::new(RefCell::new(shape::TextDefinition::new())),
-                shape_definition: Rc::new(RefCell::new(shape::OvalDefinition::new()))
-                    as Rc<RefCell<dyn shape::ShapeDefinition>>,
+                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
+                shape_definition: Rc::new(RefCell::new(draw::OvalDefinition::new()))
+                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
             }),
         ]
     }

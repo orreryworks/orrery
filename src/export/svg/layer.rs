@@ -1,7 +1,8 @@
 use crate::{
     color::Color,
+    geometry::{Bounds, LayoutSizing},
     layout::{
-        Bounds, LayoutSizing, component,
+        component,
         layer::{ContentStack, Layer, LayeredLayout, LayoutContent},
         sequence,
     },

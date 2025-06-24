@@ -1,28 +1,16 @@
 use crate::{
     color::Color,
-    layout::{Bounds, Point, Size},
+    draw::Drawable,
+    geometry::{Bounds, Point, Size},
 };
 use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 
-mod arrow;
 mod oval;
 mod rectangle;
-mod text;
 
-pub use arrow::{ArrowDefinition, ArrowStyle};
 pub use oval::OvalDefinition;
 pub use rectangle::RectangleDefinition;
-pub use text::{Text, TextDefinition};
-
-/// Trait for rendering objects to SVG format
-///
-/// This trait provides a common interface for converting geometric objects
-/// (shapes, text, etc.) into SVG elements that can be included in the final diagram.
-pub trait Drawable {
-    /// Render this object to an SVG node at the specified position
-    fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node>;
-}
 
 /// A trait for shape definitions that provide stateless calculations
 pub trait ShapeDefinition: std::fmt::Debug {

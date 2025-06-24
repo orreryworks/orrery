@@ -1,10 +1,8 @@
 use crate::{
-    ast, graph,
-    layout::{
-        component,
-        geometry::{LayoutSizing, Size},
-        layer,
-    },
+    ast,
+    geometry::{LayoutSizing, Size},
+    graph,
+    layout::{component, layer},
 };
 use log::{debug, error};
 use std::collections::HashMap;
