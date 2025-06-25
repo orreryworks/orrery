@@ -10,8 +10,8 @@
 
 // Layout engine modules with different implementations
 mod basic;
-mod force;
-mod sugiyama;
+// mod force;
+// mod sugiyama;
 
 use crate::{
     ast::{DiagramKind, LayoutEngine, TypeId},
@@ -136,30 +136,30 @@ impl EngineBuilder {
             .entry(engine_type)
             .or_insert_with(|| {
                 let engine: Box<dyn ComponentEngine> = match engine_type {
-                    LayoutEngine::Basic => {
+                    // LayoutEngine::Basic => {
+                    _ => {
                         let mut e = basic::Component::new();
                         // Configure the engine with our settings
                         e.set_padding(self.component_padding);
                         e.set_min_spacing(self.min_component_spacing);
                         Box::new(e)
-                    }
-                    LayoutEngine::Force => {
-                        let mut e = force::Component::new();
-                        // Configure the force-directed engine
-                        e.set_padding(self.component_padding)
-                            .set_text_padding(self.message_spacing)
-                            .set_min_distance(self.min_component_spacing)
-                            .set_iterations(self.force_simulation_iterations);
-                        Box::new(e)
-                    }
-                    LayoutEngine::Sugiyama => {
-                        let mut e = sugiyama::Component::new();
-                        // Configure the hierarchical engine
-                        e.set_horizontal_spacing(self.min_component_spacing);
-                        e.set_vertical_spacing(self.min_component_spacing);
-                        e.set_container_padding(self.component_padding);
-                        Box::new(e)
-                    }
+                    } // LayoutEngine::Force => {
+                      //     let mut e = force::Component::new();
+                      //     // Configure the force-directed engine
+                      //     e.set_padding(self.component_padding)
+                      //         .set_text_padding(self.message_spacing)
+                      //         .set_min_distance(self.min_component_spacing)
+                      //         .set_iterations(self.force_simulation_iterations);
+                      //     Box::new(e)
+                      // }
+                      // LayoutEngine::Sugiyama => {
+                      //     let mut e = sugiyama::Component::new();
+                      //     // Configure the hierarchical engine
+                      //     e.set_horizontal_spacing(self.min_component_spacing);
+                      //     e.set_vertical_spacing(self.min_component_spacing);
+                      //     e.set_container_padding(self.component_padding);
+                      //     Box::new(e)
+                      // }
                 };
                 engine
             });

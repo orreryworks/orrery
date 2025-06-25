@@ -1,8 +1,12 @@
 mod arrow;
+mod group;
+mod positioned;
 mod shape;
 mod text;
 
 pub use arrow::{ArrowDefinition, ArrowStyle};
+pub use group::Group;
+pub use positioned::PositionedDrawable;
 pub use shape::{OvalDefinition, RectangleDefinition, Shape, ShapeDefinition};
 pub use text::{Text, TextDefinition};
 

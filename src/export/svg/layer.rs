@@ -217,7 +217,7 @@ impl Svg {
     }
 
     /// Render layer content by dispatching to appropriate content-specific renderer
-    fn render_layer_content(&self, content: &LayoutContent) -> Vec<Group> {
+    fn render_layer_content(&self, content: &LayoutContent) -> Vec<Box<dyn svg::Node>> {
         match content {
             LayoutContent::Component(layout) => self
                 .render_content_stack(layout, |svg, content| svg.render_component_content(content)),
@@ -230,8 +230,8 @@ impl Svg {
     fn render_content_stack<T: LayoutSizing>(
         &self,
         content_stack: &ContentStack<T>,
-        render_fn: impl Fn(&Self, &T) -> Vec<Group>,
-    ) -> Vec<Group> {
+        render_fn: impl Fn(&Self, &T) -> Vec<Box<dyn svg::Node>>,
+    ) -> Vec<Box<dyn svg::Node>> {
         let mut groups = Vec::with_capacity(content_stack.len());
         // Render all positioned content in the stack (reverse order for proper layering)
         for positioned_content in content_stack.iter().rev() {
@@ -258,13 +258,13 @@ impl Svg {
                 });
 
             // Add the positioned group to the layer
-            groups.push(positioned_group);
+            groups.push(positioned_group.into());
         }
         groups
     }
 
     /// Render component-specific content
-    fn render_component_content(&self, content: &component::Layout) -> Vec<Group> {
+    fn render_component_content(&self, content: &component::Layout) -> Vec<Box<dyn svg::Node>> {
         let mut groups = Vec::with_capacity(content.components.len() + content.relations.len());
         // Render all components within this positioned content
         for component in &content.components {
@@ -283,7 +283,7 @@ impl Svg {
     }
 
     /// Render sequence-specific content
-    fn render_sequence_content(&self, content: &sequence::Layout) -> Vec<Group> {
+    fn render_sequence_content(&self, content: &sequence::Layout) -> Vec<Box<dyn svg::Node>> {
         let mut groups = Vec::with_capacity(content.participants.len() + content.messages.len());
         // Render all participants within this positioned content
         for participant in &content.participants {

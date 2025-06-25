@@ -18,18 +18,11 @@ impl Svg {
             .find_intersection(shape_entity.position(), external_point)
     }
 
-    pub fn render_component(&self, component: &component::Component) -> Group {
-        let has_nested_blocks = component.has_nested_blocks();
-
-        // Get the appropriate renderer based on the shape type
-        let renderer = renderer::get_renderer(component.shape());
-
-        // Use the renderer to generate the SVG for the main component
-        renderer.render_to_svg(
+    pub fn render_component(&self, component: &component::Component) -> Box<dyn svg::Node> {
+        renderer::render_shape_and_text_to_svg(
             component.position(),
             component.shape(),
             component.text(),
-            has_nested_blocks,
         )
     }
 
@@ -38,7 +31,7 @@ impl Svg {
         source: &component::Component,
         target: &component::Component,
         relation: &component::LayoutRelation,
-    ) -> Group {
+    ) -> Box<dyn svg::Node> {
         // Create a group to hold both the path and label
         let mut group = Group::new();
 
@@ -93,7 +86,7 @@ impl Svg {
             group = group.add(bg).add(text);
         }
 
-        group
+        group.into()
     }
 
     pub fn calculate_component_diagram_bounds(

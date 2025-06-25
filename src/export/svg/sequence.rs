@@ -6,22 +6,16 @@ use crate::{
 use svg::node::element::{Group, Line, Rectangle, Text};
 
 impl Svg {
-    pub fn render_participant(&self, participant: &sequence::Participant) -> Group {
+    pub fn render_participant(&self, participant: &sequence::Participant) -> Box<dyn svg::Node> {
         let group = Group::new();
         let component = &participant.component;
         let shape_def = component.shape().definition();
 
-        let has_nested_blocks = component.has_nested_blocks();
-
-        // Use the shape from the component to render the appropriate shape via the renderer
-        let renderer = renderer::get_renderer(component.shape());
-
         // Use the renderer to generate the SVG for the participant
-        let shape_group = renderer.render_to_svg(
+        let shape_group = renderer::render_shape_and_text_to_svg(
             component.position(),
             component.shape(),
             component.text(),
-            has_nested_blocks,
         );
 
         // Calculate where the lifeline should start (bottom of the shape)
@@ -39,10 +33,14 @@ impl Svg {
             .set("stroke-width", 1)
             .set("stroke-dasharray", "4");
 
-        group.add(shape_group).add(lifeline)
+        group.add(shape_group).add(lifeline).into()
     }
 
-    pub fn render_message(&self, message: &sequence::Message, layout: &sequence::Layout) -> Group {
+    pub fn render_message(
+        &self,
+        message: &sequence::Message,
+        layout: &sequence::Layout,
+    ) -> Box<dyn svg::Node> {
         let mut group = Group::new();
 
         let source = &layout.participants[message.source_index];
@@ -101,7 +99,7 @@ impl Svg {
             group = group.add(bg).add(text);
         }
 
-        group
+        group.into()
     }
 
     pub fn calculate_sequence_diagram_bounds(
