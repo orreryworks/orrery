@@ -15,6 +15,7 @@ impl Svg {
     ) -> Point {
         shape_entity
             .shape()
+            .inner()
             .find_intersection(shape_entity.position(), external_point)
     }
 

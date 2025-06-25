@@ -9,7 +9,6 @@ impl Svg {
     pub fn render_participant(&self, participant: &sequence::Participant) -> Box<dyn svg::Node> {
         let group = Group::new();
         let component = &participant.component;
-        let shape_def = component.shape().definition();
 
         // Use the renderer to generate the SVG for the participant
         let shape_group = renderer::render_shape_and_text_to_svg(
@@ -29,7 +28,7 @@ impl Svg {
             .set("y1", lifeline_start_y)
             .set("x2", position.x())
             .set("y2", participant.lifeline_end)
-            .set("stroke", &shape_def.line_color())
+            .set("stroke", "Black") // TODO: &shape_def.line_color())
             .set("stroke-width", 1)
             .set("stroke-dasharray", "4");
 

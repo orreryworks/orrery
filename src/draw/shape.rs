@@ -1,9 +1,9 @@
 use crate::{
     color::Color,
     draw::Drawable,
-    geometry::{Bounds, Point, Size},
+    geometry::{Point, Size},
 };
-use std::cell::{Ref, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 mod oval;
@@ -14,9 +14,6 @@ pub use rectangle::RectangleDefinition;
 
 /// A trait for shape definitions that provide stateless calculations
 pub trait ShapeDefinition: std::fmt::Debug {
-    /// Get a string identifier for this shape type
-    fn name(&self) -> &'static str;
-
     /// Find the intersection point where a line from point a to point b intersects with this shape
     /// centered at point a with the given size
     fn find_intersection(&self, a: Point, b: Point, a_size: &Size) -> Point;
@@ -91,14 +88,6 @@ impl Shape {
         }
     }
 
-    pub fn definition(&self) -> Ref<dyn ShapeDefinition> {
-        self.definition.borrow()
-    }
-
-    pub fn name(&self) -> &'static str {
-        self.definition.borrow().name()
-    }
-
     pub fn content_size(&self) -> Size {
         self.content_size
     }
@@ -145,11 +134,6 @@ impl Shape {
         )
         .scale(0.5)
     }
-
-    /// Calculates the bounds of this shape based on the center position.
-    pub fn bounds(&self, position: Point) -> Bounds {
-        position.to_bounds(self.shape_size())
-    }
 }
 
 impl Drawable for Shape {
@@ -157,5 +141,9 @@ impl Drawable for Shape {
         let size = self.shape_size();
         let shape_def = self.definition.borrow();
         shape_def.render_to_svg(size, position)
+    }
+
+    fn size(&self) -> Size {
+        self.shape_size() // TODO merge them.
     }
 }

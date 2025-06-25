@@ -193,7 +193,7 @@ impl Engine {
         let mut current_y = self.top_margin
             + participants
                 .iter()
-                .map(|p| p.component.shape().shape_size().height())
+                .map(|p| p.component.shape().inner().shape_size().height())
                 .max_by(|a, b| a.partial_cmp(b).unwrap())
                 .unwrap_or_default()
             + self.message_spacing;

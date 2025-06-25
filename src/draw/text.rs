@@ -83,6 +83,10 @@ impl Drawable for Text {
 
         rendered.into()
     }
+
+    fn size(&self) -> Size {
+        self.calculate_size() // TODO: merge them.
+    }
 }
 
 /// TextManager handles text measurement and font operations

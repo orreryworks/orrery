@@ -72,8 +72,7 @@ impl<'a> LayeredLayout<'a> {
     pub fn adjust_relative_position(
         &mut self,
         container_idx: usize,
-        container_position: Point,
-        shape: &draw::Shape,
+        positioned_shape: &draw::PositionedDrawable<draw::Shape>,
         embedded_idx: usize,
         padding: f32,
     ) {
@@ -83,10 +82,10 @@ impl<'a> LayeredLayout<'a> {
             .expect("container_idx and embedded_idx must be valid, distinct indices");
 
         // Calculate the bounds of the container
-        let container_bounds = shape.bounds(container_position);
+        let container_bounds = positioned_shape.bounds();
 
         debug!(
-            container_position:?, shape:?, container_bounds:?, padding,
+            positioned_shape:?, container_bounds:?, padding,
             container_idx, container_offset:?=container_layer.offset, container_clip_bounds:?=container_layer.clip_bounds,
             embedded_idx, embedded_offset:?=embedded_layer.offset, embedded_clip_bounds:?=embedded_layer.clip_bounds;
             "Embedded layer before adjustment",
@@ -100,7 +99,7 @@ impl<'a> LayeredLayout<'a> {
             .offset
             .add(container_layer.offset)
             .add(container_bounds.min_point())
-            .add(shape.shape_to_container_min_point());
+            .add(positioned_shape.inner().shape_to_container_min_point());
 
         // Set clip bounds with padding
         let padded_clip_bounds = container_bounds

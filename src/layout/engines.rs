@@ -15,8 +15,7 @@ mod basic;
 
 use crate::{
     ast::{DiagramKind, LayoutEngine, TypeId},
-    draw,
-    geometry::{self, Point},
+    draw, geometry,
     graph::{Collection, Graph},
     layout::{
         component,
@@ -197,7 +196,8 @@ impl EngineBuilder {
 
         // Track container-embedded diagram relationships for position adjustment in the second phase
         // Format: (container_layer_idx, container_position, container_shape, embedded_layer_idx)
-        let mut embedded_diagrams: Vec<(usize, Point, draw::Shape, usize)> = Vec::new();
+        let mut embedded_diagrams: Vec<(usize, draw::PositionedDrawable<draw::Shape>, usize)> =
+            Vec::new();
 
         // First phase: calculate all layouts
         for (type_id, graph) in collection.diagram_tree_in_post_order() {
@@ -247,7 +247,6 @@ impl EngineBuilder {
                                     // (container layer index, container position, container shape, embedded diagram layer index)
                                     embedded_diagrams.push((
                                         layer_idx,
-                                        component.position(),
                                         component.shape().clone(),
                                         *embedded_idx,
                                     ));
@@ -266,7 +265,6 @@ impl EngineBuilder {
                                     // (container layer index, participant position, participant shape, embedded diagram layer index)
                                     embedded_diagrams.push((
                                         layer_idx,
-                                        participant.component.position(),
                                         participant.component.shape().clone(),
                                         *embedded_idx,
                                     ));
@@ -284,13 +282,10 @@ impl EngineBuilder {
         }
 
         // Second phase: Apply position adjustments and set up clipping bounds for embedded diagrams
-        for (container_idx, container_position, shape, embedded_idx) in
-            embedded_diagrams.into_iter().rev()
-        {
+        for (container_idx, positioned_shape, embedded_idx) in embedded_diagrams.into_iter().rev() {
             layered_layout.adjust_relative_position(
                 container_idx,
-                container_position,
-                &shape,
+                &positioned_shape,
                 embedded_idx,
                 self.component_padding,
             );

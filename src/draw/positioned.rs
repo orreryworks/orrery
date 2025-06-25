@@ -1,21 +1,22 @@
 //! Provides `PositionedDrawable`, a wrapper for a Drawable and its absolute position.
 
 use crate::draw::Drawable;
-use crate::geometry::Point;
+use crate::geometry::{Bounds, Point, Size};
 
 /// A drawable object together with an absolute position.
 ///
 /// Calls `render_to_svg` on the wrapped drawable, passing in the stored position.
-pub struct PositionedDrawable {
-    drawable: Box<dyn Drawable>,
+#[derive(Debug, Clone)]
+pub struct PositionedDrawable<D: Drawable> {
+    drawable: D,
     position: Point,
 }
 
-impl PositionedDrawable {
+impl<D: Drawable> PositionedDrawable<D> {
     /// Construct a new `PositionedDrawable` from a drawable (position defaults to zero).
-    pub fn new<D: Drawable + 'static>(drawable: D) -> Self {
+    pub fn new(drawable: D) -> Self {
         Self {
-            drawable: Box::new(drawable),
+            drawable,
             position: Point::default(),
         }
     }
@@ -26,8 +27,29 @@ impl PositionedDrawable {
         self
     }
 
-    /// Render this positioned drawable to SVG, using the inner drawable's implementation.
+    /// Render this positioned drawable to SVG, using the inner drawable\'s implementation.
     pub fn render_to_svg(&self) -> Box<dyn svg::Node> {
         self.drawable.render_to_svg(self.position)
+    }
+
+    /// Calculate the bounds of this positioned drawable.
+    pub fn bounds(&self) -> Bounds {
+        self.position.to_bounds(self.drawable.size())
+    }
+
+    /// Get a reference to the inner drawable
+    pub fn inner(&self) -> &D {
+        &self.drawable
+    }
+}
+
+impl<D: Drawable> Drawable for PositionedDrawable<D> {
+    fn render_to_svg(&self, _position: Point) -> Box<dyn svg::Node> {
+        // Ignore the passed position and use our stored position
+        self.render_to_svg()
+    }
+
+    fn size(&self) -> Size {
+        self.drawable.size()
     }
 }

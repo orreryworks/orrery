@@ -1,14 +1,14 @@
 //! Provides a container to group multiple `Drawable` objects with relative positioning.
 
 use crate::draw::Drawable;
-use crate::geometry::Point;
+use crate::geometry::{Point, Size};
 use svg::{self, node::element as svg_element};
 
 /// A drawable group for holding multiple children with relative offsets.
 ///
 /// When rendered, it produces an SVG `<g>` with each child positioned at its own offset
 /// relative to the group's origin.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Group {
     items: Vec<GroupItem>,
 }
@@ -23,16 +23,6 @@ impl Group {
     pub fn add<D: Drawable + 'static>(&mut self, drawable: D, offset: Point) {
         self.items.push(GroupItem::new(Box::new(drawable), offset));
     }
-
-    /// Returns the number of children.
-    pub fn len(&self) -> usize {
-        self.items.len()
-    }
-
-    /// Returns true if empty.
-    pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
-    }
 }
 
 impl Drawable for Group {
@@ -45,9 +35,20 @@ impl Drawable for Group {
         }
         Box::new(group)
     }
+
+    fn size(&self) -> Size {
+        // TODO: This logic is wrong!
+        let mut total_size = Size::default();
+        for item in &self.items {
+            let size = item.drawable.size();
+            total_size = total_size.max(size);
+        }
+        total_size
+    }
 }
 
 /// Private item in a Group: wraps a child Drawable and its offset.
+#[derive(Debug)]
 struct GroupItem {
     drawable: Box<dyn Drawable>,
     offset: Point,

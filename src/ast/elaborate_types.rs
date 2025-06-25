@@ -193,17 +193,6 @@ pub enum Block {
     Diagram(Diagram),
 }
 
-impl Block {
-    /// Returns true if this block contains any elements
-    pub fn has_nested_blocks(&self) -> bool {
-        match self {
-            Self::None => false,
-            Self::Scope(scope) => !scope.elements.is_empty(),
-            Self::Diagram(diagram) => !diagram.scope.elements.is_empty(),
-        }
-    }
-}
-
 impl TypeId {
     /// Creates a `TypeId` from a component name as defined in the diagram
     pub fn from_name(name: &str) -> Self {

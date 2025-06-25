@@ -101,6 +101,7 @@ pub fn adjust_positioned_contents_offset<'a>(
                     source_participant
                         .component
                         .shape()
+                        .inner()
                         .shape_to_container_min_point(),
                 ); // TODO: This does not account for text.
 

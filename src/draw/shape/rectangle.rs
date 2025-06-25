@@ -107,10 +107,6 @@ impl ShapeDefinition for RectangleDefinition {
         )
     }
 
-    fn name(&self) -> &'static str {
-        "Rectangle"
-    }
-
     fn calculate_shape_size(&self, content_size: Size, padding: f32) -> Size {
         let min_size = Size::new(10.0, 10.0);
         content_size.add_padding(padding).max(min_size)

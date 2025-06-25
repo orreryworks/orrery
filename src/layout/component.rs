@@ -12,10 +12,10 @@ use std::{collections::HashMap, rc::Rc};
 /// Find a better name and location for this struct.
 #[derive(Debug, Clone)]
 pub struct Component<'a> {
-    node: &'a ast::Node, // TODO: Can I get rid of this?
-    shape: draw::Shape,
+    node_id: &'a ast::TypeId, // TODO: Can I get rid of this?
     text: draw::Text,
     position: geometry::Point,
+    drawable_shape: Rc<draw::PositionedDrawable<draw::Shape>>, // TODO: Consider removing Rc.
 }
 
 impl Component<'_> {
@@ -30,17 +30,18 @@ impl Component<'_> {
             Rc::clone(&node.type_definition.text_definition),
             node.display_text().to_string(),
         );
+        let drawable_shape = Rc::new(draw::PositionedDrawable::new(shape).with_position(position));
         Component {
-            node,
-            shape,
+            node_id: &node.id,
             text,
             position,
+            drawable_shape,
         }
     }
 
     /// Returns a reference to the component's shape.
-    pub fn shape(&self) -> &draw::Shape {
-        &self.shape
+    pub fn shape(&self) -> &draw::PositionedDrawable<draw::Shape> {
+        &self.drawable_shape
     }
 
     /// Returns a reference to the component's text styling and content.
@@ -61,22 +62,13 @@ impl Component<'_> {
     /// The position is treated as the center of the component,
     /// and the bounds extend half the width/height in each direction.
     pub fn bounds(&self) -> geometry::Bounds {
-        self.shape.bounds(self.position)
+        self.drawable_shape.bounds()
     }
 
     /// Returns the unique identifier of the AST node this component represents.
     // TODO: Can I get rid of this method?
     pub fn node_id(&self) -> &ast::TypeId {
-        &self.node.id
-    }
-
-    /// Checks whether this component contains nested diagram blocks.
-    ///
-    /// Returns `true` if the component's AST node contains nested blocks that
-    /// represent sub-diagrams or container structures, `false` otherwise.
-    // TODO: Remove this method.
-    pub fn has_nested_blocks(&self) -> bool {
-        self.node.block.has_nested_blocks()
+        self.node_id
     }
 }
 
@@ -216,12 +208,17 @@ pub fn adjust_positioned_contents_offset<'a>(
                 .content()
                 .components
                 .iter()
-                .find(|component| component.node.id == node.id)
+                .find(|component| component.node_id == &node.id)
                 .expect("Component must exist in source layer");
             let target_offset = source
                 .offset()
                 .add(source_component.bounds().min_point())
-                .add(source_component.shape.shape_to_container_min_point()); // TODO: This does not account for text.
+                .add(
+                    source_component
+                        .drawable_shape
+                        .inner()
+                        .shape_to_container_min_point(),
+                ); // TODO: This does not account for text.
             debug!(
                 node_id:? = node.id,
                 source_offset:? = source.offset();

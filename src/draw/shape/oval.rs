@@ -74,10 +74,6 @@ impl ShapeDefinition for OvalDefinition {
         )
     }
 
-    fn name(&self) -> &'static str {
-        "Oval"
-    }
-
     fn calculate_shape_size(&self, content_size: Size, padding: f32) -> Size {
         // The largest rectangle that fits in an ellipse with semi-axes (a,b) has dimensions:
         // width = a√2, height = b√2
