@@ -1,8 +1,7 @@
 use crate::{
     draw,
-    geometry::{Bounds, LayoutSizing, Point, Size},
-    layout::component,
-    layout::sequence,
+    geometry::{Bounds, Point, Size},
+    layout::{component, positioning::LayoutSizing, sequence},
 };
 use log::debug;
 

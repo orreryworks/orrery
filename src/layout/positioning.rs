@@ -6,6 +6,12 @@
 use crate::{draw, geometry::Size};
 use std::iter::IntoIterator;
 
+/// A trait for types that can calculate their own size
+pub trait LayoutSizing {
+    /// Calculate the size of this layout, possibly adding padding
+    fn layout_size(&self) -> Size;
+}
+
 /// Calculate additional spacing needed based on text labels
 ///
 /// This function examines a collection of optional text labels and determines

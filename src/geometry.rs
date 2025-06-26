@@ -1,9 +1,3 @@
-/// A trait for types that can calculate their own size
-pub trait LayoutSizing {
-    /// Calculate the size of this layout, possibly adding padding
-    fn layout_size(&self) -> Size;
-}
-
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Point {
     x: f32,
