@@ -1,4 +1,4 @@
-use super::{Svg, arrows, renderer};
+use super::{Svg, arrows};
 use crate::{
     geometry::{Bounds, Point},
     layout::{layer::ContentStack, sequence},
@@ -11,11 +11,7 @@ impl Svg {
         let component = &participant.component;
 
         // Use the renderer to generate the SVG for the participant
-        let shape_group = renderer::render_shape_and_text_to_svg(
-            component.position(),
-            component.shape(),
-            component.text(),
-        );
+        let shape_group = component.drawable().render_to_svg();
 
         // Calculate where the lifeline should start (bottom of the shape)
         let component_bounds = component.bounds();

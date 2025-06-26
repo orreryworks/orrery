@@ -13,40 +13,27 @@ use std::{collections::HashMap, rc::Rc};
 #[derive(Debug, Clone)]
 pub struct Component<'a> {
     node_id: &'a ast::TypeId, // TODO: Can I get rid of this?
-    text: draw::Text,
-    position: geometry::Point,
-    drawable_shape: Rc<draw::PositionedDrawable<draw::Shape>>, // TODO: Consider removing Rc.
+    drawable: Rc<draw::PositionedDrawable<draw::ShapeWithText>>, // TODO: Consider removing Rc.
 }
 
 impl Component<'_> {
     /// Creates a new component with the specified properties.
     pub fn new<'a>(
         node: &'a ast::Node,
-        shape: draw::Shape,
+        shape_with_text: draw::ShapeWithText,
         position: geometry::Point,
     ) -> Component<'a> {
-        // TODO: Can we construct the shape here?
-        let text = draw::Text::new(
-            Rc::clone(&node.type_definition.text_definition),
-            node.display_text().to_string(),
-        );
-        let drawable_shape = Rc::new(draw::PositionedDrawable::new(shape).with_position(position));
+        let drawable =
+            Rc::new(draw::PositionedDrawable::new(shape_with_text).with_position(position));
         Component {
             node_id: &node.id,
-            text,
-            position,
-            drawable_shape,
+            drawable,
         }
     }
 
     /// Returns a reference to the component's shape.
-    pub fn shape(&self) -> &draw::PositionedDrawable<draw::Shape> {
-        &self.drawable_shape
-    }
-
-    /// Returns a reference to the component's text styling and content.
-    pub fn text(&self) -> &draw::Text {
-        &self.text
+    pub fn drawable(&self) -> &draw::PositionedDrawable<draw::ShapeWithText> {
+        &self.drawable
     }
 
     /// Returns the center position of the component.
@@ -54,7 +41,7 @@ impl Component<'_> {
     /// The position represents the center point of the component in the layout
     /// coordinate system.
     pub fn position(&self) -> geometry::Point {
-        self.position
+        self.drawable.position()
     }
 
     /// Calculates the bounds of this component
@@ -62,7 +49,7 @@ impl Component<'_> {
     /// The position is treated as the center of the component,
     /// and the bounds extend half the width/height in each direction.
     pub fn bounds(&self) -> geometry::Bounds {
-        self.drawable_shape.bounds()
+        self.drawable.bounds()
     }
 
     /// Returns the unique identifier of the AST node this component represents.
@@ -215,9 +202,9 @@ pub fn adjust_positioned_contents_offset<'a>(
                 .add(source_component.bounds().min_point())
                 .add(
                     source_component
-                        .drawable_shape
+                        .drawable
                         .inner()
-                        .shape_to_container_min_point(),
+                        .shape_to_inner_content_min_point(),
                 ); // TODO: This does not account for text.
             debug!(
                 node_id:? = node.id,

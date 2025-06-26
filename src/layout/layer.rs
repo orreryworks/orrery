@@ -72,7 +72,7 @@ impl<'a> LayeredLayout<'a> {
     pub fn adjust_relative_position(
         &mut self,
         container_idx: usize,
-        positioned_shape: &draw::PositionedDrawable<draw::Shape>,
+        positioned_shape: &draw::PositionedDrawable<draw::ShapeWithText>,
         embedded_idx: usize,
         padding: f32,
     ) {
@@ -99,7 +99,7 @@ impl<'a> LayeredLayout<'a> {
             .offset
             .add(container_layer.offset)
             .add(container_bounds.min_point())
-            .add(positioned_shape.inner().shape_to_container_min_point());
+            .add(positioned_shape.inner().shape_to_inner_content_min_point());
 
         // Set clip bounds with padding
         let padded_clip_bounds = container_bounds

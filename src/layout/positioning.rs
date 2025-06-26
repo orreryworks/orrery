@@ -3,8 +3,8 @@
 //! This module provides algorithms for calculating element positions in diagrams.
 //! It contains reusable positioning logic that can be used by different layout engines.
 
-use crate::{ast, draw, geometry::Size};
-use std::{iter::IntoIterator, rc::Rc};
+use crate::{draw, geometry::Size};
+use std::iter::IntoIterator;
 
 /// Calculate additional spacing needed based on text labels
 ///
@@ -75,27 +75,4 @@ pub fn distribute_horizontally(
     }
 
     positions
-}
-
-/// Calculate the size of a component or participant based on its text content
-///
-/// # Arguments
-/// * `node` - The node whose size needs to be calculated
-/// * `min_width` - Minimum width constraint for the element
-/// * `min_height` - Minimum height constraint for the element
-/// * `padding` - Padding to add around the text content
-///
-/// # Returns
-/// The calculated size with applied constraints
-/// TODO why do I need this anymore? Can I use shape instead?
-pub fn calculate_bounded_text_size(node: &ast::Node, padding: f32) -> Size {
-    // Calculate text size based on the node's display text and font size
-    let text = draw::Text::new(
-        Rc::clone(&node.type_definition.text_definition),
-        node.display_text().to_string(),
-    );
-    let size = text.calculate_size();
-
-    // Add padding around the text and ensure minimum size
-    size.add_padding(padding)
 }

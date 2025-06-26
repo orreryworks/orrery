@@ -100,9 +100,9 @@ pub fn adjust_positioned_contents_offset<'a>(
                 .add(
                     source_participant
                         .component
-                        .shape()
+                        .drawable()
                         .inner()
-                        .shape_to_container_min_point(),
+                        .shape_to_inner_content_min_point(),
                 ); // TODO: This does not account for text.
 
             debug!(

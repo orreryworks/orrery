@@ -41,6 +41,11 @@ impl<D: Drawable> PositionedDrawable<D> {
     pub fn inner(&self) -> &D {
         &self.drawable
     }
+
+    /// Get the position of this drawable
+    pub fn position(&self) -> Point {
+        self.position
+    }
 }
 
 impl<D: Drawable> Drawable for PositionedDrawable<D> {

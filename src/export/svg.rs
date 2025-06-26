@@ -1,3 +1,8 @@
+mod arrows;
+mod component;
+mod layer;
+mod sequence;
+
 use crate::{
     ast, color::Color, config::StyleConfig, error::FilamentError, export, geometry::Size,
     layout::layer::LayeredLayout,
@@ -113,12 +118,6 @@ impl Svg {
         Ok(())
     }
 }
-
-mod arrows;
-mod component;
-mod layer;
-mod renderer;
-mod sequence;
 
 // Implementation of Exporter trait for SVG
 impl export::Exporter for Svg {

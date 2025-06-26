@@ -10,8 +10,8 @@
 
 // Layout engine modules with different implementations
 mod basic;
-// mod force;
-// mod sugiyama;
+mod force;
+mod sugiyama;
 
 use crate::{
     ast::{DiagramKind, LayoutEngine, TypeId},
@@ -135,30 +135,30 @@ impl EngineBuilder {
             .entry(engine_type)
             .or_insert_with(|| {
                 let engine: Box<dyn ComponentEngine> = match engine_type {
-                    // LayoutEngine::Basic => {
-                    _ => {
+                    LayoutEngine::Basic => {
                         let mut e = basic::Component::new();
                         // Configure the engine with our settings
                         e.set_padding(self.component_padding);
                         e.set_min_spacing(self.min_component_spacing);
                         Box::new(e)
-                    } // LayoutEngine::Force => {
-                      //     let mut e = force::Component::new();
-                      //     // Configure the force-directed engine
-                      //     e.set_padding(self.component_padding)
-                      //         .set_text_padding(self.message_spacing)
-                      //         .set_min_distance(self.min_component_spacing)
-                      //         .set_iterations(self.force_simulation_iterations);
-                      //     Box::new(e)
-                      // }
-                      // LayoutEngine::Sugiyama => {
-                      //     let mut e = sugiyama::Component::new();
-                      //     // Configure the hierarchical engine
-                      //     e.set_horizontal_spacing(self.min_component_spacing);
-                      //     e.set_vertical_spacing(self.min_component_spacing);
-                      //     e.set_container_padding(self.component_padding);
-                      //     Box::new(e)
-                      // }
+                    }
+                    LayoutEngine::Force => {
+                        let mut e = force::Component::new();
+                        // Configure the force-directed engine
+                        e.set_padding(self.component_padding)
+                            .set_text_padding(self.message_spacing)
+                            .set_min_distance(self.min_component_spacing)
+                            .set_iterations(self.force_simulation_iterations);
+                        Box::new(e)
+                    }
+                    LayoutEngine::Sugiyama => {
+                        let mut e = sugiyama::Component::new();
+                        // Configure the hierarchical engine
+                        e.set_horizontal_spacing(self.min_component_spacing);
+                        e.set_vertical_spacing(self.min_component_spacing);
+                        e.set_container_padding(self.component_padding);
+                        Box::new(e)
+                    }
                 };
                 engine
             });
@@ -196,8 +196,11 @@ impl EngineBuilder {
 
         // Track container-embedded diagram relationships for position adjustment in the second phase
         // Format: (container_layer_idx, container_position, container_shape, embedded_layer_idx)
-        let mut embedded_diagrams: Vec<(usize, draw::PositionedDrawable<draw::Shape>, usize)> =
-            Vec::new();
+        let mut embedded_diagrams: Vec<(
+            usize,
+            draw::PositionedDrawable<draw::ShapeWithText>,
+            usize,
+        )> = Vec::new();
 
         // First phase: calculate all layouts
         for (type_id, graph) in collection.diagram_tree_in_post_order() {
@@ -247,7 +250,7 @@ impl EngineBuilder {
                                     // (container layer index, container position, container shape, embedded diagram layer index)
                                     embedded_diagrams.push((
                                         layer_idx,
-                                        component.shape().clone(),
+                                        component.drawable().clone(),
                                         *embedded_idx,
                                     ));
                                 }
@@ -265,7 +268,7 @@ impl EngineBuilder {
                                     // (container layer index, participant position, participant shape, embedded diagram layer index)
                                     embedded_diagrams.push((
                                         layer_idx,
-                                        participant.component.shape().clone(),
+                                        participant.component.drawable().clone(),
                                         *embedded_idx,
                                     ));
                                 }

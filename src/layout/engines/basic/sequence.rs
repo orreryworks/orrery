@@ -3,6 +3,7 @@
 //! This module provides a layout engine for sequence diagrams
 //! using a simple, deterministic algorithm.
 
+use crate::draw::Drawable;
 use crate::{
     ast, draw,
     geometry::{Point, Size},
@@ -11,7 +12,6 @@ use crate::{
         component::Component,
         engines::{EmbeddedLayouts, SequenceEngine},
         layer::{ContentStack, PositionedContent},
-        positioning::calculate_bounded_text_size,
         sequence::{Layout, Message, Participant, adjust_positioned_contents_offset},
     },
 };
@@ -111,34 +111,32 @@ impl Engine {
         let mut participants: Vec<Participant<'a>> = Vec::new();
         let mut participant_indices = HashMap::new();
 
-        // Create shapes directly for participants using shape-based sizing
+        // Create shapes with text for participants
         let mut participant_shapes: HashMap<_, _> = graph
             .nodes_with_indices()
             .map(|(node_idx, node)| {
                 let mut shape = draw::Shape::new(Rc::clone(&node.type_definition.shape_definition));
+                shape.set_padding(self.padding);
+                let text = draw::Text::new(
+                    Rc::clone(&node.type_definition.text_definition),
+                    node.display_text().to_string(),
+                );
+                let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
                 let content_size = if let ast::Block::Diagram(_) = &node.block {
                     // If this participant has an embedded diagram, use its layout size
                     if let Some(layout) = embedded_layouts.get(&node.id) {
-                        let embedded_size = layout.calculate_size();
-                        let text_size = calculate_bounded_text_size(node, self.padding);
-
-                        Size::new(
-                            text_size.width().max(embedded_size.width()),
-                            text_size.height() + embedded_size.height(),
-                        )
+                        layout.calculate_size()
                     } else {
-                        // Fallback to text-based sizing if no embedded layout found
-                        calculate_bounded_text_size(node, self.padding)
+                        Size::default()
                     }
                 } else {
                     // Regular participant with no embedded diagram
-                    calculate_bounded_text_size(node, self.padding)
+                    Size::default()
                 };
 
-                shape.expand_content_size_to(content_size);
-                shape.set_padding(self.padding);
-                (node_idx, shape)
+                shape_with_text.set_inner_content_size(content_size);
+                (node_idx, shape_with_text)
             })
             .collect();
 
@@ -163,8 +161,8 @@ impl Engine {
         let sizes: Vec<_> = graph
             .node_indices()
             .map(|idx| {
-                let shape = participant_shapes.get(&idx).unwrap();
-                shape.shape_size()
+                let shape_with_text = participant_shapes.get(&idx).unwrap();
+                shape_with_text.shape_size()
             })
             .collect();
 
@@ -177,11 +175,11 @@ impl Engine {
 
         // Create participants and store their indices
         for (i, (node_idx, node)) in graph.nodes_with_indices().enumerate() {
-            let shape = participant_shapes.remove(&node_idx).unwrap();
+            let shape_with_text = participant_shapes.remove(&node_idx).unwrap();
             let position = Point::new(x_positions[i], self.top_margin);
 
             participants.push(Participant {
-                component: Component::new(node, shape, position),
+                component: Component::new(node, shape_with_text, position),
                 lifeline_end: self.top_margin, // Will be updated later
             });
 
@@ -193,7 +191,7 @@ impl Engine {
         let mut current_y = self.top_margin
             + participants
                 .iter()
-                .map(|p| p.component.shape().inner().shape_size().height())
+                .map(|p| p.component.drawable().size().height())
                 .max_by(|a, b| a.partial_cmp(b).unwrap())
                 .unwrap_or_default()
             + self.message_spacing;

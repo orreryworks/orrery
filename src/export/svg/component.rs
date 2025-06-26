@@ -1,4 +1,4 @@
-use super::{Svg, arrows, renderer};
+use super::{Svg, arrows};
 use crate::{
     geometry::{Bounds, Point},
     layout::component,
@@ -14,17 +14,13 @@ impl Svg {
         external_point: Point,
     ) -> Point {
         shape_entity
-            .shape()
+            .drawable()
             .inner()
             .find_intersection(shape_entity.position(), external_point)
     }
 
     pub fn render_component(&self, component: &component::Component) -> Box<dyn svg::Node> {
-        renderer::render_shape_and_text_to_svg(
-            component.position(),
-            component.shape(),
-            component.text(),
-        )
+        component.drawable().render_to_svg()
     }
 
     pub fn render_relation(

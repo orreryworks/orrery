@@ -6,7 +6,6 @@ use crate::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
         layer::{ContentStack, PositionedContent},
-        positioning::calculate_bounded_text_size,
     },
 };
 use log::debug;
@@ -86,7 +85,7 @@ impl Engine {
             // Extract sizes from shapes for position calculation
             let component_sizes: HashMap<NodeIndex, Size> = component_shapes
                 .iter()
-                .map(|(idx, shape)| (*idx, shape.shape_size()))
+                .map(|(idx, shape_with_text)| (*idx, shape_with_text.shape_size()))
                 .collect();
 
             // Calculate positions for components in this scope
@@ -97,9 +96,9 @@ impl Engine {
                 .containment_scope_nodes_with_indices(containment_scope)
                 .map(|(node_idx, node)| {
                     let position = *positions.get(&node_idx).unwrap();
-                    let shape = component_shapes.remove(&node_idx).unwrap();
+                    let shape_with_text = component_shapes.remove(&node_idx).unwrap();
 
-                    Component::new(node, shape, position)
+                    Component::new(node, shape_with_text, position)
                 })
                 .collect();
 
@@ -152,11 +151,18 @@ impl Engine {
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<NodeIndex, Size>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> HashMap<NodeIndex, draw::Shape> {
-        let mut component_shapes: HashMap<NodeIndex, draw::Shape> = HashMap::new();
+    ) -> HashMap<NodeIndex, draw::ShapeWithText> {
+        let mut component_shapes: HashMap<NodeIndex, draw::ShapeWithText> = HashMap::new();
 
+        // TODO: move it to the best place.
         for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
             let mut shape = draw::Shape::new(Rc::clone(&node.type_definition.shape_definition));
+            shape.set_padding(self.container_padding);
+            let text = draw::Text::new(
+                Rc::clone(&node.type_definition.text_definition),
+                node.display_text().to_string(),
+            );
+            let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
             let content_size = match node.block {
                 ast::Block::Diagram(_) => {
@@ -166,32 +172,16 @@ impl Engine {
                         .get(&node.id)
                         .expect("Embedded layout not found");
 
-                    let embedded_size = layout.calculate_size();
-                    let text_size = calculate_bounded_text_size(node, self.text_padding);
-
-                    Size::new(
-                        text_size.width().max(embedded_size.width()),
-                        text_size.height() + embedded_size.height(),
-                    )
+                    layout.calculate_size()
                 }
-                ast::Block::Scope(_) => {
-                    let positioned_content_size = *positioned_content_sizes
-                        .get(&node_idx)
-                        .expect("Scope size not found");
-
-                    let text_size = calculate_bounded_text_size(node, self.text_padding);
-
-                    Size::new(
-                        text_size.width().max(positioned_content_size.width()),
-                        text_size.height() + positioned_content_size.height(),
-                    )
-                }
-                ast::Block::None => calculate_bounded_text_size(node, self.text_padding),
+                ast::Block::Scope(_) => *positioned_content_sizes
+                    .get(&node_idx)
+                    .expect("Scope size not found"),
+                ast::Block::None => Size::default(),
             };
 
-            shape.expand_content_size_to(content_size);
-            shape.set_padding(self.container_padding);
-            component_shapes.insert(node_idx, shape);
+            shape_with_text.set_inner_content_size(content_size);
+            component_shapes.insert(node_idx, shape_with_text);
         }
 
         component_shapes

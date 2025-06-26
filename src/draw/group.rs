@@ -4,58 +4,73 @@ use crate::draw::Drawable;
 use crate::geometry::{Point, Size};
 use svg::{self, node::element as svg_element};
 
-/// A drawable group for holding multiple children with relative offsets.
+/// A group of drawable objects that can be rendered together as an SVG group.
 ///
-/// When rendered, it produces an SVG `<g>` with each child positioned at its own offset
+/// The Group holds references to drawable objects and their relative positions.
+/// When rendered, it produces an SVG `<g>` with each child positioned at its own position
 /// relative to the group's origin.
-#[derive(Debug, Default)]
-pub struct Group {
-    items: Vec<GroupItem>,
+#[derive(Debug)]
+pub struct Group<'a> {
+    items: Vec<GroupItem<'a>>,
 }
 
-impl Group {
+impl<'a> Group<'a> {
     /// Creates a new, empty group.
     pub fn new() -> Self {
         Self { items: Vec::new() }
     }
 
-    /// Adds a child drawable at a given relative offset.
-    pub fn add<D: Drawable + 'static>(&mut self, drawable: D, offset: Point) {
-        self.items.push(GroupItem::new(Box::new(drawable), offset));
+    /// Adds a child drawable at a given relative position.
+    pub fn add<D: Drawable>(&mut self, drawable: &'a D, position: Point) {
+        self.items.push(GroupItem::new(drawable, position));
     }
-}
 
-impl Drawable for Group {
-    /// Render the group as an SVG `<g>`, with each child positioned at its relative offset.
-    fn render_to_svg(&self, _group_position: Point) -> Box<dyn svg::Node> {
+    pub fn render(&self) -> Box<dyn svg::Node> {
         let mut group = svg_element::Group::new();
         for item in &self.items {
-            // let pos = group_position.add(item.offset);
-            group = group.add(item.drawable.render_to_svg(item.offset));
+            group = group.add(item.drawable.render_to_svg(item.position));
         }
         Box::new(group)
     }
+}
+
+impl<'a> Drawable for Group<'a> {
+    /// Render the group as an SVG `<g>`, with each child positioned at its relative position.
+    fn render_to_svg(&self, _group_position: Point) -> Box<dyn svg::Node> {
+        self.render()
+    }
 
     fn size(&self) -> Size {
-        // TODO: This logic is wrong!
-        let mut total_size = Size::default();
-        for item in &self.items {
-            let size = item.drawable.size();
-            total_size = total_size.max(size);
+        // Calculate the bounding box of all items in the group
+        if self.items.is_empty() {
+            return Size::default();
         }
-        total_size
+
+        // Start with the first item's bounds
+        let first_item = &self.items[0];
+        let first_size = first_item.drawable.size();
+        let mut combined_bounds = first_item.position.to_bounds(first_size);
+
+        // Merge bounds for all remaining items
+        for item in &self.items[1..] {
+            let item_size = item.drawable.size();
+            let item_bounds = item.position.to_bounds(item_size);
+            combined_bounds = combined_bounds.merge(&item_bounds);
+        }
+
+        combined_bounds.to_size()
     }
 }
 
-/// Private item in a Group: wraps a child Drawable and its offset.
+/// Private item in a Group: wraps a child Drawable and its position.
 #[derive(Debug)]
-struct GroupItem {
-    drawable: Box<dyn Drawable>,
-    offset: Point,
+struct GroupItem<'a> {
+    drawable: &'a dyn Drawable,
+    position: Point,
 }
 
-impl GroupItem {
-    fn new(drawable: Box<dyn Drawable>, offset: Point) -> Self {
-        Self { drawable, offset }
+impl<'a> GroupItem<'a> {
+    fn new(drawable: &'a dyn Drawable, position: Point) -> Self {
+        Self { drawable, position }
     }
 }

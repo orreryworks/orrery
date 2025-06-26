@@ -11,7 +11,6 @@ use crate::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
         layer::{ContentStack, PositionedContent},
-        positioning::calculate_bounded_text_size,
     },
 };
 use petgraph::{
@@ -78,23 +77,17 @@ impl Engine {
                 embedded_layouts,
             );
 
-            // Extract sizes from shapes for position calculation
-            let component_sizes: HashMap<NodeIndex, Size> = component_shapes
-                .iter()
-                .map(|(idx, shape)| (*idx, shape.shape_size()))
-                .collect();
-
             // Calculate positions for components
-            let positions = self.positions(graph, containment_scope, &component_sizes);
+            let positions = self.positions(graph, containment_scope, &component_shapes);
 
             // Build the final component list using the pre-configured shapes
             let components: Vec<Component<'a>> = graph
                 .containment_scope_nodes_with_indices(containment_scope)
                 .map(|(node_idx, node)| {
                     let position = *positions.get(&node_idx).unwrap();
-                    let shape = component_shapes.remove(&node_idx).unwrap();
+                    let shape_with_text = component_shapes.remove(&node_idx).unwrap();
 
-                    Component::new(node, shape, position)
+                    Component::new(node, shape_with_text, position)
                 })
                 .collect();
 
@@ -147,11 +140,18 @@ impl Engine {
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<NodeIndex, Size>,
         embedded_layouts: &EmbeddedLayouts<'_>,
-    ) -> HashMap<NodeIndex, draw::Shape> {
-        let mut component_shapes: HashMap<NodeIndex, draw::Shape> = HashMap::new();
+    ) -> HashMap<NodeIndex, draw::ShapeWithText> {
+        let mut component_shapes: HashMap<NodeIndex, draw::ShapeWithText> = HashMap::new();
 
+        // TODO: move it to the best place.
         for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
             let mut shape = draw::Shape::new(Rc::clone(&node.type_definition.shape_definition));
+            shape.set_padding(self.padding);
+            let text = draw::Text::new(
+                Rc::clone(&node.type_definition.text_definition),
+                node.display_text().to_string(),
+            );
+            let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
             let content_size = match node.block {
                 ast::Block::Diagram(_) => {
@@ -161,32 +161,16 @@ impl Engine {
                         .get(&node.id)
                         .expect("Embedded layout not found");
 
-                    let embedded_size = layout.calculate_size();
-                    let text_size = calculate_bounded_text_size(node, self.text_padding);
-
-                    Size::new(
-                        text_size.width().max(embedded_size.width()),
-                        text_size.height() + embedded_size.height(),
-                    )
+                    layout.calculate_size()
                 }
-                ast::Block::Scope(_) => {
-                    let positioned_content_size = *positioned_content_sizes
-                        .get(&node_idx)
-                        .expect("Scope size not found");
-
-                    let text_size = calculate_bounded_text_size(node, self.text_padding);
-
-                    Size::new(
-                        text_size.width().max(positioned_content_size.width()),
-                        text_size.height() + positioned_content_size.height(),
-                    )
-                }
-                ast::Block::None => calculate_bounded_text_size(node, self.text_padding),
+                ast::Block::Scope(_) => *positioned_content_sizes
+                    .get(&node_idx)
+                    .expect("Scope size not found"),
+                ast::Block::None => Size::default(),
             };
 
-            shape.expand_content_size_to(content_size);
-            shape.set_padding(self.text_padding);
-            component_shapes.insert(node_idx, shape);
+            shape_with_text.set_inner_content_size(content_size);
+            component_shapes.insert(node_idx, shape_with_text);
         }
 
         component_shapes
@@ -197,7 +181,7 @@ impl Engine {
         &self,
         graph: &Graph<'a>,
         containment_scope: &ContainmentScope,
-        sizes: &HashMap<NodeIndex, Size>,
+        component_shapes: &HashMap<NodeIndex, draw::ShapeWithText>,
     ) -> HashMap<NodeIndex, Point> {
         // Step 1: Create a simplified graph
         let containment_scope_graph = Self::containment_scope_to_graph(graph, containment_scope);
@@ -207,13 +191,13 @@ impl Engine {
 
         // Step 3: Calculate layer metrics (widths and spacings)
         let (layer_widths, layer_spacings) =
-            self.calculate_layer_metrics(graph, containment_scope, &layers, sizes);
+            self.calculate_layer_metrics(graph, containment_scope, &layers, component_shapes);
 
         // Step 4: Calculate X positions for each layer
         let layer_x_positions = self.calculate_layer_x_positions(&layer_widths, &layer_spacings);
 
         // Step 5: Position top-level nodes within their layers
-        self.position_nodes_in_layers(&layers, &layer_x_positions, sizes)
+        self.position_nodes_in_layers(&layers, &layer_x_positions, component_shapes)
     }
 
     /// Calculate metrics for each layer: widths and spacings between layers
@@ -222,7 +206,7 @@ impl Engine {
         graph: &Graph,
         containment_scope: &ContainmentScope,
         layers: &[Vec<NodeIndex>],
-        sizes: &HashMap<NodeIndex, Size>,
+        component_shapes: &HashMap<NodeIndex, draw::ShapeWithText>,
     ) -> (Vec<f32>, Vec<f32>) {
         // Calculate max width for each layer
         let layer_widths: Vec<f32> = layers
@@ -230,7 +214,13 @@ impl Engine {
             .map(|layer| {
                 layer
                     .iter()
-                    .map(|&node_idx| sizes.get(&node_idx).unwrap().width())
+                    .map(|&node_idx| {
+                        component_shapes
+                            .get(&node_idx)
+                            .unwrap()
+                            .shape_size()
+                            .width()
+                    })
                     .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Less))
                     .unwrap_or_default()
             })
@@ -319,7 +309,7 @@ impl Engine {
         &self,
         layers: &[Vec<NodeIndex>],
         layer_x_positions: &[f32],
-        sizes: &HashMap<NodeIndex, Size>,
+        component_shapes: &HashMap<NodeIndex, draw::ShapeWithText>,
     ) -> HashMap<NodeIndex, Point> {
         let mut positions = HashMap::new();
 
@@ -329,7 +319,11 @@ impl Engine {
             // Calculate heights for vertical positioning
             let mut y_pos = 0.0;
             for (j, &node_idx) in layer_nodes.iter().enumerate() {
-                let node_height = sizes.get(&node_idx).unwrap().height();
+                let node_height = component_shapes
+                    .get(&node_idx)
+                    .unwrap()
+                    .shape_size()
+                    .height();
 
                 if j > 0 {
                     y_pos += self.padding; // Space between components
