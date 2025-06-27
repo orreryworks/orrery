@@ -37,6 +37,14 @@ impl ShapeWithText {
             text_size.height() + size.height(),
         );
         self.shape.expand_content_size_to(total);
+
+        if !size.is_zero() {
+            // Adjust shape padding to account for text height
+            let current_padding = self.shape.padding();
+            let adjusted_top = (current_padding.top() - text_size.height()).max(0.0);
+            let new_padding = current_padding.with_top(adjusted_top);
+            self.shape.set_padding(new_padding);
+        }
     }
 
     /// Returns the size of the text component, or zero size if no text is present.
@@ -66,22 +74,43 @@ impl ShapeWithText {
         self.shape.expand_content_size_to(text_size);
     }
 
+    /// Returns a Point representing the (x, y) offset from the shape's top-left corner
+    /// to where content should be positioned, but without including top padding.
+    /// This is useful for positioning text at the very top of the content area.
+    fn shape_to_container_min_point_no_top_padding(&self) -> Point {
+        let additional_space = self.shape.calculate_additional_space();
+        let padding = self.shape.padding();
+
+        Point::new(
+            padding.left() + additional_space.width() / 2.0,
+            additional_space.height() / 2.0,
+        )
+    }
+
     /// Calculates the position where text should be rendered relative to the shape.
     ///
-    /// The text is positioned at the top of the shape, centered horizontally
-    /// and vertically within the text area.
+    /// The text is positioned at the top of the shape's inner content area,
+    /// which accounts for the shape's padding and any additional space requirements.
     fn calculate_text_position(&self, shape_position: Point) -> Point {
         if self.text.is_none() {
             return Point::default();
         }
 
         let bounds = shape_position.to_bounds(self.shape_size());
-        let offset = self.shape.shape_to_container_min_point();
         let text_size = self.text_size();
+        let has_inner_content = text_size != self.shape.content_size();
+
+        let content_offset = if has_inner_content {
+            // With inner content, position text at the very top (no top padding)
+            self.shape_to_container_min_point_no_top_padding()
+        } else {
+            // Without inner content, respect top padding to separate text from shape edge
+            self.shape.shape_to_container_min_point()
+        };
 
         Point::new(
             shape_position.x(),
-            bounds.min_y() + offset.y() + text_size.height() / 2.0,
+            bounds.min_y() + content_offset.y() + text_size.height() / 2.0,
         )
     }
 }

@@ -109,6 +109,11 @@ impl Shape {
         self.padding = padding;
     }
 
+    /// Get the current padding for this shape
+    pub fn padding(&self) -> Insets {
+        self.padding
+    }
+
     /// Find the intersection point where a line from point a to point b intersects with this shape
     pub fn find_intersection(&self, a: Point, b: Point) -> Point {
         self.definition
@@ -123,16 +128,29 @@ impl Shape {
     /// The result represents the padding/margin space that should be applied when positioning
     /// nested content within this shape.
     ///
+    /// Calculate any additional space the shape needs beyond content + padding.
+    /// This accounts for shapes like ovals that need extra room beyond just padding.
+    pub(super) fn calculate_additional_space(&self) -> Size {
+        let shape_size = self.shape_size();
+        let content_size = self.content_size();
+        let total_padding_size = content_size.add_padding(self.padding);
+
+        Size::new(
+            shape_size.width() - total_padding_size.width(),
+            shape_size.height() - total_padding_size.height(),
+        )
+        .max(Size::default())
+    }
+
     /// Returns a Point representing the (x, y) offset from the shape's top-left corner
     /// to where the content area begins.
     pub fn shape_to_container_min_point(&self) -> Point {
-        let shape_size = self.shape_size();
-        let content_size = self.content_size();
+        let additional_space = self.calculate_additional_space();
+
         Point::new(
-            shape_size.width() - content_size.width(),
-            shape_size.height() - content_size.height(),
+            self.padding.left() + additional_space.width() / 2.0,
+            self.padding.top() + additional_space.height() / 2.0,
         )
-        .scale(0.5)
     }
 }
 

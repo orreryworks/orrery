@@ -88,7 +88,7 @@ impl Point {
 }
 
 /// Represents the dimensions of an element with width and height
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Size {
     width: f32,
     height: f32,
@@ -133,6 +133,11 @@ impl Size {
             width: self.width * factor,
             height: self.height * factor,
         }
+    }
+
+    /// Returns true if both width and height are zero
+    pub fn is_zero(self) -> bool {
+        self.width == 0.0 && self.height == 0.0
     }
 }
 
@@ -226,7 +231,6 @@ impl Bounds {
     /// Moves the bounds in the opposite direction of the specified offset
     ///
     /// This subtracts the offset from both minimum and maximum coordinates.
-    #[allow(dead_code)]
     pub fn inverse_translate(&self, offset: Point) -> Self {
         Self {
             min_x: self.min_x - offset.x,
@@ -263,6 +267,7 @@ pub struct Insets {
 
 impl Insets {
     /// Creates new insets with specified values for each side
+    #[allow(dead_code)]
     pub fn new(top: f32, right: f32, bottom: f32, left: f32) -> Self {
         Self {
             top,
@@ -300,6 +305,11 @@ impl Insets {
     /// Returns the left inset value
     pub fn left(self) -> f32 {
         self.left
+    }
+
+    /// Returns a new Insets with the specified top value
+    pub fn with_top(self, top: f32) -> Self {
+        Self { top, ..self }
     }
 
     /// Returns the sum of left and right insets
@@ -741,5 +751,84 @@ mod tests {
         let insets = Insets::new(1.0, 2.0, 3.0, 4.0);
         assert_eq!(insets.horizontal_sum(), 6.0); // 2.0 + 4.0
         assert_eq!(insets.vertical_sum(), 4.0); // 1.0 + 3.0
+    }
+
+    #[test]
+    fn test_size_is_zero() {
+        // Test zero size
+        let zero_size = Size::new(0.0, 0.0);
+        assert!(zero_size.is_zero());
+
+        // Test default size (should be zero)
+        let default_size = Size::default();
+        assert!(default_size.is_zero());
+
+        // Test non-zero width
+        let non_zero_width = Size::new(1.0, 0.0);
+        assert!(!non_zero_width.is_zero());
+
+        // Test non-zero height
+        let non_zero_height = Size::new(0.0, 1.0);
+        assert!(!non_zero_height.is_zero());
+
+        // Test both non-zero
+        let non_zero_both = Size::new(5.0, 3.0);
+        assert!(!non_zero_both.is_zero());
+
+        // Test negative values (should not be zero)
+        let negative_size = Size::new(-1.0, -1.0);
+        assert!(!negative_size.is_zero());
+
+        // Test mixed positive/negative
+        let mixed_size = Size::new(-1.0, 0.0);
+        assert!(!mixed_size.is_zero());
+    }
+
+    #[test]
+    fn test_insets_with_top() {
+        let original = Insets::new(1.0, 2.0, 3.0, 4.0);
+
+        // Test basic with_top functionality
+        let modified = original.with_top(10.0);
+        assert_eq!(modified.top(), 10.0);
+        assert_eq!(modified.right(), 2.0); // Should remain unchanged
+        assert_eq!(modified.bottom(), 3.0); // Should remain unchanged
+        assert_eq!(modified.left(), 4.0); // Should remain unchanged
+
+        // Test with zero value
+        let with_zero = original.with_top(0.0);
+        assert_eq!(with_zero.top(), 0.0);
+        assert_eq!(with_zero.right(), 2.0);
+        assert_eq!(with_zero.bottom(), 3.0);
+        assert_eq!(with_zero.left(), 4.0);
+
+        // Test with negative value
+        let with_negative = original.with_top(-5.0);
+        assert_eq!(with_negative.top(), -5.0);
+        assert_eq!(with_negative.right(), 2.0);
+        assert_eq!(with_negative.bottom(), 3.0);
+        assert_eq!(with_negative.left(), 4.0);
+
+        // Test chaining (returns new instance)
+        let original_copy = Insets::new(1.0, 2.0, 3.0, 4.0);
+        let chained = original_copy.with_top(15.0).with_top(20.0);
+        assert_eq!(chained.top(), 20.0);
+        assert_eq!(chained.right(), 2.0);
+        assert_eq!(chained.bottom(), 3.0);
+        assert_eq!(chained.left(), 4.0);
+
+        // Test that original remains unchanged
+        assert_eq!(original.top(), 1.0);
+        assert_eq!(original.right(), 2.0);
+        assert_eq!(original.bottom(), 3.0);
+        assert_eq!(original.left(), 4.0);
+
+        // Test with uniform insets
+        let uniform = Insets::uniform(5.0);
+        let uniform_modified = uniform.with_top(10.0);
+        assert_eq!(uniform_modified.top(), 10.0);
+        assert_eq!(uniform_modified.right(), 5.0);
+        assert_eq!(uniform_modified.bottom(), 5.0);
+        assert_eq!(uniform_modified.left(), 5.0);
     }
 }
