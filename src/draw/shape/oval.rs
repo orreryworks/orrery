@@ -1,7 +1,7 @@
 use super::ShapeDefinition;
 use crate::{
     color::Color,
-    geometry::{Point, Size},
+    geometry::{Insets, Point, Size},
 };
 use std::{cell::RefCell, rc::Rc};
 use svg::{self, node::element as svg_element};
@@ -74,7 +74,7 @@ impl ShapeDefinition for OvalDefinition {
         )
     }
 
-    fn calculate_shape_size(&self, content_size: Size, padding: f32) -> Size {
+    fn calculate_shape_size(&self, content_size: Size, padding: Insets) -> Size {
         // The largest rectangle that fits in an ellipse with semi-axes (a,b) has dimensions:
         // width = a√2, height = b√2
         // So we need to scale up the content to create an ellipse that can contain it

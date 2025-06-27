@@ -5,7 +5,7 @@
 
 use crate::{
     ast, draw,
-    geometry::{Point, Size},
+    geometry::{Insets, Point, Size},
     graph::{ContainmentScope, Graph},
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
@@ -26,7 +26,7 @@ use std::{
 /// Basic component layout engine implementation that implements the ComponentLayoutEngine trait
 #[derive(Default)]
 pub struct Engine {
-    padding: f32,
+    padding: Insets,
     text_padding: f32,
     min_spacing: f32,
 }
@@ -41,7 +41,7 @@ impl Engine {
     }
 
     /// Set the padding around components
-    pub fn set_padding(&mut self, padding: f32) -> &mut Self {
+    pub fn set_padding(&mut self, padding: Insets) -> &mut Self {
         self.padding = padding;
         self
     }
@@ -227,7 +227,8 @@ impl Engine {
             .collect();
 
         // Initialize spacings with default padding
-        let mut layer_spacings = vec![self.padding; layers.len().saturating_sub(1)];
+        let mut layer_spacings =
+            vec![self.padding.horizontal_sum() / 2.0; layers.len().saturating_sub(1)];
 
         // Adjust spacings based on relation labels
         for relation in graph.containment_scope_relations(containment_scope) {
@@ -296,7 +297,7 @@ impl Engine {
             let spacing = if i < layer_spacings.len() {
                 layer_spacings[i]
             } else {
-                self.padding
+                self.padding.horizontal_sum() / 2.0
             };
             x_pos += width + spacing;
         }
@@ -326,7 +327,7 @@ impl Engine {
                     .height();
 
                 if j > 0 {
-                    y_pos += self.padding; // Space between components
+                    y_pos += self.padding.vertical_sum() / 2.0; // Space between components
                 }
 
                 let y = y_pos + node_height / 2.0;

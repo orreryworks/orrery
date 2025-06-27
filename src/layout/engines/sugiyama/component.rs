@@ -1,6 +1,6 @@
 use crate::{
     ast, draw,
-    geometry::{Point, Size},
+    geometry::{Insets, Point, Size},
     graph::{ContainmentScope, Graph},
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
@@ -26,7 +26,7 @@ pub struct Engine {
     vertical_spacing: f32,
 
     /// Container padding for nested components
-    container_padding: f32,
+    container_padding: Insets,
 }
 
 impl Engine {
@@ -36,7 +36,7 @@ impl Engine {
             text_padding: 20.0,
             horizontal_spacing: 50.0,
             vertical_spacing: 80.0,
-            container_padding: 40.0,
+            container_padding: Insets::uniform(20.0),
         }
     }
 
@@ -60,7 +60,7 @@ impl Engine {
     }
 
     /// Set the padding inside container components
-    pub fn set_container_padding(&mut self, padding: f32) -> &mut Self {
+    pub fn set_container_padding(&mut self, padding: Insets) -> &mut Self {
         self.container_padding = padding;
         self
     }

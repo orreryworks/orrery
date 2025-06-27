@@ -1,7 +1,7 @@
 use super::ShapeDefinition;
 use crate::{
     color::Color,
-    geometry::{Point, Size},
+    geometry::{Insets, Point, Size},
 };
 use std::{cell::RefCell, rc::Rc};
 use svg::{self, node::element as svg_element};
@@ -107,7 +107,7 @@ impl ShapeDefinition for RectangleDefinition {
         )
     }
 
-    fn calculate_shape_size(&self, content_size: Size, padding: f32) -> Size {
+    fn calculate_shape_size(&self, content_size: Size, padding: Insets) -> Size {
         let min_size = Size::new(10.0, 10.0);
         content_size.add_padding(padding).max(min_size)
     }

@@ -1,6 +1,6 @@
 use crate::{
     draw,
-    geometry::{Bounds, Point, Size},
+    geometry::{Bounds, Insets, Point, Size},
     layout::{component, positioning::LayoutSizing, sequence},
 };
 use log::debug;
@@ -73,7 +73,7 @@ impl<'a> LayeredLayout<'a> {
         container_idx: usize,
         positioned_shape: &draw::PositionedDrawable<draw::ShapeWithText>,
         embedded_idx: usize,
-        padding: f32,
+        padding: Insets,
     ) {
         let [container_layer, embedded_layer] = &mut self
             .layers
@@ -84,7 +84,7 @@ impl<'a> LayeredLayout<'a> {
         let container_bounds = positioned_shape.bounds();
 
         debug!(
-            positioned_shape:?, container_bounds:?, padding,
+            positioned_shape:?, container_bounds:?,
             container_idx, container_offset:?=container_layer.offset, container_clip_bounds:?=container_layer.clip_bounds,
             embedded_idx, embedded_offset:?=embedded_layer.offset, embedded_clip_bounds:?=embedded_layer.clip_bounds;
             "Embedded layer before adjustment",
@@ -103,7 +103,7 @@ impl<'a> LayeredLayout<'a> {
         // Set clip bounds with padding
         let padded_clip_bounds = container_bounds
             .inverse_translate(container_bounds.min_point())
-            .translate(Point::new(-padding, -padding));
+            .translate(Point::new(-padding.left(), -padding.top()));
 
         embedded_layer.clip_bounds = Some(padded_clip_bounds);
 

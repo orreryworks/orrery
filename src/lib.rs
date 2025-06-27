@@ -68,7 +68,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
 
     // Create a configured engine builder for processing diagrams
     let engine_builder = layout::EngineBuilder::new()
-        .with_component_padding(40.0)
+        .with_component_padding(geometry::Insets::new(40.0, 40.0, 40.0, 40.0))
         .with_component_spacing(50.0)
         .with_message_spacing(60.0)
         .with_force_iterations(500);

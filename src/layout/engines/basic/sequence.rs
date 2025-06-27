@@ -6,7 +6,7 @@
 use crate::draw::Drawable;
 use crate::{
     ast, draw,
-    geometry::{Point, Size},
+    geometry::{Insets, Point, Size},
     graph::Graph,
     layout::{
         component::Component,
@@ -23,7 +23,7 @@ pub struct Engine {
     min_spacing: f32, // Minimum space between participants
     message_spacing: f32,
     top_margin: f32,
-    padding: f32,
+    padding: Insets,
     label_padding: f32, // Padding to add for message labels
 }
 
@@ -34,7 +34,7 @@ impl Engine {
             min_spacing: 40.0, // Minimum spacing between participants
             message_spacing: 50.0,
             top_margin: 60.0,
-            padding: 15.0,
+            padding: Insets::uniform(15.0),
             label_padding: 20.0, // Extra padding for labels
         }
     }
@@ -60,7 +60,7 @@ impl Engine {
 
     /// Set the text padding for participants
     #[allow(dead_code)]
-    pub fn set_text_padding(&mut self, padding: f32) -> &mut Self {
+    pub fn set_text_padding(&mut self, padding: Insets) -> &mut Self {
         self.padding = padding;
         self
     }

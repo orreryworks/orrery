@@ -119,11 +119,11 @@ impl Size {
 
     /// Returns a new Size with padding added to both width and height
     ///
-    /// The padding is added on both sides, so the total increase is 2 * padding
-    pub fn add_padding(self, padding: f32) -> Self {
+    /// The padding is applied according to the specified Insets values
+    pub fn add_padding(self, insets: Insets) -> Self {
         Self {
-            width: self.width + padding * 2.0,
-            height: self.height + padding * 2.0,
+            width: self.width + insets.horizontal_sum(),
+            height: self.height + insets.vertical_sum(),
         }
     }
 
@@ -236,18 +236,80 @@ impl Bounds {
         }
     }
 
-    /// Expands the bounds by adding padding in all directions
+    /// Expands the bounds by adding insets.
     ///
-    /// This decreases the minimum coordinates and increases the maximum coordinates
-    /// by the padding amount, effectively growing the bounds in all directions.
+    /// This decreases the minimum coordinates by left/top insets and increases
+    /// the maximum coordinates by right/bottom insets, effectively growing the bounds.
     #[allow(dead_code)]
-    pub fn add_padding(&self, padding: f32) -> Self {
+    pub fn add_padding(&self, insets: Insets) -> Self {
         Self {
-            min_x: self.min_x - padding,
-            min_y: self.min_y - padding,
-            max_x: self.max_x + padding,
-            max_y: self.max_y + padding,
+            min_x: self.min_x - insets.left(),
+            min_y: self.min_y - insets.top(),
+            max_x: self.max_x + insets.right(),
+            max_y: self.max_y + insets.bottom(),
         }
+    }
+}
+
+/// Represents spacing around an element (padding, margin, etc.)
+/// with potentially different values for each side
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Insets {
+    top: f32,
+    right: f32,
+    bottom: f32,
+    left: f32,
+}
+
+impl Insets {
+    /// Creates new insets with specified values for each side
+    pub fn new(top: f32, right: f32, bottom: f32, left: f32) -> Self {
+        Self {
+            top,
+            right,
+            bottom,
+            left,
+        }
+    }
+
+    /// Creates uniform insets with the same value for all sides
+    pub fn uniform(value: f32) -> Self {
+        Self {
+            top: value,
+            right: value,
+            bottom: value,
+            left: value,
+        }
+    }
+
+    /// Returns the top inset value
+    pub fn top(self) -> f32 {
+        self.top
+    }
+
+    /// Returns the right inset value
+    pub fn right(self) -> f32 {
+        self.right
+    }
+
+    /// Returns the bottom inset value
+    pub fn bottom(self) -> f32 {
+        self.bottom
+    }
+
+    /// Returns the left inset value
+    pub fn left(self) -> f32 {
+        self.left
+    }
+
+    /// Returns the sum of left and right insets
+    pub fn horizontal_sum(self) -> f32 {
+        self.left + self.right
+    }
+
+    /// Returns the sum of top and bottom insets
+    pub fn vertical_sum(self) -> f32 {
+        self.top + self.bottom
     }
 }
 
@@ -374,7 +436,7 @@ mod tests {
     #[test]
     fn test_size_add_padding() {
         let size = Size::new(10.0, 20.0);
-        let padded = size.add_padding(5.0);
+        let padded = size.add_padding(Insets::uniform(5.0));
 
         assert_eq!(padded.width(), 20.0); // 10 + 5*2
         assert_eq!(padded.height(), 30.0); // 20 + 5*2
@@ -547,7 +609,7 @@ mod tests {
             max_y: 8.0,
         };
 
-        let padded = bounds.add_padding(1.0);
+        let padded = bounds.add_padding(Insets::uniform(1.0));
 
         assert_eq!(padded.min_x(), 1.0);
         assert_eq!(padded.min_y(), 2.0);
@@ -629,5 +691,55 @@ mod tests {
         let dist1 = p1.sub(mid).hypot();
         let dist2 = p2.sub(mid).hypot();
         assert!((dist1 - dist2).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_insets_new() {
+        let insets = Insets::new(1.0, 2.0, 3.0, 4.0);
+        assert_eq!(insets.top(), 1.0);
+        assert_eq!(insets.right(), 2.0);
+        assert_eq!(insets.bottom(), 3.0);
+        assert_eq!(insets.left(), 4.0);
+    }
+
+    #[test]
+    fn test_bounds_add_insets() {
+        let bounds = Bounds {
+            min_x: 2.0,
+            min_y: 3.0,
+            max_x: 6.0,
+            max_y: 8.0,
+        };
+        let insets = Insets::new(1.0, 2.0, 3.0, 4.0);
+        let padded_custom = bounds.add_padding(insets);
+        assert_eq!(padded_custom.min_x(), -2.0); // 2.0 - 4.0 (left)
+        assert_eq!(padded_custom.min_y(), 2.0); // 3.0 - 1.0 (top)
+        assert_eq!(padded_custom.max_x(), 8.0); // 6.0 + 2.0 (right)
+        assert_eq!(padded_custom.max_y(), 11.0); // 8.0 + 3.0 (bottom)
+    }
+
+    #[test]
+    fn test_insets_uniform() {
+        let insets = Insets::uniform(5.0);
+        assert_eq!(insets.top(), 5.0);
+        assert_eq!(insets.right(), 5.0);
+        assert_eq!(insets.bottom(), 5.0);
+        assert_eq!(insets.left(), 5.0);
+    }
+
+    #[test]
+    fn test_insets_default() {
+        let insets = Insets::default();
+        assert_eq!(insets.top(), 0.0);
+        assert_eq!(insets.right(), 0.0);
+        assert_eq!(insets.bottom(), 0.0);
+        assert_eq!(insets.left(), 0.0);
+    }
+
+    #[test]
+    fn test_insets_sums() {
+        let insets = Insets::new(1.0, 2.0, 3.0, 4.0);
+        assert_eq!(insets.horizontal_sum(), 6.0); // 2.0 + 4.0
+        assert_eq!(insets.vertical_sum(), 4.0); // 1.0 + 3.0
     }
 }

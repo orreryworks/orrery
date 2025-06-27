@@ -5,7 +5,7 @@
 
 use crate::{
     ast, draw,
-    geometry::{Point, Size},
+    geometry::{Insets, Point, Size},
     graph::{ContainmentScope, Graph},
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
@@ -32,20 +32,20 @@ pub struct Engine {
     text_padding: f32,
     min_distance: f32,
     // Component padding
-    padding: f32,
+    padding: Insets,
 }
 
 impl Engine {
     /// Create a new force component layout engine
     pub fn new() -> Self {
         Self {
-            iterations: 300,
-            spring_constant: 0.005,
-            repulsion_constant: 10000.0,
-            damping_factor: 0.95,
-            text_padding: 20.0,
-            min_distance: 150.0,
-            padding: 40.0,
+            iterations: 100,
+            spring_constant: 0.1,
+            repulsion_constant: 1000.0,
+            damping_factor: 0.85,
+            text_padding: 10.0,
+            min_distance: 80.0,
+            padding: Insets::uniform(10.0),
         }
     }
 
@@ -91,7 +91,7 @@ impl Engine {
     }
 
     /// Set the padding around components
-    pub fn set_padding(&mut self, padding: f32) -> &mut Self {
+    pub fn set_padding(&mut self, padding: Insets) -> &mut Self {
         self.padding = padding;
         self
     }

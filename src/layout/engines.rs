@@ -15,7 +15,8 @@ mod sugiyama;
 
 use crate::{
     ast::{DiagramKind, LayoutEngine, TypeId},
-    draw, geometry,
+    draw,
+    geometry::{self, Insets},
     graph::{Collection, Graph},
     layout::{
         component,
@@ -92,7 +93,7 @@ pub struct EngineBuilder {
     sequence_engines: HashMap<LayoutEngine, Box<dyn SequenceEngine>>,
 
     // Configuration options
-    component_padding: f32,
+    component_padding: Insets,
     min_component_spacing: f32,
     message_spacing: f32,
     force_simulation_iterations: usize,
@@ -105,7 +106,7 @@ impl EngineBuilder {
     }
 
     /// Set the padding around components
-    pub fn with_component_padding(mut self, padding: f32) -> Self {
+    pub fn with_component_padding(mut self, padding: Insets) -> Self {
         self.component_padding = padding;
         self
     }

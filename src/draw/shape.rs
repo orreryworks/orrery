@@ -1,7 +1,7 @@
 use crate::{
     color::Color,
     draw::Drawable,
-    geometry::{Point, Size},
+    geometry::{Insets, Point, Size},
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -19,7 +19,7 @@ pub trait ShapeDefinition: std::fmt::Debug {
     fn find_intersection(&self, a: Point, b: Point, a_size: &Size) -> Point;
 
     /// Calculate the shape size needed to contain the given content size with padding
-    fn calculate_shape_size(&self, content_size: Size, padding: f32) -> Size;
+    fn calculate_shape_size(&self, content_size: Size, padding: Insets) -> Size;
 
     fn render_to_svg(&self, size: Size, position: Point) -> Box<dyn svg::Node>;
 
@@ -75,7 +75,7 @@ pub trait ShapeDefinition: std::fmt::Debug {
 pub struct Shape {
     definition: Rc<RefCell<dyn ShapeDefinition>>,
     content_size: Size,
-    padding: f32,
+    padding: Insets,
 }
 
 impl Shape {
@@ -84,7 +84,7 @@ impl Shape {
         Self {
             definition,
             content_size,
-            padding: 0.0,
+            padding: Insets::default(),
         }
     }
 
@@ -105,7 +105,7 @@ impl Shape {
     }
 
     /// Set the padding for this shape
-    pub fn set_padding(&mut self, padding: f32) {
+    pub fn set_padding(&mut self, padding: Insets) {
         self.padding = padding;
     }
 

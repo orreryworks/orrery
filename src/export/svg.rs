@@ -4,7 +4,12 @@ mod layer;
 mod sequence;
 
 use crate::{
-    ast, color::Color, config::StyleConfig, error::FilamentError, export, geometry::Size,
+    ast,
+    color::Color,
+    config::StyleConfig,
+    error::FilamentError,
+    export,
+    geometry::{Insets, Size},
     layout::layer::LayeredLayout,
 };
 use log::{debug, error, info};
@@ -70,7 +75,7 @@ impl Svg {
     pub fn calculate_svg_dimensions(&self, content_size: &Size) -> Size {
         // Add some margin to the content size
         let margin: f32 = 50.0;
-        let svg_size = content_size.add_padding(margin);
+        let svg_size = content_size.add_padding(Insets::uniform(margin));
 
         debug!(
             "Final SVG dimensions: {}x{}",
