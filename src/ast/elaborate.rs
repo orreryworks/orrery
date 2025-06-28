@@ -1,6 +1,7 @@
 use super::{elaborate_types as types, parser_types};
 use crate::{
     ast::span::Spanned, color::Color, config::AppConfig, draw, error::ElaborationDiagnosticError,
+    geometry::Insets,
 };
 use log::{debug, info, trace};
 use std::{cell::RefCell, collections::HashMap, rc::Rc, str::FromStr};
@@ -287,8 +288,12 @@ impl<'a> Builder<'a> {
         let mut elements = Vec::new();
 
         // HACK: use an actual relation type.
-        let relation_text_def = Rc::new(RefCell::new(draw::TextDefinition::new()));
-        relation_text_def.borrow_mut().set_font_size(14);
+        let mut relation_text_def = draw::TextDefinition::new();
+        relation_text_def.set_font_size(14);
+        let color = Color::new("white").unwrap().with_alpha(0.8);
+        relation_text_def.set_background_color(Some(color));
+        relation_text_def.set_padding(Insets::uniform(5.0));
+        let relation_text_def = Rc::new(RefCell::new(relation_text_def));
 
         for parser_elm in parser_elements {
             match parser_elm.inner() {
@@ -407,7 +412,7 @@ impl<'a> Builder<'a> {
             "sequence" => Ok(types::DiagramKind::Sequence),
             "component" => Ok(types::DiagramKind::Component),
             _ => Err(ElaborationDiagnosticError::from_spanned(
-                format!("Invalid diagram kind: '{}'", kind_str),
+                format!("Invalid diagram kind: '{kind_str}'"),
                 kind_str,
                 "unsupported diagram type",
                 Some("Supported diagram types are: 'component', 'sequence'".to_string()),

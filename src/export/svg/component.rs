@@ -1,10 +1,11 @@
 use super::{Svg, arrows};
 use crate::{
+    draw::Drawable,
     geometry::{Bounds, Point},
     layout::component,
     layout::layer::ContentStack,
 };
-use svg::node::element::{Group, Rectangle, Text};
+use svg::node::element::Group;
 
 impl Svg {
     // Find the point where a line from the shape entity to an external point intersects with the shape entity's boundary
@@ -51,36 +52,15 @@ impl Svg {
 
         // Add label if it exists
         if let Some(text) = relation.text() {
-            let text_def = text.definition();
             let mid = source_edge.midpoint(target_edge);
 
             // Add a small offset to position the label above the line
             let offset_y = -10.0;
+            let text_position = Point::new(mid.x(), mid.y() + offset_y);
 
-            let text_size = text.calculate_size();
+            let rendered_text = text.render_to_svg(text_position);
 
-            // Create a white background rectangle for better readability with correct dimensions
-            let bg = Rectangle::new()
-                .set("x", mid.x() - (text_size.width() / 2.0) - 5.0) // Center and add padding
-                .set("y", mid.y() + offset_y - (text_size.height() / 2.0) - 5.0) // Position above the line
-                .set("width", text_size.width() + 10.0) // Add padding to text width
-                .set("height", text_size.height() + 10.0) // Add padding to text height
-                .set("fill", "white")
-                .set("fill-opacity", 0.8)
-                .set("rx", 3.0); // Slightly rounded corners
-
-            // Create the text label
-            let text = Text::new("Text")
-                .set("x", mid.x())
-                .set("y", mid.y() + offset_y)
-                .set("text-anchor", "middle")
-                .set("dominant-baseline", "middle")
-                .set("font-family", "Arial")
-                .set("font-size", text_def.font_size())
-                .add(svg::node::Text::new(text.content()));
-
-            // Add background and text to the group
-            group = group.add(bg).add(text);
+            group = group.add(rendered_text);
         }
 
         group.into()

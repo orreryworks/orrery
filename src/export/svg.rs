@@ -55,8 +55,8 @@ impl<'a> SvgBuilder<'a> {
         let mut background_color = None;
 
         if let Some(diagram) = self.diagram {
-            if let Some(color) = &diagram.background_color {
-                background_color = Some(color.clone());
+            if let Some(color) = diagram.background_color {
+                background_color = Some(color);
             }
         } else if let Some(style) = self.style {
             background_color = style.background_color()?;

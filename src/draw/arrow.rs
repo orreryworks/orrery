@@ -42,8 +42,8 @@ impl ArrowDefinition {
     }
 
     /// Gets the arrow color
-    pub fn color(&self) -> &Color {
-        &self.color
+    pub fn color(&self) -> Color {
+        self.color
     }
 
     /// Gets the arrow line width

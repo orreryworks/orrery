@@ -1,9 +1,8 @@
+use super::group::Group;
 use crate::{
     draw::{Drawable, Shape, Text},
     geometry::{Point, Size},
 };
-
-use super::group::Group;
 
 /// A drawable that combines a shape with optional header text.
 ///

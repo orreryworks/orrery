@@ -117,11 +117,11 @@ impl ShapeDefinition for RectangleDefinition {
     }
 
     fn fill_color(&self) -> Option<Color> {
-        self.fill_color.clone()
+        self.fill_color
     }
 
     fn line_color(&self) -> Color {
-        self.line_color.clone()
+        self.line_color
     }
 
     fn line_width(&self) -> usize {

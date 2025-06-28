@@ -330,7 +330,7 @@ impl TypeDefinition {
                     }
                     _ => {
                         return Err(ElaborationDiagnosticError::from_spanned(
-                            format!("Unsupported type definition attribute '{}'", name),
+                            format!("Unsupported type definition attribute '{name}'"),
                             &attr,
                             "unsupported attribute",
                             None,

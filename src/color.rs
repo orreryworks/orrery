@@ -6,7 +6,7 @@ use std::{
 
 /// Wrapper around the `DynamicColor` type from the color crate
 /// This provides convenience methods for working with colors in the Filament project
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Color {
     color: DynamicColor,
 }
@@ -30,7 +30,7 @@ impl Color {
     }
 
     /// Get the sanitized ID-safe string for this color (for use in markers)
-    pub fn to_id_safe_string(&self) -> String {
+    pub fn to_id_safe_string(self) -> String {
         let color_str = self.to_string();
         // Replace invalid ID characters with underscores
         let mut sanitized = color_str
@@ -43,6 +43,33 @@ impl Color {
         }
 
         sanitized
+    }
+
+    /// Creates a new color with the specified alpha (transparency) value.
+    ///
+    /// # Arguments
+    ///
+    /// * `alpha` - The alpha value to set, typically between 0.0 (fully transparent)
+    ///   and 1.0 (fully opaque)
+    ///
+    /// # Returns
+    ///
+    /// A new `Color` instance with the updated alpha value.
+    pub fn with_alpha(self, alpha: f32) -> Self {
+        Color {
+            color: self.color.with_alpha(alpha),
+        }
+    }
+
+    /// Returns the alpha (transparency) component of this color.
+    ///
+    /// # Returns
+    ///
+    /// The alpha value as a `f32` between 0.0 and 1.0, where:
+    /// - 0.0 = fully transparent
+    /// - 1.0 = fully opaque
+    pub fn alpha(&self) -> f32 {
+        self.color.components[3]
     }
 }
 

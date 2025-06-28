@@ -267,10 +267,7 @@ impl Engine {
                         let node_id = if (id as u64) <= (u32::MAX as u64) {
                             id as u32
                         } else {
-                            debug!(
-                                "Node ID {} from rust-sugiyama result is out of valid range",
-                                id
-                            );
+                            debug!("Node ID {id} from rust-sugiyama result is out of valid range");
                             continue;
                         };
 

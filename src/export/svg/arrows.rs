@@ -50,7 +50,7 @@ where
 /// Get marker references for a specific relation type and color
 pub fn get_markers_for_relation(
     relation_type: &RelationType,
-    color: &Color,
+    color: Color,
 ) -> (Option<String>, Option<String>) {
     match relation_type {
         RelationType::Forward => (

@@ -167,14 +167,14 @@ impl Svg {
             LayoutContent::Component(comp_layout) => {
                 for positioned_content in comp_layout.iter() {
                     for relation in &positioned_content.content().relations {
-                        colors.push(relation.relation().arrow_definition().color().clone());
+                        colors.push(relation.relation().arrow_definition().color());
                     }
                 }
             }
             LayoutContent::Sequence(seq_layout) => {
                 for positioned_content in seq_layout.iter() {
                     for message in &positioned_content.content().messages {
-                        colors.push(message.relation.arrow_definition().color().clone());
+                        colors.push(message.relation.arrow_definition().color());
                     }
                 }
             }
@@ -208,7 +208,7 @@ impl Svg {
             // Create a unique clip ID for this layer based on its z-index
             let clip_id = format!("clip-layer-{}", layer.z_index);
             // Apply the clip-path property referencing the previously defined clip path
-            layer_group = layer_group.set("clip-path", format!("url(#{})", clip_id));
+            layer_group = layer_group.set("clip-path", format!("url(#{clip_id})"));
         }
 
         // Render the layer content based on its type
