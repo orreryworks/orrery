@@ -3,7 +3,7 @@ use crate::ast::span::Spanned;
 use crate::{color::Color, draw, error::ElaborationDiagnosticError};
 use serde::{Deserialize, Serialize};
 use std::{
-    cell::{Ref, RefCell},
+    cell::RefCell,
     fmt::{self, Display},
     rc::Rc,
     str::FromStr,
@@ -16,40 +16,6 @@ pub struct TypeId(String);
 pub struct Attribute {
     pub name: TypeId,
     pub value: String, // TODO: Can I convert it to str?
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum RelationType {
-    Forward,       // ->
-    Backward,      // <-
-    Bidirectional, // <->
-    Plain,         // -
-}
-
-impl RelationType {
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "->" => Self::Forward,
-            "<-" => Self::Backward,
-            "<->" => Self::Bidirectional,
-            "-" => Self::Plain,
-            _ => Self::Forward, // Default to forward if unknown
-        }
-    }
-
-    fn to_string(&self) -> &'static str {
-        match self {
-            Self::Forward => "->",
-            Self::Backward => "<-",
-            Self::Bidirectional => "<->",
-            Self::Plain => "-",
-        }
-    }
-}
-impl fmt::Display for RelationType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.to_string())
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -73,7 +39,7 @@ impl Node {
 pub struct Relation {
     pub source: TypeId,
     pub target: TypeId,
-    pub relation_type: RelationType,
+    pub arrow_direction: draw::ArrowDirection,
     label: Option<String>,
     arrow_definition: Rc<RefCell<draw::ArrowDefinition>>,
     text_definition: Rc<RefCell<draw::TextDefinition>>,
@@ -83,7 +49,7 @@ impl Relation {
     pub fn new(
         source: TypeId,
         target: TypeId,
-        relation_type: RelationType,
+        arrow_direction: draw::ArrowDirection,
         label: Option<String>,
         arrow_definition: Rc<RefCell<draw::ArrowDefinition>>,
         text_definition: Rc<RefCell<draw::TextDefinition>>,
@@ -91,7 +57,7 @@ impl Relation {
         Self {
             source,
             target,
-            relation_type,
+            arrow_direction,
             label,
             arrow_definition,
             text_definition,
@@ -104,9 +70,8 @@ impl Relation {
             .map(|label| draw::Text::new(Rc::clone(&self.text_definition), label.clone()))
     }
 
-    /// Gets a reference to the arrow definition
-    pub fn arrow_definition(&self) -> Ref<draw::ArrowDefinition> {
-        self.arrow_definition.borrow()
+    pub fn clone_arrow_definition(&self) -> Rc<RefCell<draw::ArrowDefinition>> {
+        Rc::clone(&self.arrow_definition)
     }
 }
 

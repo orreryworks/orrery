@@ -41,7 +41,7 @@ impl ShapeDefinition for RectangleDefinition {
         // Rectangle center is at a
         let rect_center = a;
 
-        let dist = b.sub(a);
+        let dist = b.sub_point(a);
 
         // Normalize the direction vector
         let length = dist.hypot();

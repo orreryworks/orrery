@@ -96,9 +96,9 @@ impl<'a> LayeredLayout<'a> {
         // 3. Add padding to inset from the edges
         embedded_layer.offset = embedded_layer
             .offset
-            .add(container_layer.offset)
-            .add(container_bounds.min_point())
-            .add(positioned_shape.inner().shape_to_inner_content_min_point());
+            .add_point(container_layer.offset)
+            .add_point(container_bounds.min_point())
+            .add_point(positioned_shape.inner().shape_to_inner_content_min_point());
 
         // Set clip bounds with padding
         let padded_clip_bounds = container_bounds

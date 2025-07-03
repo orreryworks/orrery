@@ -1,11 +1,13 @@
 mod arrow;
+mod arrow_with_text;
 mod group;
 mod positioned;
 mod shape;
 mod shape_with_text;
 mod text;
 
-pub use arrow::{ArrowDefinition, ArrowStyle};
+pub use arrow::{Arrow, ArrowDefinition, ArrowDirection, ArrowDrawer, ArrowStyle};
+pub use arrow_with_text::{ArrowWithText, ArrowWithTextDrawer};
 pub use positioned::PositionedDrawable;
 pub use shape::{OvalDefinition, RectangleDefinition, Shape, ShapeDefinition};
 pub use shape_with_text::ShapeWithText;

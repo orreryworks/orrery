@@ -1,4 +1,3 @@
-mod arrows;
 mod component;
 mod layer;
 mod sequence;
@@ -7,6 +6,7 @@ use crate::{
     ast,
     color::Color,
     config::StyleConfig,
+    draw::ArrowWithTextDrawer,
     error::FilamentError,
     export,
     geometry::{Insets, Size},
@@ -27,6 +27,7 @@ pub struct SvgBuilder<'a> {
 pub struct Svg {
     file_name: String,
     background_color: Option<Color>,
+    arrow_with_text_drawer: ArrowWithTextDrawer, // NOTE: Does it need to be in this level or should it be in the SvgBuilder level?
 }
 
 impl<'a> SvgBuilder<'a> {
@@ -62,9 +63,12 @@ impl<'a> SvgBuilder<'a> {
             background_color = style.background_color()?;
         }
 
+        let arrow_with_text_drawer = ArrowWithTextDrawer::new();
+
         Ok(Svg {
             file_name: self.file_name,
             background_color,
+            arrow_with_text_drawer,
         })
     }
 }
@@ -126,7 +130,7 @@ impl Svg {
 
 // Implementation of Exporter trait for SVG
 impl export::Exporter for Svg {
-    fn export_layered_layout(&self, layout: &LayeredLayout) -> Result<(), export::Error> {
+    fn export_layered_layout(&mut self, layout: &LayeredLayout) -> Result<(), export::Error> {
         let doc = self.render_layered_layout(layout);
         debug!("SVG document rendered for layered layout");
 

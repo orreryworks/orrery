@@ -199,8 +199,8 @@ pub fn adjust_positioned_contents_offset<'a>(
                 .expect("Component must exist in source layer");
             let target_offset = source
                 .offset()
-                .add(source_component.bounds().min_point())
-                .add(
+                .add_point(source_component.bounds().min_point())
+                .add_point(
                     source_component
                         .drawable
                         .inner()

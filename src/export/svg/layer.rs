@@ -1,5 +1,4 @@
 use crate::{
-    color::Color,
     geometry::Bounds,
     layout::{
         component,
@@ -9,16 +8,13 @@ use crate::{
     },
 };
 use log::debug;
-use svg::{
-    Document,
-    node::element::{ClipPath, Definitions, Group, Rectangle},
-};
+use svg::{self, node::element as svg_element};
 
 use super::Svg;
 
 impl Svg {
     /// Render the complete layered layout to an SVG document
-    pub fn render_layered_layout(&self, layout: &LayeredLayout) -> Document {
+    pub fn render_layered_layout(&mut self, layout: &LayeredLayout) -> svg::Document {
         // Calculate content bounds
         let content_bounds = self.calculate_layered_layout_bounds(layout);
         let content_size = content_bounds.to_size();
@@ -27,7 +23,7 @@ impl Svg {
         let svg_size = self.calculate_svg_dimensions(&content_size);
 
         // Create the SVG document with calculated dimensions
-        let doc = Document::new()
+        let doc = svg::Document::new()
             .set(
                 "viewBox",
                 format!("0 0 {} {}", svg_size.width(), svg_size.height()),
@@ -37,10 +33,6 @@ impl Svg {
 
         // Add background
         let mut doc = self.add_background(doc, svg_size);
-
-        // Add marker definitions for all layers
-        let defs = self.create_marker_definitions_for_all_layers(layout);
-        doc = doc.add(defs);
 
         // Add clip paths for all layers that need clipping
         // Each clip path gets a unique ID based on the layer's z-index
@@ -57,7 +49,7 @@ impl Svg {
         let margin_y = (svg_size.height() - content_size.height()) / 2.0;
 
         // Create a main group with translation to center content and adjust for min bounds
-        let mut main_group = Group::new().set(
+        let mut main_group = svg_element::Group::new().set(
             "transform",
             format!(
                 "translate({}, {})",
@@ -71,6 +63,10 @@ impl Svg {
             main_group = main_group.add(self.render_layer(layer));
         }
 
+        // Add marker definitions for all layers
+        let arrow_markers_defs = self.arrow_with_text_drawer.draw_marker_definitions();
+        doc = doc.add(arrow_markers_defs);
+
         // Add the main group to the document
         doc.add(main_group)
     }
@@ -83,17 +79,19 @@ impl Svg {
     /// # Parameters
     /// * `clip_id` - Unique identifier for the clip path
     /// * `bounds` - The bounds to use for clipping
-    fn create_clip_path(&self, clip_id: &str, bounds: &Bounds) -> Definitions {
-        let defs = Definitions::new();
+    fn create_clip_path(&self, clip_id: &str, bounds: &Bounds) -> svg_element::Definitions {
+        let defs = svg_element::Definitions::new();
 
         // Create a clip path with a rectangle matching the bounds
-        let clip_rect = Rectangle::new()
+        let clip_rect = svg_element::Rectangle::new()
             .set("x", bounds.min_x())
             .set("y", bounds.min_y())
             .set("width", bounds.width())
             .set("height", bounds.height());
 
-        let clip_path = ClipPath::new().set("id", clip_id).add(clip_rect);
+        let clip_path = svg_element::ClipPath::new()
+            .set("id", clip_id)
+            .add(clip_rect);
 
         defs.add(clip_path)
     }
@@ -145,42 +143,6 @@ impl Svg {
         }
     }
 
-    /// Create marker definitions for all layers
-    fn create_marker_definitions_for_all_layers(
-        &self,
-        layout: &LayeredLayout,
-    ) -> svg::node::element::Definitions {
-        // Collect all unique colors used across all layers
-        let mut all_colors = Vec::new();
-
-        for layer in layout.iter_from_bottom() {
-            self.collect_layer_colors(&layer.content, &mut all_colors);
-        }
-
-        // Create marker definitions for all collected colors
-        super::arrows::create_marker_definitions(all_colors.iter())
-    }
-
-    /// Collect colors from a single layer's content
-    fn collect_layer_colors(&self, content: &LayoutContent, colors: &mut Vec<Color>) {
-        match content {
-            LayoutContent::Component(comp_layout) => {
-                for positioned_content in comp_layout.iter() {
-                    for relation in &positioned_content.content().relations {
-                        colors.push(relation.relation().arrow_definition().color());
-                    }
-                }
-            }
-            LayoutContent::Sequence(seq_layout) => {
-                for positioned_content in seq_layout.iter() {
-                    for message in &positioned_content.content().messages {
-                        colors.push(message.relation.arrow_definition().color());
-                    }
-                }
-            }
-        }
-    }
-
     /// Render a single layer to SVG
     ///
     /// This method creates an SVG group for the layer, applies transformations and clipping,
@@ -191,9 +153,9 @@ impl Svg {
     ///
     /// # Returns
     /// An SVG Group element containing the rendered layer
-    fn render_layer(&self, layer: &Layer) -> Group {
+    fn render_layer(&mut self, layer: &Layer) -> svg_element::Group {
         // Create a group for this layer
-        let mut layer_group = Group::new();
+        let mut layer_group = svg_element::Group::new();
 
         // Apply offset transformation if not at origin
         if !layer.offset.is_zero() {
@@ -218,7 +180,7 @@ impl Svg {
     }
 
     /// Render layer content by dispatching to appropriate content-specific renderer
-    fn render_layer_content(&self, content: &LayoutContent) -> Vec<Box<dyn svg::Node>> {
+    fn render_layer_content(&mut self, content: &LayoutContent) -> Vec<Box<dyn svg::Node>> {
         match content {
             LayoutContent::Component(layout) => self
                 .render_content_stack(layout, |svg, content| svg.render_component_content(content)),
@@ -229,9 +191,9 @@ impl Svg {
 
     /// Generic function to render a ContentStack with positioned content
     fn render_content_stack<T: LayoutSizing>(
-        &self,
+        &mut self,
         content_stack: &ContentStack<T>,
-        render_fn: impl Fn(&Self, &T) -> Vec<Box<dyn svg::Node>>,
+        render_fn: impl Fn(&mut Self, &T) -> Vec<Box<dyn svg::Node>>,
     ) -> Vec<Box<dyn svg::Node>> {
         let mut groups = Vec::with_capacity(content_stack.len());
         // Render all positioned content in the stack (reverse order for proper layering)
@@ -241,7 +203,7 @@ impl Svg {
             debug!(offset:?; "Rendering positioned content");
 
             // Create a group for this positioned content with its offset applied
-            let mut positioned_group = Group::new();
+            let mut positioned_group = svg_element::Group::new();
 
             // Apply the positioned content's offset as a transform
             if !positioned_content.offset().is_zero() {
@@ -265,7 +227,7 @@ impl Svg {
     }
 
     /// Render component-specific content
-    fn render_component_content(&self, content: &component::Layout) -> Vec<Box<dyn svg::Node>> {
+    fn render_component_content(&mut self, content: &component::Layout) -> Vec<Box<dyn svg::Node>> {
         let mut groups = Vec::with_capacity(content.components.len() + content.relations.len());
         // Render all components within this positioned content
         for component in &content.components {
@@ -284,7 +246,7 @@ impl Svg {
     }
 
     /// Render sequence-specific content
-    fn render_sequence_content(&self, content: &sequence::Layout) -> Vec<Box<dyn svg::Node>> {
+    fn render_sequence_content(&mut self, content: &sequence::Layout) -> Vec<Box<dyn svg::Node>> {
         let mut groups = Vec::with_capacity(content.participants.len() + content.messages.len());
         // Render all participants within this positioned content
         for participant in &content.participants {

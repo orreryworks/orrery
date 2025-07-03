@@ -96,8 +96,8 @@ pub fn adjust_positioned_contents_offset<'a>(
 
             let target_offset = source
                 .offset()
-                .add(source_participant.component.bounds().min_point())
-                .add(
+                .add_point(source_participant.component.bounds().min_point())
+                .add_point(
                     source_participant
                         .component
                         .drawable()

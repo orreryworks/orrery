@@ -360,7 +360,7 @@ impl Engine {
 
         // Apply the offset to all positions to ensure they're positive
         for position in positions.values_mut() {
-            *position = position.sub(Point::new(offset_x, offset_y));
+            *position = position.sub_point(Point::new(offset_x, offset_y));
         }
     }
 }

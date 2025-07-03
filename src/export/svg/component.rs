@@ -1,11 +1,10 @@
-use super::{Svg, arrows};
+use super::Svg;
 use crate::{
-    draw::Drawable,
+    draw::{Arrow, ArrowWithText},
     geometry::{Bounds, Point},
     layout::component,
     layout::layer::ContentStack,
 };
-use svg::node::element::Group;
 
 impl Svg {
     // Find the point where a line from the shape entity to an external point intersects with the shape entity's boundary
@@ -25,45 +24,27 @@ impl Svg {
     }
 
     pub fn render_relation(
-        &self,
+        &mut self,
         source: &component::Component,
         target: &component::Component,
         relation: &component::LayoutRelation,
     ) -> Box<dyn svg::Node> {
-        // Create a group to hold both the path and label
-        let mut group = Group::new();
-
         // Calculate intersection points where the line meets each shape's boundary
         let source_edge = self.find_intersection(source, target.position());
         let target_edge = self.find_intersection(target, source.position());
 
         let ast_relation = relation.relation();
-        let arrow_def = ast_relation.arrow_definition();
-        // Create the path with appropriate markers
-        let path = arrows::create_path(
-            source_edge,
-            target_edge,
-            &ast_relation.relation_type,
-            arrow_def,
-        );
-
-        // Add the path to the group
-        group = group.add(path);
+        let arrow_def = ast_relation.clone_arrow_definition();
+        let arrow = Arrow::new(arrow_def, ast_relation.arrow_direction);
+        let mut arrow_with_text = ArrowWithText::new(arrow);
 
         // Add label if it exists
         if let Some(text) = relation.text() {
-            let mid = source_edge.midpoint(target_edge);
-
-            // Add a small offset to position the label above the line
-            let offset_y = -10.0;
-            let text_position = Point::new(mid.x(), mid.y() + offset_y);
-
-            let rendered_text = text.render_to_svg(text_position);
-
-            group = group.add(rendered_text);
+            arrow_with_text.set_text(text.clone());
         }
 
-        group.into()
+        self.arrow_with_text_drawer
+            .draw_arrow_with_text(&arrow_with_text, source_edge, target_edge)
     }
 
     pub fn calculate_component_diagram_bounds(

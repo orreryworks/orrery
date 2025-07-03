@@ -39,7 +39,7 @@ impl ShapeDefinition for OvalDefinition {
         let half_width = a_size.width() / 2.0;
         let half_height = a_size.height() / 2.0;
 
-        let dist = b.sub(a);
+        let dist = b.sub_point(a);
 
         // Normalize the direction vector
         let length = dist.hypot(); // (dx * dx + dy * dy).sqrt()

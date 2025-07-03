@@ -1,14 +1,14 @@
-use super::{Svg, arrows};
+use super::Svg;
 use crate::{
-    draw::Drawable,
+    draw::{Arrow, ArrowWithText},
     geometry::{Bounds, Point},
     layout::{layer::ContentStack, sequence},
 };
-use svg::node::element::{Group, Line};
+use svg::node::element as svg_element;
 
 impl Svg {
     pub fn render_participant(&self, participant: &sequence::Participant) -> Box<dyn svg::Node> {
-        let group = Group::new();
+        let group = svg_element::Group::new();
         let component = &participant.component;
 
         // Use the renderer to generate the SVG for the participant
@@ -20,7 +20,7 @@ impl Svg {
         let position = component.position();
 
         // Lifeline
-        let lifeline = Line::new()
+        let lifeline = svg_element::Line::new()
             .set("x1", position.x())
             .set("y1", lifeline_start_y)
             .set("x2", position.x())
@@ -33,12 +33,10 @@ impl Svg {
     }
 
     pub fn render_message(
-        &self,
+        &mut self,
         message: &sequence::Message,
         layout: &sequence::Layout,
     ) -> Box<dyn svg::Node> {
-        let mut group = Group::new();
-
         let source = &layout.participants[message.source_index];
         let target = &layout.participants[message.target_index];
 
@@ -51,30 +49,17 @@ impl Svg {
         let end_point = Point::new(target_x, message_y);
 
         // Create the path with appropriate markers - always use straight style for sequence diagrams
-        let arrow_def = message.relation.arrow_definition();
-        let path = arrows::create_path(
-            start_point,
-            end_point,
-            &message.relation.relation_type,
-            arrow_def,
-        );
-
-        // Add the path to the group
-        group = group.add(path);
+        let arrow_def = message.relation.clone_arrow_definition();
+        let arrow = Arrow::new(arrow_def, message.relation.arrow_direction);
+        let mut arrow_with_text = ArrowWithText::new(arrow);
 
         // Add label if it exists
         if let Some(text) = message.relation.text() {
-            // Calculate position for the label (slightly above the message line)
-            let mid_x = (source_x + target_x) / 2.0;
-            let label_y = message_y - 15.0; // 15px above the message line
-            let text_position = Point::new(mid_x, label_y);
-
-            let rendered_text = text.render_to_svg(text_position);
-
-            group = group.add(rendered_text);
+            arrow_with_text.set_text(text.clone());
         }
 
-        group.into()
+        self.arrow_with_text_drawer
+            .draw_arrow_with_text(&arrow_with_text, start_point, end_point)
     }
 
     pub fn calculate_sequence_diagram_bounds(

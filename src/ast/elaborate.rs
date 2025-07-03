@@ -354,10 +354,22 @@ impl<'a> Builder<'a> {
                     let source_id = self.create_type_id(parent_id, source);
                     let target_id = self.create_type_id(parent_id, target);
 
+                    let arrow_direction =
+                        draw::ArrowDirection::from_str(relation_type).map_err(|_| {
+                            ElaborationDiagnosticError::from_spanned(
+                                format!("Invalid arrow direction '{relation_type}'"),
+                                relation_type,
+                                "invalid direction",
+                                Some(
+                                    "Arrow direction must be '->', '<-', '<->', or '-'".to_string(),
+                                ),
+                            )
+                        })?;
+
                     elements.push(types::Element::Relation(types::Relation::new(
                         source_id,
                         target_id,
-                        types::RelationType::from_str(relation_type),
+                        arrow_direction,
                         label.as_ref().map(|l| l.to_string()),
                         Rc::new(RefCell::new(arrow_definition)),
                         Rc::clone(&relation_text_def),
@@ -496,7 +508,7 @@ impl<'a> Builder<'a> {
                             ),
                         )
                     })?;
-                    arrow_def.set_arrow_style(arrow_style);
+                    arrow_def.set_style(arrow_style);
                 }
                 _ => {
                     return Err(ElaborationDiagnosticError::from_spanned(

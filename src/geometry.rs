@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Point {
     x: f32,
     y: f32,
@@ -26,7 +26,7 @@ impl Point {
     }
 
     /// Adds another point to this point, returning a new point
-    pub fn add(self, other: Point) -> Self {
+    pub fn add_point(self, other: Point) -> Self {
         Self {
             x: self.x + other.x,
             y: self.y + other.y,
@@ -34,7 +34,7 @@ impl Point {
     }
 
     /// Subtracts another point to this point, returning a new point
-    pub fn sub(self, other: Point) -> Self {
+    pub fn sub_point(self, other: Point) -> Self {
         Self {
             x: self.x - other.x,
             y: self.y - other.y,
@@ -354,7 +354,7 @@ mod tests {
     fn test_point_add() {
         let p1 = Point::new(1.0, 2.0);
         let p2 = Point::new(3.0, 4.0);
-        let result = p1.add(p2);
+        let result = p1.add_point(p2);
         assert_eq!(result.x(), 4.0);
         assert_eq!(result.y(), 6.0);
     }
@@ -363,7 +363,7 @@ mod tests {
     fn test_point_sub() {
         let p1 = Point::new(5.0, 8.0);
         let p2 = Point::new(2.0, 3.0);
-        let result = p1.sub(p2);
+        let result = p1.sub_point(p2);
         assert_eq!(result.x(), 3.0);
         assert_eq!(result.y(), 5.0);
     }
@@ -687,19 +687,19 @@ mod tests {
         let p2 = Point::new(1.0, 2.0);
 
         // Test addition commutativity
-        assert_eq!(p1.add(p2).x(), p2.add(p1).x());
-        assert_eq!(p1.add(p2).y(), p2.add(p1).y());
+        assert_eq!(p1.add_point(p2).x(), p2.add_point(p1).x());
+        assert_eq!(p1.add_point(p2).y(), p2.add_point(p1).y());
 
         // Test subtraction
-        let diff = p1.sub(p2);
-        let sum_back = diff.add(p2);
+        let diff = p1.sub_point(p2);
+        let sum_back = diff.add_point(p2);
         assert!((sum_back.x() - p1.x()).abs() < f32::EPSILON);
         assert!((sum_back.y() - p1.y()).abs() < f32::EPSILON);
 
         // Test midpoint properties
         let mid = p1.midpoint(p2);
-        let dist1 = p1.sub(mid).hypot();
-        let dist2 = p2.sub(mid).hypot();
+        let dist1 = p1.sub_point(mid).hypot();
+        let dist2 = p2.sub_point(mid).hypot();
         assert!((dist1 - dist2).abs() < f32::EPSILON);
     }
 

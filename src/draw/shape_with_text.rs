@@ -1,6 +1,5 @@
-use super::group::Group;
 use crate::{
-    draw::{Drawable, Shape, Text},
+    draw::{Drawable, Shape, Text, group::Group},
     geometry::{Point, Size},
 };
 

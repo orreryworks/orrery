@@ -1,10 +1,10 @@
 mod ast;
-mod color;
+pub mod color;
 mod config;
-mod draw;
+pub mod draw;
 mod error;
 mod export;
-mod geometry;
+pub mod geometry;
 mod graph;
 mod layout;
 
@@ -61,7 +61,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
     debug!("Graph built successfully");
 
     // Create SVG exporter builder with diagram properties
-    let svg_exporter = export::svg::SvgBuilder::new(&cfg.output)
+    let mut svg_exporter = export::svg::SvgBuilder::new(&cfg.output)
         .with_style(&app_config.style)
         .with_diagram(&elaborated_ast)
         .build()?;

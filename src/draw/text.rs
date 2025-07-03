@@ -111,7 +111,6 @@ impl Drawable for Text {
     fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
         let text_def = self.definition.borrow();
 
-        let mut group = svg_element::Group::new();
         let text_size = self.calculate_size();
         let padding = text_def.padding();
 
@@ -138,6 +137,7 @@ impl Drawable for Text {
                 .set("fill-opacity", bg_color.alpha())
                 .set("rx", 3.0); // Slightly rounded corners
 
+            let mut group = svg_element::Group::new();
             group = group.add(bg);
             group = group.add(rendered_text);
             return group.into();

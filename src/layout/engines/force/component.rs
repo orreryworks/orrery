@@ -171,7 +171,7 @@ impl Engine {
                 let jitter =
                     Point::new(rng.random_range(-20.0..20.0), rng.random_range(-20.0..20.0));
 
-                (node_idx, base.add(jitter))
+                (node_idx, base.add_point(jitter))
             })
             .collect()
     }
@@ -215,7 +215,7 @@ impl Engine {
                     let pos_i = positions[&node_i];
                     let pos_j = positions[&node_j];
 
-                    let trans = pos_i.sub(pos_j);
+                    let trans = pos_i.sub_point(pos_j);
 
                     // Get component sizes to calculate appropriate distances
                     let size_i = *component_sizes
@@ -266,7 +266,7 @@ impl Engine {
                     if let (Some(&pos_source), Some(&pos_target)) =
                         (positions.get(&source), positions.get(&target))
                     {
-                        let dist = pos_source.sub(pos_target);
+                        let dist = pos_source.sub_point(pos_target);
 
                         // Avoid division by zero
                         let distance = dist.hypot().max(1.0);
@@ -339,7 +339,7 @@ impl Engine {
 
         // Center everything
         for pos in positions.values_mut() {
-            *pos = pos.sub(Point::new(center_x, center_y));
+            *pos = pos.sub_point(Point::new(center_x, center_y));
         }
 
         // Scale the layout if it's too large

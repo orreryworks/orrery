@@ -4,7 +4,7 @@ use crate::layout::layer::LayeredLayout;
 
 // A single Exporter trait that works with layered diagrams
 pub trait Exporter {
-    fn export_layered_layout(&self, _layout: &LayeredLayout) -> Result<(), Error> {
+    fn export_layered_layout(&mut self, _layout: &LayeredLayout) -> Result<(), Error> {
         Err(Error::Render(
             "Layered layout export not implemented".to_string(),
         ))
