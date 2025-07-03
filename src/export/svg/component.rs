@@ -1,6 +1,6 @@
 use super::Svg;
 use crate::{
-    draw::{Arrow, ArrowWithText},
+    draw,
     geometry::{Bounds, Point},
     layout::component,
     layout::layer::ContentStack,
@@ -27,24 +27,14 @@ impl Svg {
         &mut self,
         source: &component::Component,
         target: &component::Component,
-        relation: &component::LayoutRelation,
+        arrow_with_text: &draw::ArrowWithText,
     ) -> Box<dyn svg::Node> {
         // Calculate intersection points where the line meets each shape's boundary
         let source_edge = self.find_intersection(source, target.position());
         let target_edge = self.find_intersection(target, source.position());
 
-        let ast_relation = relation.relation();
-        let arrow_def = ast_relation.clone_arrow_definition();
-        let arrow = Arrow::new(arrow_def, ast_relation.arrow_direction);
-        let mut arrow_with_text = ArrowWithText::new(arrow);
-
-        // Add label if it exists
-        if let Some(text) = relation.text() {
-            arrow_with_text.set_text(text.clone());
-        }
-
         self.arrow_with_text_drawer
-            .draw_arrow_with_text(&arrow_with_text, source_edge, target_edge)
+            .draw_arrow_with_text(arrow_with_text, source_edge, target_edge)
     }
 
     pub fn calculate_component_diagram_bounds(

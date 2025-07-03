@@ -239,7 +239,7 @@ impl Svg {
             groups.push(self.render_relation(
                 content.source(relation),
                 content.target(relation),
-                relation,
+                relation.arrow_with_text(),
             ));
         }
         groups

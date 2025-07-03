@@ -99,7 +99,7 @@ impl Engine {
                 .collect();
 
             // Build the list of relations between components
-            let relations: Vec<LayoutRelation<'a>> = graph
+            let relations: Vec<LayoutRelation> = graph
                 .containment_scope_relations(containment_scope)
                 .filter_map(|relation| {
                     // Only include relations between visible components
@@ -108,7 +108,11 @@ impl Engine {
                         component_indices.get(&relation.source),
                         component_indices.get(&relation.target),
                     ) {
-                        Some(LayoutRelation::new(relation, source_index, target_index))
+                        Some(LayoutRelation::from_ast(
+                            relation,
+                            source_index,
+                            target_index,
+                        ))
                     } else {
                         None
                     }

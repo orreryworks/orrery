@@ -66,40 +66,43 @@ impl Component<'_> {
 /// This allows the layout system to efficiently reference components when
 /// positioning and rendering relations.
 #[derive(Debug, Clone)]
-pub struct LayoutRelation<'a> {
-    relation: &'a ast::Relation,
+pub struct LayoutRelation {
     source_index: usize,
     target_index: usize,
-    text: Option<draw::Text>, // Optional text label for the relation
+    arrow_with_text: draw::ArrowWithText,
 }
 
-impl<'a> LayoutRelation<'a> {
-    /// Creates a new LayoutRelation with the given relation and component indices.
+impl LayoutRelation {
+    /// Creates a new LayoutRelation from an AST relation and component indices.
+    ///
+    /// This method extracts the arrow definition and text from the AST relation
+    /// and creates a self-contained LayoutRelation that doesn't depend on the
+    /// original AST lifetime.
     ///
     /// # Arguments
     /// * `relation` - Reference to the AST relation being laid out
     /// * `source_index` - Index of the source component in the layout
     /// * `target_index` - Index of the target component in the layout
-    pub fn new(relation: &'a ast::Relation, source_index: usize, target_index: usize) -> Self {
-        let text = relation.text();
+    ///
+    /// # Returns
+    /// A new LayoutRelation containing all necessary rendering information
+    pub fn from_ast(relation: &ast::Relation, source_index: usize, target_index: usize) -> Self {
+        let arrow_def = relation.clone_arrow_definition();
+        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction);
+        let mut arrow_with_text = draw::ArrowWithText::new(arrow);
+        if let Some(text) = relation.text() {
+            arrow_with_text.set_text(text);
+        }
         Self {
-            relation,
             source_index,
             target_index,
-            text,
+            arrow_with_text,
         }
     }
 
-    /// Returns a reference to the underlying AST relation.
-    ///
-    /// This provides access to the relation's properties such as type,
-    /// attributes, and labels for rendering purposes.
-    pub fn relation(&self) -> &ast::Relation {
-        self.relation
-    }
-
-    pub fn text(&self) -> Option<&draw::Text> {
-        self.text.as_ref()
+    /// Returns a reference to the arrow with text for this relation.
+    pub fn arrow_with_text(&self) -> &draw::ArrowWithText {
+        &self.arrow_with_text
     }
 }
 
@@ -111,17 +114,23 @@ impl<'a> LayoutRelation<'a> {
 #[derive(Debug, Clone)]
 pub struct Layout<'a> {
     pub components: Vec<Component<'a>>,
-    pub relations: Vec<LayoutRelation<'a>>,
+    pub relations: Vec<LayoutRelation>,
 }
 
 impl<'a> Layout<'a> {
     /// Returns a reference to the source component of the given relation.
-    pub fn source(&self, lr: &LayoutRelation<'a>) -> &Component<'a> {
+    ///
+    /// # Panics
+    /// Panics if the source index is out of bounds.
+    pub fn source(&self, lr: &LayoutRelation) -> &Component<'a> {
         &self.components[lr.source_index]
     }
 
     /// Returns a reference to the target component of the given relation.
-    pub fn target(&self, lr: &LayoutRelation<'a>) -> &Component<'a> {
+    ///
+    /// # Panics
+    /// Panics if the target index is out of bounds.
+    pub fn target(&self, lr: &LayoutRelation) -> &Component<'a> {
         &self.components[lr.target_index]
     }
 }
