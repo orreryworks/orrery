@@ -139,6 +139,13 @@ impl Size {
     pub fn is_zero(self) -> bool {
         self.width == 0.0 && self.height == 0.0
     }
+
+    pub fn merge_horizontal(self, other: Size) -> Self {
+        Self {
+            width: self.width + other.width,
+            height: self.height.max(other.height),
+        }
+    }
 }
 
 /// Represents a rectangular bounding box with minimum and maximum coordinates

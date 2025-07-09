@@ -9,7 +9,7 @@ mod text;
 pub use arrow::{Arrow, ArrowDefinition, ArrowDirection, ArrowDrawer, ArrowStyle};
 pub use arrow_with_text::{ArrowWithText, ArrowWithTextDrawer};
 pub use positioned::PositionedDrawable;
-pub use shape::{OvalDefinition, RectangleDefinition, Shape, ShapeDefinition};
+pub use shape::{ComponentDefinition, OvalDefinition, RectangleDefinition, Shape, ShapeDefinition};
 pub use shape_with_text::ShapeWithText;
 pub use text::{Text, TextDefinition};
 

@@ -6,9 +6,11 @@ use crate::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
+mod component;
 mod oval;
 mod rectangle;
 
+pub use component::ComponentDefinition;
 pub use oval::OvalDefinition;
 pub use rectangle::RectangleDefinition;
 

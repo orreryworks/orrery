@@ -40,10 +40,11 @@ diagram component [layout_engine="force"];
 
 ### 4.1 Built-in Types
 
-Filament provides two built-in shape types:
+Filament provides three built-in shape types:
 
 - `Rectangle`: A rectangular shape with customizable properties
 - `Oval`: An elliptical shape with customizable properties
+- `Component`: A UML-style component shape with a rectangular body and component icon
 
 ### 4.2 Type Definitions
 
@@ -246,7 +247,7 @@ Filament diagrams are rendered as SVG files with the following characteristics:
 diagram component [layout_engine="force", background_color="#f8f8f8"];
 
 type Database = Rectangle [fill_color="lightblue", rounded="10"];
-type Service = Rectangle [fill_color="#e6f3ff"];
+type Service = Component [fill_color="#e6f3ff"];
 type Client = Oval [fill_color="#ffe6e6"];
 
 end_user as "End User": Client;

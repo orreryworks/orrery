@@ -322,6 +322,12 @@ impl TypeDefinition {
                 shape_definition: Rc::new(RefCell::new(draw::OvalDefinition::new()))
                     as Rc<RefCell<dyn draw::ShapeDefinition>>,
             }),
+            Rc::new(Self {
+                id: TypeId::from_name("Component"),
+                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
+                shape_definition: Rc::new(RefCell::new(draw::ComponentDefinition::new()))
+                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
+            }),
         ]
     }
 }

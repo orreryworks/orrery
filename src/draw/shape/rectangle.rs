@@ -155,12 +155,12 @@ impl ShapeDefinition for RectangleDefinition {
     fn render_to_svg(&self, size: Size, position: Point) -> Box<dyn svg::Node> {
         // Calculate the actual top-left position for the rectangle
         // (position is the center of the component)
-        let rect_bounds = position.to_bounds(size);
+        let bounds = position.to_bounds(size);
 
         // Main rectangle
         let mut rect = svg_element::Rectangle::new()
-            .set("x", rect_bounds.min_x())
-            .set("y", rect_bounds.min_y())
+            .set("x", bounds.min_x())
+            .set("y", bounds.min_y())
             .set("width", size.width())
             .set("height", size.height())
             .set("stroke", self.line_color().to_string())

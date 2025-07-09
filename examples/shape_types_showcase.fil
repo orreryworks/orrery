@@ -1,0 +1,98 @@
+// Shape Types Showcase
+// This example demonstrates all available shape types in Filament with various styling options
+
+diagram component [background_color="#f8f8f8"];
+
+// Define custom types based on built-in shapes
+type StyledRectangle = Rectangle [
+    fill_color="#e6f3ff",
+    line_color="#0066cc",
+    line_width="2",
+    rounded="8"
+];
+
+type StyledOval = Oval [
+    fill_color="#ffe6e6",
+    line_color="#cc0000",
+    line_width="3"
+];
+
+type StyledComponent = Component [
+    fill_color="#e6ffe6",
+    line_color="#006600",
+    line_width="2"
+];
+
+// Basic built-in shapes with default styling
+basic_rectangle as "Basic Rectangle": Rectangle;
+basic_oval as "Basic Oval": Oval;
+basic_component as "Basic Component": Component;
+
+// Styled custom types
+styled_rectangle as "Styled Rectangle": StyledRectangle;
+styled_oval as "Styled Oval": StyledOval;
+styled_component as "Styled Component": StyledComponent;
+
+// Rectangle variations
+rounded_rect as "Rounded Rectangle": Rectangle [rounded="15", fill_color="#fff2cc"];
+thick_border_rect as "Thick Border": Rectangle [line_width="4", line_color="#d6b656"];
+colored_rect as "Colored Rectangle": Rectangle [fill_color="#d5e8d4", line_color="#82b366"];
+
+// Oval variations
+large_oval as "Large Oval": Oval [fill_color="#f8cecc", line_color="#b85450"];
+thin_oval as "Thin Border": Oval [line_width="1", fill_color="#dae8fc", line_color="#6c8ebf"];
+
+// Component variations
+custom_component as "Custom Component": Component [fill_color="#fff2cc", line_color="#d6b656"];
+minimal_component as "Minimal Component": Component [line_width="1"];
+
+// Database representation using styled rectangle
+database as "Database": Rectangle [
+    fill_color="lightblue",
+    rounded="10",
+    line_width="2",
+    line_color="#4a90e2"
+];
+
+// Service representations
+web_service as "Web Service": StyledRectangle;
+api_gateway as "API Gateway": StyledComponent;
+message_queue as "Message Queue": StyledOval;
+
+// Nested container showing shape combinations
+system_container as "System Container": Rectangle [
+    fill_color="#f0f0f0",
+    line_color="#808080",
+    line_width="2"
+] {
+    frontend as "Frontend": StyledComponent;
+    backend as "Backend": StyledRectangle;
+    cache as "Cache": StyledOval;
+
+    frontend -> backend: "API Calls";
+    backend -> cache: "Cache Access";
+};
+
+// Relations between different shape types
+basic_rectangle -> styled_rectangle: "Rectangle to Rectangle";
+basic_oval -> styled_oval: "Oval to Oval";
+basic_component -> styled_component: "Component to Component";
+
+// Cross-type relations
+styled_rectangle -> styled_oval: "Rect to Oval";
+styled_oval -> styled_component: "Oval to Component";
+styled_component -> database: "Component to Database";
+
+// Service architecture relations
+web_service -> api_gateway: "HTTP Request";
+api_gateway -> message_queue: "Queue Message";
+api_gateway -> database: "Data Query";
+
+// System relations
+system_container -> web_service: "External Access";
+database -> system_container: "Data Flow";
+
+// Styling examples with different arrow styles
+basic_rectangle -> [style="curved", color="blue", width="2"] basic_oval: "Curved Arrow";
+basic_component -> [style="orthogonal", color="red", width="3"] database: "Orthogonal Arrow";
+web_service -> [color="green", width="1"] message_queue: "Straight Arrow";
