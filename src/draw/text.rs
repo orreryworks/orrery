@@ -6,16 +6,15 @@ use crate::{
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
 use log::info;
 use std::{
-    cell::RefCell,
+    cell::{Ref, RefCell},
     rc::Rc,
     sync::{Arc, Mutex},
 };
 use svg::{self, node::element as svg_element};
 
-const DEFAULT_FONT_FAMILY: &str = "Arial";
-
 #[derive(Debug, Clone)]
 pub struct TextDefinition {
+    font_family: String,
     font_size: u16,
     background_color: Option<Color>,
     padding: Insets,
@@ -31,8 +30,13 @@ impl TextDefinition {
         self.font_size = size;
     }
 
-    pub fn font_size(&self) -> u16 {
-        self.font_size
+    /// Sets the font family for the text.
+    ///
+    /// # Arguments
+    ///
+    /// * `family` - The font family name (e.g., "Arial", "Times New Roman", "monospace")
+    pub fn set_font_family(&mut self, family: &str) {
+        self.font_family = family.to_string();
     }
 
     /// Sets the background color for the text.
@@ -56,6 +60,14 @@ impl TextDefinition {
         self.padding = padding;
     }
 
+    fn font_size(&self) -> u16 {
+        self.font_size
+    }
+
+    fn font_family(&self) -> &str {
+        &self.font_family
+    }
+
     /// Returns a reference to the background color, if set.
     fn background_color(&self) -> Option<&Color> {
         self.background_color.as_ref()
@@ -70,9 +82,10 @@ impl TextDefinition {
 impl Default for TextDefinition {
     fn default() -> Self {
         Self {
-            font_size: 15, // Default font size
+            font_size: 15,
             background_color: None,
             padding: Insets::default(),
+            font_family: "Arial".to_string(),
         }
     }
 }
@@ -103,7 +116,7 @@ impl Text {
 
     /// Calculate the size required to display this text content without padding.
     fn calculate_size_without_padding(&self) -> Size {
-        TEXT_MANAGER.calculate_text_size(&self.content, self.definition.borrow().font_size())
+        TEXT_MANAGER.calculate_text_size(&self.content, self.definition.borrow())
     }
 }
 
@@ -119,7 +132,7 @@ impl Drawable for Text {
             .set("y", position.y())
             .set("text-anchor", "middle")
             .set("dominant-baseline", "middle")
-            .set("font-family", DEFAULT_FONT_FAMILY)
+            .set("font-family", text_def.font_family())
             .set("font-size", text_def.font_size());
 
         // Add background rectangle if color is specified
@@ -172,18 +185,29 @@ impl TextManager {
         }
     }
 
-    /// Calculate the actual size of text in pixels using cosmic-text
-    /// This provides an accurate measurement based on real font metrics and shaping
-    fn calculate_text_size(&self, text: &str, font_size: u16) -> Size {
+    /// Calculate the actual size of text in pixels using cosmic-text.
+    ///
+    /// This provides an accurate measurement based on real font metrics and shaping,
+    /// including proper handling of ligatures, kerning, and other advanced typography features.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - The text content to measure
+    /// * `text_def` - Text definition containing font family, size, and other styling
+    ///
+    /// # Returns
+    ///
+    /// The calculated size in pixels, or default size if measurement fails
+    fn calculate_text_size(&self, text: &str, text_def: Ref<TextDefinition>) -> Size {
         if text.is_empty() {
             return Size::default();
         }
 
         // Lock the FontSystem for use
-        let mut font_system = self.font_system.lock().unwrap();
+        let mut font_system = self.font_system.lock().expect("failed to lock FontSystem");
 
         // Convert font size from points to pixels (roughly 1.33x multiplier for standard DPI)
-        let font_size_px = font_size as f32 * 1.33;
+        let font_size_px = text_def.font_size() as f32 * 1.33;
 
         // Create metrics with font size and approximate line height
         let line_height = font_size_px * 1.15;
@@ -194,7 +218,7 @@ impl TextManager {
         let mut buffer = buffer.borrow_with(&mut font_system);
 
         // Set up text attributes
-        let attrs = Attrs::new().family(Family::Name("Arial"));
+        let attrs = Attrs::new().family(Family::Name(text_def.font_family()));
 
         // Set the buffer's size to unlimited to allow text to flow naturally
         buffer.set_size(None, None);
