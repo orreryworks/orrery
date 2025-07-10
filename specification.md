@@ -40,11 +40,12 @@ diagram component [layout_engine="force"];
 
 ### 4.1 Built-in Types
 
-Filament provides three built-in shape types:
+Filament provides four built-in shape types:
 
 - `Rectangle`: A rectangular shape with customizable properties
 - `Oval`: An elliptical shape with customizable properties
 - `Component`: A UML-style component shape with a rectangular body and component icon
+- `Boundary`: A UML boundary shape consisting of a circle with a vertical line on the left, representing external actors, users, or system boundaries (content-free)
 
 ### 4.2 Type Definitions
 
@@ -235,9 +236,30 @@ Filament diagrams are rendered as SVG files with the following characteristics:
 
 - Components are rendered using their defined shape type
 - Relations are rendered as lines with appropriate arrowheads
-- Text labels are positioned appropriately
+- Text labels are positioned appropriately for each shape type
 - Nested elements are visually contained within their parents
 - Component boundaries adjust to fit their content
+- Boundary shapes render as fixed-size UML boundary symbols with text labels positioned below
+
+## 10.1 Content-Free Shapes
+
+Some shapes, like `Boundary`, are content-free and cannot contain nested elements or embedded diagrams. These shapes are designed for specific purposes such as representing external actors or system boundaries in UML diagrams.
+
+Content-free shapes have the following characteristics:
+- They cannot contain nested components
+- They cannot have embedded diagrams
+- Their text labels appear below the shape rather than within it
+- They have a fixed size that is not affected by content
+- Example: The `Boundary` shape is rendered as a circle (15px radius) with a vertical line extending from the left side, connected by a horizontal line, representing UML boundary actors
+
+Attempting to add nested content to a content-free shape will result in an error:
+
+```
+// This will cause an error:
+user_actor: Boundary {
+    internal_service: Rectangle; // Error: Boundary shapes cannot contain content
+};
+```
 
 ## 11. Complete Examples
 
@@ -350,7 +372,7 @@ sequence = "basic"
 background_color = "#f5f5f5"
 ```
 
-Layout engine values are case-sensitive and must match the supported enum values exactly. 
+Layout engine values are case-sensitive and must match the supported enum values exactly.
 Color values must be valid CSS color strings.
 
 ### 13.3 Layout Engine Values

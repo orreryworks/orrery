@@ -34,6 +34,10 @@ impl Default for RectangleDefinition {
 }
 
 impl ShapeDefinition for RectangleDefinition {
+    fn supports_content(&self) -> bool {
+        true
+    }
+
     fn find_intersection(&self, a: Point, b: Point, a_size: &Size) -> Point {
         let half_width = a_size.width() / 2.0;
         let half_height = a_size.height() / 2.0;

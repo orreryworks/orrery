@@ -123,19 +123,19 @@ impl Engine {
                 );
                 let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
-                let content_size = if let ast::Block::Diagram(_) = &node.block {
+                if let ast::Block::Diagram(_) = &node.block {
                     // If this participant has an embedded diagram, use its layout size
-                    if let Some(layout) = embedded_layouts.get(&node.id) {
+                    let content_size = if let Some(layout) = embedded_layouts.get(&node.id) {
                         layout.calculate_size()
                     } else {
                         Size::default()
-                    }
-                } else {
-                    // Regular participant with no embedded diagram
-                    Size::default()
-                };
+                    };
 
-                shape_with_text.set_inner_content_size(content_size);
+                    shape_with_text
+                        .set_inner_content_size(content_size)
+                        .expect("Diagram blocks should always support content sizing");
+                }
+                // For non-Diagram blocks, don't call set_inner_content_size
                 (node_idx, shape_with_text)
             })
             .collect();

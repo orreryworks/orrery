@@ -157,7 +157,7 @@ impl Engine {
             );
             let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
-            let content_size = match node.block {
+            match node.block {
                 ast::Block::Diagram(_) => {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
@@ -165,15 +165,23 @@ impl Engine {
                         .get(&node.id)
                         .expect("Embedded layout not found");
 
-                    layout.calculate_size()
+                    let content_size = layout.calculate_size();
+                    shape_with_text
+                        .set_inner_content_size(content_size)
+                        .expect("Diagram blocks should always support content sizing");
                 }
-                ast::Block::Scope(_) => *positioned_content_sizes
-                    .get(&node_idx)
-                    .expect("Scope size not found"),
-                ast::Block::None => Size::default(),
+                ast::Block::Scope(_) => {
+                    let content_size = *positioned_content_sizes
+                        .get(&node_idx)
+                        .expect("Scope size not found");
+                    shape_with_text
+                        .set_inner_content_size(content_size)
+                        .expect("Scope blocks should always support content sizing");
+                }
+                ast::Block::None => {
+                    // No content to size, so don't call set_inner_content_size
+                }
             };
-
-            shape_with_text.set_inner_content_size(content_size);
             component_shapes.insert(node_idx, shape_with_text);
         }
 
@@ -189,18 +197,14 @@ impl Engine {
     ) -> HashMap<NodeIndex, Point> {
         // Step 1: Create a simplified graph
         let containment_scope_graph = Self::containment_scope_to_graph(graph, containment_scope);
-
         // Step 2: Assign layers for the top-level nodes
         let layers = Self::assign_layers_for_containment_scope_graph(&containment_scope_graph);
-
         // Step 3: Calculate layer metrics (widths and spacings)
         let (layer_widths, layer_spacings) =
             self.calculate_layer_metrics(graph, containment_scope, &layers, component_shapes);
-
         // Step 4: Calculate X positions for each layer
         let layer_x_positions = self.calculate_layer_x_positions(&layer_widths, &layer_spacings);
-
-        // Step 5: Position top-level nodes within their layers
+        // Step 5: Position nodes within their layers
         self.position_nodes_in_layers(&layers, &layer_x_positions, component_shapes)
     }
 
@@ -394,6 +398,39 @@ impl Engine {
                 if !visited.contains(&child) {
                     let child_original_idx = containment_scope_graph.node_weight(child).unwrap();
                     queue.push_back(((child, child_original_idx), layer + 1));
+                }
+            }
+        }
+
+        // Handle disconnected components by processing any remaining unvisited nodes
+        while visited.len() < containment_scope_graph.node_count() {
+            // Find an unvisited node to start a new component
+            let unvisited_node = containment_scope_graph
+                .node_indices()
+                .find(|&idx| !visited.contains(&idx))
+                .expect("Should have unvisited nodes");
+
+            let original_idx = containment_scope_graph.node_weight(unvisited_node).unwrap();
+            queue.push_back(((unvisited_node, original_idx), 0));
+
+            // Process this disconnected component using the same BFS logic
+            while let Some(((layer_idx, &original_idx), layer)) = queue.pop_front() {
+                if visited.contains(&layer_idx) {
+                    continue;
+                }
+                visited.insert(layer_idx);
+                while layers.len() <= layer {
+                    layers.push(Vec::new());
+                }
+
+                layers[layer].push(original_idx);
+
+                for child in containment_scope_graph.neighbors(layer_idx) {
+                    if !visited.contains(&child) {
+                        let child_original_idx =
+                            containment_scope_graph.node_weight(child).unwrap();
+                        queue.push_back(((child, child_original_idx), layer + 1));
+                    }
                 }
             }
         }

@@ -20,6 +20,18 @@ impl Point {
         self.y
     }
 
+    /// Creates a new point with the specified x-coordinate
+    pub fn with_x(mut self, x: f32) -> Self {
+        self.x = x;
+        self
+    }
+
+    /// Creates a new point with the specified y-coordinate
+    pub fn with_y(mut self, y: f32) -> Self {
+        self.y = y;
+        self
+    }
+
     /// Checks if both x and y coordinates are zero
     pub fn is_zero(self) -> bool {
         self.x == 0.0 && self.y == 0.0
@@ -140,10 +152,19 @@ impl Size {
         self.width == 0.0 && self.height == 0.0
     }
 
+    /// Merges two sizes horizontally by adding their widths and taking the maximum height
     pub fn merge_horizontal(self, other: Size) -> Self {
         Self {
             width: self.width + other.width,
             height: self.height.max(other.height),
+        }
+    }
+
+    /// Merges two sizes vertically by adding their heights and taking the maximum width
+    pub fn merge_vertical(self, other: Size) -> Self {
+        Self {
+            width: self.width.max(other.width),
+            height: self.height + other.height,
         }
     }
 }

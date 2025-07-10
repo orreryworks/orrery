@@ -6,21 +6,29 @@ use crate::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
+mod boundary;
 mod component;
 mod oval;
 mod rectangle;
 
+pub use boundary::BoundaryDefinition;
 pub use component::ComponentDefinition;
 pub use oval::OvalDefinition;
 pub use rectangle::RectangleDefinition;
 
 /// A trait for shape definitions that provide stateless calculations
 pub trait ShapeDefinition: std::fmt::Debug {
+    /// Returns true if this shape supports containing content
+    /// Default implementation returns false for safety
+    fn supports_content(&self) -> bool {
+        false
+    }
     /// Find the intersection point where a line from point a to point b intersects with this shape
     /// centered at point a with the given size
     fn find_intersection(&self, a: Point, b: Point, a_size: &Size) -> Point;
 
     /// Calculate the shape size needed to contain the given content size with padding
+    /// For content-free shapes, content_size and padding may be ignored
     fn calculate_shape_size(&self, content_size: Size, padding: Insets) -> Size;
 
     fn render_to_svg(&self, size: Size, position: Point) -> Box<dyn svg::Node>;
@@ -68,7 +76,11 @@ pub trait ShapeDefinition: std::fmt::Debug {
     }
 
     fn min_content_size(&self) -> Size {
-        Size::new(10.0, 10.0) // Default minimum size for content
+        if self.supports_content() {
+            Size::new(10.0, 10.0)
+        } else {
+            Size::default() // Content-free shapes don't need content space
+        }
     }
 }
 
@@ -90,6 +102,12 @@ impl Shape {
         }
     }
 
+    /// Returns true if this shape supports containing content.
+    /// This is intended for use within the `draw` module.
+    pub(super) fn supports_content(&self) -> bool {
+        self.definition.borrow().supports_content()
+    }
+
     pub fn content_size(&self) -> Size {
         self.content_size
     }
@@ -102,8 +120,14 @@ impl Shape {
     }
 
     /// Expand the content size for this shape to the given size if it's bigger
-    pub fn expand_content_size_to(&mut self, content_size: Size) {
-        self.content_size = self.content_size.max(content_size);
+    /// This is only valid for content-supporting shapes
+    pub fn expand_content_size_to(&mut self, content_size: Size) -> Result<(), &'static str> {
+        if self.supports_content() {
+            self.content_size = self.content_size.max(content_size);
+            Ok(())
+        } else {
+            Err("Cannot expand content size on content-free shapes")
+        }
     }
 
     /// Set the padding for this shape

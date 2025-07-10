@@ -90,6 +90,10 @@ impl<I> ShapeDefinition for RectangleWithIconDefinition<I>
 where
     I: Icon + fmt::Debug + Clone + 'static,
 {
+    fn supports_content(&self) -> bool {
+        true
+    }
+
     fn find_intersection(&self, a: Point, b: Point, a_size: &Size) -> Point {
         self.rectangle_definition.find_intersection(a, b, a_size)
     }

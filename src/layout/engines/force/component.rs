@@ -116,7 +116,7 @@ impl Engine {
             );
             let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
-            let content_size = match node.block {
+            match node.block {
                 ast::Block::Diagram(_) => {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
@@ -124,15 +124,23 @@ impl Engine {
                         .get(&node.id)
                         .expect("Embedded layout not found");
 
-                    layout.calculate_size()
+                    let content_size = layout.calculate_size();
+                    shape_with_text
+                        .set_inner_content_size(content_size)
+                        .expect("Diagram blocks should always support content sizing");
                 }
-                ast::Block::Scope(_) => *positioned_content_sizes
-                    .get(&node_idx)
-                    .expect("Scope size not found"),
-                ast::Block::None => Size::default(),
+                ast::Block::Scope(_) => {
+                    let content_size = *positioned_content_sizes
+                        .get(&node_idx)
+                        .expect("Scope size not found");
+                    shape_with_text
+                        .set_inner_content_size(content_size)
+                        .expect("Scope blocks should always support content sizing");
+                }
+                ast::Block::None => {
+                    // No content to size, so don't call set_inner_content_size
+                }
             };
-
-            shape_with_text.set_inner_content_size(content_size);
             component_shapes.insert(node_idx, shape_with_text);
         }
 

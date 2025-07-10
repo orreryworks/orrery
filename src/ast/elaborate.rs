@@ -315,6 +315,20 @@ impl<'a> Builder<'a> {
                             )
                         })?;
 
+                    // Check if this shape supports content before processing nested elements
+                    if !nested_elements.is_empty()
+                        && !type_def.shape_definition.borrow().supports_content()
+                    {
+                        return Err(ElaborationDiagnosticError::from_spanned(
+                            format!("Shape type '{type_name}' does not support nested content"),
+                            parser_elm,
+                            "content not supported",
+                            Some(format!(
+                                "The '{type_name}' shape is content-free and cannot contain nested elements or embedded diagrams"
+                            )),
+                        ));
+                    }
+
                     // Check if there's a nested diagram element
                     let block = if nested_elements.len() == 1
                         && matches!(
