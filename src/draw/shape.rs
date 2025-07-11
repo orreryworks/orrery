@@ -25,7 +25,7 @@ pub trait ShapeDefinition: std::fmt::Debug {
     }
     /// Find the intersection point where a line from point a to point b intersects with this shape
     /// centered at point a with the given size
-    fn find_intersection(&self, a: Point, b: Point, a_size: &Size) -> Point;
+    fn find_intersection(&self, a: Point, b: Point, a_size: Size) -> Point;
 
     /// Calculate the shape size needed to contain the given content size with padding
     /// For content-free shapes, content_size and padding may be ignored
@@ -151,10 +151,8 @@ impl Shape {
     }
 
     /// Find the intersection point where a line from point a to point b intersects with this shape
-    pub fn find_intersection(&self, a: Point, b: Point) -> Point {
-        self.definition
-            .borrow()
-            .find_intersection(a, b, &self.shape_size())
+    pub fn find_intersection(&self, a: Point, b: Point, a_size: Size) -> Point {
+        self.definition.borrow().find_intersection(a, b, a_size)
     }
 
     /// Calculate the minimum point offset for positioning content within this shape's container.

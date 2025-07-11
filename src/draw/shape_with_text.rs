@@ -27,15 +27,14 @@ impl ShapeWithText {
             text,
             text_positioning_strategy,
         };
-        if instance.text.is_some() {
-            if instance
+        if instance.text.is_some()
+            && instance
                 .text_positioning_strategy
                 .text_affects_shape_content()
-            {
-                // For content-supporting shapes, expand the shape to fit the text
-                if let Err(e) = instance.update_shape_content_size() {
-                    panic!("Failed to assign text to a content-supporting shape: {}", e);
-                }
+        {
+            // For content-supporting shapes, expand the shape to fit the text
+            if let Err(e) = instance.update_shape_content_size() {
+                panic!("Failed to assign text to a content-supporting shape: {e}");
             }
         }
         instance
@@ -73,15 +72,6 @@ impl ShapeWithText {
         self.text.as_ref().map(|t| t.size()).unwrap_or_default()
     }
 
-    /// Returns the total size of the underlying shape.
-    /// For content-free shapes with text, this includes the text below the shape.
-    pub fn shape_size(&self) -> Size {
-        let shape_size = self.shape.shape_size();
-        let text_size = self.text_size();
-        self.text_positioning_strategy
-            .calculate_total_size(shape_size, text_size)
-    }
-
     /// Returns the minimum point where inner content (excluding text) can be placed.
     pub fn shape_to_inner_content_min_point(&self) -> Point {
         let base = self.shape.shape_to_container_min_point();
@@ -92,7 +82,7 @@ impl ShapeWithText {
 
     /// Finds the intersection point of a line (from point a to point b) with the shape boundary.
     pub fn find_intersection(&self, a: Point, b: Point) -> Point {
-        self.shape.find_intersection(a, b)
+        self.shape.find_intersection(a, b, self.size())
     }
 
     /// Updates the shape's content size to accommodate the text dimensions.
@@ -156,7 +146,12 @@ impl Drawable for ShapeWithText {
         group.render()
     }
 
+    /// Returns the total size of the underlying shape.
+    /// For content-free shapes with text, this includes the text below the shape.
     fn size(&self) -> Size {
-        self.shape_size()
+        let shape_size = self.shape.shape_size();
+        let text_size = self.text_size();
+        self.text_positioning_strategy
+            .calculate_total_size(shape_size, text_size)
     }
 }

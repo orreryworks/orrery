@@ -4,7 +4,8 @@
 //! using a simple, deterministic algorithm.
 
 use crate::{
-    ast, draw,
+    ast,
+    draw::{self, Drawable},
     geometry::{Insets, Point, Size},
     graph::{ContainmentScope, Graph},
     layout::{
@@ -222,13 +223,7 @@ impl Engine {
             .map(|layer| {
                 layer
                     .iter()
-                    .map(|&node_idx| {
-                        component_shapes
-                            .get(&node_idx)
-                            .unwrap()
-                            .shape_size()
-                            .width()
-                    })
+                    .map(|&node_idx| component_shapes.get(&node_idx).unwrap().size().width())
                     .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Less))
                     .unwrap_or_default()
             })
@@ -328,11 +323,7 @@ impl Engine {
             // Calculate heights for vertical positioning
             let mut y_pos = 0.0;
             for (j, &node_idx) in layer_nodes.iter().enumerate() {
-                let node_height = component_shapes
-                    .get(&node_idx)
-                    .unwrap()
-                    .shape_size()
-                    .height();
+                let node_height = component_shapes.get(&node_idx).unwrap().size().height();
 
                 if j > 0 {
                     y_pos += self.padding.vertical_sum() / 2.0; // Space between components

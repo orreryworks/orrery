@@ -37,7 +37,7 @@ impl ShapeDefinition for OvalDefinition {
         true
     }
 
-    fn find_intersection(&self, a: Point, b: Point, a_size: &Size) -> Point {
+    fn find_intersection(&self, a: Point, b: Point, a_size: Size) -> Point {
         // For an ellipse, finding the intersection is more complex than for a rectangle
         // We use a parametric approach based on the direction vector
 

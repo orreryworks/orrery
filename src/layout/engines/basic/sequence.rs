@@ -3,9 +3,9 @@
 //! This module provides a layout engine for sequence diagrams
 //! using a simple, deterministic algorithm.
 
-use crate::draw::Drawable;
 use crate::{
-    ast, draw,
+    ast,
+    draw::{self, Drawable},
     geometry::{Insets, Point, Size},
     graph::Graph,
     layout::{
@@ -162,7 +162,7 @@ impl Engine {
             .node_indices()
             .map(|idx| {
                 let shape_with_text = participant_shapes.get(&idx).unwrap();
-                shape_with_text.shape_size()
+                shape_with_text.size()
             })
             .collect();
 

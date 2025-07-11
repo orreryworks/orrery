@@ -1,4 +1,4 @@
-use super::ShapeDefinition;
+use super::{ShapeDefinition, rectangle};
 use crate::{
     color::Color,
     geometry::{Insets, Point, Size},
@@ -33,23 +33,8 @@ impl Default for BoundaryDefinition {
 }
 
 impl ShapeDefinition for BoundaryDefinition {
-    fn find_intersection(&self, a: Point, b: Point, _a_size: &Size) -> Point {
-        // For a circle, find intersection using the standard circle intersection formula
-        let radius = 15.0;
-        let dist = b.sub_point(a);
-        let length = dist.hypot();
-
-        if length < 0.001 {
-            return b;
-        }
-
-        let dx_norm = dist.x() / length;
-        let dy_norm = dist.y() / length;
-
-        Point::new(
-            dx_norm.mul_add(radius, a.x()),
-            dy_norm.mul_add(radius, a.y()),
-        )
+    fn find_intersection(&self, a: Point, b: Point, a_size: Size) -> Point {
+        rectangle::find_rectangle_intersection(a, b, a_size)
     }
 
     fn calculate_shape_size(&self, _content_size: Size, _padding: Insets) -> Size {

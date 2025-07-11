@@ -1,5 +1,7 @@
 use crate::geometry::{Insets, Point, Size};
 
+const BLOW_SHAPE_TEXT_GAP: f32 = 8.0;
+
 /// Enum defining different text positioning strategies
 #[derive(Debug, Clone, Copy)]
 pub enum TextPositioningStrategy {
@@ -40,13 +42,10 @@ impl TextPositioningStrategy {
                     .with_y(bounds.min_y() + content_offset.y() + text_size.height() / 2.0)
             }
             Self::BelowShape => {
-                // Center the text horizontally within the total width
-                let text_x = total_position.x() + (total_size.width() - text_size.width()) / 2.0;
                 // Position text below shape with gap, centered vertically within text area
-                let text_y =
-                    total_position.y() + total_size.height() + 8.0 + text_size.height() / 2.0;
+                let text_y = total_position.y() + (total_size.height() - text_size.height()) / 2.0;
 
-                Point::new(text_x, text_y)
+                total_position.with_y(text_y)
             }
         }
     }
@@ -63,7 +62,8 @@ impl TextPositioningStrategy {
                     return shape_size;
                 }
 
-                let text_with_gap = text_size.add_padding(Insets::new(8.0, 0.0, 0.0, 0.0));
+                let text_with_gap =
+                    text_size.add_padding(Insets::new(BLOW_SHAPE_TEXT_GAP, 0.0, 0.0, 0.0));
                 shape_size.merge_vertical(text_with_gap)
             }
         }
@@ -100,8 +100,9 @@ impl TextPositioningStrategy {
             Self::BelowShape => {
                 // Content-free shapes: center the shape within the total area
                 let total_size = self.calculate_total_size(shape_size, text_size);
-                let shape_x = total_position.x() + (total_size.width() - shape_size.width()) / 2.0;
-                total_position.with_x(shape_x)
+                let shape_y = dbg!(total_position.y())
+                    - (dbg!(total_size.height()) - dbg!(shape_size.height())) / 2.0;
+                total_position.with_y(dbg!(shape_y))
             }
         }
     }

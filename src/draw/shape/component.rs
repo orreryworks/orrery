@@ -95,7 +95,7 @@ where
         true
     }
 
-    fn find_intersection(&self, a: Point, b: Point, a_size: &Size) -> Point {
+    fn find_intersection(&self, a: Point, b: Point, a_size: Size) -> Point {
         self.rectangle_definition.find_intersection(a, b, a_size)
     }
 

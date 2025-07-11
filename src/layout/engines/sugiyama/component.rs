@@ -1,5 +1,6 @@
 use crate::{
-    ast, draw,
+    ast,
+    draw::{self, Drawable},
     geometry::{Insets, Point, Size},
     graph::{ContainmentScope, Graph},
     layout::{
@@ -85,7 +86,7 @@ impl Engine {
             // Extract sizes from shapes for position calculation
             let component_sizes: HashMap<NodeIndex, Size> = component_shapes
                 .iter()
-                .map(|(idx, shape_with_text)| (*idx, shape_with_text.shape_size()))
+                .map(|(idx, shape_with_text)| (*idx, shape_with_text.size()))
                 .collect();
 
             // Calculate positions for components in this scope
