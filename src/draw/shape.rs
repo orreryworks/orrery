@@ -1,6 +1,6 @@
 use crate::{
     color::Color,
-    draw::Drawable,
+    draw::{Drawable, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
 use std::cell::RefCell;
@@ -82,6 +82,11 @@ pub trait ShapeDefinition: std::fmt::Debug {
             Size::default() // Content-free shapes don't need content space
         }
     }
+
+    /// Get the text positioning strategy for this shape
+    fn text_positioning_strategy(&self) -> TextPositioningStrategy {
+        TextPositioningStrategy::BelowShape
+    }
 }
 
 /// A shape instance that combines a definition with content size and padding
@@ -110,6 +115,11 @@ impl Shape {
 
     pub fn content_size(&self) -> Size {
         self.content_size
+    }
+
+    /// Get the text positioning strategy for this shape
+    pub fn text_positioning_strategy(&self) -> TextPositioningStrategy {
+        self.definition.borrow().text_positioning_strategy()
     }
 
     /// Size of the shape needed to contain the given content size

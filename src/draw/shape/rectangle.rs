@@ -1,6 +1,7 @@
 use super::ShapeDefinition;
 use crate::{
     color::Color,
+    draw::text_positioning::TextPositioningStrategy,
     geometry::{Insets, Point, Size},
 };
 use std::{cell::RefCell, rc::Rc};
@@ -154,6 +155,10 @@ impl ShapeDefinition for RectangleDefinition {
     fn set_rounded(&mut self, radius: usize) -> Result<(), &'static str> {
         self.rounded = radius;
         Ok(())
+    }
+
+    fn text_positioning_strategy(&self) -> TextPositioningStrategy {
+        TextPositioningStrategy::InContent
     }
 
     fn render_to_svg(&self, size: Size, position: Point) -> Box<dyn svg::Node> {

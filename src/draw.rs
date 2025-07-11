@@ -5,6 +5,7 @@ mod positioned;
 mod shape;
 mod shape_with_text;
 mod text;
+mod text_positioning;
 
 pub use arrow::{Arrow, ArrowDefinition, ArrowDirection, ArrowDrawer, ArrowStyle};
 pub use arrow_with_text::{ArrowWithText, ArrowWithTextDrawer};
