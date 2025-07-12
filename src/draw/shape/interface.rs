@@ -1,4 +1,4 @@
-use super::{ShapeDefinition, rectangle};
+use super::ShapeDefinition;
 use crate::{
     color::Color,
     geometry::{Insets, Point, Size},
@@ -33,10 +33,6 @@ impl Default for InterfaceDefinition {
 }
 
 impl ShapeDefinition for InterfaceDefinition {
-    fn find_intersection(&self, a: Point, b: Point, a_size: Size) -> Point {
-        rectangle::find_rectangle_intersection(a, b, a_size)
-    }
-
     fn calculate_shape_size(&self, _content_size: Size, _padding: Insets) -> Size {
         Size::new(30.0, 30.0)
     }
