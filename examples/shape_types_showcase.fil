@@ -1,5 +1,8 @@
 // Shape Types Showcase
 // This example demonstrates all available shape types in Filament with various styling options
+//
+// NOTE: This example focuses on content-supporting shapes (Rectangle, Oval, Component).
+// For UML stereotype shapes (Actor, Entity, Control), see uml_shapes_showcase.fil and uml_basic_example.fil
 
 diagram component [background_color="#f8f8f8"];
 
@@ -96,3 +99,17 @@ database -> system_container: "Data Flow";
 basic_rectangle -> [style="curved", color="blue", width="2"] basic_oval: "Curved Arrow";
 basic_component -> [style="orthogonal", color="red", width="3"] database: "Orthogonal Arrow";
 web_service -> [color="green", width="1"] message_queue: "Straight Arrow";
+
+// ========================================
+// UML SHAPES ALSO AVAILABLE
+// ========================================
+// Filament also provides UML stereotype shapes for system modeling:
+//
+// Actor     - Stick figure representing external users/systems (content-free)
+// Entity    - Circle representing data objects/business entities (content-free)
+// Control   - Circle with arrow representing business logic/processes (content-free)
+// Interface - Circle representing system interfaces/contracts (content-free)
+// Boundary  - Circle with line representing system boundaries (content-free)
+//
+// These shapes cannot contain nested elements but are perfect for UML diagrams.
+// See uml_shapes_showcase.fil and uml_basic_example.fil for detailed examples.

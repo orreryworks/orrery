@@ -6,13 +6,21 @@ use crate::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
+mod actor;
 mod boundary;
 mod component;
+mod control;
+mod entity;
+mod interface;
 mod oval;
 mod rectangle;
 
+pub use actor::ActorDefinition;
 pub use boundary::BoundaryDefinition;
 pub use component::ComponentDefinition;
+pub use control::ControlDefinition;
+pub use entity::EntityDefinition;
+pub use interface::InterfaceDefinition;
 pub use oval::OvalDefinition;
 pub use rectangle::RectangleDefinition;
 

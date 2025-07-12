@@ -40,12 +40,16 @@ diagram component [layout_engine="force"];
 
 ### 4.1 Built-in Types
 
-Filament provides four built-in shape types:
+Filament provides eight built-in shape types:
 
 - `Rectangle`: A rectangular shape with customizable properties
 - `Oval`: An elliptical shape with customizable properties
 - `Component`: A UML-style component shape with a rectangular body and component icon
 - `Boundary`: A UML boundary shape consisting of a circle with a vertical line on the left, representing external actors, users, or system boundaries (content-free)
+- `Actor`: A UML actor shape represented as a stick figure, used to represent external users or systems (content-free)
+- `Entity`: A UML entity shape represented as a circle, used to represent data entities or business objects (content-free)
+- `Control`: A UML control shape represented as a circle with an arrow, used to represent control logic or processes (content-free)
+- `Interface`: A UML interface shape represented as a circle, used to represent system interfaces or contracts (content-free)
 
 ### 4.2 Type Definitions
 
@@ -243,19 +247,18 @@ Filament diagrams are rendered as SVG files with the following characteristics:
 
 ## 10.1 Content-Free Shapes
 
-Some shapes, like `Boundary`, are content-free and cannot contain nested elements or embedded diagrams. These shapes are designed for specific purposes such as representing external actors or system boundaries in UML diagrams.
+Some shapes, like `Boundary`, `Actor`, `Entity`, `Control`, and `Interface`, are content-free and cannot contain nested elements or embedded diagrams. These shapes are designed for specific purposes such as representing external actors, entities, control elements, interfaces, or system boundaries in UML diagrams.
 
 Content-free shapes have the following characteristics:
 - They cannot contain nested components
 - They cannot have embedded diagrams
 - Their text labels appear below the shape rather than within it
 - They have a fixed size that is not affected by content
-- Example: The `Boundary` shape is rendered as a circle (15px radius) with a vertical line extending from the left side, connected by a horizontal line, representing UML boundary actors
 
 Attempting to add nested content to a content-free shape will result in an error:
 
 ```
-// This will cause an error:
+// These will cause errors:
 user_actor: Boundary {
     internal_service: Rectangle; // Error: Boundary shapes cannot contain content
 };

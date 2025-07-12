@@ -334,6 +334,30 @@ impl TypeDefinition {
                 shape_definition: Rc::new(RefCell::new(draw::BoundaryDefinition::new()))
                     as Rc<RefCell<dyn draw::ShapeDefinition>>,
             }),
+            Rc::new(Self {
+                id: TypeId::from_name("Actor"),
+                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
+                shape_definition: Rc::new(RefCell::new(draw::ActorDefinition::new()))
+                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
+            }),
+            Rc::new(Self {
+                id: TypeId::from_name("Entity"),
+                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
+                shape_definition: Rc::new(RefCell::new(draw::EntityDefinition::new()))
+                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
+            }),
+            Rc::new(Self {
+                id: TypeId::from_name("Control"),
+                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
+                shape_definition: Rc::new(RefCell::new(draw::ControlDefinition::new()))
+                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
+            }),
+            Rc::new(Self {
+                id: TypeId::from_name("Interface"),
+                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
+                shape_definition: Rc::new(RefCell::new(draw::InterfaceDefinition::new()))
+                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
+            }),
         ]
     }
 }
