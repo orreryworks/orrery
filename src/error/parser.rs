@@ -1,5 +1,5 @@
 use miette::{Diagnostic, SourceSpan};
-use nom::error::{ContextError, ErrorKind, ParseError};
+use nom::error::{ContextError, ErrorKind, FromExternalError, ParseError};
 use nom_locate::LocatedSpan;
 use std::rc::Rc;
 use thiserror::Error;
@@ -166,5 +166,15 @@ impl<'a> ContextError<LocatedSpan<&'a str>> for SlimParserError {
             context: Rc::new(contexts),
             ..other
         }
+    }
+}
+
+impl<'a> FromExternalError<LocatedSpan<&'a str>, std::num::ParseIntError> for SlimParserError {
+    fn from_external_error(
+        input: LocatedSpan<&'a str>,
+        kind: ErrorKind,
+        _e: std::num::ParseIntError,
+    ) -> Self {
+        Self::from_error_kind(input, kind)
     }
 }

@@ -13,7 +13,7 @@ pub struct TypeDefinition<'a> {
 #[derive(Debug)]
 pub struct Attribute<'a> {
     pub name: Spanned<&'a str>,
-    pub value: Spanned<&'a str>,
+    pub value: Spanned<String>,
 }
 
 #[derive(Debug)]
@@ -28,7 +28,7 @@ pub struct Diagram<'a> {
 pub enum Element<'a> {
     Component {
         name: Spanned<&'a str>,
-        display_name: Option<Spanned<&'a str>>,
+        display_name: Option<Spanned<String>>,
         type_name: Spanned<&'a str>,
         attributes: Spanned<Vec<Spanned<Attribute<'a>>>>,
         nested_elements: Spanned<Vec<Spanned<Element<'a>>>>,
@@ -38,7 +38,7 @@ pub enum Element<'a> {
         target: Spanned<&'a str>,
         relation_type: Spanned<&'a str>,
         attributes: Spanned<Vec<Spanned<Attribute<'a>>>>,
-        label: Option<Spanned<&'a str>>,
+        label: Option<Spanned<String>>,
     },
     Diagram(Diagram<'a>),
 }

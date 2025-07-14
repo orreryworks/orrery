@@ -579,7 +579,7 @@ impl<'a> Builder<'a> {
     fn extract_background_color(
         color_attr: &Spanned<parser_types::Attribute<'_>>,
     ) -> EResult<Color> {
-        let color_str = *color_attr.inner().value;
+        let color_str = &color_attr.inner().value;
         Color::new(color_str).map_err(|err| {
             ElaborationDiagnosticError::from_spanned(
                 format!("Invalid background_color '{color_str}': {err}"),

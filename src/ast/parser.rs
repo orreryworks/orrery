@@ -1,3 +1,5 @@
+mod string;
+
 use super::parser_types as types;
 use crate::ast::span::Spanned;
 use crate::error::{ParseDiagnosticError, SlimParserError};
@@ -5,7 +7,7 @@ use log::{debug, trace};
 use nom::{
     IResult, Parser,
     branch::alt,
-    bytes::complete::{tag, take_while1},
+    bytes::complete::tag,
     character::complete::{alpha1, alphanumeric1, char, multispace1, not_line_ending},
     combinator::{all_consuming, cut, map, not, opt, peek, recognize, value},
     error::context,
@@ -102,20 +104,6 @@ fn parse_nested_identifier(input: Span) -> PResult<&str> {
     )
 }
 
-fn parse_string_literal(input: Span) -> PResult<&str> {
-    to_spanned(
-        input,
-        context(
-            "string_literal",
-            map(
-                delimited(char('"'), take_while1(|c: char| c != '"'), cut(char('"'))),
-                |v: LocatedSpan<&str>| v.into_fragment(),
-            ),
-        )
-        .parse(input),
-    )
-}
-
 fn parse_attribute(input: Span) -> PResult<types::Attribute> {
     to_spanned(
         input,
@@ -126,7 +114,7 @@ fn parse_attribute(input: Span) -> PResult<types::Attribute> {
                 separated_pair(
                     parse_identifier,
                     delimited(ws_comments0, char('='), ws_comments0),
-                    parse_string_literal,
+                    string::parse_string_literal,
                 ),
                 |(name, value)| types::Attribute { name, value },
             ),
@@ -257,7 +245,7 @@ fn parse_component(input: Span) -> PResult<types::Element> {
                         // Parse optional "as" followed by a string literal
                         opt(delimited(
                             delimited(ws_comments1, tag("as"), ws_comments1),
-                            parse_string_literal,
+                            string::parse_string_literal,
                             ws_comments0,
                         )),
                         preceded(ws_comments0, char(':')),
@@ -319,7 +307,7 @@ fn parse_relation(input: Span) -> PResult<types::Element> {
                             ),
                             opt((
                                 delimited(ws_comments0, char(':'), ws_comments0),
-                                parse_string_literal,
+                                string::parse_string_literal,
                             )),
                         )),
                     ),
@@ -584,31 +572,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_string_literal() {
-        // Test valid string literals
-        let input = Span::new("\"hello\"");
-        let (rest, value) = parse_string_literal(input).unwrap();
-        assert_eq!(*rest.fragment(), "");
-        assert_eq!(*value, "hello");
-
-        let input = Span::new("\"hello world\"");
-        let (rest, value) = parse_string_literal(input).unwrap();
-        assert_eq!(*rest.fragment(), "");
-        assert_eq!(*value, "hello world");
-
-        // Test with content after the string
-        let input = Span::new("\"hello\" world");
-        let (rest, value) = parse_string_literal(input).unwrap();
-        assert_eq!(*rest.fragment(), " world");
-        assert_eq!(*value, "hello");
-
-        // Test invalid string literals
-        assert!(parse_string_literal(Span::new("hello")).is_err());
-        assert!(parse_string_literal(Span::new("\"unclosed")).is_err());
-        assert!(parse_string_literal(Span::new("\"\"")).is_err()); // Empty strings are invalid per the implementation
-    }
-
-    #[test]
     fn test_parse_attribute() {
         // Test valid attributes
         let input = Span::new("color=\"blue\"");
@@ -719,7 +682,8 @@ mod tests {
     #[test]
     fn test_parse_component() {
         // Test component with embedded diagram
-        let input = Span::new("auth_service: Service embed diagram sequence { client: Rectangle; };");
+        let input =
+            Span::new("auth_service: Service embed diagram sequence { client: Rectangle; };");
         let (rest, component) = parse_component(input).unwrap();
         assert_eq!(*rest.fragment(), "");
         match component.into_inner() {
@@ -735,7 +699,7 @@ mod tests {
                 assert_eq!(*type_name, "Service");
                 assert_eq!(attributes.len(), 0);
                 assert_eq!(nested_elements.len(), 1);
-                
+
                 // Check that the nested element is an embedded diagram
                 match nested_elements.into_inner()[0].inner() {
                     types::Element::Diagram(diagram) => {
@@ -1174,17 +1138,17 @@ mod tests {
     fn test_parse_embedded_diagram() {
         // Create a minimal test case by observing the actual embed diagram syntax from examples
         // The parser expects whitespace before "embed" keyword (as it's typically used after a component type)
-        
+
         // We're testing the parser directly, not through test_parse_component
         let input_with_ws = Span::new(" embed diagram sequence { client: Rectangle; };");
         let (rest, embedded) = parse_embedded_diagram(input_with_ws).unwrap();
-        assert_eq!(*rest.fragment(), ";");  // Parser doesn't consume the semicolon
+        assert_eq!(*rest.fragment(), ";"); // Parser doesn't consume the semicolon
 
         match embedded.inner() {
             types::Element::Diagram(diag) => {
                 assert_eq!(*diag.kind, "sequence");
                 assert_eq!(diag.elements.len(), 1);
-                
+
                 // We've verified we got a diagram with one element, which is sufficient
             }
             _ => panic!("Expected Diagram"),
