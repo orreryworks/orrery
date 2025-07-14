@@ -1,5 +1,5 @@
 use crate::{color::Color, geometry::Point};
-use std::{cell::RefCell, collections::HashMap, fmt, rc::Rc, str};
+use std::{collections::HashMap, fmt, rc::Rc, str};
 use svg::{self, node::element as svg_element};
 
 /// Defines the visual style of arrow paths.
@@ -146,7 +146,7 @@ impl fmt::Display for ArrowDirection {
 /// which markers to display and where.
 #[derive(Debug, Clone)]
 pub struct Arrow {
-    definition: Rc<RefCell<ArrowDefinition>>,
+    definition: Rc<ArrowDefinition>,
     direction: ArrowDirection,
 }
 
@@ -191,7 +191,7 @@ impl ArrowDrawer {
     }
 
     fn register_arrow_markers(&mut self, arrow: &Arrow) {
-        let color = arrow.definition.borrow().color;
+        let color = arrow.definition.color();
         let (head, tail) = Arrow::get_markers(arrow.direction, color);
         if let Some(head) = head {
             self.heads.insert(head, color);
@@ -204,7 +204,7 @@ impl ArrowDrawer {
 
 impl Arrow {
     /// Creates a new Arrow
-    pub fn new(definition: Rc<RefCell<ArrowDefinition>>, direction: ArrowDirection) -> Self {
+    pub fn new(definition: Rc<ArrowDefinition>, direction: ArrowDirection) -> Self {
         Self {
             definition,
             direction,
@@ -212,19 +212,19 @@ impl Arrow {
     }
 
     fn render_to_svg(&self, source: Point, destination: Point) -> Box<dyn svg::Node> {
-        let arrow_def = self.definition.borrow();
         // Create path data based on arrow style
-        let path_data = Self::create_path_data_for_style(source, destination, arrow_def.style);
+        let path_data =
+            Self::create_path_data_for_style(source, destination, self.definition.style);
 
         // Create the base path
         let mut path = svg_element::Path::new()
             .set("d", path_data)
             .set("fill", "none")
-            .set("stroke", arrow_def.color.to_string())
-            .set("stroke-width", arrow_def.width);
+            .set("stroke", self.definition.color.to_string())
+            .set("stroke-width", self.definition.width);
 
         // Get marker references for this specific color and direction
-        let (start_marker, end_marker) = Self::get_markers(self.direction, arrow_def.color);
+        let (start_marker, end_marker) = Self::get_markers(self.direction, self.definition.color);
 
         // Add markers if they exist
         if let Some(marker) = start_marker {

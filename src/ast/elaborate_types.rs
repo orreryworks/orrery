@@ -3,7 +3,6 @@ use crate::ast::span::Spanned;
 use crate::{color::Color, draw, error::ElaborationDiagnosticError};
 use serde::{Deserialize, Serialize};
 use std::{
-    cell::RefCell,
     fmt::{self, Display},
     rc::Rc,
     str::FromStr,
@@ -41,8 +40,8 @@ pub struct Relation {
     pub target: TypeId,
     pub arrow_direction: draw::ArrowDirection,
     label: Option<String>,
-    arrow_definition: Rc<RefCell<draw::ArrowDefinition>>,
-    text_definition: Rc<RefCell<draw::TextDefinition>>,
+    arrow_definition: Rc<draw::ArrowDefinition>,
+    text_definition: Rc<draw::TextDefinition>,
 }
 
 impl Relation {
@@ -51,8 +50,8 @@ impl Relation {
         target: TypeId,
         arrow_direction: draw::ArrowDirection,
         label: Option<String>,
-        arrow_definition: Rc<RefCell<draw::ArrowDefinition>>,
-        text_definition: Rc<RefCell<draw::TextDefinition>>,
+        arrow_definition: Rc<draw::ArrowDefinition>,
+        text_definition: Rc<draw::TextDefinition>,
     ) -> Self {
         Self {
             source,
@@ -70,7 +69,7 @@ impl Relation {
             .map(|label| draw::Text::new(Rc::clone(&self.text_definition), label.clone()))
     }
 
-    pub fn clone_arrow_definition(&self) -> Rc<RefCell<draw::ArrowDefinition>> {
+    pub fn clone_arrow_definition(&self) -> Rc<draw::ArrowDefinition> {
         Rc::clone(&self.arrow_definition)
     }
 }
@@ -95,8 +94,8 @@ pub enum DiagramKind {
 #[derive(Debug)]
 pub struct TypeDefinition {
     pub id: TypeId,
-    pub text_definition: Rc<RefCell<draw::TextDefinition>>,
-    pub shape_definition: Rc<RefCell<dyn draw::ShapeDefinition>>,
+    pub text_definition: Rc<draw::TextDefinition>,
+    pub shape_definition: Rc<dyn draw::ShapeDefinition>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -182,27 +181,28 @@ impl fmt::Display for TypeId {
     }
 }
 
-impl Clone for TypeDefinition {
-    fn clone(&self) -> Self {
+impl TypeDefinition {
+    pub fn new(
+        id: TypeId,
+        text_definition: draw::TextDefinition,
+        shape_definition: Box<dyn draw::ShapeDefinition>,
+    ) -> Self {
         Self {
-            id: self.id.clone(),
-            text_definition: Rc::new(RefCell::new(self.text_definition.borrow().clone())),
-            shape_definition: self.shape_definition.borrow().clone_new_rc(),
+            id,
+            text_definition: Rc::from(text_definition),
+            shape_definition: Rc::from(shape_definition),
         }
     }
-}
 
-impl TypeDefinition {
     pub fn from_base(
         id: TypeId,
         base: &Self,
         attributes: &[Spanned<parser_types::Attribute>],
     ) -> Result<Self, ElaborationDiagnosticError> {
-        let mut type_def = base.clone(); // TODO: custom clone.
-        type_def.id = id;
+        let mut shape_def = base.shape_definition.clone_box();
+        let mut text_def = (*base.text_definition).clone();
         // Process attributes with descriptive errors
         {
-            let mut shape_def = type_def.shape_definition.borrow_mut();
             for attr in Attribute::new_from_parser(attributes) {
                 let name = attr.name.0.as_str();
                 let value = attr.value.as_str();
@@ -282,7 +282,6 @@ impl TypeDefinition {
                         })?;
                     }
                     "font_size" => {
-                        let mut text_def = type_def.text_definition.borrow_mut();
                         let val = value.parse::<u16>().map_err(|_| {
                             ElaborationDiagnosticError::from_spanned(
                                 format!("Invalid font_size '{value}'"),
@@ -305,59 +304,51 @@ impl TypeDefinition {
             }
         }
 
-        Ok(type_def)
+        Ok(Self::new(id, text_def, shape_def))
     }
 
     pub fn defaults() -> Vec<Rc<Self>> {
         vec![
-            Rc::new(Self {
-                id: TypeId::from_name("Rectangle"),
-                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
-                shape_definition: Rc::new(RefCell::new(draw::RectangleDefinition::new()))
-                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
-            }),
-            Rc::new(Self {
-                id: TypeId::from_name("Oval"),
-                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
-                shape_definition: Rc::new(RefCell::new(draw::OvalDefinition::new()))
-                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
-            }),
-            Rc::new(Self {
-                id: TypeId::from_name("Component"),
-                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
-                shape_definition: Rc::new(RefCell::new(draw::ComponentDefinition::new()))
-                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
-            }),
-            Rc::new(Self {
-                id: TypeId::from_name("Boundary"),
-                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
-                shape_definition: Rc::new(RefCell::new(draw::BoundaryDefinition::new()))
-                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
-            }),
-            Rc::new(Self {
-                id: TypeId::from_name("Actor"),
-                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
-                shape_definition: Rc::new(RefCell::new(draw::ActorDefinition::new()))
-                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
-            }),
-            Rc::new(Self {
-                id: TypeId::from_name("Entity"),
-                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
-                shape_definition: Rc::new(RefCell::new(draw::EntityDefinition::new()))
-                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
-            }),
-            Rc::new(Self {
-                id: TypeId::from_name("Control"),
-                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
-                shape_definition: Rc::new(RefCell::new(draw::ControlDefinition::new()))
-                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
-            }),
-            Rc::new(Self {
-                id: TypeId::from_name("Interface"),
-                text_definition: Rc::new(RefCell::new(draw::TextDefinition::new())),
-                shape_definition: Rc::new(RefCell::new(draw::InterfaceDefinition::new()))
-                    as Rc<RefCell<dyn draw::ShapeDefinition>>,
-            }),
+            Rc::new(Self::new(
+                TypeId::from_name("Rectangle"),
+                draw::TextDefinition::new(),
+                Box::new(draw::RectangleDefinition::new()),
+            )),
+            Rc::new(Self::new(
+                TypeId::from_name("Oval"),
+                draw::TextDefinition::new(),
+                Box::new(draw::OvalDefinition::new()),
+            )),
+            Rc::new(Self::new(
+                TypeId::from_name("Component"),
+                draw::TextDefinition::new(),
+                Box::new(draw::ComponentDefinition::new()),
+            )),
+            Rc::new(Self::new(
+                TypeId::from_name("Boundary"),
+                draw::TextDefinition::new(),
+                Box::new(draw::BoundaryDefinition::new()),
+            )),
+            Rc::new(Self::new(
+                TypeId::from_name("Actor"),
+                draw::TextDefinition::new(),
+                Box::new(draw::ActorDefinition::new()),
+            )),
+            Rc::new(Self::new(
+                TypeId::from_name("Entity"),
+                draw::TextDefinition::new(),
+                Box::new(draw::EntityDefinition::new()),
+            )),
+            Rc::new(Self::new(
+                TypeId::from_name("Control"),
+                draw::TextDefinition::new(),
+                Box::new(draw::ControlDefinition::new()),
+            )),
+            Rc::new(Self::new(
+                TypeId::from_name("Interface"),
+                draw::TextDefinition::new(),
+                Box::new(draw::InterfaceDefinition::new()),
+            )),
         ]
     }
 }

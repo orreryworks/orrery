@@ -4,7 +4,7 @@ use crate::{
     draw::text_positioning::TextPositioningStrategy,
     geometry::{Insets, Point, Size},
 };
-use std::{cell::RefCell, rc::Rc};
+use std::rc::Rc;
 use svg::{self, node::element as svg_element};
 
 /// Rectangle shape definition
@@ -44,8 +44,8 @@ impl ShapeDefinition for RectangleDefinition {
         content_size.add_padding(padding).max(min_size)
     }
 
-    fn clone_new_rc(&self) -> Rc<RefCell<dyn ShapeDefinition>> {
-        Rc::new(RefCell::new(self.clone()))
+    fn clone_box(&self) -> Box<dyn ShapeDefinition> {
+        Box::new(self.clone())
     }
 
     fn fill_color(&self) -> Option<Color> {
@@ -82,6 +82,33 @@ impl ShapeDefinition for RectangleDefinition {
     fn set_rounded(&mut self, radius: usize) -> Result<(), &'static str> {
         self.rounded = radius;
         Ok(())
+    }
+
+    fn with_fill_color(
+        &self,
+        color: Option<Color>,
+    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        let mut cloned = self.clone();
+        cloned.set_fill_color(color)?;
+        Ok(Rc::new(cloned))
+    }
+
+    fn with_line_color(&self, color: Color) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        let mut cloned = self.clone();
+        cloned.set_line_color(color)?;
+        Ok(Rc::new(cloned))
+    }
+
+    fn with_line_width(&self, width: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        let mut cloned = self.clone();
+        cloned.set_line_width(width)?;
+        Ok(Rc::new(cloned))
+    }
+
+    fn with_rounded(&self, radius: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        let mut cloned = self.clone();
+        cloned.set_rounded(radius)?;
+        Ok(Rc::new(cloned))
     }
 
     fn text_positioning_strategy(&self) -> TextPositioningStrategy {

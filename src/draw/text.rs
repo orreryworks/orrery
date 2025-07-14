@@ -6,7 +6,6 @@ use crate::{
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
 use log::info;
 use std::{
-    cell::{Ref, RefCell},
     rc::Rc,
     sync::{Arc, Mutex},
 };
@@ -92,12 +91,12 @@ impl Default for TextDefinition {
 
 #[derive(Debug, Clone)]
 pub struct Text {
-    definition: Rc<RefCell<TextDefinition>>,
+    definition: Rc<TextDefinition>,
     content: String,
 }
 
 impl Text {
-    pub fn new(definition: Rc<RefCell<TextDefinition>>, content: String) -> Self {
+    pub fn new(definition: Rc<TextDefinition>, content: String) -> Self {
         Self {
             definition,
             content,
@@ -110,33 +109,31 @@ impl Text {
 
     /// Calculate the total size required to display this text, including padding.
     pub fn calculate_size(&self) -> Size {
-        let padding = self.definition.borrow().padding();
+        let padding = self.definition.padding();
         self.calculate_size_without_padding().add_padding(padding)
     }
 
     /// Calculate the size required to display this text content without padding.
     fn calculate_size_without_padding(&self) -> Size {
-        TEXT_MANAGER.calculate_text_size(&self.content, self.definition.borrow())
+        TEXT_MANAGER.calculate_text_size(&self.content, &self.definition)
     }
 }
 
 impl Drawable for Text {
     fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
-        let text_def = self.definition.borrow();
-
         let text_size = self.calculate_size();
-        let padding = text_def.padding();
+        let padding = self.definition.padding();
 
         let rendered_text = svg_element::Text::new(self.content())
             .set("x", position.x())
             .set("y", position.y())
             .set("text-anchor", "middle")
             .set("dominant-baseline", "middle")
-            .set("font-family", text_def.font_family())
-            .set("font-size", text_def.font_size());
+            .set("font-family", self.definition.font_family())
+            .set("font-size", self.definition.font_size());
 
         // Add background rectangle if color is specified
-        if let Some(bg_color) = text_def.background_color() {
+        if let Some(bg_color) = self.definition.background_color() {
             let bg_bounds = position.to_bounds(text_size).add_padding(padding);
             let bg_size = bg_bounds.to_size();
             let bg_min_point = bg_bounds.min_point();
@@ -198,7 +195,7 @@ impl TextManager {
     /// # Returns
     ///
     /// The calculated size in pixels, or default size if measurement fails
-    fn calculate_text_size(&self, text: &str, text_def: Ref<TextDefinition>) -> Size {
+    fn calculate_text_size(&self, text: &str, text_def: &TextDefinition) -> Size {
         if text.is_empty() {
             return Size::default();
         }

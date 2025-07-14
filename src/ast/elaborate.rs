@@ -4,7 +4,7 @@ use crate::{
     geometry::Insets,
 };
 use log::{debug, info, trace};
-use std::{cell::RefCell, collections::HashMap, rc::Rc, str::FromStr};
+use std::{collections::HashMap, rc::Rc, str::FromStr};
 
 /// Type alias for Result with ElaborationDiagnosticError as the error type
 type EResult<T> = Result<T, ElaborationDiagnosticError>;
@@ -293,7 +293,7 @@ impl<'a> Builder<'a> {
         let color = Color::new("white").unwrap().with_alpha(0.8);
         relation_text_def.set_background_color(Some(color));
         relation_text_def.set_padding(Insets::uniform(5.0));
-        let relation_text_def = Rc::new(RefCell::new(relation_text_def));
+        let relation_text_def = Rc::from(relation_text_def);
 
         for parser_elm in parser_elements {
             match parser_elm.inner() {
@@ -316,8 +316,7 @@ impl<'a> Builder<'a> {
                         })?;
 
                     // Check if this shape supports content before processing nested elements
-                    if !nested_elements.is_empty()
-                        && !type_def.shape_definition.borrow().supports_content()
+                    if !nested_elements.is_empty() && !type_def.shape_definition.supports_content()
                     {
                         return Err(ElaborationDiagnosticError::from_spanned(
                             format!("Shape type '{type_name}' does not support nested content"),
@@ -385,7 +384,7 @@ impl<'a> Builder<'a> {
                         target_id,
                         arrow_direction,
                         label.as_ref().map(|l| l.to_string()),
-                        Rc::new(RefCell::new(arrow_definition)),
+                        Rc::from(arrow_definition),
                         Rc::clone(&relation_text_def),
                     )));
                 }

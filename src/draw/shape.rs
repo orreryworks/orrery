@@ -3,7 +3,6 @@ use crate::{
     draw::{Drawable, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
-use std::cell::RefCell;
 use std::rc::Rc;
 
 mod actor;
@@ -43,7 +42,34 @@ pub trait ShapeDefinition: std::fmt::Debug {
 
     fn render_to_svg(&self, size: Size, position: Point) -> Box<dyn svg::Node>;
 
-    fn clone_new_rc(&self) -> Rc<RefCell<dyn ShapeDefinition>>;
+    fn clone_box(&self) -> Box<dyn ShapeDefinition>;
+
+    /// Create a new shape definition with the fill color changed
+    /// Default implementation returns error - override in concrete implementations
+    fn with_fill_color(
+        &self,
+        _color: Option<Color>,
+    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        Err("with_fill_color is not supported for this shape")
+    }
+
+    /// Create a new shape definition with the line color changed
+    /// Default implementation returns error - override in concrete implementations
+    fn with_line_color(&self, _color: Color) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        Err("with_line_color is not supported for this shape")
+    }
+
+    /// Create a new shape definition with the line width changed
+    /// Default implementation returns error - override in concrete implementations
+    fn with_line_width(&self, _width: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        Err("with_line_width is not supported for this shape")
+    }
+
+    /// Create a new shape definition with the corner rounding changed
+    /// Default implementation returns error - override in concrete implementations
+    fn with_rounded(&self, _radius: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        Err("with_rounded is not supported for this shape")
+    }
 
     /// Set the fill color for the rectangle
     fn set_fill_color(&mut self, _color: Option<Color>) -> Result<(), &'static str> {
@@ -102,14 +128,14 @@ pub trait ShapeDefinition: std::fmt::Debug {
 /// A shape instance that combines a definition with content size and padding
 #[derive(Debug, Clone)]
 pub struct Shape {
-    definition: Rc<RefCell<dyn ShapeDefinition>>,
+    definition: Rc<dyn ShapeDefinition>,
     content_size: Size,
     padding: Insets,
 }
 
 impl Shape {
-    pub fn new(definition: Rc<RefCell<dyn ShapeDefinition>>) -> Self {
-        let content_size = definition.borrow().min_content_size();
+    pub fn new(definition: Rc<dyn ShapeDefinition>) -> Self {
+        let content_size = definition.min_content_size();
         Self {
             definition,
             content_size,
@@ -120,7 +146,7 @@ impl Shape {
     /// Returns true if this shape supports containing content.
     /// This is intended for use within the `draw` module.
     pub(super) fn supports_content(&self) -> bool {
-        self.definition.borrow().supports_content()
+        self.definition.supports_content()
     }
 
     pub fn content_size(&self) -> Size {
@@ -129,13 +155,12 @@ impl Shape {
 
     /// Get the text positioning strategy for this shape
     pub fn text_positioning_strategy(&self) -> TextPositioningStrategy {
-        self.definition.borrow().text_positioning_strategy()
+        self.definition.text_positioning_strategy()
     }
 
     /// Size of the shape needed to contain the given content size
     pub fn shape_size(&self) -> Size {
         self.definition
-            .borrow()
             .calculate_shape_size(self.content_size, self.padding)
     }
 
@@ -162,7 +187,7 @@ impl Shape {
 
     /// Find the intersection point where a line from point a to point b intersects with this shape
     pub fn find_intersection(&self, a: Point, b: Point, a_size: Size) -> Point {
-        self.definition.borrow().find_intersection(a, b, a_size)
+        self.definition.find_intersection(a, b, a_size)
     }
 
     /// Calculate the minimum point offset for positioning content within this shape's container.
@@ -201,8 +226,7 @@ impl Shape {
 impl Drawable for Shape {
     fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
         let size = self.shape_size();
-        let shape_def = self.definition.borrow();
-        shape_def.render_to_svg(size, position)
+        self.definition.render_to_svg(size, position)
     }
 
     fn size(&self) -> Size {

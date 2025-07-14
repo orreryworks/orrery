@@ -3,7 +3,7 @@ use crate::{
     color::Color,
     geometry::{Insets, Point, Size},
 };
-use std::{cell::RefCell, rc::Rc};
+use std::rc::Rc;
 use svg::{self, node::element as svg_element};
 
 /// UML Actor shape definition - a stick figure representation
@@ -37,8 +37,8 @@ impl ShapeDefinition for ActorDefinition {
         Size::new(24.0, 54.0)
     }
 
-    fn clone_new_rc(&self) -> Rc<RefCell<dyn ShapeDefinition>> {
-        Rc::new(RefCell::new(self.clone()))
+    fn clone_box(&self) -> Box<dyn ShapeDefinition> {
+        Box::new(self.clone())
     }
 
     fn fill_color(&self) -> Option<Color> {
@@ -66,6 +66,27 @@ impl ShapeDefinition for ActorDefinition {
     fn set_line_width(&mut self, width: usize) -> Result<(), &'static str> {
         self.line_width = width;
         Ok(())
+    }
+
+    fn with_fill_color(
+        &self,
+        color: Option<Color>,
+    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        let mut cloned = self.clone();
+        cloned.set_fill_color(color)?;
+        Ok(Rc::new(cloned))
+    }
+
+    fn with_line_color(&self, color: Color) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        let mut cloned = self.clone();
+        cloned.set_line_color(color)?;
+        Ok(Rc::new(cloned))
+    }
+
+    fn with_line_width(&self, width: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        let mut cloned = self.clone();
+        cloned.set_line_width(width)?;
+        Ok(Rc::new(cloned))
     }
 
     fn render_to_svg(&self, _size: Size, position: Point) -> Box<dyn svg::Node> {
