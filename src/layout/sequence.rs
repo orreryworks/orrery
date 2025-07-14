@@ -1,5 +1,5 @@
 use crate::{
-    ast,
+    ast, draw,
     geometry::Size,
     graph,
     layout::{component, layer, positioning::LayoutSizing},
@@ -14,17 +14,58 @@ pub struct Participant<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Message<'a> {
-    pub relation: &'a ast::Relation,
+pub struct Message {
     pub source_index: usize,
     pub target_index: usize,
     pub y_position: f32,
+    arrow_with_text: draw::ArrowWithText,
+}
+
+impl Message {
+    /// Creates a new Message from an AST relation and participant indices.
+    ///
+    /// This method extracts the arrow definition and text from the AST relation
+    /// and creates a self-contained Message that doesn't depend on the
+    /// original AST lifetime.
+    ///
+    /// # Arguments
+    /// * `relation` - Reference to the AST relation being laid out
+    /// * `source_index` - Index of the source participant in the layout
+    /// * `target_index` - Index of the target participant in the layout
+    /// * `y_position` - The y-coordinate where this message appears
+    ///
+    /// # Returns
+    /// A new Message containing all necessary rendering information
+    pub fn from_ast(
+        relation: &ast::Relation,
+        source_index: usize,
+        target_index: usize,
+        y_position: f32,
+    ) -> Self {
+        let arrow_def = relation.clone_arrow_definition();
+        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction);
+        let mut arrow_with_text = draw::ArrowWithText::new(arrow);
+        if let Some(text) = relation.text() {
+            arrow_with_text.set_text(text);
+        }
+        Self {
+            source_index,
+            target_index,
+            y_position,
+            arrow_with_text,
+        }
+    }
+
+    /// Returns a reference to the arrow with text for this message.
+    pub fn arrow_with_text(&self) -> &draw::ArrowWithText {
+        &self.arrow_with_text
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Layout<'a> {
     pub participants: Vec<Participant<'a>>,
-    pub messages: Vec<Message<'a>>,
+    pub messages: Vec<Message>,
 }
 
 impl<'a> LayoutSizing for Layout<'a> {

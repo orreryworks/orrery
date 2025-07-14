@@ -1,6 +1,5 @@
 use super::Svg;
 use crate::{
-    draw::{Arrow, ArrowWithText},
     geometry::{Bounds, Point},
     layout::{layer::ContentStack, sequence},
 };
@@ -48,18 +47,12 @@ impl Svg {
         let start_point = Point::new(source_x, message_y);
         let end_point = Point::new(target_x, message_y);
 
-        // Create the path with appropriate markers - always use straight style for sequence diagrams
-        let arrow_def = message.relation.clone_arrow_definition();
-        let arrow = Arrow::new(arrow_def, message.relation.arrow_direction);
-        let mut arrow_with_text = ArrowWithText::new(arrow);
-
-        // Add label if it exists
-        if let Some(text) = message.relation.text() {
-            arrow_with_text.set_text(text.clone());
-        }
-
-        self.arrow_with_text_drawer
-            .draw_arrow_with_text(&arrow_with_text, start_point, end_point)
+        // Use the arrow_with_text from the message
+        self.arrow_with_text_drawer.draw_arrow_with_text(
+            message.arrow_with_text(),
+            start_point,
+            end_point,
+        )
     }
 
     pub fn calculate_sequence_diagram_bounds(

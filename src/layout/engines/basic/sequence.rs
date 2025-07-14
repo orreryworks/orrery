@@ -203,12 +203,12 @@ impl Engine {
             let source_index = *participant_indices.get(&source_idx).unwrap();
             let target_index = *participant_indices.get(&target_idx).unwrap();
 
-            messages.push(Message {
+            messages.push(Message::from_ast(
                 relation,
                 source_index,
                 target_index,
-                y_position: current_y,
-            });
+                current_y,
+            ));
 
             // Update lifeline end for both source and target participants
             participants[source_index].lifeline_end = current_y;
