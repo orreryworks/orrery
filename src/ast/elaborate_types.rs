@@ -14,7 +14,7 @@ pub struct TypeId(String);
 #[derive(Debug, Clone)]
 pub struct Attribute {
     pub name: TypeId,
-    pub value: String, // TODO: Can I convert it to str?
+    pub value: String,
 }
 
 #[derive(Debug, Clone)]
@@ -40,8 +40,7 @@ pub struct Relation {
     pub target: TypeId,
     pub arrow_direction: draw::ArrowDirection,
     label: Option<String>,
-    arrow_definition: Rc<draw::ArrowDefinition>,
-    text_definition: Rc<draw::TextDefinition>,
+    type_definition: Rc<TypeDefinition>,
 }
 
 impl Relation {
@@ -50,27 +49,32 @@ impl Relation {
         target: TypeId,
         arrow_direction: draw::ArrowDirection,
         label: Option<String>,
-        arrow_definition: Rc<draw::ArrowDefinition>,
-        text_definition: Rc<draw::TextDefinition>,
+        type_definition: Rc<TypeDefinition>,
     ) -> Self {
         Self {
             source,
             target,
             arrow_direction,
             label,
-            arrow_definition,
-            text_definition,
+            type_definition,
         }
     }
 
     pub fn text(&self) -> Option<draw::Text> {
-        self.label
-            .as_ref()
-            .map(|label| draw::Text::new(Rc::clone(&self.text_definition), label.clone()))
+        self.label.as_ref().map(|label| {
+            draw::Text::new(
+                Rc::clone(&self.type_definition.text_definition),
+                label.clone(),
+            )
+        })
     }
 
     pub fn clone_arrow_definition(&self) -> Rc<draw::ArrowDefinition> {
-        Rc::clone(&self.arrow_definition)
+        Rc::clone(
+            self.type_definition
+                .arrow_definition()
+                .expect("Type definition must have an arrow definition"),
+        )
     }
 }
 
@@ -92,10 +96,16 @@ pub enum DiagramKind {
 }
 
 #[derive(Debug)]
+pub enum DrawDefinition {
+    Shape(Rc<dyn draw::ShapeDefinition>),
+    Arrow(Rc<draw::ArrowDefinition>),
+}
+
+#[derive(Debug)]
 pub struct TypeDefinition {
     pub id: TypeId,
     pub text_definition: Rc<draw::TextDefinition>,
-    pub shape_definition: Rc<dyn draw::ShapeDefinition>,
+    pub draw_definition: DrawDefinition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -182,15 +192,59 @@ impl fmt::Display for TypeId {
 }
 
 impl TypeDefinition {
-    pub fn new(
+    fn new(
+        id: TypeId,
+        text_definition: draw::TextDefinition,
+        draw_definition: DrawDefinition,
+    ) -> Self {
+        Self {
+            id,
+            text_definition: Rc::new(text_definition),
+            draw_definition,
+        }
+    }
+
+    pub fn new_shape(
         id: TypeId,
         text_definition: draw::TextDefinition,
         shape_definition: Box<dyn draw::ShapeDefinition>,
     ) -> Self {
-        Self {
+        Self::new(
             id,
-            text_definition: Rc::from(text_definition),
-            shape_definition: Rc::from(shape_definition),
+            text_definition,
+            DrawDefinition::Shape(Rc::from(shape_definition)),
+        )
+    }
+
+    pub fn new_arrow(
+        id: TypeId,
+        text_definition: draw::TextDefinition,
+        arrow_definition: draw::ArrowDefinition,
+    ) -> Self {
+        Self::new(
+            id,
+            text_definition,
+            DrawDefinition::Arrow(Rc::from(arrow_definition)),
+        )
+    }
+
+    pub fn shape_definition(&self) -> Result<&Rc<dyn draw::ShapeDefinition>, String> {
+        match &self.draw_definition {
+            DrawDefinition::Shape(shape) => Ok(shape),
+            DrawDefinition::Arrow(_) => Err(format!(
+                "Type '{}' is an arrow type, not a shape type",
+                self.id
+            )),
+        }
+    }
+
+    pub fn arrow_definition(&self) -> Result<&Rc<draw::ArrowDefinition>, String> {
+        match &self.draw_definition {
+            DrawDefinition::Arrow(arrow) => Ok(arrow),
+            DrawDefinition::Shape(_) => Err(format!(
+                "Type '{}' is a shape type, not an arrow type",
+                self.id
+            )),
         }
     }
 
@@ -199,156 +253,243 @@ impl TypeDefinition {
         base: &Self,
         attributes: &[Spanned<parser_types::Attribute>],
     ) -> Result<Self, ElaborationDiagnosticError> {
-        let mut shape_def = base.shape_definition.clone_box();
         let mut text_def = (*base.text_definition).clone();
-        // Process attributes with descriptive errors
-        {
-            for attr in Attribute::new_from_parser(attributes) {
-                let name = attr.name.0.as_str();
-                let value = attr.value.as_str();
 
-                match name {
-                    "fill_color" => {
-                        let val = Color::new(value).map_err(|err| {
-                            ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid fill_color '{value}': {err}"),
+        match &base.draw_definition {
+            DrawDefinition::Shape(shape_def) => {
+                let mut new_shape_def = shape_def.clone_box();
+
+                // Process shape attributes
+                for attr in Attribute::new_from_parser(attributes) {
+                    let name = attr.name.0.as_str();
+                    let value = attr.value.as_str();
+
+                    match name {
+                        "fill_color" => {
+                            let val = Color::new(value).map_err(|err| {
+                                ElaborationDiagnosticError::from_spanned(
+                                    format!("Invalid fill_color '{value}': {err}"),
+                                    &attr,
+                                    "invalid color",
+                                    Some("Use a CSS color".to_string()),
+                                )
+                            })?;
+                            new_shape_def.set_fill_color(Some(val)).map_err(|err| {
+                                ElaborationDiagnosticError::from_spanned(
+                                    err.to_string(),
+                                    &attr,
+                                    "unsupported attribute",
+                                    None,
+                                )
+                            })?;
+                        }
+                        "line_color" => {
+                            let val = Color::new(value).map_err(|err| {
+                                ElaborationDiagnosticError::from_spanned(
+                                    format!("Invalid line_color '{value}': {err}"),
+                                    &attr,
+                                    "invalid color",
+                                    Some("Use a CSS color".to_string()),
+                                )
+                            })?;
+                            new_shape_def.set_line_color(val).map_err(|err| {
+                                ElaborationDiagnosticError::from_spanned(
+                                    err.to_string(),
+                                    &attr,
+                                    "unsupported attribute",
+                                    None,
+                                )
+                            })?;
+                        }
+                        "line_width" => {
+                            let val = value.parse::<usize>().map_err(|_| {
+                                ElaborationDiagnosticError::from_spanned(
+                                    format!("Invalid line_width value '{value}'"),
+                                    &attr,
+                                    "invalid number",
+                                    Some("Width must be a positive number".to_string()),
+                                )
+                            })?;
+                            new_shape_def.set_line_width(val).map_err(|err| {
+                                ElaborationDiagnosticError::from_spanned(
+                                    err.to_string(),
+                                    &attr,
+                                    "unsupported attribute",
+                                    None,
+                                )
+                            })?;
+                        }
+                        "rounded" => {
+                            let val = value.parse::<usize>().map_err(|_| {
+                                ElaborationDiagnosticError::from_spanned(
+                                    format!("Invalid rounded value '{value}'"),
+                                    &attr,
+                                    "invalid number",
+                                    Some("Rounded value must be a positive integer".to_string()),
+                                )
+                            })?;
+                            new_shape_def.set_rounded(val).map_err(|err| {
+                                ElaborationDiagnosticError::from_spanned(
+                                    err.to_string(),
+                                    &attr,
+                                    "unsupported attribute",
+                                    None,
+                                )
+                            })?;
+                        }
+                        "font_size" => {
+                            let val = value.parse::<u16>().map_err(|_| {
+                                ElaborationDiagnosticError::from_spanned(
+                                    format!("Invalid font_size value '{value}'"),
+                                    &attr,
+                                    "invalid number",
+                                    Some("Font size must be a positive integer".to_string()),
+                                )
+                            })?;
+                            text_def.set_font_size(val);
+                        }
+                        _ => {
+                            return Err(ElaborationDiagnosticError::from_spanned(
+                                format!("Unknown shape attribute '{name}'"),
                                 &attr,
-                                "invalid color",
-                                Some("Use a CSS color".to_string()),
-                            )
-                        })?;
-                        // Access the value from the RefCell
-                        shape_def.set_fill_color(Some(val)).map_err(|err| {
-                            ElaborationDiagnosticError::from_spanned(
-                                err.to_string(),
-                                &attr,
-                                "unsupported attribute",
-                                None,
-                            )
-                        })?;
-                    }
-                    "line_color" => {
-                        let val = Color::new(value).map_err(|err| {
-                            ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid line_color '{value}': {err}"),
-                                &attr,
-                                "invalid color",
-                                Some("Use a CSS color".to_string()),
-                            )
-                        })?;
-                        shape_def.set_line_color(val).map_err(|err| {
-                            ElaborationDiagnosticError::from_spanned(
-                                err.to_string(),
-                                &attr,
-                                "unsupported attribute",
-                                None,
-                            )
-                        })?;
-                    }
-                    "line_width" => {
-                        let val = value.parse::<usize>().map_err(|_| {
-                            ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid line_width '{value}'"),
-                                &attr,
-                                "invalid positive integer",
-                                Some("Use a positive integer".to_string()),
-                            )
-                        })?;
-                        shape_def.set_line_width(val).map_err(|err| {
-                            ElaborationDiagnosticError::from_spanned(
-                                err.to_string(),
-                                &attr,
-                                "unsupported attribute",
-                                None,
-                            )
-                        })?;
-                    }
-                    "rounded" => {
-                        let val = value.parse::<usize>().map_err(|_| {
-                            ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid rounded '{value}'"),
-                                &attr,
-                                "invalid positive integer",
-                                Some("Use a positive integer".to_string()),
-                            )
-                        })?;
-                        shape_def.set_rounded(val).map_err(|err| {
-                            ElaborationDiagnosticError::from_spanned(
-                                err.to_string(),
-                                &attr,
-                                "unsupported attribute",
-                                None,
-                            )
-                        })?;
-                    }
-                    "font_size" => {
-                        let val = value.parse::<u16>().map_err(|_| {
-                            ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid font_size '{value}'"),
-                                &attr,
-                                "invalid positive integer",
-                                Some("Use a positive integer".to_string()),
-                            )
-                        })?;
-                        text_def.set_font_size(val);
-                    }
-                    _ => {
-                        return Err(ElaborationDiagnosticError::from_spanned(
-                            format!("Unsupported type definition attribute '{name}'"),
-                            &attr,
-                            "unsupported attribute",
-                            None,
-                        ));
+                                "unknown attribute",
+                                Some(
+                                    "Valid shape attributes are: fill_color, line_color, line_width, rounded, font_size"
+                                        .to_string(),
+                                ),
+                            ));
+                        }
                     }
                 }
+
+                Ok(Self::new_shape(id, text_def, new_shape_def))
+            }
+            DrawDefinition::Arrow(arrow_def) => {
+                let mut new_arrow_def = (**arrow_def).clone();
+
+                // Process arrow attributes
+                for attr in Attribute::new_from_parser(attributes) {
+                    let name = attr.name.0.as_str();
+                    let value = attr.value.as_str();
+
+                    match name {
+                        "color" => {
+                            let val = Color::new(value).map_err(|err| {
+                                ElaborationDiagnosticError::from_spanned(
+                                    format!("Invalid color '{value}': {err}"),
+                                    &attr,
+                                    "invalid color",
+                                    Some("Use a CSS color".to_string()),
+                                )
+                            })?;
+                            new_arrow_def.set_color(val);
+                        }
+                        "width" => {
+                            let val = value.parse::<usize>().map_err(|_| {
+                                ElaborationDiagnosticError::from_spanned(
+                                    format!("Invalid width value '{value}'"),
+                                    &attr,
+                                    "invalid number",
+                                    Some("Width must be a positive number".to_string()),
+                                )
+                            })?;
+                            new_arrow_def.set_width(val);
+                        }
+                        "style" => {
+                            let val = draw::ArrowStyle::from_str(value).map_err(|_| {
+                                ElaborationDiagnosticError::from_spanned(
+                                    format!("Invalid arrow style '{value}'"),
+                                    &attr,
+                                    "invalid style",
+                                    Some(
+                                        "Arrow style must be 'straight', 'curved', or 'orthogonal'"
+                                            .to_string(),
+                                    ),
+                                )
+                            })?;
+                            new_arrow_def.set_style(val);
+                        }
+                        "font_size" => {
+                            let val = value.parse::<u16>().map_err(|_| {
+                                ElaborationDiagnosticError::from_spanned(
+                                    format!("Invalid font_size value '{value}'"),
+                                    &attr,
+                                    "invalid number",
+                                    Some("Font size must be a positive integer".to_string()),
+                                )
+                            })?;
+                            text_def.set_font_size(val);
+                        }
+                        _ => {
+                            return Err(ElaborationDiagnosticError::from_spanned(
+                                format!("Unknown arrow attribute '{name}'"),
+                                &attr,
+                                "unknown attribute",
+                                Some(
+                                    "Valid arrow attributes are: color, width, style, font_size"
+                                        .to_string(),
+                                ),
+                            ));
+                        }
+                    }
+                }
+
+                Ok(Self::new_arrow(id, text_def, new_arrow_def))
             }
         }
-
-        Ok(Self::new(id, text_def, shape_def))
     }
 
-    pub fn defaults() -> Vec<Rc<Self>> {
+    pub fn default_arrow_definition() -> Rc<Self> {
+        Rc::from(Self::new_arrow(
+            TypeId::from_name("Arrow"),
+            draw::TextDefinition::new(),
+            draw::ArrowDefinition::new(),
+        ))
+    }
+
+    pub fn defaults(default_arrow_definition: &Rc<Self>) -> Vec<Rc<Self>> {
         vec![
-            Rc::new(Self::new(
+            Rc::new(Self::new_shape(
                 TypeId::from_name("Rectangle"),
                 draw::TextDefinition::new(),
                 Box::new(draw::RectangleDefinition::new()),
             )),
-            Rc::new(Self::new(
+            Rc::new(Self::new_shape(
                 TypeId::from_name("Oval"),
                 draw::TextDefinition::new(),
                 Box::new(draw::OvalDefinition::new()),
             )),
-            Rc::new(Self::new(
+            Rc::new(Self::new_shape(
                 TypeId::from_name("Component"),
                 draw::TextDefinition::new(),
                 Box::new(draw::ComponentDefinition::new()),
             )),
-            Rc::new(Self::new(
+            Rc::new(Self::new_shape(
                 TypeId::from_name("Boundary"),
                 draw::TextDefinition::new(),
                 Box::new(draw::BoundaryDefinition::new()),
             )),
-            Rc::new(Self::new(
+            Rc::new(Self::new_shape(
                 TypeId::from_name("Actor"),
                 draw::TextDefinition::new(),
                 Box::new(draw::ActorDefinition::new()),
             )),
-            Rc::new(Self::new(
+            Rc::new(Self::new_shape(
                 TypeId::from_name("Entity"),
                 draw::TextDefinition::new(),
                 Box::new(draw::EntityDefinition::new()),
             )),
-            Rc::new(Self::new(
+            Rc::new(Self::new_shape(
                 TypeId::from_name("Control"),
                 draw::TextDefinition::new(),
                 Box::new(draw::ControlDefinition::new()),
             )),
-            Rc::new(Self::new(
+            Rc::new(Self::new_shape(
                 TypeId::from_name("Interface"),
                 draw::TextDefinition::new(),
                 Box::new(draw::InterfaceDefinition::new()),
             )),
+            Rc::clone(default_arrow_definition),
         ]
     }
 }

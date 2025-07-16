@@ -161,7 +161,11 @@ impl Engine {
 
         // TODO: move it to the best place.
         for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
-            let mut shape = draw::Shape::new(Rc::clone(&node.type_definition.shape_definition));
+            let mut shape = draw::Shape::new(Rc::clone(
+                node.type_definition
+                    .shape_definition()
+                    .expect("Node must have a shape definition for component layout"),
+            ));
             shape.set_padding(self.container_padding);
             let text = draw::Text::new(
                 Rc::clone(&node.type_definition.text_definition),

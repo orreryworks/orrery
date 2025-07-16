@@ -37,8 +37,14 @@ pub enum Element<'a> {
         source: Spanned<&'a str>,
         target: Spanned<&'a str>,
         relation_type: Spanned<&'a str>,
-        attributes: Spanned<Vec<Spanned<Attribute<'a>>>>,
+        type_spec: Option<Spanned<RelationTypeSpec<'a>>>,
         label: Option<Spanned<String>>,
     },
     Diagram(Diagram<'a>),
+}
+
+#[derive(Debug)]
+pub struct RelationTypeSpec<'a> {
+    pub type_name: Option<Spanned<&'a str>>,
+    pub attributes: Vec<Spanned<Attribute<'a>>>,
 }

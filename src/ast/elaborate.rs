@@ -1,7 +1,6 @@
 use super::{elaborate_types as types, parser_types};
 use crate::{
     ast::span::Spanned, color::Color, config::AppConfig, draw, error::ElaborationDiagnosticError,
-    geometry::Insets,
 };
 use log::{debug, info, trace};
 use std::{collections::HashMap, rc::Rc, str::FromStr};
@@ -11,6 +10,7 @@ type EResult<T> = Result<T, ElaborationDiagnosticError>;
 
 pub struct Builder<'a> {
     cfg: &'a AppConfig,
+    default_arrow_type: Rc<types::TypeDefinition>,
     type_definitions: Vec<Rc<types::TypeDefinition>>,
     type_definition_map: HashMap<types::TypeId, Rc<types::TypeDefinition>>,
     _phantom: std::marker::PhantomData<&'a str>, // Use PhantomData to maintain the lifetime parameter
@@ -18,8 +18,9 @@ pub struct Builder<'a> {
 
 impl<'a> Builder<'a> {
     pub fn new(cfg: &'a AppConfig, _source: &'a str) -> Self {
+        let default_arrow_type = types::TypeDefinition::default_arrow_definition();
         // We keep the source parameter for backward compatibility but don't store it anymore
-        let type_definitions = types::TypeDefinition::defaults();
+        let type_definitions = types::TypeDefinition::defaults(&default_arrow_type);
         let type_definition_map = type_definitions
             .iter()
             .map(|def| (def.id.clone(), Rc::clone(def)))
@@ -27,6 +28,7 @@ impl<'a> Builder<'a> {
 
         Self {
             cfg,
+            default_arrow_type,
             type_definitions,
             type_definition_map,
             _phantom: std::marker::PhantomData,
@@ -287,107 +289,37 @@ impl<'a> Builder<'a> {
     ) -> EResult<types::Scope> {
         let mut elements = Vec::new();
 
-        // HACK: use an actual relation type.
-        let mut relation_text_def = draw::TextDefinition::new();
-        relation_text_def.set_font_size(14);
-        let color = Color::new("white").unwrap().with_alpha(0.8);
-        relation_text_def.set_background_color(Some(color));
-        relation_text_def.set_padding(Insets::uniform(5.0));
-        let relation_text_def = Rc::from(relation_text_def);
-
         for parser_elm in parser_elements {
-            match parser_elm.inner() {
+            let element = match parser_elm.inner() {
                 parser_types::Element::Component {
                     name,
                     display_name,
                     type_name,
                     attributes,
                     nested_elements,
-                } => {
-                    let node_id = self.create_type_id(parent_id, name);
-
-                    let type_def = self
-                        .build_element_type_definition(type_name, attributes)
-                        .map_err(|_| {
-                            self.create_undefined_type_error(
-                                name,
-                                &format!("Unknown type '{type_name}' for component '{name}'"),
-                            )
-                        })?;
-
-                    // Check if this shape supports content before processing nested elements
-                    if !nested_elements.is_empty() && !type_def.shape_definition.supports_content()
-                    {
-                        return Err(ElaborationDiagnosticError::from_spanned(
-                            format!("Shape type '{type_name}' does not support nested content"),
-                            parser_elm,
-                            "content not supported",
-                            Some(format!(
-                                "The '{type_name}' shape is content-free and cannot contain nested elements or embedded diagrams"
-                            )),
-                        ));
-                    }
-
-                    // Check if there's a nested diagram element
-                    let block = if nested_elements.len() == 1
-                        && matches!(
-                            nested_elements[0].inner(),
-                            parser_types::Element::Diagram(_)
-                        ) {
-                        // Handle a single diagram element specially
-                        let elaborated_diagram =
-                            self.build_diagram_from_embedded_diagram(&nested_elements[0])?;
-                        types::Block::Diagram(elaborated_diagram)
-                    } else {
-                        // Process regular nested elements
-                        self.build_block_from_elements(nested_elements, Some(&node_id))?
-                    };
-
-                    let node = types::Node {
-                        id: node_id,
-                        name: name.to_string(),
-                        display_name: display_name.as_ref().map(|n| n.to_string()),
-                        block,
-                        type_definition: type_def,
-                    };
-
-                    elements.push(types::Element::Node(node));
-                }
+                } => self.build_component_element(
+                    name,
+                    display_name,
+                    type_name,
+                    attributes,
+                    nested_elements,
+                    parent_id,
+                    parser_elm,
+                )?,
                 parser_types::Element::Relation {
                     source,
                     target,
                     relation_type,
-                    attributes,
+                    type_spec,
                     label,
-                } => {
-                    let arrow_definition =
-                        self.create_arrow_definition_from_attributes(attributes)?;
-
-                    // Create source and target IDs based on parent context if present
-                    let source_id = self.create_type_id(parent_id, source);
-                    let target_id = self.create_type_id(parent_id, target);
-
-                    let arrow_direction =
-                        draw::ArrowDirection::from_str(relation_type).map_err(|_| {
-                            ElaborationDiagnosticError::from_spanned(
-                                format!("Invalid arrow direction '{relation_type}'"),
-                                relation_type,
-                                "invalid direction",
-                                Some(
-                                    "Arrow direction must be '->', '<-', '<->', or '-'".to_string(),
-                                ),
-                            )
-                        })?;
-
-                    elements.push(types::Element::Relation(types::Relation::new(
-                        source_id,
-                        target_id,
-                        arrow_direction,
-                        label.as_ref().map(|l| l.to_string()),
-                        Rc::from(arrow_definition),
-                        Rc::clone(&relation_text_def),
-                    )));
-                }
+                } => self.build_relation_element(
+                    source,
+                    target,
+                    relation_type,
+                    type_spec,
+                    label,
+                    parent_id,
+                )?,
                 parser_types::Element::Diagram(_) => {
                     // This should never happen since we already filtered out invalid elements
                     return Err(ElaborationDiagnosticError::from_spanned(
@@ -397,12 +329,138 @@ impl<'a> Builder<'a> {
                         None,
                     ));
                 }
-            }
+            };
+            elements.push(element);
         }
         Ok(types::Scope { elements })
     }
 
-    fn build_element_type_definition(
+    /// Builds a component element from parser data
+    fn build_component_element(
+        &mut self,
+        name: &Spanned<&str>,
+        display_name: &Option<Spanned<String>>,
+        type_name: &Spanned<&str>,
+        attributes: &[Spanned<parser_types::Attribute>],
+        nested_elements: &[Spanned<parser_types::Element>],
+        parent_id: Option<&types::TypeId>,
+        parser_elm: &Spanned<parser_types::Element>,
+    ) -> EResult<types::Element> {
+        let node_id = self.create_type_id(parent_id, name);
+
+        let type_def = self
+            .build_type_definition(type_name, attributes)
+            .map_err(|_| {
+                self.create_undefined_type_error(
+                    name,
+                    &format!("Unknown type '{type_name}' for component '{name}'"),
+                )
+            })?;
+
+        // Check if this shape supports content before processing nested elements
+        if !nested_elements.is_empty()
+            && !type_def
+                .shape_definition()
+                .is_ok_and(|s| s.supports_content())
+        {
+            return Err(ElaborationDiagnosticError::from_spanned(
+                format!("Shape type '{type_name}' does not support nested content"),
+                parser_elm,
+                "content not supported",
+                Some(format!(
+                    "The '{type_name}' shape is content-free and cannot contain nested elements or embedded diagrams"
+                )),
+            ));
+        }
+
+        // Check if there's a nested diagram element
+        let block = if nested_elements.len() == 1
+            && matches!(
+                nested_elements[0].inner(),
+                parser_types::Element::Diagram(_)
+            ) {
+            // Handle a single diagram element specially
+            let elaborated_diagram =
+                self.build_diagram_from_embedded_diagram(&nested_elements[0])?;
+            types::Block::Diagram(elaborated_diagram)
+        } else {
+            // Process regular nested elements
+            self.build_block_from_elements(nested_elements, Some(&node_id))?
+        };
+
+        let node = types::Node {
+            id: node_id,
+            name: name.to_string(),
+            display_name: display_name.as_ref().map(|n| n.to_string()),
+            block,
+            type_definition: type_def,
+        };
+
+        Ok(types::Element::Node(node))
+    }
+
+    /// Builds a relation element from parser data
+    fn build_relation_element(
+        &mut self,
+        source: &Spanned<&str>,
+        target: &Spanned<&str>,
+        relation_type: &Spanned<&str>,
+        type_spec: &Option<Spanned<parser_types::RelationTypeSpec>>,
+        label: &Option<Spanned<String>>,
+        parent_id: Option<&types::TypeId>,
+    ) -> EResult<types::Element> {
+        // Extract relation type definition from type_spec
+        let relation_type_def = self.build_relation_type_definition_from_spec(type_spec)?;
+
+        // Create source and target IDs based on parent context if present
+        let source_id = self.create_type_id(parent_id, source);
+        let target_id = self.create_type_id(parent_id, target);
+
+        let arrow_direction = draw::ArrowDirection::from_str(relation_type).map_err(|_| {
+            ElaborationDiagnosticError::from_spanned(
+                format!("Invalid arrow direction '{relation_type}'"),
+                relation_type,
+                "invalid direction",
+                Some("Arrow direction must be '->', '<-', '<->', or '-'".to_string()),
+            )
+        })?;
+
+        Ok(types::Element::Relation(types::Relation::new(
+            source_id,
+            target_id,
+            arrow_direction,
+            label.as_ref().map(|l| l.to_string()),
+            relation_type_def,
+        )))
+    }
+
+    /// Builds a relation type definition from a relation type specification
+    fn build_relation_type_definition_from_spec(
+        &mut self,
+        type_spec: &Option<Spanned<parser_types::RelationTypeSpec>>,
+    ) -> EResult<Rc<types::TypeDefinition>> {
+        match type_spec.as_ref().map(|ts| ts.inner()) {
+            Some(spec) => {
+                match (&spec.type_name, &spec.attributes) {
+                    // Direct attributes without type name: [color="red", width="3"]
+                    (None, attrs) => {
+                        let arrow_def = self.create_arrow_definition_from_attributes(attrs)?;
+                        Ok(Rc::new(arrow_def))
+                    }
+                    // Type reference with additional attributes: [RedArrow; width="5"]
+                    (Some(type_name), attributes) => {
+                        self.build_type_definition(type_name, attributes)
+                    }
+                }
+            }
+            None => {
+                // No type specification: use default arrow type
+                Ok(Rc::clone(&self.default_arrow_type))
+            }
+        }
+    }
+
+    fn build_type_definition(
         &mut self,
         type_name: &Spanned<&str>,
         attributes: &[Spanned<parser_types::Attribute>],
@@ -477,64 +535,10 @@ impl<'a> Builder<'a> {
     /// Parses relation attributes and creates an ArrowDefinition
     fn create_arrow_definition_from_attributes(
         &self,
-        attributes: &Spanned<Vec<Spanned<parser_types::Attribute<'_>>>>,
-    ) -> EResult<draw::ArrowDefinition> {
-        let mut arrow_def = draw::ArrowDefinition::new();
-
-        // Process attributes with better error handling
-        for attr in attributes.inner() {
-            match *attr.name {
-                "color" => {
-                    let color = Color::new(&attr.value).map_err(|err| {
-                        ElaborationDiagnosticError::from_spanned(
-                            format!("Invalid color value '{}': {err}", attr.value,),
-                            &attr.value,
-                            "invalid color",
-                            Some("Color must be a valid CSS color value".to_string()),
-                        )
-                    })?;
-                    arrow_def.set_color(color);
-                }
-                "width" => {
-                    let width = attr.value.parse::<usize>().map_err(|_| {
-                        ElaborationDiagnosticError::from_spanned(
-                            format!(
-                                "Invalid width value '{}': expected a positive integer",
-                                attr.value
-                            ),
-                            &attr.value,
-                            "invalid width",
-                            Some("Width must be a positive integer".to_string()),
-                        )
-                    })?;
-                    arrow_def.set_width(width);
-                }
-                "style" => {
-                    let arrow_style = draw::ArrowStyle::from_str(&attr.value).map_err(|_| {
-                        ElaborationDiagnosticError::from_spanned(
-                            format!("Invalid arrow style '{}'", attr.value),
-                            &attr.value,
-                            "invalid style",
-                            Some(
-                                "Arrow style must be 'straight', 'curved', or 'orthogonal'"
-                                    .to_string(),
-                            ),
-                        )
-                    })?;
-                    arrow_def.set_style(arrow_style);
-                }
-                _ => {
-                    return Err(ElaborationDiagnosticError::from_spanned(
-                        format!("Unsupported relation attribute '{}'", attr.name),
-                        attr,
-                        "unsupported attribute",
-                        None,
-                    ));
-                }
-            }
-        }
-
-        Ok(arrow_def)
+        attributes: &Vec<Spanned<parser_types::Attribute<'_>>>,
+    ) -> EResult<types::TypeDefinition> {
+        let id = types::TypeId::from_anonymous(self.type_definition_map.len());
+        types::TypeDefinition::from_base(id, &self.default_arrow_type, attributes)
     }
 
     /// Extract diagram attributes (layout engine and background color)

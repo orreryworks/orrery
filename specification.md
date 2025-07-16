@@ -40,7 +40,7 @@ diagram component [layout_engine="force"];
 
 ### 4.1 Built-in Types
 
-Filament provides eight built-in shape types:
+Filament provides eight built-in shape types and one built-in relation type:
 
 - `Rectangle`: A rectangular shape with customizable properties
 - `Oval`: An elliptical shape with customizable properties
@@ -50,6 +50,7 @@ Filament provides eight built-in shape types:
 - `Entity`: A UML entity shape represented as a circle, used to represent data entities or business objects (content-free)
 - `Control`: A UML control shape represented as a circle with an arrow, used to represent control logic or processes (content-free)
 - `Interface`: A UML interface shape represented as a circle, used to represent system interfaces or contracts (content-free)
+- `Arrow`: A built-in relation type used as the base for custom relation types, supporting attributes like color, width, and style
 
 ### 4.2 Type Definitions
 
@@ -66,6 +67,9 @@ type <TypeName> = <BaseType> [attribute1="value1", attribute2="value2", ...];
 Example:
 ```
 type Database = Rectangle [fill_color="lightblue", rounded="10", line_width="2"];
+type RedArrow = Arrow [color="red"];
+type ThickRedArrow = RedArrow [width="3"];
+```
 ```
 
 ## 5. Elements
@@ -101,25 +105,49 @@ diagram component [background_color="#e6f3ff"];
 
 ### 5.2 Relations
 
-Relations define connections between components:
+Relations define connections between components using the following syntax:
 
 ```
-<source> <relation_type> [attribute1="value1", ...] <target> [: "label"];
+<source> <relation_type> [<type_specification>] <target> [: "label"];
 ```
 
-Example:
-```
-frontend_app -> [color="blue", width="2"] user_database: "Stores data";
-```
+Where:
+- `<source>` and `<target>` are component identifiers
+- `<relation_type>` is one of the four relation types (see below)
+- `[<type_specification>]` is optional and customizes the relation appearance
+- `[: "label"]` is an optional text label displayed on the relation
 
 #### 5.2.1 Relation Types
 
 Filament supports four relation types:
 
-- Forward (`->`)
-- Backward (`<-`)
-- Bidirectional (`<->`)
-- Plain (`-`)
+- **Forward** (`->`) - Arrow pointing from source to target
+- **Backward** (`<-`) - Arrow pointing from target to source  
+- **Bidirectional** (`<->`) - Arrows pointing in both directions
+- **Plain** (`-`) - Simple line with no arrowheads
+
+#### 5.2.2 Type Specifications
+
+Type specifications are optional and appear in square brackets between the relation type and target. They support three forms:
+
+- **Direct attributes**: `[color="red", width="3"]` - Creates an anonymous relation type with specified attributes
+- **Type reference**: `[RedArrow]` - Uses a predefined relation type
+- **Type with additional attributes**: `[RedArrow; width="5"]` - Extends a predefined type with additional attributes
+
+**Examples:**
+```
+// Basic relation (uses default styling)
+app -> database;
+
+// Direct attributes (anonymous type)
+frontend_app -> [color="blue", width="2"] user_database: "Stores data";
+
+// Using predefined relation type
+app -> [RedArrow] cache: "Fast access";
+
+// Predefined type with additional attributes
+cache -> [BlueArrow; style="curved"] database: "Sync data";
+```
 
 ## 6. Attributes
 
@@ -271,9 +299,18 @@ user_actor: Boundary {
 ```
 diagram component [layout_engine="force", background_color="#f8f8f8"];
 
+// Define component types
 type Database = Rectangle [fill_color="lightblue", rounded="10"];
 type Service = Component [fill_color="#e6f3ff"];
 type Client = Oval [fill_color="#ffe6e6"];
+
+// Define relation types
+type RedArrow = Arrow [color="red"];
+type BlueArrow = Arrow [color="blue", width="2"];
+
+// Define relation types extending other custom types
+type ThickRedArrow = RedArrow [width="3"];
+type OrthogonalBlueArrow = BlueArrow [style="orthogonal"];
 
 end_user as "End User": Client;
 backend_system as "Backend System": Service {
@@ -284,9 +321,10 @@ backend_system as "Backend System": Service {
 api_gateway: Service;
 
 end_user -> api_gateway;
-api_gateway -> backend_system;
-api_gateway -> [style="curved", color="red"] end_user: "Response";
-backend_system -> [style="orthogonal", color="green"] user_database: "Query";
+api_gateway -> [ThickRedArrow] backend_system;
+api_gateway -> [RedArrow; style="curved"] end_user: "Response";
+backend_system -> [OrthogonalBlueArrow] user_database: "Query";
+end_user -> [BlueArrow] auth_service: "Auth requests";
 ```
 
 ### 11.2 Sequence Diagram Example
@@ -311,6 +349,7 @@ diagram component [background_color="#f8f8f8"];
 
 type Service = Rectangle [fill_color="#e6f3ff"];
 type Database = Rectangle [fill_color="lightblue", rounded="10"];
+type SecureArrow = Arrow [color="orange", width="2"];
 
 user_interface: Oval [fill_color="#ffe6e6"];
 auth_service: Service embed diagram sequence {
@@ -325,7 +364,7 @@ auth_service: Service embed diagram sequence {
 };
 database: Database;
 
-user_interface -> auth_service;
+user_interface -> [SecureArrow] auth_service: "Secure connection";
 auth_service -> database;
 ```
 

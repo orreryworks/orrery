@@ -115,7 +115,11 @@ impl Engine {
         let mut participant_shapes: HashMap<_, _> = graph
             .nodes_with_indices()
             .map(|(node_idx, node)| {
-                let mut shape = draw::Shape::new(Rc::clone(&node.type_definition.shape_definition));
+                let mut shape = draw::Shape::new(Rc::clone(
+                    node.type_definition
+                        .shape_definition()
+                        .expect("Node must have a shape definition for sequence layout"),
+                ));
                 shape.set_padding(self.padding);
                 let text = draw::Text::new(
                     Rc::clone(&node.type_definition.text_definition),

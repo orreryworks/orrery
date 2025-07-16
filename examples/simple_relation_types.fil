@@ -1,0 +1,26 @@
+// Simple test for relation types in Filament
+
+diagram component;
+
+// Define custom relation types
+type RedArrow = Arrow [color="red"];
+type ThickRedArrow = RedArrow [width="3"];
+type BlueArrow = Arrow [color="blue", width="2"];
+
+// Define some basic components
+app: Rectangle;
+database: Rectangle;
+cache: Rectangle;
+
+// Basic relation (uses default Arrow type)
+app -> database;
+
+// Relation with direct attributes
+app -> [color="green", width="2"] cache: "Cache data";
+
+// Relations using custom types
+database -> [ThickRedArrow] cache: "Sync";
+cache -> [ThickRedArrow] app: "Fast response";
+
+// Custom type with additional attributes
+app -> [BlueArrow; style="curved"] database: "Main queries";

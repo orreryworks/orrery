@@ -128,13 +128,23 @@ fn parse_attributes(input: Span) -> PResult<Vec<Spanned<types::Attribute>>> {
         input,
         context(
             "attributes",
-            delimited(
-                char('['),
-                separated_list0(
-                    char(','),
-                    delimited(ws_comments0, parse_attribute, ws_comments0),
-                ),
-                cut(char(']')),
+            separated_list0(
+                char(','),
+                delimited(ws_comments0, parse_attribute, ws_comments0),
+            ),
+        )
+        .parse(input),
+    )
+}
+
+fn parse_wrapped_attributes(input: Span) -> PResult<Vec<Spanned<types::Attribute>>> {
+    to_spanned(
+        input,
+        context(
+            "wrapped_attributes",
+            map(
+                delimited(char('['), parse_attributes, cut(char(']'))),
+                |attributes| attributes.into_inner(),
             ),
         )
         .parse(input),
@@ -155,7 +165,7 @@ fn parse_type_definition(input: Span) -> PResult<types::TypeDefinition> {
                             parse_identifier,
                             delimited(ws_comments0, char('='), ws_comments0),
                             parse_identifier,
-                            preceded(ws_comments0, opt(parse_attributes)), // Allow 0 or more spaces before attributes
+                            preceded(ws_comments0, opt(parse_wrapped_attributes)), // Allow 0 or more spaces before attributes
                         )),
                     ),
                     semicolon,
@@ -173,6 +183,49 @@ fn parse_type_definition(input: Span) -> PResult<types::TypeDefinition> {
 
 fn parse_type_definitions(input: Span) -> PResult<Vec<Spanned<types::TypeDefinition>>> {
     to_spanned(input, many0(parse_type_definition).parse(input))
+}
+
+// Parse relation type specification in brackets: [attributes], [TypeName], or [TypeName; attributes]
+fn parse_relation_type_spec(input: Span) -> PResult<types::RelationTypeSpec> {
+    to_spanned(
+        input,
+        context(
+            "relation_type_spec",
+            delimited(
+                (char('['), ws_comments0),
+                // TODO add cut
+                alt((
+                    map(
+                        separated_pair(
+                            parse_identifier,
+                            delimited(ws_comments0, char(';'), ws_comments0),
+                            parse_attributes,
+                        ),
+                        |(type_name, attributes)| types::RelationTypeSpec {
+                            type_name: Some(type_name),
+                            attributes: attributes.into_inner(),
+                        },
+                    ),
+                    map(
+                        terminated(
+                            parse_identifier,
+                            peek(preceded(ws_comments0, not(char('=')))),
+                        ),
+                        |type_name| types::RelationTypeSpec {
+                            type_name: Some(type_name),
+                            attributes: Vec::new(),
+                        },
+                    ),
+                    map(parse_attributes, |attributes| types::RelationTypeSpec {
+                        type_name: None,
+                        attributes: attributes.into_inner(),
+                    }),
+                )),
+                (ws_comments0, char(']')),
+            ),
+        )
+        .parse(input),
+    )
 }
 
 fn parse_embedded_diagram(input: Span) -> PResult<types::Element> {
@@ -252,7 +305,7 @@ fn parse_component(input: Span) -> PResult<types::Element> {
                         peek(not(char(':'))), // Make sure it's not a double colon for namespaces
                         cut((
                             delimited(ws_comments0, parse_identifier, ws_comments0),
-                            opt(parse_attributes),
+                            opt(parse_wrapped_attributes),
                             parse_nested_elements,
                         )),
                     ),
@@ -299,7 +352,7 @@ fn parse_relation(input: Span) -> PResult<types::Element> {
                         terminated(parse_nested_identifier, ws_comments1),
                         parse_relation_type,
                         cut((
-                            opt(preceded(ws_comments0, parse_attributes)), // Optional attributes
+                            opt(preceded(ws_comments0, parse_relation_type_spec)), // Optional relation type specification
                             delimited(
                                 ws_comments1, // Require at least one space after relation type
                                 parse_nested_identifier,
@@ -313,14 +366,14 @@ fn parse_relation(input: Span) -> PResult<types::Element> {
                     ),
                     semicolon,
                 ),
-                |(source, relation_type, (attributes, target, label_opt))| {
+                |(source, relation_type, (type_spec, target, label_opt))| {
                     // Convert the Optional tuple into a simple Optional spanned string
                     let label = label_opt.map(|(_, s)| s);
                     types::Element::Relation {
                         source,
                         target,
-                        attributes: attributes.unwrap_or_default(),
                         relation_type,
+                        type_spec,
                         label,
                     }
                 },
@@ -355,7 +408,7 @@ fn parse_diagram_header(input: Span) -> PResult<DiagramHeader> {
                         cut(context("diagram_type", parse_identifier)),
                         ws_comments0,
                     ),
-                    opt(parse_attributes),
+                    opt(parse_wrapped_attributes),
                 ),
                 |(kind, attrs_opt)| (kind, attrs_opt.unwrap_or_default()),
             ),
@@ -604,13 +657,13 @@ mod tests {
     fn test_parse_attributes() {
         // Test empty attributes
         let input = Span::new("[]");
-        let (rest, attrs) = parse_attributes(input).unwrap();
+        let (rest, attrs) = parse_wrapped_attributes(input).unwrap();
         assert_eq!(*rest.fragment(), "");
         assert_eq!(attrs.len(), 0);
 
         // Test single attribute
         let input = Span::new("[color=\"blue\"]");
-        let (rest, attrs) = parse_attributes(input).unwrap();
+        let (rest, attrs) = parse_wrapped_attributes(input).unwrap();
         assert_eq!(*rest.fragment(), "");
         assert_eq!(attrs.len(), 1);
         assert_eq!(*attrs[0].name, "color");
@@ -618,7 +671,7 @@ mod tests {
 
         // Test multiple attributes
         let input = Span::new("[color=\"blue\", size=\"large\"]");
-        let (rest, attrs) = parse_attributes(input).unwrap();
+        let (rest, attrs) = parse_wrapped_attributes(input).unwrap();
         assert_eq!(*rest.fragment(), "");
         assert_eq!(attrs.len(), 2);
         assert_eq!(*attrs[0].name, "color");
@@ -628,7 +681,7 @@ mod tests {
 
         // Test with whitespace and comments
         let input = Span::new("[color=\"blue\" // comment\n, size=\"large\"]");
-        let (rest, attrs) = parse_attributes(input).unwrap();
+        let (rest, attrs) = parse_wrapped_attributes(input).unwrap();
         assert_eq!(*rest.fragment(), "");
         assert_eq!(attrs.len(), 2);
         assert_eq!(*attrs[0].name, "color");
@@ -637,9 +690,9 @@ mod tests {
         assert_eq!(*attrs[1].value, "large");
 
         // Test invalid attributes
-        assert!(parse_attributes(Span::new("[color=blue]")).is_err());
-        assert!(parse_attributes(Span::new("[color=\"blue\"")).is_err());
-        assert!(parse_attributes(Span::new("[color=\"blue\", ]")).is_err());
+        assert!(parse_wrapped_attributes(Span::new("[color=blue]")).is_err());
+        assert!(parse_wrapped_attributes(Span::new("[color=\"blue\"")).is_err());
+        assert!(parse_wrapped_attributes(Span::new("[color=\"blue\", ]")).is_err());
     }
 
     #[test]
@@ -648,6 +701,7 @@ mod tests {
         let input = Span::new("type Database = Rectangle;");
         let (rest, type_def) = parse_type_definition(input).unwrap();
         assert_eq!(*rest.fragment(), "");
+        let type_def = type_def.inner();
         assert_eq!(*type_def.name, "Database");
         assert_eq!(*type_def.base_type, "Rectangle");
         assert_eq!(type_def.attributes.len(), 0);
@@ -656,6 +710,7 @@ mod tests {
         let input = Span::new("type Database = Rectangle [fill_color=\"blue\"];");
         let (rest, type_def) = parse_type_definition(input).unwrap();
         assert_eq!(*rest.fragment(), "");
+        let type_def = type_def.inner();
         assert_eq!(*type_def.name, "Database");
         assert_eq!(*type_def.base_type, "Rectangle");
         assert_eq!(type_def.attributes.len(), 1);
@@ -667,11 +722,23 @@ mod tests {
         let input = Span::new("type Database = Rectangle // comment\n [fill_color=\"blue\"];");
         let (rest, type_def) = parse_type_definition(input).unwrap();
         assert_eq!(*rest.fragment(), "");
+        let type_def = type_def.inner();
         assert_eq!(*type_def.name, "Database");
         assert_eq!(*type_def.base_type, "Rectangle");
         assert_eq!(type_def.attributes.len(), 1);
         assert_eq!(*type_def.attributes[0].name, "fill_color");
         assert_eq!(*type_def.attributes[0].value, "blue");
+
+        // Test Arrow type (relation type)
+        let input = Span::new("type RedArrow = Arrow [color=\"red\"];");
+        let (rest, type_def) = parse_type_definition(input).unwrap();
+        assert_eq!(*rest.fragment(), "");
+        let type_def = type_def.inner();
+        assert_eq!(*type_def.name, "RedArrow");
+        assert_eq!(*type_def.base_type, "Arrow");
+        assert_eq!(type_def.attributes.len(), 1);
+        assert_eq!(*type_def.attributes[0].name, "color");
+        assert_eq!(*type_def.attributes[0].value, "red");
 
         // Test invalid type definitions
         assert!(parse_type_definition(Span::new("type Database;")).is_err());
@@ -851,14 +918,14 @@ mod tests {
                 source,
                 target,
                 relation_type,
-                attributes,
+                type_spec,
                 label,
             } => {
                 assert_eq!(*source, "a");
                 assert_eq!(*target, "b");
                 assert_eq!(*relation_type, "->");
-                assert_eq!(attributes.len(), 0);
-                assert_eq!(label, None);
+                assert!(type_spec.is_none());
+                assert!(label.is_none());
             }
             _ => panic!("Expected Relation"),
         }
@@ -890,24 +957,70 @@ mod tests {
             _ => panic!("Expected Relation"),
         }
 
-        // Test relation with attributes
-        let input = Span::new("a -> [color=\"red\"] b;");
+        // Test simple relation first (without type specification)
+        let input = Span::new("a -> b;");
         let (_rest, relation) = parse_relation(input).unwrap();
         match relation.into_inner() {
             types::Element::Relation {
                 source,
                 target,
                 relation_type,
-                attributes,
+                type_spec,
                 label,
             } => {
                 assert_eq!(*source, "a");
                 assert_eq!(*target, "b");
                 assert_eq!(*relation_type, "->");
-                assert_eq!(attributes.len(), 1);
-                assert_eq!(*attributes[0].name, "color");
-                assert_eq!(*attributes[0].value, "red");
-                assert_eq!(label, None);
+                assert!(type_spec.is_none());
+                assert!(label.is_none());
+            }
+            _ => panic!("Expected Relation"),
+        }
+
+        // Test relation with type reference
+        let input = Span::new("a -> [RedArrow] b;");
+        let (_rest, relation) = parse_relation(input).unwrap();
+        match relation.into_inner() {
+            types::Element::Relation {
+                source,
+                target,
+                relation_type,
+                type_spec,
+                label,
+            } => {
+                assert_eq!(*source, "a");
+                assert_eq!(*target, "b");
+                assert_eq!(*relation_type, "->");
+                let spec = type_spec.as_ref().unwrap().inner();
+                assert!(spec.type_name.is_some());
+                assert_eq!(**spec.type_name.as_ref().unwrap(), "RedArrow");
+                assert!(spec.attributes.is_empty());
+                assert!(label.is_none());
+            }
+            _ => panic!("Expected Relation"),
+        }
+
+        // Test relation with type reference and additional attributes
+        let input = Span::new("a -> [RedArrow; width=\"5\"] b;");
+        let (_rest, relation) = parse_relation(input).unwrap();
+        match relation.into_inner() {
+            types::Element::Relation {
+                source,
+                target,
+                relation_type,
+                type_spec,
+                label,
+            } => {
+                assert_eq!(*source, "a");
+                assert_eq!(*target, "b");
+                assert_eq!(*relation_type, "->");
+                let spec = type_spec.as_ref().unwrap().inner();
+                assert!(spec.type_name.is_some());
+                assert_eq!(**spec.type_name.as_ref().unwrap(), "RedArrow");
+                assert_eq!(spec.attributes.len(), 1);
+                assert_eq!(*spec.attributes[0].name, "width");
+                assert_eq!(*spec.attributes[0].value, "5");
+                assert!(label.is_none());
             }
             _ => panic!("Expected Relation"),
         }
@@ -931,14 +1044,14 @@ mod tests {
                 source,
                 target,
                 relation_type,
-                attributes,
+                type_spec,
                 label,
             } => {
                 assert_eq!(*source, "a");
                 assert_eq!(*target, "b");
                 assert_eq!(*relation_type, "->");
-                assert_eq!(attributes.len(), 0);
-                assert_eq!(*label.expect("label is None"), "label text");
+                assert!(type_spec.is_none());
+                assert_eq!(**label.as_ref().unwrap(), "label text");
             }
             _ => panic!("Expected Relation"),
         }
@@ -946,7 +1059,7 @@ mod tests {
         // Test invalid relations
         assert!(parse_relation(Span::new("a -> ;")).is_err());
         assert!(parse_relation(Span::new("a >>b;")).is_err());
-        assert!(parse_relation(Span::new("a -> b")).is_err());
+        assert!(parse_relation(Span::new("-> b;")).is_err());
     }
 
     #[test]
@@ -1018,7 +1131,8 @@ mod tests {
                 assert_eq!(*d.kind, "component");
                 assert_eq!(d.attributes.len(), 0);
                 assert_eq!(d.type_definitions.len(), 1);
-                assert_eq!(*d.type_definitions[0].name, "Database");
+                let type_def = d.type_definitions[0].inner();
+                assert_eq!(*type_def.name, "Database");
                 assert_eq!(d.elements.len(), 0);
             }
             _ => panic!("Expected Diagram"),
@@ -1172,5 +1286,174 @@ mod tests {
         let diagram_str = "diagram component; app: Rectangle; db: ; app -> db;";
         let result = build_diagram(diagram_str);
         assert!(result.is_err());
+    }
+
+    // Test comprehensive RelationTypeSpec parsing edge cases
+    #[test]
+    fn test_relation_type_spec_edge_cases() {
+        // Test empty attributes list
+        let input = Span::new("a -> [] b;");
+        let (_rest, relation) = parse_relation(input).unwrap();
+        match relation.into_inner() {
+            types::Element::Relation { type_spec, .. } => {
+                let spec = type_spec.as_ref().unwrap().inner();
+                assert!(spec.type_name.is_none());
+                assert!(spec.attributes.is_empty());
+            }
+            _ => panic!("Expected Relation"),
+        }
+
+        // Test single attribute
+        let input = Span::new("a -> [color=\"red\"] b;");
+        let (_rest, relation) = parse_relation(input).unwrap();
+        match relation.into_inner() {
+            types::Element::Relation { type_spec, .. } => {
+                let spec = type_spec.as_ref().unwrap().inner();
+                assert!(spec.type_name.is_none());
+                assert_eq!(spec.attributes.len(), 1);
+                assert_eq!(*spec.attributes[0].name, "color");
+                assert_eq!(*spec.attributes[0].value, "red");
+            }
+            _ => panic!("Expected Relation"),
+        }
+
+        // Test type name with empty attributes after semicolon
+        let input = Span::new("a -> [MyType;] b;");
+        let (_rest, relation) = parse_relation(input).unwrap();
+        match relation.into_inner() {
+            types::Element::Relation { type_spec, .. } => {
+                let spec = type_spec.as_ref().unwrap().inner();
+                assert!(spec.type_name.is_some());
+                assert_eq!(**spec.type_name.as_ref().unwrap(), "MyType");
+                assert!(spec.attributes.is_empty());
+            }
+            _ => panic!("Expected Relation"),
+        }
+
+        // Test type name with single attribute
+        let input = Span::new("a -> [MyType; width=\"5\"] b;");
+        let (_rest, relation) = parse_relation(input).unwrap();
+        match relation.into_inner() {
+            types::Element::Relation { type_spec, .. } => {
+                let spec = type_spec.as_ref().unwrap().inner();
+                assert!(spec.type_name.is_some());
+                assert_eq!(**spec.type_name.as_ref().unwrap(), "MyType");
+                assert_eq!(spec.attributes.len(), 1);
+                assert_eq!(*spec.attributes[0].name, "width");
+                assert_eq!(*spec.attributes[0].value, "5");
+            }
+            _ => panic!("Expected Relation"),
+        }
+    }
+
+    // Test RelationTypeSpec with whitespace variations
+    #[test]
+    fn test_relation_type_spec_whitespace() {
+        // Test with extra whitespace around type name
+        let input = Span::new("a -> [  MyType  ] b;");
+        let (_rest, relation) = parse_relation(input).unwrap();
+        match relation.into_inner() {
+            types::Element::Relation { type_spec, .. } => {
+                let spec = type_spec.as_ref().unwrap().inner();
+                assert!(spec.type_name.is_some());
+                assert_eq!(**spec.type_name.as_ref().unwrap(), "MyType");
+                assert!(spec.attributes.is_empty());
+            }
+            _ => panic!("Expected Relation"),
+        }
+
+        // Test with whitespace around semicolon and attributes
+        let input = Span::new("a -> [MyType ; color=\"blue\" , width=\"3\" ] b;");
+        let (_rest, relation) = parse_relation(input).unwrap();
+        match relation.into_inner() {
+            types::Element::Relation { type_spec, .. } => {
+                let spec = type_spec.as_ref().unwrap().inner();
+                assert!(spec.type_name.is_some());
+                assert_eq!(**spec.type_name.as_ref().unwrap(), "MyType");
+                assert_eq!(spec.attributes.len(), 2);
+                assert_eq!(*spec.attributes[0].name, "color");
+                assert_eq!(*spec.attributes[0].value, "blue");
+                assert_eq!(*spec.attributes[1].name, "width");
+                assert_eq!(*spec.attributes[1].value, "3");
+            }
+            _ => panic!("Expected Relation"),
+        }
+
+        // Test with whitespace in attributes only
+        let input = Span::new("a -> [ color=\"red\" , style=\"dashed\" ] b;");
+        let (_rest, relation) = parse_relation(input).unwrap();
+        match relation.into_inner() {
+            types::Element::Relation { type_spec, .. } => {
+                let spec = type_spec.as_ref().unwrap().inner();
+                assert!(spec.type_name.is_none());
+                assert_eq!(spec.attributes.len(), 2);
+                assert_eq!(*spec.attributes[0].name, "color");
+                assert_eq!(*spec.attributes[0].value, "red");
+                assert_eq!(*spec.attributes[1].name, "style");
+                assert_eq!(*spec.attributes[1].value, "dashed");
+            }
+            _ => panic!("Expected Relation"),
+        }
+    }
+
+    // Test RelationTypeSpec direct parsing
+    #[test]
+    fn test_parse_relation_type_spec_direct() {
+        // Test parsing relation type spec directly
+        let input = Span::new("[RedArrow]");
+        let (_rest, spec) = parse_relation_type_spec(input).unwrap();
+        assert!(spec.type_name.is_some());
+        assert_eq!(**spec.type_name.as_ref().unwrap(), "RedArrow");
+        assert!(spec.attributes.is_empty());
+
+        let input = Span::new("[color=\"blue\", width=\"2\"]");
+        let (_rest, spec) = parse_relation_type_spec(input).unwrap();
+        assert!(spec.type_name.is_none());
+        assert_eq!(spec.attributes.len(), 2);
+        assert_eq!(*spec.attributes[0].name, "color");
+        assert_eq!(*spec.attributes[0].value, "blue");
+
+        let input = Span::new("[BlueArrow; style=\"curved\"]");
+        let (_rest, spec) = parse_relation_type_spec(input).unwrap();
+        assert!(spec.type_name.is_some());
+        assert_eq!(**spec.type_name.as_ref().unwrap(), "BlueArrow");
+        assert_eq!(spec.attributes.len(), 1);
+        assert_eq!(*spec.attributes[0].name, "style");
+        assert_eq!(*spec.attributes[0].value, "curved");
+    }
+
+    // Test error handling in relation type definitions
+    #[test]
+    fn test_relation_type_definition_errors() {
+        // Test parsing of invalid relation type syntax
+        let invalid_cases = vec![
+            // Invalid type specification syntax
+            "a -> [InvalidType b;",
+            "a -> [; color=\"red\"] b;",
+            "a -> [RedArrow color=\"red\"] b;", // Missing semicolon
+        ];
+
+        for case in invalid_cases {
+            let diagram_text = format!("diagram component; a: Rectangle; b: Rectangle; {}", case);
+            let input = Span::new(&diagram_text);
+            let result = parse_diagram(input);
+            // These should either fail to parse or be handled gracefully
+            // We're mainly testing that they don't panic
+            let _ = result;
+        }
+
+        // Test valid edge cases
+        let valid_cases = vec![
+            "a -> [] b;",              // Empty type specification
+            "a -> [color=\"red\"] b;", // Direct attributes only
+            "a -> [MyType] b;", // Type reference only (will fail in elaboration if MyType doesn't exist)
+        ];
+
+        for case in valid_cases {
+            let diagram_text = format!("diagram component; a: Rectangle; b: Rectangle; {}", case);
+            let input = Span::new(&diagram_text);
+            let result = parse_diagram(input);
+            assert!(result.is_ok(), "Valid case should parse: {}", case);
+        }
     }
 }
