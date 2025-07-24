@@ -10,8 +10,6 @@ env_logger = { version = "0.11.8", features = ["kv"] }
 layout-rs = "0.1.3"
 lazy_static = "1.5.0"
 log = { version = "0.4.27", features = ["kv", "kv_std"] }
-nom = "8.0.0"
-nom_locate = "5.0.0"
 miette = { version = "7.6.0", features = ["fancy"] }
 thiserror = "2.0.12"
 petgraph = "0.8.2"
@@ -22,3 +20,5 @@ rust-sugiyama = "0.3.0"
 toml = "0.8.23"
 serde = { version = "1.0", features = ["derive"] }
 directories = "6.0.0"
+chumsky = { version = "0.10.1", features = ["lexical-numbers"] }
+ariadne = { version = "0.5.1", features = ["concolor", "auto-color"] }

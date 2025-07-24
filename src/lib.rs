@@ -1,6 +1,6 @@
-mod ast;
+pub mod ast;
 pub mod color;
-mod config;
+pub mod config;
 pub mod draw;
 mod error;
 mod export;

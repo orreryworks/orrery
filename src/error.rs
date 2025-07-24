@@ -3,7 +3,7 @@ mod parser;
 
 pub use elaborate::ElaborationDiagnosticError;
 use miette::Diagnostic;
-pub use parser::{ParseDiagnosticError, SlimParserError};
+pub use parser::ParseDiagnosticError;
 use std::{io, path::PathBuf};
 use thiserror::Error;
 

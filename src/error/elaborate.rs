@@ -1,6 +1,5 @@
 use crate::ast::span::Spanned;
 use miette::{Diagnostic, SourceSpan};
-use nom_locate::LocatedSpan;
 use thiserror::Error;
 
 /// A rich diagnostic error for elaboration issues in the Filament language.
@@ -50,25 +49,6 @@ impl Diagnostic for ElaborationDiagnosticError {
 }
 
 impl ElaborationDiagnosticError {
-    /// Create a new elaboration error from a `nom_locate::LocatedSpan`.
-    /// The source code must be provided when wrapping this error.
-    pub fn new(
-        message: String,
-        span: LocatedSpan<&str>,
-        label: impl Into<String>,
-        help: Option<String>,
-    ) -> Self {
-        let offset = span.location_offset();
-        let length = span.fragment().len();
-
-        Self {
-            message,
-            span: (offset, length).into(),
-            label: label.into(),
-            help,
-        }
-    }
-
     /// Create a new elaboration error from a Spanned value.
     pub fn from_spanned<T>(
         message: String,
