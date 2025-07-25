@@ -1,5 +1,5 @@
-use super::lexer::Span;
 use super::parser_types as types;
+use super::span::Span;
 use crate::ast::span::Spanned;
 use crate::ast::tokens::Token;
 use crate::error::ParseDiagnosticError;
@@ -21,7 +21,7 @@ type DiagramHeader<'a> = (
 
 /// Helper function to create a spanned value
 fn make_spanned<T>(value: T, start: usize, len: usize) -> Spanned<T> {
-    Spanned::new(value, start, len)
+    Spanned::from_offset_length(value, start, len)
 }
 
 /// Parse whitespace and comments (now explicit tokens)

@@ -1,14 +1,12 @@
+use super::span::Span;
 use super::tokens::Token;
 use chumsky::{
     IterParser as _, Parser,
     error::Rich,
     extra,
     primitive::{any, choice, just, none_of, one_of},
-    span::SimpleSpan,
     text,
 };
-
-pub type Span = SimpleSpan;
 type Spanned<T> = (T, Span);
 
 /// Parse a complete string literal with double quotes.

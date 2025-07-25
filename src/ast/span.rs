@@ -1,35 +1,44 @@
+use chumsky::span::{SimpleSpan, Span as SpanTrait};
 use std::fmt;
+
+pub type Span = SimpleSpan;
 
 /// A generic wrapper for AST elements that tracks source position information.
 ///
 /// `Spanned<T>` wraps any type `T` with location metadata, allowing parser and
 /// elaboration code to provide rich diagnostic errors with precise source locations.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Spanned<T> {
     /// The wrapped value
     value: T,
-    /// Starting offset in the source (byte position)
-    offset: usize,
-    /// Length of the spanned region in bytes
-    length: usize,
+    /// The span information from the parser
+    span: Span,
 }
 
 impl<T> Spanned<T> {
+    /// Create a new spanned value from a value and span information
+    pub fn new(value: T, span: Span) -> Self {
+        Self { value, span }
+    }
+
     /// Create a new spanned value from a value and position information
-    pub fn new(value: T, offset: usize, length: usize) -> Self {
+    pub fn from_offset_length(value: T, offset: usize, length: usize) -> Self {
         Self {
             value,
-            offset,
-            length,
+            span: SpanTrait::new((), offset..offset + length),
         }
     }
 
     pub fn offset(&self) -> usize {
-        self.offset
+        SpanTrait::start(&self.span)
     }
 
     pub fn length(&self) -> usize {
-        self.length
+        SpanTrait::end(&self.span) - SpanTrait::start(&self.span)
+    }
+
+    pub fn span(&self) -> Span {
+        self.span
     }
 
     /// Convert from one spanned type to another using the provided function
@@ -41,8 +50,7 @@ impl<T> Spanned<T> {
     {
         Spanned {
             value: f(&self.value),
-            offset: self.offset,
-            length: self.length,
+            span: self.span,
         }
     }
 
@@ -60,8 +68,17 @@ impl<T> Spanned<T> {
     pub fn clone_spanned(&self) -> Spanned<()> {
         Spanned {
             value: (),
-            offset: self.offset,
-            length: self.length,
+            span: self.span,
+        }
+    }
+}
+
+// Implement Default for Spanned<T> where T: Default
+impl<T: Default> Default for Spanned<T> {
+    fn default() -> Self {
+        Self {
+            value: T::default(),
+            span: SpanTrait::new((), 0..0),
         }
     }
 }
