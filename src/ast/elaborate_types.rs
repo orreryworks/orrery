@@ -1,6 +1,4 @@
-use super::parser_types;
-use crate::ast::span::Spanned;
-use crate::{color::Color, draw, error::ElaborationDiagnosticError};
+use crate::{ast::parser_types, color::Color, draw, error::ElaborationDiagnosticError};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{self, Display},
@@ -251,7 +249,7 @@ impl TypeDefinition {
     pub fn from_base(
         id: TypeId,
         base: &Self,
-        attributes: &[Spanned<parser_types::Attribute>],
+        attributes: &[parser_types::Attribute],
     ) -> Result<Self, ElaborationDiagnosticError> {
         let mut text_def = (*base.text_definition).clone();
 
@@ -260,24 +258,24 @@ impl TypeDefinition {
                 let mut new_shape_def = shape_def.clone_box();
 
                 // Process shape attributes
-                for attr in Attribute::new_from_parser(attributes) {
-                    let name = attr.name.0.as_str();
-                    let value = attr.value.as_str();
+                for attr in attributes {
+                    let name = attr.name.inner();
+                    let value = attr.value.inner();
 
-                    match name {
+                    match *name {
                         "fill_color" => {
                             let val = Color::new(value).map_err(|err| {
-                                ElaborationDiagnosticError::from_spanned(
+                                ElaborationDiagnosticError::from_span(
                                     format!("Invalid fill_color '{value}': {err}"),
-                                    &attr,
+                                    attr.span(),
                                     "invalid color",
                                     Some("Use a CSS color".to_string()),
                                 )
                             })?;
                             new_shape_def.set_fill_color(Some(val)).map_err(|err| {
-                                ElaborationDiagnosticError::from_spanned(
+                                ElaborationDiagnosticError::from_span(
                                     err.to_string(),
-                                    &attr,
+                                    attr.span(),
                                     "unsupported attribute",
                                     None,
                                 )
@@ -285,17 +283,17 @@ impl TypeDefinition {
                         }
                         "line_color" => {
                             let val = Color::new(value).map_err(|err| {
-                                ElaborationDiagnosticError::from_spanned(
+                                ElaborationDiagnosticError::from_span(
                                     format!("Invalid line_color '{value}': {err}"),
-                                    &attr,
+                                    attr.span(),
                                     "invalid color",
                                     Some("Use a CSS color".to_string()),
                                 )
                             })?;
                             new_shape_def.set_line_color(val).map_err(|err| {
-                                ElaborationDiagnosticError::from_spanned(
+                                ElaborationDiagnosticError::from_span(
                                     err.to_string(),
-                                    &attr,
+                                    attr.span(),
                                     "unsupported attribute",
                                     None,
                                 )
@@ -303,17 +301,17 @@ impl TypeDefinition {
                         }
                         "line_width" => {
                             let val = value.parse::<usize>().map_err(|_| {
-                                ElaborationDiagnosticError::from_spanned(
+                                ElaborationDiagnosticError::from_span(
                                     format!("Invalid line_width value '{value}'"),
-                                    &attr,
+                                    attr.span(),
                                     "invalid number",
                                     Some("Width must be a positive number".to_string()),
                                 )
                             })?;
                             new_shape_def.set_line_width(val).map_err(|err| {
-                                ElaborationDiagnosticError::from_spanned(
+                                ElaborationDiagnosticError::from_span(
                                     err.to_string(),
-                                    &attr,
+                                    attr.span(),
                                     "unsupported attribute",
                                     None,
                                 )
@@ -321,17 +319,17 @@ impl TypeDefinition {
                         }
                         "rounded" => {
                             let val = value.parse::<usize>().map_err(|_| {
-                                ElaborationDiagnosticError::from_spanned(
+                                ElaborationDiagnosticError::from_span(
                                     format!("Invalid rounded value '{value}'"),
-                                    &attr,
+                                    attr.span(),
                                     "invalid number",
-                                    Some("Rounded value must be a positive integer".to_string()),
+                                    Some("Rounded must be a positive number".to_string()),
                                 )
                             })?;
                             new_shape_def.set_rounded(val).map_err(|err| {
-                                ElaborationDiagnosticError::from_spanned(
+                                ElaborationDiagnosticError::from_span(
                                     err.to_string(),
-                                    &attr,
+                                    attr.span(),
                                     "unsupported attribute",
                                     None,
                                 )
@@ -339,9 +337,9 @@ impl TypeDefinition {
                         }
                         "font_size" => {
                             let val = value.parse::<u16>().map_err(|_| {
-                                ElaborationDiagnosticError::from_spanned(
+                                ElaborationDiagnosticError::from_span(
                                     format!("Invalid font_size value '{value}'"),
-                                    &attr,
+                                    attr.span(),
                                     "invalid number",
                                     Some("Font size must be a positive integer".to_string()),
                                 )
@@ -349,9 +347,9 @@ impl TypeDefinition {
                             text_def.set_font_size(val);
                         }
                         _ => {
-                            return Err(ElaborationDiagnosticError::from_spanned(
+                            return Err(ElaborationDiagnosticError::from_span(
                                 format!("Unknown shape attribute '{name}'"),
-                                &attr,
+                                attr.span(),
                                 "unknown attribute",
                                 Some(
                                     "Valid shape attributes are: fill_color, line_color, line_width, rounded, font_size"
@@ -368,16 +366,16 @@ impl TypeDefinition {
                 let mut new_arrow_def = (**arrow_def).clone();
 
                 // Process arrow attributes
-                for attr in Attribute::new_from_parser(attributes) {
-                    let name = attr.name.0.as_str();
-                    let value = attr.value.as_str();
+                for attr in attributes {
+                    let name = attr.name.inner();
+                    let value = attr.value.inner();
 
-                    match name {
+                    match *name {
                         "color" => {
                             let val = Color::new(value).map_err(|err| {
-                                ElaborationDiagnosticError::from_spanned(
+                                ElaborationDiagnosticError::from_span(
                                     format!("Invalid color '{value}': {err}"),
-                                    &attr,
+                                    attr.span(),
                                     "invalid color",
                                     Some("Use a CSS color".to_string()),
                                 )
@@ -386,9 +384,9 @@ impl TypeDefinition {
                         }
                         "width" => {
                             let val = value.parse::<usize>().map_err(|_| {
-                                ElaborationDiagnosticError::from_spanned(
+                                ElaborationDiagnosticError::from_span(
                                     format!("Invalid width value '{value}'"),
-                                    &attr,
+                                    attr.span(),
                                     "invalid number",
                                     Some("Width must be a positive number".to_string()),
                                 )
@@ -397,9 +395,9 @@ impl TypeDefinition {
                         }
                         "style" => {
                             let val = draw::ArrowStyle::from_str(value).map_err(|_| {
-                                ElaborationDiagnosticError::from_spanned(
+                                ElaborationDiagnosticError::from_span(
                                     format!("Invalid arrow style '{value}'"),
-                                    &attr,
+                                    attr.span(),
                                     "invalid style",
                                     Some(
                                         "Arrow style must be 'straight', 'curved', or 'orthogonal'"
@@ -411,9 +409,9 @@ impl TypeDefinition {
                         }
                         "font_size" => {
                             let val = value.parse::<u16>().map_err(|_| {
-                                ElaborationDiagnosticError::from_spanned(
+                                ElaborationDiagnosticError::from_span(
                                     format!("Invalid font_size value '{value}'"),
-                                    &attr,
+                                    attr.span(),
                                     "invalid number",
                                     Some("Font size must be a positive integer".to_string()),
                                 )
@@ -421,9 +419,9 @@ impl TypeDefinition {
                             text_def.set_font_size(val);
                         }
                         _ => {
-                            return Err(ElaborationDiagnosticError::from_spanned(
+                            return Err(ElaborationDiagnosticError::from_span(
                                 format!("Unknown arrow attribute '{name}'"),
-                                &attr,
+                                attr.span(),
                                 "unknown attribute",
                                 Some(
                                     "Valid arrow attributes are: color, width, style, font_size"
@@ -491,21 +489,5 @@ impl TypeDefinition {
             )),
             Rc::clone(default_arrow_definition),
         ]
-    }
-}
-
-impl Attribute {
-    fn new(name: &str, value: &str) -> Self {
-        Self {
-            name: TypeId::from_name(name),
-            value: value.to_string(),
-        }
-    }
-
-    fn new_from_parser(parser_attrs: &[Spanned<parser_types::Attribute>]) -> Vec<Spanned<Self>> {
-        parser_attrs
-            .iter()
-            .map(|attr| attr.map(|attr| Self::new(&attr.name, &attr.value)))
-            .collect()
     }
 }

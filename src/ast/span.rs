@@ -1,7 +1,5 @@
-use chumsky::span::{SimpleSpan, Span as SpanTrait};
+pub use chumsky::span::{SimpleSpan as SpanImpl, Span};
 use std::fmt;
-
-pub type Span = SimpleSpan;
 
 /// A generic wrapper for AST elements that tracks source position information.
 ///
@@ -12,32 +10,24 @@ pub struct Spanned<T> {
     /// The wrapped value
     value: T,
     /// The span information from the parser
-    span: Span,
+    span: SpanImpl,
 }
 
 impl<T> Spanned<T> {
     /// Create a new spanned value from a value and span information
-    pub fn new(value: T, span: Span) -> Self {
+    pub fn new(value: T, span: SpanImpl) -> Self {
         Self { value, span }
     }
 
-    /// Create a new spanned value from a value and position information
-    pub fn from_offset_length(value: T, offset: usize, length: usize) -> Self {
-        Self {
-            value,
-            span: SpanTrait::new((), offset..offset + length),
-        }
-    }
-
     pub fn offset(&self) -> usize {
-        SpanTrait::start(&self.span)
+        self.span.start
     }
 
     pub fn length(&self) -> usize {
-        SpanTrait::end(&self.span) - SpanTrait::start(&self.span)
+        self.span.end - self.span.start
     }
 
-    pub fn span(&self) -> Span {
+    pub fn span(&self) -> SpanImpl {
         self.span
     }
 
@@ -78,7 +68,7 @@ impl<T: Default> Default for Spanned<T> {
     fn default() -> Self {
         Self {
             value: T::default(),
-            span: SpanTrait::new((), 0..0),
+            span: SpanImpl::new((), 0..0),
         }
     }
 }

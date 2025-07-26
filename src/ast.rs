@@ -13,6 +13,12 @@
 /// - Used by `build_ast()` for parsing with complete language support
 /// - Supports all Filament language features including relations and nested components
 ///
+/// ### Span Architecture
+/// - **Leaf types** (strings, literals, identifiers) are wrapped in `Spanned<T>` for precise location tracking
+/// - **Composite types** use unwrapped collections and derive spans from inner elements via `span()` methods
+/// - **Collection parsers** return `Vec<T>` directly instead of `Vec<Spanned<T>>` to avoid wrap-then-unwrap inefficiency
+/// - **Error reporting** uses `from_span()` with extracted spans for rich diagnostics
+///
 /// ## Other Modules
 /// - `span`: Provides location tracking for AST elements
 /// - `parser_types`: Contains spanned versions of parser types with source location tracking

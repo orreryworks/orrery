@@ -1,6 +1,10 @@
 use super::{elaborate_types as types, parser_types};
 use crate::{
-    ast::span::Spanned, color::Color, config::AppConfig, draw, error::ElaborationDiagnosticError,
+    ast::span::{SpanImpl, Spanned},
+    color::Color,
+    config::AppConfig,
+    draw,
+    error::ElaborationDiagnosticError,
 };
 use log::{debug, info, trace};
 use std::{collections::HashMap, rc::Rc, str::FromStr};
@@ -65,9 +69,9 @@ impl<'a> Builder<'a> {
                         scope
                     }
                     types::Block::Diagram(_) => {
-                        return Err(ElaborationDiagnosticError::from_spanned(
+                        return Err(ElaborationDiagnosticError::from_span(
                             "Nested diagram not allowed".to_string(),
-                            &diag.kind,
+                            diag.kind.span(),
                             "invalid diagram structure",
                             Some("Diagrams cannot be nested inside other diagrams".to_string()),
                         ));
@@ -86,21 +90,21 @@ impl<'a> Builder<'a> {
                     background_color,
                 })
             }
-            _ => Err(ElaborationDiagnosticError::from_spanned(
+            _ => Err(ElaborationDiagnosticError::from_span(
                 "Invalid element, expected Diagram".to_string(),
-                diag,
+                diag.span(),
                 "invalid element",
                 None,
             )),
         }
     }
 
+    // TODO: Change error type so it would not accept a span.
     fn insert_type_definition(
         &mut self,
-        type_def: Spanned<types::TypeDefinition>,
+        type_def: types::TypeDefinition,
+        span: SpanImpl,
     ) -> EResult<Rc<types::TypeDefinition>> {
-        let span = type_def.clone_spanned();
-        let type_def = type_def.into_inner();
         let id = type_def.id.clone();
         let type_def = Rc::new(type_def);
         self.type_definitions.push(Rc::clone(&type_def));
@@ -115,9 +119,9 @@ impl<'a> Builder<'a> {
         } else {
             // We could use a span here if we tracked where the duplicate was defined
             // For now, we use a simple error since we don't store that information
-            Err(ElaborationDiagnosticError::from_spanned(
+            Err(ElaborationDiagnosticError::from_span(
                 format!("Type definition '{}' already exists", type_def.id),
-                &span,
+                span,
                 "duplicate type definition",
                 None,
             ))
@@ -126,9 +130,9 @@ impl<'a> Builder<'a> {
 
     fn update_type_direct_definitions(
         &mut self,
-        type_definitions: &Spanned<Vec<Spanned<parser_types::TypeDefinition<'a>>>>,
+        type_definitions: &Vec<parser_types::TypeDefinition<'a>>,
     ) -> EResult<()> {
-        for type_def in type_definitions.inner() {
+        for type_def in type_definitions {
             let base_type_name = types::TypeId::from_name(&type_def.base_type);
             let base = self
                 .type_definition_map
@@ -149,13 +153,13 @@ impl<'a> Builder<'a> {
                 &type_def.attributes,
             ) {
                 Ok(new_type_def) => {
-                    self.insert_type_definition(type_def.map(|_| new_type_def))?;
+                    self.insert_type_definition(new_type_def, type_def.span())?;
                 }
                 Err(err) => {
                     // Wrap the error with location information for attribute errors
-                    return Err(ElaborationDiagnosticError::from_spanned(
+                    return Err(ElaborationDiagnosticError::from_span(
                         format!("Invalid type definition: {err}"),
-                        &type_def.name,
+                        type_def.span(),
                         "type definition error",
                         Some("Check attribute types and values for errors".to_string()),
                     ));
@@ -167,9 +171,9 @@ impl<'a> Builder<'a> {
 
     fn build_diagram_from_parser(
         &mut self,
-        diag: &Spanned<parser_types::Element>,
+        diag: &parser_types::Element,
     ) -> EResult<types::Diagram> {
-        match diag.inner() {
+        match diag {
             parser_types::Element::Diagram(diag) => {
                 // Create a block from the diagram elements
                 let block = self.build_block_from_elements(&diag.elements, None)?;
@@ -177,9 +181,9 @@ impl<'a> Builder<'a> {
                     types::Block::None => types::Scope::default(),
                     types::Block::Scope(scope) => scope,
                     types::Block::Diagram(_) => {
-                        return Err(ElaborationDiagnosticError::from_spanned(
+                        return Err(ElaborationDiagnosticError::from_span(
                             "Nested diagram not allowed".to_string(),
-                            &diag.kind,
+                            diag.kind.span(),
                             "invalid nesting",
                             Some("Diagrams cannot be nested inside other diagrams".to_string()),
                         ));
@@ -197,9 +201,9 @@ impl<'a> Builder<'a> {
                     background_color,
                 })
             }
-            _ => Err(ElaborationDiagnosticError::from_spanned(
+            _ => Err(ElaborationDiagnosticError::from_span(
                 "Invalid element, expected Diagram".to_string(),
-                diag,
+                diag.span(),
                 "invalid element",
                 None,
             )),
@@ -208,18 +212,18 @@ impl<'a> Builder<'a> {
 
     fn build_diagram_from_embedded_diagram(
         &mut self,
-        element: &Spanned<parser_types::Element>,
+        element: &parser_types::Element,
     ) -> EResult<types::Diagram> {
-        if let parser_types::Element::Diagram(diag) = element.inner() {
+        if let parser_types::Element::Diagram(diag) = element {
             // Create a block from the diagram elements
             let block = self.build_block_from_elements(&diag.elements, None)?;
             let scope = match block {
                 types::Block::None => types::Scope::default(),
                 types::Block::Scope(scope) => scope,
                 types::Block::Diagram(_) => {
-                    return Err(ElaborationDiagnosticError::from_spanned(
+                    return Err(ElaborationDiagnosticError::from_span(
                         "Nested diagram not allowed".to_string(),
-                        &diag.kind,
+                        diag.kind.span(),
                         "invalid nesting",
                         Some("Diagrams cannot be nested inside other diagrams".to_string()),
                     ));
@@ -237,9 +241,9 @@ impl<'a> Builder<'a> {
                 background_color,
             })
         } else {
-            Err(ElaborationDiagnosticError::from_spanned(
+            Err(ElaborationDiagnosticError::from_span(
                 "Expected diagram element".to_string(),
-                element,
+                element.span(),
                 "invalid element",
                 None,
             ))
@@ -248,12 +252,12 @@ impl<'a> Builder<'a> {
 
     fn build_block_from_elements(
         &mut self,
-        parser_elements: &[Spanned<parser_types::Element>],
+        parser_elements: &[parser_types::Element],
         parent_id: Option<&types::TypeId>,
     ) -> EResult<types::Block> {
         if parser_elements.is_empty() {
             Ok(types::Block::None)
-        } else if let parser_types::Element::Diagram { .. } = parser_elements[0].inner() {
+        } else if let parser_types::Element::Diagram { .. } = &parser_elements[0] {
             // This case happens when a diagram is the first element in a block
             Ok(types::Block::Diagram(
                 self.build_diagram_from_parser(&parser_elements[0])?,
@@ -261,11 +265,11 @@ impl<'a> Builder<'a> {
         } else {
             // Check to make sure no diagrams are mixed with other elements
             for parser_elm in parser_elements {
-                if let parser_types::Element::Diagram(diag) = parser_elm.inner() {
+                if let parser_types::Element::Diagram(diag) = parser_elm {
                     // If we found a diagram mixed with other elements, provide a rich error
-                    return Err(ElaborationDiagnosticError::from_spanned(
+                    return Err(ElaborationDiagnosticError::from_span(
                         "Diagram cannot share scope with other elements".to_string(),
-                        &diag.kind, // Use the diagram kind span as the error location
+                        diag.kind.span(), // Use the diagram kind span as the error location
                         "invalid nesting",
                         Some(
                             "A diagram declaration must be the only element in its scope"
@@ -284,13 +288,13 @@ impl<'a> Builder<'a> {
 
     fn build_scope_from_elements(
         &mut self,
-        parser_elements: &[Spanned<parser_types::Element>],
+        parser_elements: &[parser_types::Element],
         parent_id: Option<&types::TypeId>,
     ) -> EResult<types::Scope> {
         let mut elements = Vec::new();
 
         for parser_elm in parser_elements {
-            let element = match parser_elm.inner() {
+            let element = match parser_elm {
                 parser_types::Element::Component {
                     name,
                     display_name,
@@ -322,9 +326,9 @@ impl<'a> Builder<'a> {
                 )?,
                 parser_types::Element::Diagram(_) => {
                     // This should never happen since we already filtered out invalid elements
-                    return Err(ElaborationDiagnosticError::from_spanned(
+                    return Err(ElaborationDiagnosticError::from_span(
                         "Invalid element type".to_string(),
-                        parser_elm,
+                        parser_elm.span(),
                         "invalid element type",
                         None,
                     ));
@@ -341,10 +345,10 @@ impl<'a> Builder<'a> {
         name: &Spanned<&str>,
         display_name: &Option<Spanned<String>>,
         type_name: &Spanned<&str>,
-        attributes: &[Spanned<parser_types::Attribute>],
-        nested_elements: &[Spanned<parser_types::Element>],
+        attributes: &[parser_types::Attribute],
+        nested_elements: &[parser_types::Element],
         parent_id: Option<&types::TypeId>,
-        parser_elm: &Spanned<parser_types::Element>,
+        parser_elm: &parser_types::Element,
     ) -> EResult<types::Element> {
         let node_id = self.create_type_id(parent_id, name);
 
@@ -363,9 +367,9 @@ impl<'a> Builder<'a> {
                 .shape_definition()
                 .is_ok_and(|s| s.supports_content())
         {
-            return Err(ElaborationDiagnosticError::from_spanned(
+            return Err(ElaborationDiagnosticError::from_span(
                 format!("Shape type '{type_name}' does not support nested content"),
-                parser_elm,
+                parser_elm.span(),
                 "content not supported",
                 Some(format!(
                     "The '{type_name}' shape is content-free and cannot contain nested elements or embedded diagrams"
@@ -375,10 +379,8 @@ impl<'a> Builder<'a> {
 
         // Check if there's a nested diagram element
         let block = if nested_elements.len() == 1
-            && matches!(
-                nested_elements[0].inner(),
-                parser_types::Element::Diagram(_)
-            ) {
+            && matches!(&nested_elements[0], parser_types::Element::Diagram(_))
+        {
             // Handle a single diagram element specially
             let elaborated_diagram =
                 self.build_diagram_from_embedded_diagram(&nested_elements[0])?;
@@ -405,7 +407,7 @@ impl<'a> Builder<'a> {
         source: &Spanned<&str>,
         target: &Spanned<&str>,
         relation_type: &Spanned<&str>,
-        type_spec: &Option<Spanned<parser_types::RelationTypeSpec>>,
+        type_spec: &Option<parser_types::RelationTypeSpec>,
         label: &Option<Spanned<String>>,
         parent_id: Option<&types::TypeId>,
     ) -> EResult<types::Element> {
@@ -417,9 +419,9 @@ impl<'a> Builder<'a> {
         let target_id = self.create_type_id(parent_id, target);
 
         let arrow_direction = draw::ArrowDirection::from_str(relation_type).map_err(|_| {
-            ElaborationDiagnosticError::from_spanned(
+            ElaborationDiagnosticError::from_span(
                 format!("Invalid arrow direction '{relation_type}'"),
-                relation_type,
+                relation_type.span(),
                 "invalid direction",
                 Some("Arrow direction must be '->', '<-', '<->', or '-'".to_string()),
             )
@@ -437,9 +439,9 @@ impl<'a> Builder<'a> {
     /// Builds a relation type definition from a relation type specification
     fn build_relation_type_definition_from_spec(
         &mut self,
-        type_spec: &Option<Spanned<parser_types::RelationTypeSpec>>,
+        type_spec: &Option<parser_types::RelationTypeSpec>,
     ) -> EResult<Rc<types::TypeDefinition>> {
-        match type_spec.as_ref().map(|ts| ts.inner()) {
+        match type_spec {
             Some(spec) => {
                 match (&spec.type_name, &spec.attributes) {
                     // Direct attributes without type name: [color="red", width="3"]
@@ -453,17 +455,14 @@ impl<'a> Builder<'a> {
                     }
                 }
             }
-            None => {
-                // No type specification: use default arrow type
-                Ok(Rc::clone(&self.default_arrow_type))
-            }
+            None => Ok(Rc::clone(&self.default_arrow_type)),
         }
     }
 
     fn build_type_definition(
         &mut self,
         type_name: &Spanned<&str>,
-        attributes: &[Spanned<parser_types::Attribute>],
+        attributes: &[parser_types::Attribute],
     ) -> EResult<Rc<types::TypeDefinition>> {
         // Look up the base type
         let type_id = types::TypeId::from_name(type_name);
@@ -481,7 +480,7 @@ impl<'a> Builder<'a> {
         // Otherwise, create a new anonymous type based on the base type
         let id = types::TypeId::from_anonymous(self.type_definition_map.len());
         match types::TypeDefinition::from_base(id, base, attributes) {
-            Ok(new_type) => self.insert_type_definition(type_name.map(|_| new_type)),
+            Ok(new_type) => self.insert_type_definition(new_type, type_name.span()),
             Err(err) => Err(self.create_undefined_type_error(
                 type_name,
                 &format!("Error creating type based on '{type_name}': {err}"),
@@ -494,9 +493,9 @@ impl<'a> Builder<'a> {
         match *kind_str.inner() {
             "sequence" => Ok(types::DiagramKind::Sequence),
             "component" => Ok(types::DiagramKind::Component),
-            _ => Err(ElaborationDiagnosticError::from_spanned(
+            _ => Err(ElaborationDiagnosticError::from_span(
                 format!("Invalid diagram kind: '{kind_str}'"),
-                kind_str,
+                kind_str.span(),
                 "unsupported diagram type",
                 Some("Supported diagram types are: 'component', 'sequence'".to_string()),
             )),
@@ -521,9 +520,9 @@ impl<'a> Builder<'a> {
         span: &Spanned<&str>,
         message: &str,
     ) -> ElaborationDiagnosticError {
-        ElaborationDiagnosticError::from_spanned(
+        ElaborationDiagnosticError::from_span(
             message.to_string(),
-            span,
+            span.span(),
             "undefined type",
             Some(format!(
                 "Type '{}' must be a built-in type or defined with a 'type' statement before it can be used as a base type",
@@ -535,7 +534,7 @@ impl<'a> Builder<'a> {
     /// Parses relation attributes and creates an ArrowDefinition
     fn create_arrow_definition_from_attributes(
         &self,
-        attributes: &Vec<Spanned<parser_types::Attribute<'_>>>,
+        attributes: &Vec<parser_types::Attribute<'_>>,
     ) -> EResult<types::TypeDefinition> {
         let id = types::TypeId::from_anonymous(self.type_definition_map.len());
         types::TypeDefinition::from_base(id, &self.default_arrow_type, attributes)
@@ -545,7 +544,7 @@ impl<'a> Builder<'a> {
     fn extract_diagram_attributes(
         &self,
         kind: types::DiagramKind,
-        attrs: &Spanned<Vec<Spanned<parser_types::Attribute<'_>>>>,
+        attrs: &Vec<parser_types::Attribute<'_>>,
     ) -> EResult<(types::LayoutEngine, Option<Color>)> {
         // Set the default layout engine based on the diagram kind and config
         let mut layout_engine = match kind {
@@ -556,8 +555,8 @@ impl<'a> Builder<'a> {
         let mut background_color = None;
 
         // Single pass through the attributes to extract both values
-        for attr in attrs.inner() {
-            match *attr.inner().name {
+        for attr in attrs {
+            match *attr.name {
                 "layout_engine" => {
                     layout_engine = Self::determine_layout_engine(attr)?;
                 }
@@ -566,9 +565,9 @@ impl<'a> Builder<'a> {
                     background_color = Some(color);
                 }
                 _ => {
-                    return Err(ElaborationDiagnosticError::from_spanned(
-                        format!("Unsupported diagram attribute '{}'", attr.inner().name),
-                        attr,
+                    return Err(ElaborationDiagnosticError::from_span(
+                        format!("Unsupported diagram attribute '{}'", attr.name),
+                        attr.span(),
                         "unsupported attribute",
                         None,
                     ));
@@ -580,14 +579,12 @@ impl<'a> Builder<'a> {
     }
 
     /// Extract background color from an attribute
-    fn extract_background_color(
-        color_attr: &Spanned<parser_types::Attribute<'_>>,
-    ) -> EResult<Color> {
-        let color_str = &color_attr.inner().value;
+    fn extract_background_color(color_attr: &parser_types::Attribute<'_>) -> EResult<Color> {
+        let color_str = color_attr.value.inner();
         Color::new(color_str).map_err(|err| {
-            ElaborationDiagnosticError::from_spanned(
+            ElaborationDiagnosticError::from_span(
                 format!("Invalid background_color '{color_str}': {err}"),
-                &color_attr.inner().value,
+                color_attr.value.span(),
                 "invalid color",
                 Some("Use a valid CSS color".to_string()),
             )
@@ -596,13 +593,13 @@ impl<'a> Builder<'a> {
 
     /// Determines the layout engine from an attribute
     fn determine_layout_engine(
-        engine_attr: &Spanned<parser_types::Attribute<'_>>,
+        engine_attr: &parser_types::Attribute<'_>,
     ) -> EResult<types::LayoutEngine> {
-        let value = engine_attr.inner().value.inner();
+        let value = engine_attr.value.inner();
         types::LayoutEngine::from_str(value).map_err(|_| {
-            ElaborationDiagnosticError::from_spanned(
+            ElaborationDiagnosticError::from_span(
                 format!("Invalid layout_engine value: '{value}'"),
-                &engine_attr.inner().value,
+                engine_attr.value.span(),
                 "unsupported layout engine",
                 Some("Supported layout engines are: 'basic', 'force', 'sugiyama'".to_string()),
             )

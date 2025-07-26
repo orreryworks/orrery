@@ -1,8 +1,11 @@
-use super::parser_types as types;
-use super::span::Span;
-use crate::ast::span::Spanned;
-use crate::ast::tokens::Token;
-use crate::error::ParseDiagnosticError;
+use crate::{
+    ast::{
+        parser_types as types,
+        span::{SpanImpl, Spanned},
+        tokens::Token,
+    },
+    error::ParseDiagnosticError,
+};
 use chumsky::{
     IterParser as _, Parser,
     error::Rich,
@@ -13,20 +16,18 @@ use chumsky::{
 };
 use log::{debug, trace};
 
-type TokenStream<'src> = &'src [(Token<'src>, Span)];
-type DiagramHeader<'a> = (
-    Spanned<&'a str>,
-    Spanned<Vec<Spanned<types::Attribute<'a>>>>,
-);
+type TokenStream<'src> = &'src [(Token<'src>, SpanImpl)];
+type DiagramHeader<'a> = (Spanned<&'a str>, Vec<types::Attribute<'a>>);
 
 /// Helper function to create a spanned value
-fn make_spanned<T>(value: T, start: usize, len: usize) -> Spanned<T> {
-    Spanned::from_offset_length(value, start, len)
+fn make_spanned<T>(value: T, span: SpanImpl) -> Spanned<T> {
+    Spanned::new(value, span)
 }
 
 /// Parse whitespace and comments (now explicit tokens)
 fn ws_comment<'src>()
--> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone {
+-> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>> + Clone
+{
     any()
         .filter(|(token, _span)| {
             matches!(
@@ -38,18 +39,21 @@ fn ws_comment<'src>()
 }
 
 pub fn ws_comments0<'src>()
--> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone {
+-> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>> + Clone
+{
     ws_comment().repeated().ignored()
 }
 
 fn ws_comments1<'src>()
--> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone {
+-> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>> + Clone
+{
     ws_comment().repeated().at_least(1).ignored()
 }
 
 /// Parse semicolon with optional whitespace
 fn semicolon<'src>()
--> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone {
+-> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>> + Clone
+{
     ws_comments0()
         .ignore_then(any().filter(|(token, _span)| matches!(token, Token::Semicolon)))
         .ignored()
@@ -58,8 +62,8 @@ fn semicolon<'src>()
 
 /// Parse a standard identifier
 pub fn identifier<'src>()
--> impl Parser<'src, TokenStream<'src>, &'src str, extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone
-{
+-> impl Parser<'src, TokenStream<'src>, &'src str, extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>>
++ Clone {
     select! {
         (Token::Identifier(name), _span) => name,
     }
@@ -73,7 +77,7 @@ pub fn identifier<'src>()
 ///
 /// Returns a String with the full identifier path joined by "::".
 fn nested_identifier<'src>()
--> impl Parser<'src, TokenStream<'src>, String, extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone
+-> impl Parser<'src, TokenStream<'src>, String, extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>> + Clone
 {
     identifier()
         .separated_by(
@@ -90,7 +94,7 @@ fn nested_identifier<'src>()
 
 /// Parse a string literal
 fn string_literal<'src>()
--> impl Parser<'src, TokenStream<'src>, String, extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone
+-> impl Parser<'src, TokenStream<'src>, String, extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>> + Clone
 {
     select! {
         (Token::StringLiteral(s), _span) => s,
@@ -103,7 +107,7 @@ fn attribute<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     types::Attribute<'src>,
-    extra::Err<Rich<'src, (Token<'src>, Span)>>,
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
 > + Clone {
     identifier()
         .then_ignore(
@@ -115,8 +119,8 @@ fn attribute<'src>() -> impl Parser<
         .map_with(|(name, value), extra| {
             let span = extra.span();
             types::Attribute {
-                name: make_spanned(name, span.start, span.end - span.start),
-                value: make_spanned(value, span.start, span.end - span.start),
+                name: make_spanned(name, span),
+                value: make_spanned(value, span),
             }
         })
         .labelled("attribute")
@@ -126,14 +130,10 @@ fn attribute<'src>() -> impl Parser<
 fn attributes<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
-    Vec<Spanned<types::Attribute<'src>>>,
-    extra::Err<Rich<'src, (Token<'src>, Span)>>,
+    Vec<types::Attribute<'src>>,
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
 > + Clone {
     attribute()
-        .map_with(|attr, extra| {
-            let span = extra.span();
-            make_spanned(attr, span.start, span.end - span.start)
-        })
         .separated_by(
             any()
                 .filter(|(token, _span)| matches!(token, Token::Comma))
@@ -148,8 +148,8 @@ fn attributes<'src>() -> impl Parser<
 fn wrapped_attributes<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
-    Vec<Spanned<types::Attribute<'src>>>,
-    extra::Err<Rich<'src, (Token<'src>, Span)>>,
+    Vec<types::Attribute<'src>>,
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
 > + Clone {
     attributes()
         .or_not()
@@ -169,7 +169,7 @@ fn type_definition<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     types::TypeDefinition<'src>,
-    extra::Err<Rich<'src, (Token<'src>, Span)>>,
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
 > + Clone {
     any()
         .filter(|(token, _span)| matches!(token, Token::Type))
@@ -186,13 +186,9 @@ fn type_definition<'src>() -> impl Parser<
         .map_with(|((name, base_type), attributes), extra| {
             let span = extra.span();
             types::TypeDefinition {
-                name: make_spanned(name, span.start, span.end - span.start),
-                base_type: make_spanned(base_type, span.start, span.end - span.start),
-                attributes: make_spanned(
-                    attributes.unwrap_or_default(),
-                    span.start,
-                    span.end - span.start,
-                ),
+                name: make_spanned(name, span),
+                base_type: make_spanned(base_type, span),
+                attributes: attributes.unwrap_or_default(),
             }
         })
         .padded_by(ws_comments0())
@@ -203,16 +199,10 @@ fn type_definition<'src>() -> impl Parser<
 fn type_definitions<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
-    Vec<Spanned<types::TypeDefinition<'src>>>,
-    extra::Err<Rich<'src, (Token<'src>, Span)>>,
+    Vec<types::TypeDefinition<'src>>,
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
 > + Clone {
-    type_definition()
-        .map_with(|def, extra| {
-            let span = extra.span();
-            make_spanned(def, span.start, span.end - span.start)
-        })
-        .repeated()
-        .collect()
+    type_definition().repeated().collect()
 }
 
 /// Parse relation type specification in brackets: [attributes], [TypeName], or [TypeName; attributes]
@@ -230,7 +220,7 @@ fn relation_type_spec<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     types::RelationTypeSpec<'src>,
-    extra::Err<Rich<'src, (Token<'src>, Span)>>,
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
 > + Clone {
     choice((
         // [TypeName; attributes] - most specific, try first
@@ -244,7 +234,7 @@ fn relation_type_spec<'src>() -> impl Parser<
             .map_with(|(type_name, attributes), extra| {
                 let span = extra.span();
                 types::RelationTypeSpec {
-                    type_name: Some(make_spanned(type_name, span.start, span.end - span.start)),
+                    type_name: Some(make_spanned(type_name, span)),
                     attributes,
                 }
             }),
@@ -258,7 +248,7 @@ fn relation_type_spec<'src>() -> impl Parser<
             .map_with(|type_name, extra| {
                 let span = extra.span();
                 types::RelationTypeSpec {
-                    type_name: Some(make_spanned(type_name, span.start, span.end - span.start)),
+                    type_name: Some(make_spanned(type_name, span)),
                     attributes: Vec::new(),
                 }
             }),
@@ -273,7 +263,7 @@ fn relation_type_spec<'src>() -> impl Parser<
             .map_with(|type_name, extra| {
                 let span = extra.span();
                 types::RelationTypeSpec {
-                    type_name: Some(make_spanned(type_name, span.start, span.end - span.start)),
+                    type_name: Some(make_spanned(type_name, span)),
                     attributes: Vec::new(),
                 }
             }),
@@ -303,8 +293,8 @@ fn relation_type_spec<'src>() -> impl Parser<
 ///
 /// Returns the string representation of the arrow operator.
 fn relation_type<'src>()
--> impl Parser<'src, TokenStream<'src>, &'src str, extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone
-{
+-> impl Parser<'src, TokenStream<'src>, &'src str, extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>>
++ Clone {
     any()
         .filter(|(token, _span)| {
             matches!(
@@ -328,19 +318,19 @@ fn component_with_elements<'src>(
     elements_parser: impl Parser<
         'src,
         TokenStream<'src>,
-        Vec<Spanned<types::Element<'src>>>,
-        extra::Err<Rich<'src, (Token<'src>, Span)>>,
+        Vec<types::Element<'src>>,
+        extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
     > + Clone,
 ) -> impl Parser<
     'src,
     TokenStream<'src>,
     types::Element<'src>,
-    extra::Err<Rich<'src, (Token<'src>, Span)>>,
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
 > + Clone {
     identifier()
         .map_with(|name, extra| {
             let span = extra.span();
-            make_spanned(name, span.start, span.end - span.start)
+            make_spanned(name, span)
         })
         .then_ignore(ws_comments0()) // handle whitespace after identifier
         .then(
@@ -356,7 +346,7 @@ fn component_with_elements<'src>(
         .then_ignore(ws_comments0()) // handle whitespace after colon
         .then(identifier().map_with(|type_name, extra| {
             let span = extra.span();
-            make_spanned(type_name, span.start, span.end - span.start)
+            make_spanned(type_name, span)
         })) // parse type name
         .then_ignore(ws_comments0()) // handle whitespace before attributes
         .then(wrapped_attributes().or_not()) // parse optional attributes
@@ -366,7 +356,7 @@ fn component_with_elements<'src>(
             any()
                 .filter(|(token, _span)| matches!(token, Token::LeftBrace))
                 .ignore_then(ws_comments0())
-                .ignore_then(elements_parser)
+                .ignore_then(elements_parser.clone())
                 .then_ignore(ws_comments0())
                 .then_ignore(any().filter(|(token, _span)| matches!(token, Token::RightBrace)))
                 .or_not(),
@@ -378,19 +368,10 @@ fn component_with_elements<'src>(
                 let span = extra.span();
                 types::Element::Component {
                     name,
-                    display_name: display_name
-                        .map(|s| make_spanned(s, span.start, span.end - span.start)),
+                    display_name: display_name.map(|s| make_spanned(s, span)),
                     type_name,
-                    attributes: make_spanned(
-                        attributes.unwrap_or_default(),
-                        span.start,
-                        span.end - span.start,
-                    ),
-                    nested_elements: make_spanned(
-                        nested_elements.unwrap_or_default(),
-                        span.start,
-                        span.end - span.start,
-                    ),
+                    attributes: attributes.unwrap_or_default(),
+                    nested_elements: nested_elements.unwrap_or_default(),
                 }
             },
         )
@@ -421,7 +402,7 @@ fn relation<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     types::Element<'src>,
-    extra::Err<Rich<'src, (Token<'src>, Span)>>,
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
 > + Clone {
     nested_identifier()
         .then_ignore(ws_comments1()) // source + required whitespace
@@ -448,20 +429,11 @@ fn relation<'src>() -> impl Parser<
             |((((source, relation_type), type_spec), target), label), extra| {
                 let span = extra.span();
                 types::Element::Relation {
-                    source: make_spanned(
-                        Box::leak(source.into_boxed_str()),
-                        span.start,
-                        span.end - span.start,
-                    ),
-                    target: make_spanned(
-                        Box::leak(target.into_boxed_str()),
-                        span.start,
-                        span.end - span.start,
-                    ),
-                    relation_type: make_spanned(relation_type, span.start, span.end - span.start),
-                    type_spec: type_spec
-                        .map(|spec| make_spanned(spec, span.start, span.end - span.start)),
-                    label: label.map(|s| make_spanned(s, span.start, span.end - span.start)),
+                    source: make_spanned(Box::leak(source.into_boxed_str()), span),
+                    target: make_spanned(Box::leak(target.into_boxed_str()), span),
+                    relation_type: make_spanned(relation_type, span),
+                    type_spec,
+                    label: label.map(|s| make_spanned(s, span)),
                 }
             },
         )
@@ -472,28 +444,20 @@ fn relation<'src>() -> impl Parser<
 fn elements<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
-    Vec<Spanned<types::Element<'src>>>,
-    extra::Err<Rich<'src, (Token<'src>, Span)>>,
+    Vec<types::Element<'src>>,
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
 > + Clone {
-    recursive(|elements| {
-        let component = component_with_elements(elements.clone());
-
+    recursive(|elements_parser| {
+        let component = component_with_elements(elements_parser);
         let element = choice((component, relation())).padded_by(ws_comments0());
-
-        element
-            .map_with(|elem, extra| {
-                let span = extra.span();
-                make_spanned(elem, span.start, span.end - span.start)
-            })
-            .repeated()
-            .collect()
+        element.repeated().collect()
     })
 }
 
 /// Parse diagram type (component, sequence, etc.)
 fn diagram_type<'src>()
--> impl Parser<'src, TokenStream<'src>, &'src str, extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone
-{
+-> impl Parser<'src, TokenStream<'src>, &'src str, extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>>
++ Clone {
     any()
         .filter(|(token, _span)| matches!(token, Token::Component | Token::Sequence))
         .map(|(token, _span)| match token {
@@ -504,10 +468,13 @@ fn diagram_type<'src>()
         .labelled("diagram type")
 }
 
-/// Parse diagram header: diagram DiagramType [attributes]
-fn diagram_header<'src>()
--> impl Parser<'src, TokenStream<'src>, DiagramHeader<'src>, extra::Err<Rich<'src, (Token<'src>, Span)>>>
-+ Clone {
+/// Parse diagram header with unwrapped attributes
+fn diagram_header<'src>() -> impl Parser<
+    'src,
+    TokenStream<'src>,
+    DiagramHeader<'src>,
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+> + Clone {
     any()
         .filter(|(token, _span)| matches!(token, Token::Diagram))
         .ignore_then(ws_comments1())
@@ -516,22 +483,18 @@ fn diagram_header<'src>()
         .then(wrapped_attributes().or_not())
         .map_with(|(kind, attrs_opt), extra| {
             let span = extra.span();
-            (
-                make_spanned(kind, span.start, span.end - span.start),
-                make_spanned(
-                    attrs_opt.unwrap_or_default(),
-                    span.start,
-                    span.end - span.start,
-                ),
-            )
+            (make_spanned(kind, span), attrs_opt.unwrap_or_default())
         })
         .labelled("diagram header")
 }
 
-/// Parse diagram header with semicolon
-pub fn diagram_header_with_semicolon<'src>()
--> impl Parser<'src, TokenStream<'src>, DiagramHeader<'src>, extra::Err<Rich<'src, (Token<'src>, Span)>>>
-+ Clone {
+/// Parse diagram header with semicolon with unwrapped attributes
+pub fn diagram_header_with_semicolon<'src>() -> impl Parser<
+    'src,
+    TokenStream<'src>,
+    DiagramHeader<'src>,
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+> + Clone {
     diagram_header().then_ignore(semicolon())
 }
 
@@ -540,7 +503,7 @@ fn diagram<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     types::Element<'src>,
-    extra::Err<Rich<'src, (Token<'src>, Span)>>,
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
 > + Clone {
     ws_comments0()
         .ignore_then(diagram_header_with_semicolon())
@@ -548,14 +511,13 @@ fn diagram<'src>() -> impl Parser<
         .then(elements())
         .then_ignore(ws_comments0())
         .then_ignore(end())
-        .map_with(|((header, type_definitions), elements), extra| {
-            let span = extra.span();
+        .map(|((header, type_definitions), elements)| {
             let (kind, attributes) = header;
             types::Element::Diagram(types::Diagram {
                 kind,
                 attributes,
-                type_definitions: make_spanned(type_definitions, span.start, span.end - span.start),
-                elements: make_spanned(elements, span.start, span.end - span.start),
+                type_definitions,
+                elements,
             })
         })
         .labelled("diagram")
@@ -563,7 +525,7 @@ fn diagram<'src>() -> impl Parser<
 
 /// Build a diagram from tokens
 pub fn build_diagram<'src>(
-    tokens: &'src [(Token<'src>, Span)],
+    tokens: &'src [(Token<'src>, SpanImpl)],
 ) -> Result<Spanned<types::Element<'src>>, ParseDiagnosticError> {
     debug!("Starting diagram parsing, token count: {}", tokens.len());
 
@@ -578,11 +540,7 @@ pub fn build_diagram<'src>(
                 let last = tokens[tokens.len() - 1].1;
                 first.start..last.end
             };
-            Ok(make_spanned(
-                diagram,
-                total_span.start,
-                total_span.end - total_span.start,
-            ))
+            Ok(make_spanned(diagram, total_span.into()))
         }
         Err(errors) => {
             trace!("Parser errors: {errors:?}");
@@ -622,7 +580,7 @@ mod tests {
     // Test helper functions for common patterns
 
     /// Helper function to tokenize input string for testing
-    fn tokenize(input: &str) -> Vec<(Token, Span)> {
+    fn tokenize(input: &str) -> Vec<(Token, SpanImpl)> {
         let lexer_parser = lexer::lexer();
         lexer_parser.parse(input).into_output().unwrap_or_default()
     }
@@ -1959,9 +1917,9 @@ mod tests {
         assert!(result.has_output(), "Should parse single component");
         let elems = result.into_output().unwrap();
         assert_eq!(elems.len(), 1);
-        match elems[0].inner() {
+        match &elems[0] {
             types::Element::Component { name, .. } => {
-                assert_eq!(**name, "app");
+                assert_eq!(*name.inner(), "app");
             }
             _ => panic!("Expected Component"),
         }
@@ -1972,10 +1930,10 @@ mod tests {
         assert!(result.has_output(), "Should parse single relation");
         let elems = result.into_output().unwrap();
         assert_eq!(elems.len(), 1);
-        match elems[0].inner() {
+        match &elems[0] {
             types::Element::Relation { source, target, .. } => {
-                assert_eq!(**source, "a");
-                assert_eq!(**target, "b");
+                assert_eq!(*source.inner(), "a");
+                assert_eq!(*target.inner(), "b");
             }
             _ => panic!("Expected Relation"),
         }
@@ -1996,35 +1954,35 @@ mod tests {
         assert_eq!(elems.len(), 5);
 
         // Verify element types
-        match elems[0].inner() {
-            types::Element::Component { name, .. } => assert_eq!(**name, "app"),
+        match &elems[0] {
+            types::Element::Component { name, .. } => assert_eq!(*name.inner(), "app"),
             _ => panic!("Expected Component at index 0"),
         }
-        match elems[1].inner() {
-            types::Element::Component { name, .. } => assert_eq!(**name, "db"),
+        match &elems[1] {
+            types::Element::Component { name, .. } => assert_eq!(*name.inner(), "db"),
             _ => panic!("Expected Component at index 1"),
         }
-        match elems[2].inner() {
+        match &elems[2] {
             types::Element::Relation { source, target, .. } => {
-                assert_eq!(**source, "app");
-                assert_eq!(**target, "db");
+                assert_eq!(*source.inner(), "app");
+                assert_eq!(*target.inner(), "db");
             }
             _ => panic!("Expected Relation at index 2"),
         }
-        match elems[3].inner() {
-            types::Element::Component { name, .. } => assert_eq!(**name, "cache"),
+        match &elems[3] {
+            types::Element::Component { name, .. } => assert_eq!(*name.inner(), "cache"),
             _ => panic!("Expected Component at index 3"),
         }
-        match elems[4].inner() {
+        match &elems[4] {
             types::Element::Relation {
                 source,
                 target,
                 label,
                 ..
             } => {
-                assert_eq!(**source, "db");
-                assert_eq!(**target, "cache");
-                assert_eq!(**label.as_ref().unwrap(), "writes to");
+                assert_eq!(*source.inner(), "db");
+                assert_eq!(*target.inner(), "cache");
+                assert_eq!(*label.as_ref().unwrap().inner(), "writes to");
             }
             _ => panic!("Expected Relation at index 4"),
         }
@@ -2090,7 +2048,7 @@ mod tests {
                 let mut relation_count = 0;
 
                 for element in elements.iter() {
-                    match element.inner() {
+                    match element {
                         types::Element::Component { .. } => component_count += 1,
                         types::Element::Relation { .. } => relation_count += 1,
                         _ => {}
@@ -2181,12 +2139,15 @@ mod tests {
                 let mut relations = Vec::new();
 
                 for element in elements.iter() {
-                    match element.inner() {
+                    match element {
                         types::Element::Component { name, .. } => {
-                            components.push((**name).to_string());
+                            components.push((*name.inner()).to_string());
                         }
                         types::Element::Relation { source, target, .. } => {
-                            relations.push(((**source).to_string(), (**target).to_string()));
+                            relations.push((
+                                (*source.inner()).to_string(),
+                                (*target.inner()).to_string(),
+                            ));
                         }
                         _ => {}
                     }
