@@ -429,8 +429,8 @@ fn relation<'src>() -> impl Parser<
             |((((source, relation_type), type_spec), target), label), extra| {
                 let span = extra.span();
                 types::Element::Relation {
-                    source: make_spanned(Box::leak(source.into_boxed_str()), span),
-                    target: make_spanned(Box::leak(target.into_boxed_str()), span),
+                    source: make_spanned(source, span),
+                    target: make_spanned(target, span),
                     relation_type: make_spanned(relation_type, span),
                     type_spec,
                     label: label.map(|s| make_spanned(s, span)),

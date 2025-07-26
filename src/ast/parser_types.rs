@@ -62,9 +62,13 @@ pub enum Element<'a> {
         attributes: Vec<Attribute<'a>>,
         nested_elements: Vec<Element<'a>>,
     },
+    /// Relation between two components
+    ///
+    /// Note: `source` and `target` are `String` instead of `&'a str` because they may be
+    /// nested identifiers (e.g., "frontend::app") created by joining multiple parts with "::".
     Relation {
-        source: Spanned<&'a str>,
-        target: Spanned<&'a str>,
+        source: Spanned<String>,
+        target: Spanned<String>,
         relation_type: Spanned<&'a str>,
         type_spec: Option<RelationTypeSpec<'a>>,
         label: Option<Spanned<String>>,

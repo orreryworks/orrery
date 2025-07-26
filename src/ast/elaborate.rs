@@ -350,7 +350,7 @@ impl<'a> Builder<'a> {
         parent_id: Option<&types::TypeId>,
         parser_elm: &parser_types::Element,
     ) -> EResult<types::Element> {
-        let node_id = self.create_type_id(parent_id, name);
+        let node_id = self.create_type_id(parent_id, name.inner());
 
         let type_def = self
             .build_type_definition(type_name, attributes)
@@ -404,8 +404,8 @@ impl<'a> Builder<'a> {
     /// Builds a relation element from parser data
     fn build_relation_element(
         &mut self,
-        source: &Spanned<&str>,
-        target: &Spanned<&str>,
+        source: &Spanned<String>,
+        target: &Spanned<String>,
         relation_type: &Spanned<&str>,
         type_spec: &Option<parser_types::RelationTypeSpec>,
         label: &Option<Spanned<String>>,
@@ -415,8 +415,8 @@ impl<'a> Builder<'a> {
         let relation_type_def = self.build_relation_type_definition_from_spec(type_spec)?;
 
         // Create source and target IDs based on parent context if present
-        let source_id = self.create_type_id(parent_id, source);
-        let target_id = self.create_type_id(parent_id, target);
+        let source_id = self.create_type_id(parent_id, source.inner());
+        let target_id = self.create_type_id(parent_id, target.inner());
 
         let arrow_direction = draw::ArrowDirection::from_str(relation_type).map_err(|_| {
             ElaborationDiagnosticError::from_span(
@@ -502,12 +502,12 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// Creates a TypeId from a name, considering the parent context if available
-    fn create_type_id(
-        &self,
-        parent_id: Option<&types::TypeId>,
-        name: &Spanned<&str>,
-    ) -> types::TypeId {
+    /// Creates a TypeId from a string name, considering the parent context if available
+    ///
+    /// This function is used for both component names (simple identifiers) and relation
+    /// source/target names (which may be nested identifiers like "frontend::app" created
+    /// by joining parts with "::").
+    fn create_type_id(&self, parent_id: Option<&types::TypeId>, name: &str) -> types::TypeId {
         parent_id.map_or_else(
             || types::TypeId::from_name(name),
             |parent| parent.create_nested(name),
