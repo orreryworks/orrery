@@ -122,7 +122,7 @@ Where:
 Filament supports four relation types:
 
 - **Forward** (`->`) - Arrow pointing from source to target
-- **Backward** (`<-`) - Arrow pointing from target to source  
+- **Backward** (`<-`) - Arrow pointing from target to source
 - **Bidirectional** (`<->`) - Arrows pointing in both directions
 - **Plain** (`-`) - Simple line with no arrowheads
 
@@ -370,15 +370,26 @@ auth_service -> database;
 
 ## 12. Error Handling
 
-Filament provides error reporting for various issues:
+Filament provides precise, span-accurate error reporting that points directly to problematic code locations in the source file.
 
-- Syntax errors during parsing
-- References to undefined components
-- Invalid attribute values
-- Invalid type references
-- Other semantic errors
+### 12.1 Error Types
 
-Each error includes a description to help locate and fix the issue.
+Filament reports errors for various issues:
+
+- **Syntax errors during parsing**: Malformed diagram syntax, missing semicolons, invalid tokens
+- **Undefined type references**: Base types that are not built-in or defined with `type` statements
+- **Undefined component references**: Components used in relations but not declared
+- **Invalid attribute values**: Attribute values that don't match expected formats
+- **Other semantic errors**: Type system violations and logical inconsistencies
+
+### 12.2 Span-Accurate Error Reporting
+
+Each error message includes:
+
+1. **Precise location**: Line and column numbers pointing to the exact problematic identifier
+2. **Source context**: The relevant source line with visual highlighting of the error location
+3. **Descriptive message**: Clear explanation of what went wrong
+4. **Helpful suggestions**: Guidance on how to fix the issue
 
 ## 13. Configuration File
 

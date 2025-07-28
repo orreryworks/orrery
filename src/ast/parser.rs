@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         parser_types as types,
-        span::{SpanImpl, Spanned},
+        span::{Span, SpanImpl, Spanned},
         tokens::Token,
     },
     error::ParseDiagnosticError,
@@ -15,6 +15,21 @@ use chumsky::{
     select,
 };
 use log::{debug, trace};
+
+// # Span Handling in Filament Parser
+//
+// This module implements accurate span tracking throughout the parsing pipeline to ensure
+// error messages point to the exact location of problematic code in the source file.
+//
+// ## Error Reporting Flow
+//
+// ```text
+// Token("rectangle", span:290..299)
+//   → identifier() → ("rectangle", span:290..299)
+//   → TypeDefinition.base_type → Spanned<String>("rectangle", span:290..299)
+//   → elaborate.rs → create_undefined_type_error(span:290..299)
+//   → Error shows [10:19] pointing to exact "rectangle" location
+// ```
 
 type TokenStream<'src> = &'src [(Token<'src>, SpanImpl)];
 type DiagramHeader<'a> = (Spanned<&'a str>, Vec<types::Attribute<'a>>);
@@ -60,25 +75,36 @@ fn semicolon<'src>()
         .labelled("semicolon")
 }
 
-/// Parse a standard identifier
-pub fn identifier<'src>()
--> impl Parser<'src, TokenStream<'src>, &'src str, extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>>
-+ Clone {
+/// Parse a standard identifier with span preservation
+///
+/// This is the foundational function for all identifier parsing in the system.
+/// It returns both the identifier name AND its exact token span to ensure
+/// accurate error reporting.
+pub fn identifier<'src>() -> impl Parser<
+    'src,
+    TokenStream<'src>,
+    (&'src str, SpanImpl),
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+> + Clone {
     select! {
-        (Token::Identifier(name), _span) => name,
+        (Token::Identifier(name), span) => (name, span),
     }
     .labelled("identifier")
 }
 
-/// Parse nested identifier with :: separators (e.g., "parent::child", "module::service")
+/// Parse nested identifier with :: separators and unified span coverage
 ///
 /// Supports single identifiers like "app" as well as nested identifiers like "web::frontend".
 /// Multiple levels of nesting are supported: "a::b::c::d".
 ///
-/// Returns a String with the full identifier path joined by "::".
-fn nested_identifier<'src>()
--> impl Parser<'src, TokenStream<'src>, String, extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>> + Clone
-{
+///
+/// Returns a String with the full identifier path joined by "::" and a unified span.
+fn nested_identifier<'src>() -> impl Parser<
+    'src,
+    TokenStream<'src>,
+    (String, SpanImpl),
+    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+> + Clone {
     identifier()
         .separated_by(
             any()
@@ -88,7 +114,22 @@ fn nested_identifier<'src>()
         )
         .at_least(1)
         .collect::<Vec<_>>()
-        .map(|parts| parts.join("::"))
+        .map(|parts| {
+            let names: Vec<&str> = parts.iter().map(|(name, _span)| *name).collect();
+            let joined_name = names.join("::");
+
+            // Unify all spans to cover the entire nested identifier
+            let unified_span = if let Some((_, first_span)) = parts.first() {
+                parts
+                    .iter()
+                    .skip(1)
+                    .fold(*first_span, |acc, (_, span)| acc.union(*span))
+            } else {
+                unreachable!("This shouldn't happen since we use at_least(1)")
+            };
+
+            (joined_name, unified_span)
+        })
         .labelled("nested identifier")
 }
 
@@ -116,11 +157,11 @@ fn attribute<'src>() -> impl Parser<
                 .ignore_then(ws_comments0()),
         )
         .then(string_literal())
-        .map_with(|(name, value), extra| {
-            let span = extra.span();
+        .map_with(|((name, name_span), value), extra| {
+            let value_span = extra.span();
             types::Attribute {
-                name: make_spanned(name, span),
-                value: make_spanned(value, span),
+                name: make_spanned(name, name_span),
+                value: make_spanned(value, value_span),
             }
         })
         .labelled("attribute")
@@ -183,14 +224,15 @@ fn type_definition<'src>() -> impl Parser<
         .then(identifier())
         .then(ws_comments0().ignore_then(wrapped_attributes().or_not()))
         .then_ignore(semicolon())
-        .map_with(|((name, base_type), attributes), extra| {
-            let span = extra.span();
-            types::TypeDefinition {
-                name: make_spanned(name, span),
-                base_type: make_spanned(base_type, span),
-                attributes: attributes.unwrap_or_default(),
-            }
-        })
+        .map_with(
+            |(((name, name_span), (base_type, base_type_span)), attributes), _extra| {
+                types::TypeDefinition {
+                    name: make_spanned(name, name_span),
+                    base_type: make_spanned(base_type, base_type_span),
+                    attributes: attributes.unwrap_or_default(),
+                }
+            },
+        )
         .padded_by(ws_comments0())
         .labelled("type definition")
 }
@@ -231,10 +273,9 @@ fn relation_type_spec<'src>() -> impl Parser<
                     .ignore_then(ws_comments0()),
             )
             .then(attributes())
-            .map_with(|(type_name, attributes), extra| {
-                let span = extra.span();
+            .map_with(|((type_name, type_name_span), attributes), _extra| {
                 types::RelationTypeSpec {
-                    type_name: Some(make_spanned(type_name, span)),
+                    type_name: Some(make_spanned(type_name, type_name_span)),
                     attributes,
                 }
             }),
@@ -245,13 +286,12 @@ fn relation_type_spec<'src>() -> impl Parser<
                     .ignore_then(any().filter(|(token, _span)| matches!(token, Token::Semicolon)))
                     .ignore_then(ws_comments0()),
             )
-            .map_with(|type_name, extra| {
-                let span = extra.span();
-                types::RelationTypeSpec {
-                    type_name: Some(make_spanned(type_name, span)),
+            .map_with(
+                |(type_name, type_name_span), _extra| types::RelationTypeSpec {
+                    type_name: Some(make_spanned(type_name, type_name_span)),
                     attributes: Vec::new(),
-                }
-            }),
+                },
+            ),
         // [attributes] (no type name) - try before [TypeName] to avoid false matches
         attributes().map(|attributes| types::RelationTypeSpec {
             type_name: None,
@@ -260,13 +300,12 @@ fn relation_type_spec<'src>() -> impl Parser<
         // [TypeName] (no attributes) - try before empty to avoid false matches
         identifier()
             .then_ignore(ws_comments0())
-            .map_with(|type_name, extra| {
-                let span = extra.span();
-                types::RelationTypeSpec {
-                    type_name: Some(make_spanned(type_name, span)),
+            .map_with(
+                |(type_name, type_name_span), _extra| types::RelationTypeSpec {
+                    type_name: Some(make_spanned(type_name, type_name_span)),
                     attributes: Vec::new(),
-                }
-            }),
+                },
+            ),
         // [] (empty type spec) - try last
         ws_comments0().map(|_| types::RelationTypeSpec {
             type_name: None,
@@ -328,10 +367,7 @@ fn component_with_elements<'src>(
     extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
 > + Clone {
     identifier()
-        .map_with(|name, extra| {
-            let span = extra.span();
-            make_spanned(name, span)
-        })
+        .map_with(|(name, name_span), _extra| make_spanned(name, name_span))
         .then_ignore(ws_comments0()) // handle whitespace after identifier
         .then(
             // Optional "as" followed by a string literal
@@ -344,10 +380,11 @@ fn component_with_elements<'src>(
         .then_ignore(ws_comments0()) // handle whitespace before colon
         .then_ignore(any().filter(|(token, _span)| matches!(token, Token::Colon)))
         .then_ignore(ws_comments0()) // handle whitespace after colon
-        .then(identifier().map_with(|type_name, extra| {
-            let span = extra.span();
-            make_spanned(type_name, span)
-        })) // parse type name
+        .then(
+            identifier().map_with(|(type_name, type_name_span), _extra| {
+                make_spanned(type_name, type_name_span)
+            }),
+        ) // parse type name
         .then_ignore(ws_comments0()) // handle whitespace before attributes
         .then(wrapped_attributes().or_not()) // parse optional attributes
         .then_ignore(ws_comments0()) // handle whitespace before optional braces
@@ -426,11 +463,15 @@ fn relation<'src>() -> impl Parser<
         )
         .then_ignore(semicolon())
         .map_with(
-            |((((source, relation_type), type_spec), target), label), extra| {
+            |(
+                ((((source, source_span), relation_type), type_spec), (target, target_span)),
+                label,
+            ),
+             extra| {
                 let span = extra.span();
                 types::Element::Relation {
-                    source: make_spanned(source, span),
-                    target: make_spanned(target, span),
+                    source: make_spanned(source, source_span),
+                    target: make_spanned(target, target_span),
                     relation_type: make_spanned(relation_type, span),
                     type_spec,
                     label: label.map(|s| make_spanned(s, span)),
@@ -743,7 +784,7 @@ mod tests {
         let result2 = identifier().parse(tokens.as_slice());
         println!("  identifier() result: has_output={}", result2.has_output());
         if result2.has_output() {
-            println!("  Output: {:?}", result2.into_output().unwrap());
+            println!("  Output: {:?}", result2.into_output().unwrap().0);
         } else {
             println!("  Errors: {:?}", result2.into_errors());
         }
@@ -915,7 +956,7 @@ mod tests {
         let parser = identifier();
         let result = parser.parse(tokens.as_slice());
         assert!(result.has_output());
-        assert_eq!(result.into_output().unwrap(), "hello");
+        assert_eq!(result.into_output().unwrap().0, "hello");
     }
 
     #[test]
@@ -927,7 +968,7 @@ mod tests {
         let parser = nested_identifier();
         let result = parser.parse(tokens.as_slice());
         assert!(result.has_output());
-        assert_eq!(result.into_output().unwrap(), "hello");
+        assert_eq!(result.into_output().unwrap().0, "hello");
 
         // TODO: Implement and test nested identifier cases
         // - "hello::world"
@@ -1178,7 +1219,7 @@ mod tests {
         let tokens = tokenize("hello");
         let result = nested_identifier().parse(tokens.as_slice());
         assert!(result.has_output());
-        assert_eq!(result.into_output().unwrap(), "hello");
+        assert_eq!(result.into_output().unwrap().0, "hello");
 
         let tokens = tokenize("service");
         let result = nested_identifier().parse(tokens.as_slice());
@@ -1187,7 +1228,7 @@ mod tests {
             println!("errors: {:?}", result.into_errors());
             panic!("service should parse successfully");
         }
-        assert_eq!(result.into_output().unwrap(), "service");
+        assert_eq!(result.into_output().unwrap().0, "service");
 
         let tokens = tokenize("my_service");
         let result = nested_identifier().parse(tokens.as_slice());
@@ -1196,14 +1237,14 @@ mod tests {
             println!("errors: {:?}", result.into_errors());
             panic!("my_service should parse successfully");
         }
-        assert_eq!(result.into_output().unwrap(), "my_service");
+        assert_eq!(result.into_output().unwrap().0, "my_service");
 
         // Test nested identifiers (these should work if the parser supports ::)
         // Note: These tests will help verify if nested identifier parsing is fully implemented
         let tokens = tokenize("parent::child");
         let result = nested_identifier().parse(tokens.as_slice());
         if result.has_output() {
-            assert_eq!(result.into_output().unwrap(), "parent::child");
+            assert_eq!(result.into_output().unwrap().0, "parent::child");
         } else {
             // If not implemented yet, just verify it fails gracefully
             println!("Nested identifier parsing not yet fully implemented for: parent::child");
@@ -1212,7 +1253,10 @@ mod tests {
         let tokens = tokenize("module::sub_module::service");
         let result = nested_identifier().parse(tokens.as_slice());
         if result.has_output() {
-            assert_eq!(result.into_output().unwrap(), "module::sub_module::service");
+            assert_eq!(
+                result.into_output().unwrap().0,
+                "module::sub_module::service"
+            );
         } else {
             println!(
                 "Complex nested identifier parsing not yet implemented for: module::sub_module::service"
