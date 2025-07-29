@@ -25,6 +25,7 @@
 /// - `elaborate`: Handles AST elaboration with rich error diagnostics
 mod elaborate;
 mod elaborate_types;
+mod error_messages;
 mod lexer;
 mod parser;
 mod parser_types;
@@ -88,7 +89,7 @@ pub fn build_ast(cfg: &AppConfig, source: &str) -> Result<elaborate_types::Diagr
     })?;
 
     // Step 2: Parse the tokens into AST
-    let parsed_ast = parser::build_diagram(&tokens)?;
+    let parsed_ast = parser::build_diagram(&tokens, source)?;
 
     // Step 3: Elaborate the AST with rich error handling
     let elaborate_builder = elaborate::Builder::new(cfg, source);

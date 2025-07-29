@@ -1,0 +1,11 @@
+diagram;
+
+type Database = Rectangle [color="blue"];
+type Service = Rectangle [color="green"];
+
+// This should fail because the diagram header is incomplete
+// Missing the diagram type (component/sequence)
+frontend: Service;
+backend: Database;
+
+frontend -> backend;

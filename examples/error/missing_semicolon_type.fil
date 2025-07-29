@@ -1,0 +1,11 @@
+diagram component;
+
+// Valid type definition with semicolon
+type Database = Rectangle [color="blue"];
+
+// This type definition is missing a semicolon - should trigger parse error
+type Service = Rectangle [color="green"]
+
+// This line should cause the parser to fail due to missing semicolon above
+frontend: Service;
+backend: Database;

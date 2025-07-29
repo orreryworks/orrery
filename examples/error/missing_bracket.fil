@@ -1,0 +1,13 @@
+diagram component;
+
+type Database = Rectangle [color="blue"];
+type Service = Rectangle [color="green"];
+
+// Valid component definition with complete attributes
+frontend: Service [color="red"];
+
+// This component definition is missing a closing bracket - should trigger parse error
+backend: Database [color="yellow"
+
+// This line should cause the parser to fail due to missing bracket above
+database: Database;

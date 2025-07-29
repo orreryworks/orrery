@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        parser_types as types,
+        error_messages, parser_types as types,
         span::{Span, SpanImpl, Spanned},
         tokens::Token,
     },
@@ -567,6 +567,7 @@ fn diagram<'src>() -> impl Parser<
 /// Build a diagram from tokens
 pub fn build_diagram<'src>(
     tokens: &'src [(Token<'src>, SpanImpl)],
+    source: &str,
 ) -> Result<Spanned<types::Element<'src>>, ParseDiagnosticError> {
     debug!("Starting diagram parsing, token count: {}", tokens.len());
 
@@ -587,26 +588,23 @@ pub fn build_diagram<'src>(
             trace!("Parser errors: {errors:?}");
 
             let error_msg = errors
-                .into_iter()
-                .map(|e| format!("{:?}", e.reason()))
+                .iter()
+                .map(|e| error_messages::improve_error_message(e))
                 .collect::<Vec<_>>()
                 .join(", ");
 
-            let total_span = if tokens.is_empty() {
-                0..0
+            // Use the span from the first error for precise location
+            let error_span = if !errors.is_empty() {
+                Some((errors[0].span().start, errors[0].span().end).into())
             } else {
-                let first = tokens[0].1;
-                let last = tokens[tokens.len() - 1].1;
-                first.start..last.end
+                None
             };
 
             Err(ParseDiagnosticError {
-                src: format!("{tokens:?}"), // We no longer have the original source string
+                src: source.to_string(),
                 message: error_msg,
-                span: Some((total_span.start, total_span.end).into()),
-                help: Some(
-                    "Check syntax for diagram header, type definitions, and elements".to_string(),
-                ),
+                span: error_span,
+                help: Some(error_messages::COMMON_SYNTAX_HELP.to_string()),
             })
         }
     }
@@ -912,12 +910,9 @@ mod tests {
             app: WebApp;
         "#;
 
-        // First lex the input
-        let lexer_parser = lexer::lexer();
-        let tokens = lexer_parser.parse(input).into_output().unwrap();
-
-        // Then parse the tokens
-        let result = build_diagram(tokens.as_slice());
+        // Parse the input
+        let tokens = tokenize(input);
+        let result = build_diagram(&tokens, input);
         assert!(
             result.is_ok(),
             "Expected successful parse, got: {:?}",
@@ -2050,8 +2045,7 @@ mod tests {
     #[test]
     fn test_complex_diagram() {
         // Test a comprehensive diagram with multiple features
-        let tokens = tokenize(
-            r#"
+        let complex_input = r#"
             diagram component;
 
             type Database = Rectangle [fill_color="lightblue"];
@@ -2068,10 +2062,10 @@ mod tests {
             cache -> backend: "Cache Response";
             db -> backend: "Query Result";
             backend -> frontend: "HTTP Response";
-        "#,
-        );
+        "#;
 
-        let result = build_diagram(tokens.as_slice());
+        let tokens = tokenize(complex_input);
+        let result = build_diagram(&tokens, complex_input);
         assert!(result.is_ok(), "Should parse complex diagram successfully");
 
         let diagram_element = result.unwrap();
@@ -2132,8 +2126,7 @@ mod tests {
     #[test]
     fn test_diagram_with_types() {
         // Test diagram that combines type definitions with components and relations
-        let tokens = tokenize(
-            r#"
+        let input = r#"
             diagram component;
 
             type WebApp = Rectangle [fill_color="blue", border="2"];
@@ -2146,10 +2139,10 @@ mod tests {
 
             frontend -> api: "API Call";
             api -> db: "SQL Query";
-        "#,
-        );
+        "#;
 
-        let result = build_diagram(tokens.as_slice());
+        let tokens = tokenize(input);
+        let result = build_diagram(&tokens, input);
         assert!(
             result.is_ok(),
             "Should parse diagram with types successfully"
@@ -2216,22 +2209,21 @@ mod tests {
 
         // Test 1: Minimal valid diagram
         let tokens = tokenize("diagram component;");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component;");
         assert!(result.is_ok(), "Should parse minimal diagram");
 
         // Test 2: Diagram with sequence type
         let tokens = tokenize("diagram sequence;");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram sequence;");
         assert!(result.is_ok(), "Should parse sequence diagram");
 
         // Test 3: Diagram with attributes
         let tokens = tokenize("diagram component [layout=\"hierarchical\"];");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component [layout=\"hierarchical\"];");
         assert!(result.is_ok(), "Should parse diagram with attributes");
 
         // Test 4: Complete diagram with all features
-        let tokens = tokenize(
-            r#"
+        let complete_input = r#"
             diagram component [layout="auto"];
 
             type MyService = Rectangle [color="blue"];
@@ -2240,9 +2232,9 @@ mod tests {
             db: Rectangle;
 
             app -> db;
-        "#,
-        );
-        let result = build_diagram(tokens.as_slice());
+        "#;
+        let tokens = tokenize(complete_input);
+        let result = build_diagram(&tokens, complete_input);
         assert!(result.is_ok(), "Should parse complete diagram");
 
         let diagram_element = result.unwrap();
@@ -2260,11 +2252,11 @@ mod tests {
 
         // Test 5: Error cases
         let tokens = tokenize("invalid syntax here");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "invalid syntax here");
         assert!(result.is_err(), "Should fail on invalid syntax");
 
         let tokens = tokenize("diagram component; extra content");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; extra content");
         assert!(result.is_err(), "Should fail on trailing content");
     }
 
@@ -2339,7 +2331,7 @@ mod tests {
         "#;
 
         let tokens = tokenize(web_app_diagram);
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, web_app_diagram);
         assert!(result.is_ok(), "Should parse web app architecture diagram");
 
         // Scenario 2: Microservices architecture
@@ -2361,7 +2353,7 @@ mod tests {
         "#;
 
         let tokens = tokenize(microservices_diagram);
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, microservices_diagram);
         assert!(
             result.is_ok(),
             "Should parse microservices architecture diagram"
@@ -2385,27 +2377,27 @@ mod tests {
 
         // Invalid diagram headers
         let tokens = tokenize("diagram;");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram;");
         assert!(result.is_err(), "Should fail on diagram without type");
 
         let tokens = tokenize("diagramcomponent;");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagramcomponent;");
         assert!(result.is_err(), "Should fail on malformed diagram header");
 
         // Invalid type definitions
         let tokens = tokenize("diagram component; type Database;");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; type Database;");
         assert!(result.is_err(), "Should fail on incomplete type definition");
 
         let tokens = tokenize("diagram component; type = Rectangle;");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; type = Rectangle;");
         assert!(
             result.is_err(),
             "Should fail on type definition without name"
         );
 
         let tokens = tokenize("diagram component; type Database = Rectangle");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; type Database = Rectangle");
         assert!(
             result.is_err(),
             "Should fail on type definition without semicolon"
@@ -2413,15 +2405,15 @@ mod tests {
 
         // Invalid components
         let tokens = tokenize("diagram component; database Rectangle;");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; database Rectangle;");
         assert!(result.is_err(), "Should fail on component without colon");
 
         let tokens = tokenize("diagram component; database:;");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; database:;");
         assert!(result.is_err(), "Should fail on component without type");
 
         let tokens = tokenize("diagram component; database: Rectangle");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; database: Rectangle");
         assert!(
             result.is_err(),
             "Should fail on component without semicolon"
@@ -2429,24 +2421,24 @@ mod tests {
 
         // Invalid relations
         let tokens = tokenize("diagram component; a: Rect; b: Rect; a -> ;");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; a: Rect; b: Rect; a -> ;");
         assert!(result.is_err(), "Should fail on relation without target");
 
         let tokens = tokenize("diagram component; a: Rect; b: Rect; -> b;");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; a: Rect; b: Rect; -> b;");
         assert!(result.is_err(), "Should fail on relation without source");
 
         let tokens = tokenize("diagram component; a: Rect; b: Rect; a -> b");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; a: Rect; b: Rect; a -> b");
         assert!(result.is_err(), "Should fail on relation without semicolon");
 
         // Invalid attributes
         let tokens = tokenize("diagram component; app: Rect [color=blue];");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; app: Rect [color=blue];");
         assert!(result.is_err(), "Should fail on unquoted attribute value");
 
         let tokens = tokenize("diagram component; app: Rect [color=\"blue\";");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; app: Rect [color=\"blue\";");
         assert!(result.is_err(), "Should fail on unclosed attribute bracket");
     }
 
@@ -2657,22 +2649,25 @@ mod tests {
 
         // Test completely invalid input
         let tokens = tokenize("this is not a valid diagram at all");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "this is not a valid diagram at all");
         assert!(result.is_err(), "Should fail on completely invalid input");
 
         // Test partial valid input
         let tokens = tokenize("diagram component; app: Rectangle; incomplete");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; app: Rectangle; incomplete");
         assert!(result.is_err(), "Should fail on incomplete statements");
 
         // Test mixed valid/invalid tokens
         let tokens = tokenize("diagram component; app: Rectangle; 123invalid: Type;");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(
+            &tokens,
+            "diagram component; app: Rectangle; 123invalid: Type;",
+        );
         assert!(result.is_err(), "Should fail on invalid identifiers");
 
         // Test unclosed constructs
         let tokens = tokenize("diagram component; app: Rectangle [color=\"blue\"");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; app: Rectangle [color=\"blue\"");
         assert!(
             result.is_err(),
             "Should fail on unclosed attribute brackets"
@@ -2680,36 +2675,45 @@ mod tests {
 
         // Test invalid relation operators
         let tokens = tokenize("diagram component; a: Rect; b: Rect; a >> b;");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; a: Rect; b: Rect; a >> b;");
         assert!(result.is_err(), "Should fail on invalid relation operators");
 
         // Test mismatched brackets
         let tokens = tokenize("diagram component; app: Rectangle [color=\"blue\"];");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(
+            &tokens,
+            "diagram component; app: Rectangle [color=\"blue\"];",
+        );
         assert!(
             result.is_ok(),
             "Should succeed on properly matched brackets"
         );
 
         let tokens = tokenize("diagram component; app: Rectangle ]color=\"blue\"[;");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(
+            &tokens,
+            "diagram component; app: Rectangle ]color=\"blue\"[;",
+        );
         assert!(result.is_err(), "Should fail on mismatched brackets");
 
         // Test empty but syntactically valid constructs
         let tokens = tokenize("diagram component; app: Rectangle [];");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, "diagram component; app: Rectangle [];");
         assert!(result.is_ok(), "Should succeed on empty attributes");
 
         // Test extremely long identifiers (within reason)
         let long_name = "very_long_identifier_name_that_is_still_valid_but_quite_long";
         let diagram_str = format!("diagram component; {}: Rectangle;", long_name);
         let tokens = tokenize(&diagram_str);
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(&tokens, &diagram_str);
         assert!(result.is_ok(), "Should handle reasonably long identifiers");
 
         // Test nested quotes in string values (should be handled by lexer)
         let tokens = tokenize("diagram component; app: Rectangle [label=\"App \\\"Server\\\"\"];");
-        let result = build_diagram(tokens.as_slice());
+        let result = build_diagram(
+            &tokens,
+            "diagram component; app: Rectangle [label=\"App \\\"Server\\\"\"];",
+        );
         assert!(result.is_ok(), "Should handle escaped quotes in strings");
     }
 }

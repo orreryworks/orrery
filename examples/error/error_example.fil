@@ -1,0 +1,18 @@
+diagram component;
+
+type Database = Rectangle [color="blue"];
+
+// Missing semicolon after component definition
+frontend: Rectangle [color="red"]
+
+// Missing colon in component definition
+backend Rectangle;
+
+// Incomplete relation (missing target)
+frontend -> ;
+
+// Missing semicolon after relation
+database -> frontend
+
+// Unclosed attribute bracket
+api: Database [port="8080"
