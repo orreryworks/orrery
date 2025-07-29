@@ -5,7 +5,7 @@
 
 use chumsky::error::{Rich, RichReason};
 
-use super::span::SpanImpl;
+use super::span::Span;
 use super::tokens::Token;
 
 /// Common error message constants
@@ -23,7 +23,7 @@ pub const COMMON_SYNTAX_HELP: &str = "Common syntax issues include:\n\
      • Invalid relation syntax (use 'source -> target;')";
 
 /// Improve error messages by making chumsky Rich errors more user-friendly
-pub fn improve_error_message(error: &Rich<(Token, SpanImpl)>) -> String {
+pub fn improve_error_message(error: &Rich<(Token, Span)>) -> String {
     match error.reason() {
         RichReason::ExpectedFound {
             expected: _,

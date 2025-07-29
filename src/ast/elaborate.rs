@@ -1,6 +1,6 @@
 use super::{elaborate_types as types, parser_types};
 use crate::{
-    ast::span::{SpanImpl, Spanned},
+    ast::span::{Span, Spanned},
     color::Color,
     config::AppConfig,
     draw,
@@ -103,7 +103,7 @@ impl<'a> Builder<'a> {
     fn insert_type_definition(
         &mut self,
         type_def: types::TypeDefinition,
-        span: SpanImpl,
+        span: Span,
     ) -> EResult<Rc<types::TypeDefinition>> {
         let id = type_def.id.clone();
         let type_def = Rc::new(type_def);

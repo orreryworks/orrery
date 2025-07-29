@@ -1,4 +1,4 @@
-use crate::ast::span::SpanImpl;
+use crate::ast::span::Span;
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
@@ -52,13 +52,13 @@ impl ElaborationDiagnosticError {
     /// Create a new elaboration error from a Span value.
     pub fn from_span(
         message: String,
-        span: SpanImpl,
+        span: Span,
         label: impl Into<String>,
         help: Option<String>,
     ) -> Self {
         Self {
             message,
-            span: (span.start, span.end - span.start).into(),
+            span: span.into(),
             label: label.into(),
             help,
         }

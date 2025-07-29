@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         error_messages, parser_types as types,
-        span::{Span, SpanImpl, Spanned},
+        span::{Span, Spanned},
         tokens::Token,
     },
     error::ParseDiagnosticError,
@@ -31,18 +31,17 @@ use log::{debug, trace};
 //   → Error shows [10:19] pointing to exact "rectangle" location
 // ```
 
-type TokenStream<'src> = &'src [(Token<'src>, SpanImpl)];
+type TokenStream<'src> = &'src [(Token<'src>, Span)];
 type DiagramHeader<'a> = (Spanned<&'a str>, Vec<types::Attribute<'a>>);
 
 /// Helper function to create a spanned value
-fn make_spanned<T>(value: T, span: SpanImpl) -> Spanned<T> {
+fn make_spanned<T>(value: T, span: Span) -> Spanned<T> {
     Spanned::new(value, span)
 }
 
 /// Parse whitespace and comments (now explicit tokens)
 fn ws_comment<'src>()
--> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>> + Clone
-{
+-> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone {
     any()
         .filter(|(token, _span)| {
             matches!(
@@ -54,21 +53,18 @@ fn ws_comment<'src>()
 }
 
 pub fn ws_comments0<'src>()
--> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>> + Clone
-{
+-> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone {
     ws_comment().repeated().ignored()
 }
 
 fn ws_comments1<'src>()
--> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>> + Clone
-{
+-> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone {
     ws_comment().repeated().at_least(1).ignored()
 }
 
 /// Parse semicolon with optional whitespace
 fn semicolon<'src>()
--> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>> + Clone
-{
+-> impl Parser<'src, TokenStream<'src>, (), extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone {
     ws_comments0()
         .ignore_then(any().filter(|(token, _span)| matches!(token, Token::Semicolon)))
         .ignored()
@@ -80,12 +76,9 @@ fn semicolon<'src>()
 /// This is the foundational function for all identifier parsing in the system.
 /// It returns both the identifier name AND its exact token span to ensure
 /// accurate error reporting.
-pub fn identifier<'src>() -> impl Parser<
-    'src,
-    TokenStream<'src>,
-    (&'src str, SpanImpl),
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
-> + Clone {
+pub fn identifier<'src>()
+-> impl Parser<'src, TokenStream<'src>, (&'src str, Span), extra::Err<Rich<'src, (Token<'src>, Span)>>>
++ Clone {
     select! {
         (Token::Identifier(name), span) => (name, span),
     }
@@ -99,12 +92,9 @@ pub fn identifier<'src>() -> impl Parser<
 ///
 ///
 /// Returns a String with the full identifier path joined by "::" and a unified span.
-fn nested_identifier<'src>() -> impl Parser<
-    'src,
-    TokenStream<'src>,
-    (String, SpanImpl),
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
-> + Clone {
+fn nested_identifier<'src>()
+-> impl Parser<'src, TokenStream<'src>, (String, Span), extra::Err<Rich<'src, (Token<'src>, Span)>>>
++ Clone {
     identifier()
         .separated_by(
             any()
@@ -135,7 +125,7 @@ fn nested_identifier<'src>() -> impl Parser<
 
 /// Parse a string literal
 fn string_literal<'src>()
--> impl Parser<'src, TokenStream<'src>, String, extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>> + Clone
+-> impl Parser<'src, TokenStream<'src>, String, extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone
 {
     select! {
         (Token::StringLiteral(s), _span) => s,
@@ -148,7 +138,7 @@ fn attribute<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     types::Attribute<'src>,
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+    extra::Err<Rich<'src, (Token<'src>, Span)>>,
 > + Clone {
     identifier()
         .then_ignore(
@@ -158,7 +148,7 @@ fn attribute<'src>() -> impl Parser<
         )
         .then(string_literal())
         .map_with(|((name, name_span), value), extra| {
-            let value_span = extra.span();
+            let value_span = extra.span().into();
             types::Attribute {
                 name: make_spanned(name, name_span),
                 value: make_spanned(value, value_span),
@@ -172,7 +162,7 @@ fn attributes<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     Vec<types::Attribute<'src>>,
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+    extra::Err<Rich<'src, (Token<'src>, Span)>>,
 > + Clone {
     attribute()
         .separated_by(
@@ -190,7 +180,7 @@ fn wrapped_attributes<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     Vec<types::Attribute<'src>>,
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+    extra::Err<Rich<'src, (Token<'src>, Span)>>,
 > + Clone {
     attributes()
         .or_not()
@@ -210,7 +200,7 @@ fn type_definition<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     types::TypeDefinition<'src>,
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+    extra::Err<Rich<'src, (Token<'src>, Span)>>,
 > + Clone {
     any()
         .filter(|(token, _span)| matches!(token, Token::Type))
@@ -242,7 +232,7 @@ fn type_definitions<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     Vec<types::TypeDefinition<'src>>,
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+    extra::Err<Rich<'src, (Token<'src>, Span)>>,
 > + Clone {
     type_definition().repeated().collect()
 }
@@ -262,7 +252,7 @@ fn relation_type_spec<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     types::RelationTypeSpec<'src>,
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+    extra::Err<Rich<'src, (Token<'src>, Span)>>,
 > + Clone {
     choice((
         // [TypeName; attributes] - most specific, try first
@@ -332,8 +322,8 @@ fn relation_type_spec<'src>() -> impl Parser<
 ///
 /// Returns the string representation of the arrow operator.
 fn relation_type<'src>()
--> impl Parser<'src, TokenStream<'src>, &'src str, extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>>
-+ Clone {
+-> impl Parser<'src, TokenStream<'src>, &'src str, extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone
+{
     any()
         .filter(|(token, _span)| {
             matches!(
@@ -358,13 +348,13 @@ fn component_with_elements<'src>(
         'src,
         TokenStream<'src>,
         Vec<types::Element<'src>>,
-        extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+        extra::Err<Rich<'src, (Token<'src>, Span)>>,
     > + Clone,
 ) -> impl Parser<
     'src,
     TokenStream<'src>,
     types::Element<'src>,
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+    extra::Err<Rich<'src, (Token<'src>, Span)>>,
 > + Clone {
     identifier()
         .map_with(|(name, name_span), _extra| make_spanned(name, name_span))
@@ -402,7 +392,7 @@ fn component_with_elements<'src>(
         .then_ignore(semicolon()) // parse semicolon (which handles its own whitespace)
         .map_with(
             |((((name, display_name), type_name), attributes), nested_elements), extra| {
-                let span = extra.span();
+                let span = extra.span().into();
                 types::Element::Component {
                     name,
                     display_name: display_name.map(|s| make_spanned(s, span)),
@@ -439,7 +429,7 @@ fn relation<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     types::Element<'src>,
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+    extra::Err<Rich<'src, (Token<'src>, Span)>>,
 > + Clone {
     nested_identifier()
         .then_ignore(ws_comments1()) // source + required whitespace
@@ -468,7 +458,7 @@ fn relation<'src>() -> impl Parser<
                 label,
             ),
              extra| {
-                let span = extra.span();
+                let span = extra.span().into();
                 types::Element::Relation {
                     source: make_spanned(source, source_span),
                     target: make_spanned(target, target_span),
@@ -486,7 +476,7 @@ fn elements<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     Vec<types::Element<'src>>,
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+    extra::Err<Rich<'src, (Token<'src>, Span)>>,
 > + Clone {
     recursive(|elements_parser| {
         let component = component_with_elements(elements_parser);
@@ -497,8 +487,8 @@ fn elements<'src>() -> impl Parser<
 
 /// Parse diagram type (component, sequence, etc.)
 fn diagram_type<'src>()
--> impl Parser<'src, TokenStream<'src>, &'src str, extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>>
-+ Clone {
+-> impl Parser<'src, TokenStream<'src>, &'src str, extra::Err<Rich<'src, (Token<'src>, Span)>>> + Clone
+{
     any()
         .filter(|(token, _span)| matches!(token, Token::Component | Token::Sequence))
         .map(|(token, _span)| match token {
@@ -510,12 +500,9 @@ fn diagram_type<'src>()
 }
 
 /// Parse diagram header with unwrapped attributes
-fn diagram_header<'src>() -> impl Parser<
-    'src,
-    TokenStream<'src>,
-    DiagramHeader<'src>,
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
-> + Clone {
+fn diagram_header<'src>()
+-> impl Parser<'src, TokenStream<'src>, DiagramHeader<'src>, extra::Err<Rich<'src, (Token<'src>, Span)>>>
++ Clone {
     any()
         .filter(|(token, _span)| matches!(token, Token::Diagram))
         .ignore_then(ws_comments1())
@@ -523,28 +510,24 @@ fn diagram_header<'src>() -> impl Parser<
         .then_ignore(ws_comments0())
         .then(wrapped_attributes().or_not())
         .map_with(|(kind, attrs_opt), extra| {
-            let span = extra.span();
+            let span = extra.span().into();
             (make_spanned(kind, span), attrs_opt.unwrap_or_default())
         })
         .labelled("diagram header")
 }
 
 /// Parse diagram header with semicolon with unwrapped attributes
-pub fn diagram_header_with_semicolon<'src>() -> impl Parser<
-    'src,
-    TokenStream<'src>,
-    DiagramHeader<'src>,
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
-> + Clone {
+pub fn diagram_header_with_semicolon<'src>()
+-> impl Parser<'src, TokenStream<'src>, DiagramHeader<'src>, extra::Err<Rich<'src, (Token<'src>, Span)>>>
++ Clone {
     diagram_header().then_ignore(semicolon())
 }
 
-/// Parse complete diagram
 fn diagram<'src>() -> impl Parser<
     'src,
     TokenStream<'src>,
     types::Element<'src>,
-    extra::Err<Rich<'src, (Token<'src>, SpanImpl)>>,
+    extra::Err<Rich<'src, (Token<'src>, Span)>>,
 > + Clone {
     ws_comments0()
         .ignore_then(diagram_header_with_semicolon())
@@ -566,7 +549,7 @@ fn diagram<'src>() -> impl Parser<
 
 /// Build a diagram from tokens
 pub fn build_diagram<'src>(
-    tokens: &'src [(Token<'src>, SpanImpl)],
+    tokens: &'src [(Token<'src>, Span)],
     source: &str,
 ) -> Result<Spanned<types::Element<'src>>, ParseDiagnosticError> {
     debug!("Starting diagram parsing, token count: {}", tokens.len());
@@ -580,9 +563,9 @@ pub fn build_diagram<'src>(
             } else {
                 let first = tokens[0].1;
                 let last = tokens[tokens.len() - 1].1;
-                first.start..last.end
+                first.start()..last.end()
             };
-            Ok(make_spanned(diagram, total_span.into()))
+            Ok(make_spanned(diagram, Span::new(total_span)))
         }
         Err(errors) => {
             trace!("Parser errors: {errors:?}");
@@ -595,7 +578,7 @@ pub fn build_diagram<'src>(
 
             // Use the span from the first error for precise location
             let error_span = if !errors.is_empty() {
-                Some((errors[0].span().start, errors[0].span().end).into())
+                Some(Span::from(*errors[0].span()).into())
             } else {
                 None
             };
@@ -619,7 +602,7 @@ mod tests {
     // Test helper functions for common patterns
 
     /// Helper function to tokenize input string for testing
-    fn tokenize(input: &str) -> Vec<(Token, SpanImpl)> {
+    fn tokenize(input: &str) -> Vec<(Token, Span)> {
         let lexer_parser = lexer::lexer();
         lexer_parser.parse(input).into_output().unwrap_or_default()
     }

@@ -1,4 +1,4 @@
-use super::span::SpanImpl;
+use super::span::Span;
 use super::tokens::Token;
 use chumsky::{
     IterParser as _, Parser,
@@ -7,7 +7,7 @@ use chumsky::{
     primitive::{any, choice, just, none_of, one_of},
     text,
 };
-type Spanned<T> = (T, SpanImpl);
+type Spanned<T> = (T, Span);
 
 /// Parse a complete string literal with double quotes.
 ///
@@ -82,7 +82,7 @@ fn string_literal<'a>() -> impl Parser<'a, &'a str, Token<'a>, extra::Err<Rich<'
 }
 
 pub fn lexer<'src>()
--> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, extra::Err<Rich<'src, char, SpanImpl>>> {
+-> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, extra::Err<Rich<'src, char>>> {
     // String literal parser - now with comprehensive escape sequence support
     let string_literal_parser = string_literal();
 
@@ -149,7 +149,7 @@ pub fn lexer<'src>()
 
     // Parse tokens with their spans
     token
-        .map_with(|tok, extra| (tok, extra.span()))
+        .map_with(|tok, extra| (tok, Span::from(extra.span())))
         .repeated()
         .collect()
 }

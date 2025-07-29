@@ -1,4 +1,4 @@
-use super::span::{Span, SpanImpl, Spanned};
+use super::span::{Span, Spanned};
 
 /// AST types that utilize span information
 /// This module contains parser types with a span.
@@ -12,7 +12,7 @@ pub struct TypeDefinition<'a> {
 }
 
 impl TypeDefinition<'_> {
-    pub fn span(&self) -> SpanImpl {
+    pub fn span(&self) -> Span {
         let span = self.name.span().union(self.base_type.span());
 
         self.attributes
@@ -37,7 +37,7 @@ pub struct Diagram<'a> {
 }
 
 impl Diagram<'_> {
-    pub fn span(&self) -> SpanImpl {
+    pub fn span(&self) -> Span {
         let kind_span = self.kind.span();
 
         let attr_spans = self.attributes.iter().map(|attr| attr.span());
@@ -77,7 +77,7 @@ pub enum Element<'a> {
 }
 
 impl Element<'_> {
-    pub fn span(&self) -> SpanImpl {
+    pub fn span(&self) -> Span {
         match self {
             Element::Component {
                 name,
@@ -138,7 +138,7 @@ pub struct RelationTypeSpec<'a> {
 }
 
 impl RelationTypeSpec<'_> {
-    pub fn span(&self) -> SpanImpl {
+    pub fn span(&self) -> Span {
         if let Some(type_name) = &self.type_name {
             self.attributes
                 .iter()
@@ -149,13 +149,13 @@ impl RelationTypeSpec<'_> {
                 .iter()
                 .map(|attr| attr.span())
                 .reduce(|acc, span| acc.union(span))
-                .unwrap_or_else(|| SpanImpl::new((), 0..0))
+                .unwrap_or_default()
         }
     }
 }
 
 impl Attribute<'_> {
-    pub fn span(&self) -> SpanImpl {
+    pub fn span(&self) -> Span {
         self.name.span().union(self.value.span())
     }
 }
