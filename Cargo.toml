@@ -20,5 +20,4 @@ rust-sugiyama = "0.3.0"
 toml = "0.8.23"
 serde = { version = "1.0", features = ["derive"] }
 directories = "6.0.0"
-chumsky = { version = "0.10.1", features = ["lexical-numbers"] }
-ariadne = { version = "0.5.1", features = ["concolor", "auto-color"] }
+winnow = "0.7.12"

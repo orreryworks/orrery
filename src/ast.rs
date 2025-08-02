@@ -8,8 +8,8 @@
 /// Filament uses a modern two-stage parser architecture with full language support:
 ///
 /// ### Two-Stage Parser Architecture
-/// - `lexer`: Tokenizes source code using chumsky
-/// - `parser`: Parses tokens into AST using chumsky
+/// - `lexer`: Tokenizes source code into tokens
+/// - `parser`: Parses tokens into AST nodes
 /// - Used by `build_ast()` for parsing with complete language support
 /// - Supports all Filament language features including relations and nested components
 ///
@@ -25,15 +25,15 @@
 /// - `elaborate`: Handles AST elaboration with rich error diagnostics
 mod elaborate;
 mod elaborate_types;
-mod error_messages;
 mod lexer;
 mod parser;
+#[cfg(test)]
+mod parser_tests;
 mod parser_types;
 pub mod span;
 mod tokens;
 
 use crate::{config::AppConfig, error::FilamentError};
-use chumsky::Parser;
 pub use elaborate_types::*;
 
 /// Builds a fully elaborated AST from source code using the two-stage parser.
@@ -78,12 +78,11 @@ pub use elaborate_types::*;
 /// ```
 pub fn build_ast(cfg: &AppConfig, source: &str) -> Result<elaborate_types::Diagram, FilamentError> {
     // Step 1: Tokenize the source code
-    let lexer_parser = lexer::lexer();
-    let tokens = lexer_parser.parse(source).into_output().ok_or_else(|| {
+    let tokens = lexer::tokenize(source).map_err(|err| {
         crate::error::ParseDiagnosticError {
             src: source.to_string(),
-            message: "Lexer failed to parse input".to_string(),
-            span: None, // TODO: Fix span
+            message: format!("Lexer failed to parse input: {err}"),
+            span: None, // TODO: Extract span from lexer error
             help: Some("Check for invalid characters or malformed tokens".to_string()),
         }
     })?;

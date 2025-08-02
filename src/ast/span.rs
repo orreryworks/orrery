@@ -1,57 +1,57 @@
-use chumsky::span::SimpleSpan;
-use chumsky::span::Span as ChumskySpan;
 use std::fmt;
+use winnow::stream::Stream;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Span(SimpleSpan);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Span {
+    start: usize,
+    end: usize,
+}
 
 impl Span {
-    /// Create a new span from a context and range
+    /// Create a new span from a range
     pub fn new(range: std::ops::Range<usize>) -> Self {
-        Self(SimpleSpan::new((), range))
+        Self {
+            start: range.start,
+            end: range.end,
+        }
     }
 
     /// Get the start offset of the span
     pub fn start(&self) -> usize {
-        self.0.start
+        self.start
     }
 
     /// Get the end offset of the span
     pub fn end(&self) -> usize {
-        self.0.end
+        self.end
     }
 
     /// Get the length of the span
     pub fn len(&self) -> usize {
-        self.0.end - self.0.start
+        if self.end >= self.start {
+            self.end - self.start
+        } else {
+            panic!("Invalid span: end offset is less than start offset");
+        }
     }
 
     /// Check if the span is empty
     pub fn is_empty(&self) -> bool {
-        self.0.start == self.0.end
+        self.start == self.end
     }
 
     /// Create a union of two spans (encompassing both)
     pub fn union(&self, other: Span) -> Span {
-        Self(self.0.union(other.0))
+        Self {
+            start: self.start.min(other.start),
+            end: self.end.max(other.end),
+        }
     }
 }
 
 impl Default for Span {
     fn default() -> Self {
         Self::new(0..0)
-    }
-}
-
-impl From<SimpleSpan> for Span {
-    fn from(span: SimpleSpan) -> Self {
-        Self(span)
-    }
-}
-
-impl From<Span> for SimpleSpan {
-    fn from(span: Span) -> Self {
-        span.0
     }
 }
 
@@ -67,25 +67,30 @@ impl From<&Span> for miette::SourceSpan {
     }
 }
 
-impl ChumskySpan for Span {
-    type Context = ();
-    type Offset = usize;
+// Winnow compatibility implementations
+impl Span {
+    /// Create a span from offset information
+    pub fn from_offset(start: usize, end: usize) -> Self {
+        Self::new(start..end)
+    }
 
-    fn new(_context: Self::Context, range: std::ops::Range<Self::Offset>) -> Self {
-        // Ignore the context parameter since we always use ()
+    /// Create a span from a stream checkpoint and current position
+    pub fn from_checkpoint<S>(checkpoint_offset: usize, current_offset: usize) -> Self
+    where
+        S: Stream,
+    {
+        Self::new(checkpoint_offset..current_offset)
+    }
+
+    /// Get the offset range for winnow compatibility
+    pub fn to_offset_range(&self) -> std::ops::Range<usize> {
+        self.start()..self.end()
+    }
+}
+
+impl From<std::ops::Range<usize>> for Span {
+    fn from(range: std::ops::Range<usize>) -> Self {
         Self::new(range)
-    }
-
-    fn context(&self) -> Self::Context {
-        self.0.context()
-    }
-
-    fn start(&self) -> Self::Offset {
-        self.0.start()
-    }
-
-    fn end(&self) -> Self::Offset {
-        self.0.end()
     }
 }
 
@@ -99,6 +104,27 @@ pub struct Spanned<T> {
     value: T,
     /// The span information from the parser
     span: Span,
+}
+
+impl<T> Spanned<T> {
+    /// Create a spanned value from offset information
+    pub fn from_offset(value: T, start: usize, end: usize) -> Self {
+        Self {
+            value,
+            span: Span::from_offset(start, end),
+        }
+    }
+
+    /// Create a spanned value from a checkpoint
+    pub fn from_checkpoint<S>(value: T, checkpoint_offset: usize, current_offset: usize) -> Self
+    where
+        S: Stream,
+    {
+        Self {
+            value,
+            span: Span::from_checkpoint::<S>(checkpoint_offset, current_offset),
+        }
+    }
 }
 
 impl<T> Spanned<T> {

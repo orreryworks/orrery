@@ -1,7 +1,9 @@
+use crate::ast::span::Span;
 use std::fmt;
+use winnow::stream::Location;
 
 /// Token types for the Filament language
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Token<'src> {
     // Keywords
     Diagram,
@@ -22,6 +24,7 @@ pub enum Token<'src> {
     Plain,       // -
     Equals,      // =
     Colon,       // :
+    DoubleColon, // ::
 
     // Punctuation
     LeftBrace,    // {
@@ -37,6 +40,55 @@ pub enum Token<'src> {
     // Whitespace
     Whitespace,
     Newline,
+}
+
+/// A token with position information for winnow integration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PositionedToken<'src> {
+    pub token: Token<'src>,
+    pub span: Span,
+}
+
+impl<'src> PositionedToken<'src> {
+    pub fn new(token: Token<'src>, span: Span) -> Self {
+        Self { token, span }
+    }
+}
+
+impl<'src> std::ops::Deref for PositionedToken<'src> {
+    type Target = Token<'src>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.token
+    }
+}
+
+impl<'src> AsRef<Token<'src>> for PositionedToken<'src> {
+    fn as_ref(&self) -> &Token<'src> {
+        &self.token
+    }
+}
+
+impl<'src> From<(Token<'src>, Span)> for PositionedToken<'src> {
+    fn from((token, span): (Token<'src>, Span)) -> Self {
+        Self::new(token, span)
+    }
+}
+
+impl<'src> fmt::Display for PositionedToken<'src> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.token.fmt(f)
+    }
+}
+
+impl<'src> Location for PositionedToken<'src> {
+    fn previous_token_end(&self) -> usize {
+        self.span.start()
+    }
+
+    fn current_token_start(&self) -> usize {
+        self.span.start()
+    }
 }
 
 impl fmt::Display for Token<'_> {
@@ -58,6 +110,7 @@ impl fmt::Display for Token<'_> {
             Token::Plain => write!(f, "-"),
             Token::Equals => write!(f, "="),
             Token::Colon => write!(f, ":"),
+            Token::DoubleColon => write!(f, "::"),
 
             Token::LeftBrace => write!(f, "{{"),
             Token::RightBrace => write!(f, "}}"),
