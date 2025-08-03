@@ -153,22 +153,32 @@ cache -> [BlueArrow; style="curved"] database: "Sync data";
 
 Attributes customize the appearance and behavior of elements:
 
-### 6.1 Common Attributes
+### 6.1 Shape-specific Attributes
 
 - `fill_color`: The background color of a shape (e.g., `"#ff0000"`, `"red"`, `"rgb(255,0,0)"`)
 - `line_color`: The border color of a shape
 - `line_width`: The thickness of lines/borders (numeric value)
 - `rounded`: Rounding radius for rectangle corners (numeric value)
-- `font_size`: Size of text labels (numeric value)
 - `background_color`: When used in a diagram declaration, sets the background color of the entire diagram
 
-### 6.2 Relation-specific Attributes
+### 6.2 Text Attributes
+
+Text attributes work consistently for both shapes and arrows, providing unified text styling:
+
+- `font_size`: Size of text labels (numeric value, e.g., `"16"`)
+- `font_family`: Font family name (string, e.g., `"Arial"`, `"Courier New"`, `"Helvetica"`)
+- `text_background_color`: Background color for text labels (color value, e.g., `"white"`, `"#f0f0f0"`, `"rgba(255,255,255,0.8)"`)
+- `text_padding`: Padding around text content (numeric value, e.g., `"5"`, `"8.5"`)
+
+### 6.3 Relation-specific Attributes
 
 - `color`: The line color of the relation
 - `width`: The thickness of the relation line (numeric value)
 - `style`: The style of the arrow line (values: `"straight"`, `"curved"`, or `"orthogonal"`, default is `"straight"`)
 
-### 6.3 Relation Labels
+Relations also support all text attributes listed in section 6.2 for styling their labels.
+
+### 6.4 Relation Labels
 
 Relations can optionally include text labels to describe their purpose or meaning:
 
@@ -309,7 +319,7 @@ type RedArrow = Arrow [color="red"];
 type BlueArrow = Arrow [color="blue", width="2"];
 
 // Define relation types extending other custom types
-type ThickRedArrow = RedArrow [width="3"];
+type ThickRedArrow = RedArrow [width="3", font_size="16"];
 type OrthogonalBlueArrow = BlueArrow [style="orthogonal"];
 
 end_user as "End User": Client;

@@ -1,4 +1,6 @@
-use crate::{ast::parser_types, color::Color, draw, error::ElaborationDiagnosticError};
+use crate::{
+    ast::parser_types, color::Color, draw, error::ElaborationDiagnosticError, geometry::Insets,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{self, Display},
@@ -245,7 +247,71 @@ impl TypeDefinition {
             )),
         }
     }
+}
 
+/// Extractor for text-related attributes that can be applied to TextDefinition
+pub struct TextAttributeExtractor;
+
+impl TextAttributeExtractor {
+    /// Extract and apply text-related attributes to a TextDefinition.
+    ///
+    /// Returns `Ok(true)` if the attribute was a text attribute and was processed,
+    /// `Ok(false)` if the attribute is not a text attribute,
+    /// `Err(...)` if the attribute is a text attribute but has an invalid value.
+    fn extract_attribute(
+        text_def: &mut draw::TextDefinition,
+        attr: &parser_types::Attribute,
+    ) -> Result<bool, ElaborationDiagnosticError> {
+        let name = attr.name.inner();
+        let value = attr.value.inner();
+
+        match *name {
+            "font_size" => {
+                let val = value.parse::<u16>().map_err(|_| {
+                    ElaborationDiagnosticError::from_span(
+                        format!("Invalid font_size value '{value}'"),
+                        attr.span(),
+                        "invalid number",
+                        Some("Font size must be a positive integer".to_string()),
+                    )
+                })?;
+                text_def.set_font_size(val);
+                Ok(true)
+            }
+            "font_family" => {
+                text_def.set_font_family(value);
+                Ok(true)
+            }
+            "text_background_color" => {
+                let val = Color::new(value).map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        format!("Invalid text_background_color '{value}': {err}"),
+                        attr.span(),
+                        "invalid color",
+                        Some("Use a CSS color".to_string()),
+                    )
+                })?;
+                text_def.set_background_color(Some(val));
+                Ok(true)
+            }
+            "text_padding" => {
+                let val = value.parse::<f32>().map_err(|_| {
+                    ElaborationDiagnosticError::from_span(
+                        format!("Invalid text_padding value '{value}'"),
+                        attr.span(),
+                        "invalid number",
+                        Some("Text padding must be a positive number".to_string()),
+                    )
+                })?;
+                text_def.set_padding(Insets::uniform(val));
+                Ok(true)
+            }
+            _ => Ok(false), // Not a text attribute
+        }
+    }
+}
+
+impl TypeDefinition {
     pub fn from_base(
         id: TypeId,
         base: &Self,
@@ -335,27 +401,19 @@ impl TypeDefinition {
                                 )
                             })?;
                         }
-                        "font_size" => {
-                            let val = value.parse::<u16>().map_err(|_| {
-                                ElaborationDiagnosticError::from_span(
-                                    format!("Invalid font_size value '{value}'"),
+                        name => {
+                            // Try to extract text attributes first
+                            if !TextAttributeExtractor::extract_attribute(&mut text_def, attr)? {
+                                return Err(ElaborationDiagnosticError::from_span(
+                                    format!("Unknown shape attribute '{name}'"),
                                     attr.span(),
-                                    "invalid number",
-                                    Some("Font size must be a positive integer".to_string()),
-                                )
-                            })?;
-                            text_def.set_font_size(val);
-                        }
-                        _ => {
-                            return Err(ElaborationDiagnosticError::from_span(
-                                format!("Unknown shape attribute '{name}'"),
-                                attr.span(),
-                                "unknown attribute",
-                                Some(
-                                    "Valid shape attributes are: fill_color, line_color, line_width, rounded, font_size"
-                                        .to_string(),
-                                ),
-                            ));
+                                    "unknown attribute",
+                                    Some(
+                                        "Valid shape attributes are: fill_color, line_color, line_width, rounded, font_size, font_family, text_background_color, text_padding"
+                                            .to_string(),
+                                    ),
+                                ));
+                            }
                         }
                     }
                 }
@@ -407,27 +465,19 @@ impl TypeDefinition {
                             })?;
                             new_arrow_def.set_style(val);
                         }
-                        "font_size" => {
-                            let val = value.parse::<u16>().map_err(|_| {
-                                ElaborationDiagnosticError::from_span(
-                                    format!("Invalid font_size value '{value}'"),
+                        name => {
+                            // Try to extract text attributes first
+                            if !TextAttributeExtractor::extract_attribute(&mut text_def, attr)? {
+                                return Err(ElaborationDiagnosticError::from_span(
+                                    format!("Unknown arrow attribute '{name}'"),
                                     attr.span(),
-                                    "invalid number",
-                                    Some("Font size must be a positive integer".to_string()),
-                                )
-                            })?;
-                            text_def.set_font_size(val);
-                        }
-                        _ => {
-                            return Err(ElaborationDiagnosticError::from_span(
-                                format!("Unknown arrow attribute '{name}'"),
-                                attr.span(),
-                                "unknown attribute",
-                                Some(
-                                    "Valid arrow attributes are: color, width, style, font_size"
-                                        .to_string(),
-                                ),
-                            ));
+                                    "unknown attribute",
+                                    Some(
+                                        "Valid arrow attributes are: color, width, style, font_size, font_family, text_background_color, text_padding"
+                                            .to_string(),
+                                    ),
+                                ));
+                            }
                         }
                     }
                 }
