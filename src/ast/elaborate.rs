@@ -580,10 +580,17 @@ impl<'a> Builder<'a> {
 
     /// Extract background color from an attribute
     fn extract_background_color(color_attr: &parser_types::Attribute<'_>) -> EResult<Color> {
-        let color_str = color_attr.value.inner();
+        let color_str = color_attr.value.inner().as_str().map_err(|err| {
+            ElaborationDiagnosticError::from_span(
+                err,
+                color_attr.value.span(),
+                "invalid color value",
+                Some("Color values must be strings".to_string()),
+            )
+        })?;
         Color::new(color_str).map_err(|err| {
             ElaborationDiagnosticError::from_span(
-                format!("Invalid background_color '{color_str}': {err}"),
+                format!("Invalid background_color: {err}"),
                 color_attr.value.span(),
                 "invalid color",
                 Some("Use a valid CSS color".to_string()),
@@ -595,7 +602,14 @@ impl<'a> Builder<'a> {
     fn determine_layout_engine(
         engine_attr: &parser_types::Attribute<'_>,
     ) -> EResult<types::LayoutEngine> {
-        let value = engine_attr.value.inner();
+        let value = engine_attr.value.inner().as_str().map_err(|err| {
+            ElaborationDiagnosticError::from_span(
+                err,
+                engine_attr.value.span(),
+                "invalid layout engine value",
+                Some("Layout engine values must be strings".to_string()),
+            )
+        })?;
         types::LayoutEngine::from_str(value).map_err(|_| {
             ElaborationDiagnosticError::from_span(
                 format!("Invalid layout_engine value: '{value}'"),

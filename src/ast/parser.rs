@@ -125,6 +125,17 @@ fn string_literal<'src>(input: &mut Input<'src>) -> IResult<'src, String> {
     .parse_next(input)
 }
 
+/// Parse an attribute value (string or float)
+fn attribute_value<'src>(input: &mut Input<'src>) -> IResult<'src, types::AttributeValue> {
+    any.verify_map(|token: &PositionedToken<'_>| match &token.token {
+        Token::StringLiteral(s) => Some(types::AttributeValue::String(s.clone())),
+        Token::FloatLiteral(f) => Some(types::AttributeValue::Float(*f)),
+        _ => None,
+    })
+    .context(StrContext::Label("attribute value"))
+    .parse_next(input)
+}
+
 /// Parse a single attribute
 fn attribute<'src>(input: &mut Input<'src>) -> IResult<'src, types::Attribute<'src>> {
     let (name, name_span) = identifier.parse_next(input)?;
@@ -138,7 +149,7 @@ fn attribute<'src>(input: &mut Input<'src>) -> IResult<'src, types::Attribute<'s
 
     ws_comments0.parse_next(input)?;
 
-    let value = string_literal.parse_next(input)?;
+    let value = attribute_value.parse_next(input)?;
 
     Ok(types::Attribute {
         name: name_spanned,
@@ -733,12 +744,21 @@ mod tests {
         assert!(result.is_ok());
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "color");
-        assert_eq!(*attr.value.inner(), "red");
+        assert!(matches!(attr.value.inner(), types::AttributeValue::String(s) if s == "red"));
 
         // Test failure cases
         let tokens = tokenize("color=unquoted").expect("Failed to tokenize");
         let mut input = FilamentTokenSlice::new(&tokens);
         assert!(attribute(&mut input).is_err());
+
+        // Test float attribute parsing
+        let tokens = tokenize("width=2.5").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_ok());
+        let attr = result.unwrap();
+        assert_eq!(*attr.name.inner(), "width");
+        assert!(matches!(attr.value.inner(), types::AttributeValue::Float(f) if *f == 2.5));
     }
 
     #[test]

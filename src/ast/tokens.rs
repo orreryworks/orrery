@@ -3,7 +3,7 @@ use std::fmt;
 use winnow::stream::Location;
 
 /// Token types for the Filament language
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token<'src> {
     // Keywords
     Diagram,
@@ -15,6 +15,7 @@ pub enum Token<'src> {
 
     // Literals
     StringLiteral(String),
+    FloatLiteral(f32),
     Identifier(&'src str),
 
     // Operators
@@ -43,7 +44,7 @@ pub enum Token<'src> {
 }
 
 /// A token with position information for winnow integration
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PositionedToken<'src> {
     pub token: Token<'src>,
     pub span: Span,
@@ -102,6 +103,7 @@ impl fmt::Display for Token<'_> {
             Token::As => write!(f, "as"),
 
             Token::StringLiteral(s) => write!(f, "\"{s}\""),
+            Token::FloatLiteral(n) => write!(f, "{n}"),
             Token::Identifier(name) => write!(f, "{name}"),
 
             Token::Arrow_ => write!(f, "->"),

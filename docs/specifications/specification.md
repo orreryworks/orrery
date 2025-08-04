@@ -66,15 +66,21 @@ type <TypeName> = <BaseType> [attribute1="value1", attribute2="value2", ...];
 
 Example:
 ```
-type Database = Rectangle [fill_color="lightblue", rounded="10", line_width="2"];
+type Database = Rectangle [fill_color="lightblue", rounded=10, line_width=2.0];
 type RedArrow = Arrow [color="red"];
-type ThickRedArrow = RedArrow [width="3"];
+type ThickRedArrow = RedArrow [width=3.0];
 ```
 ```
 
-## 5. Elements
+## 5. Literal Values and Data Types
 
-### 5.1 Components
+Filament supports two primary data types for attribute values: string literals and float literals. For comprehensive documentation on syntax, usage, and examples, see:
+
+**[Literal Values and Data Types Specification](literal_values.md)**
+
+## 6. Elements
+
+### 6.1 Components
 
 Components are the basic building blocks of diagrams:
 
@@ -103,7 +109,7 @@ Diagrams can have a background color specified as an attribute:
 diagram component [background_color="#e6f3ff"];
 ```
 
-### 5.2 Relations
+### 6.2 Relations
 
 Relations define connections between components using the following syntax:
 
@@ -117,7 +123,7 @@ Where:
 - `[<type_specification>]` is optional and customizes the relation appearance
 - `[: "label"]` is an optional text label displayed on the relation
 
-#### 5.2.1 Relation Types
+#### 6.2.1 Relation Types
 
 Filament supports four relation types:
 
@@ -126,13 +132,13 @@ Filament supports four relation types:
 - **Bidirectional** (`<->`) - Arrows pointing in both directions
 - **Plain** (`-`) - Simple line with no arrowheads
 
-#### 5.2.2 Type Specifications
+#### 6.2.2 Type Specifications
 
 Type specifications are optional and appear in square brackets between the relation type and target. They support three forms:
 
-- **Direct attributes**: `[color="red", width="3"]` - Creates an anonymous relation type with specified attributes
+- **Direct attributes**: `[color="red", width=3.0]` - Creates an anonymous relation type with specified attributes
 - **Type reference**: `[RedArrow]` - Uses a predefined relation type
-- **Type with additional attributes**: `[RedArrow; width="5"]` - Extends a predefined type with additional attributes
+- **Type with additional attributes**: `[RedArrow; width=5]` - Extends a predefined type with additional attributes
 
 **Examples:**
 ```
@@ -140,7 +146,7 @@ Type specifications are optional and appear in square brackets between the relat
 app -> database;
 
 // Direct attributes (anonymous type)
-frontend_app -> [color="blue", width="2"] user_database: "Stores data";
+frontend_app -> [color="blue", width=2.0] user_database: "Stores data";
 
 // Using predefined relation type
 app -> [RedArrow] cache: "Fast access";
@@ -149,36 +155,42 @@ app -> [RedArrow] cache: "Fast access";
 cache -> [BlueArrow; style="curved"] database: "Sync data";
 ```
 
-## 6. Attributes
+## 7. Attributes
 
 Attributes customize the appearance and behavior of elements:
 
-### 6.1 Shape-specific Attributes
+### 7.1 Attribute Value Types
 
-- `fill_color`: The background color of a shape (e.g., `"#ff0000"`, `"red"`, `"rgb(255,0,0)"`)
-- `line_color`: The border color of a shape
-- `line_width`: The thickness of lines/borders (numeric value)
-- `rounded`: Rounding radius for rectangle corners (numeric value)
-- `background_color`: When used in a diagram declaration, sets the background color of the entire diagram
+Filament supports two types of attribute values: string literals and float literals. For detailed documentation on syntax, formats, and usage rules, see:
 
-### 6.2 Text Attributes
+**[Literal Values and Data Types Specification](literal_values.md)**
+
+### 7.2 Shape-specific Attributes
+
+- `fill_color`: The background color of a shape (string, e.g., `"#ff0000"`, `"red"`, `"rgb(255,0,0)"`)
+- `line_color`: The border color of a shape (string)
+- `line_width`: The thickness of lines/borders (float, e.g., `2.0`, `1.5`)
+- `rounded`: Rounding radius for rectangle corners (float, e.g., `10.0`, `5.5`)
+- `background_color`: When used in a diagram declaration, sets the background color of the entire diagram (string)
+
+### 7.3 Text Attributes
 
 Text attributes work consistently for both shapes and arrows, providing unified text styling:
 
-- `font_size`: Size of text labels (numeric value, e.g., `"16"`)
+- `font_size`: Size of text labels (float, e.g., `16.0`, `12.5`)
 - `font_family`: Font family name (string, e.g., `"Arial"`, `"Courier New"`, `"Helvetica"`)
-- `text_background_color`: Background color for text labels (color value, e.g., `"white"`, `"#f0f0f0"`, `"rgba(255,255,255,0.8)"`)
-- `text_padding`: Padding around text content (numeric value, e.g., `"5"`, `"8.5"`)
+- `text_background_color`: Background color for text labels (string, e.g., `"white"`, `"#f0f0f0"`, `"rgba(255,255,255,0.8)"`)
+- `text_padding`: Padding around text content (float, e.g., `5.0`, `8.5`)
 
-### 6.3 Relation-specific Attributes
+### 7.4 Relation-specific Attributes
 
-- `color`: The line color of the relation
-- `width`: The thickness of the relation line (numeric value)
-- `style`: The style of the arrow line (values: `"straight"`, `"curved"`, or `"orthogonal"`, default is `"straight"`)
+- `color`: The line color of the relation (string)
+- `width`: The thickness of the relation line (float, e.g., `2.0`, `1.5`)
+- `style`: The style of the arrow line (string: `"straight"`, `"curved"`, or `"orthogonal"`, default is `"straight"`)
 
 Relations also support all text attributes listed in section 6.2 for styling their labels.
 
-### 6.4 Relation Labels
+### 7.5 Relation Labels
 
 Relations can optionally include text labels to describe their purpose or meaning:
 
@@ -188,7 +200,7 @@ Relations can optionally include text labels to describe their purpose or meanin
 
 Labels are displayed above the relation line with a background for readability.
 
-## 7. Nesting and Hierarchy
+## 8. Nesting and Hierarchy
 
 Components can contain other elements, creating a hierarchical structure:
 
@@ -202,7 +214,7 @@ parent_system: Rectangle {
 
 Nested components are positioned within their parent container and maintain their relationships.
 
-### 7.1 Embedded Diagrams
+### 8.1 Embedded Diagrams
 
 Filament supports embedding different diagram types within components, allowing for richer multi-level visualizations. For example, you can embed a sequence diagram inside a component diagram to show the dynamic behavior of a component:
 
@@ -234,7 +246,7 @@ When a component contains an embedded diagram:
 - The parent component is sized appropriately to contain the embedded diagram
 - The embedded diagram can have its own attributes like `background_color` and `layout_engine`
 
-## 8. Identifiers and Naming Conventions
+## 9. Identifiers and Naming Conventions
 
 - Type identifiers must use CamelCase (e.g., `Database`, `UserService`)
 - Element identifiers typically use snake_case (e.g., `auth_service`, `user_db`)
@@ -243,7 +255,7 @@ When a component contains an embedded diagram:
 - Identifiers must start with a letter
 - Identifiers are case-sensitive
 
-## 9. Layout Behavior
+## 10. Layout Behavior
 
 Filament supports multiple layout engines that can be specified using the `layout_engine` attribute in the diagram declaration:
 
@@ -257,7 +269,7 @@ Available layout engines:
 - `force`: A force-directed layout engine for more organic component positioning (available for component diagrams)
 - `sugiyama`: A hierarchical layout engine for layered diagrams (available for component diagrams)
 
-### 9.1 Component Diagrams
+### 10.1 Component Diagrams
 
 - Components are automatically positioned based on their relationships
 - Nested components are arranged within their parent container
@@ -265,14 +277,14 @@ Available layout engines:
 - Margins and padding are automatically applied for readability
 - The layout algorithm can be selected with the `layout_engine` attribute
 
-### 9.2 Sequence Diagrams
+### 10.2 Sequence Diagrams
 
 - Participants (components) are arranged horizontally
 - Messages (relations) are displayed as horizontal arrows between participants
 - Time flows downward, with messages ordered as they appear in the source
 - Lifelines extend from each participant throughout the diagram
 
-## 10. Rendering Output
+## 11. Rendering Output
 
 Filament diagrams are rendered as SVG files with the following characteristics:
 
@@ -283,7 +295,7 @@ Filament diagrams are rendered as SVG files with the following characteristics:
 - Component boundaries adjust to fit their content
 - Boundary shapes render as fixed-size UML boundary symbols with text labels positioned below
 
-## 10.1 Content-Free Shapes
+### 11.1 Content-Free Shapes
 
 Some shapes, like `Boundary`, `Actor`, `Entity`, `Control`, and `Interface`, are content-free and cannot contain nested elements or embedded diagrams. These shapes are designed for specific purposes such as representing external actors, entities, control elements, interfaces, or system boundaries in UML diagrams.
 
@@ -302,24 +314,24 @@ user_actor: Boundary {
 };
 ```
 
-## 11. Complete Examples
+## 12. Complete Examples
 
-### 11.1 Component Diagram Example
+### 12.1 Component Diagram Example
 
 ```
 diagram component [layout_engine="force", background_color="#f8f8f8"];
 
 // Define component types
-type Database = Rectangle [fill_color="lightblue", rounded="10"];
+type Database = Rectangle [fill_color="lightblue", rounded=10];
 type Service = Component [fill_color="#e6f3ff"];
 type Client = Oval [fill_color="#ffe6e6"];
 
 // Define relation types
 type RedArrow = Arrow [color="red"];
-type BlueArrow = Arrow [color="blue", width="2"];
+type BlueArrow = Arrow [color="blue", width=2.0];
 
 // Define relation types extending other custom types
-type ThickRedArrow = RedArrow [width="3", font_size="16"];
+type ThickRedArrow = RedArrow [width=3.0, font_size=16];
 type OrthogonalBlueArrow = BlueArrow [style="orthogonal"];
 
 end_user as "End User": Client;
@@ -337,7 +349,7 @@ backend_system -> [OrthogonalBlueArrow] user_database: "Query";
 end_user -> [BlueArrow] auth_service: "Auth requests";
 ```
 
-### 11.2 Sequence Diagram Example
+### 12.2 Sequence Diagram Example
 
 ```
 diagram sequence;
@@ -352,14 +364,14 @@ data_store -> [color="green"] api_service;
 api_service -> [color="blue"] user_agent;
 ```
 
-### 11.3 Embedded Diagram Example
+### 12.3 Embedded Diagram Example
 
 ```
 diagram component [background_color="#f8f8f8"];
 
 type Service = Rectangle [fill_color="#e6f3ff"];
-type Database = Rectangle [fill_color="lightblue", rounded="10"];
-type SecureArrow = Arrow [color="orange", width="2"];
+type Database = Rectangle [fill_color="lightblue", rounded=10];
+type SecureArrow = Arrow [color="orange", width=2.0];
 
 user_interface: Oval [fill_color="#ffe6e6"];
 auth_service: Service embed diagram sequence {
@@ -378,17 +390,17 @@ user_interface -> [SecureArrow] auth_service: "Secure connection";
 auth_service -> database;
 ```
 
-## 12. Error Handling
+## 13. Error Handling
 
 Filament provides comprehensive error handling with precise location tracking and user-friendly error messages. For detailed information about error handling architecture, message formats, and implementation details, see:
 
 **[Error Handling Specification](error_handling.md)**
 
-## 13. Configuration File
+## 14. Configuration File
 
 Filament supports configuration through a TOML file that can specify default settings for diagram rendering.
 
-### 13.1 Configuration File Locations
+### 14.1 Configuration File Locations
 
 Filament searches for configuration files in the following locations (in order of priority):
 
@@ -400,7 +412,7 @@ Filament searches for configuration files in the following locations (in order o
 
 If no configuration file is found, default values are used.
 
-### 13.2 Configuration File Format
+### 14.2 Configuration File Format
 
 The configuration file uses TOML syntax and supports the following settings:
 
@@ -421,7 +433,7 @@ background_color = "#f5f5f5"
 Layout engine values are case-sensitive and must match the supported enum values exactly.
 Color values must be valid CSS color strings.
 
-### 13.3 Layout Engine Values
+### 14.3 Layout Engine Values
 
 The layout engine names in the configuration file are string representations of the internal enum values:
 
@@ -431,7 +443,7 @@ The layout engine names in the configuration file are string representations of 
 | "force"      | Force-directed    | Component                    |
 | "sugiyama"   | Hierarchical      | Component                    |
 
-### 13.4 Style Configuration
+### 14.4 Style Configuration
 
 The style configuration section controls the visual appearance of diagrams:
 
@@ -439,7 +451,7 @@ The style configuration section controls the visual appearance of diagrams:
   - Accepts any valid CSS color string (e.g., `"#f5f5f5"`, `"white"`, `"rgb(240,240,240)"`)
   - Can be overridden by the `background_color` attribute in individual diagram declarations
 
-### 13.5 Configuration Priority
+### 14.5 Configuration Priority
 
 When determining which styles or layout engines to use, Filament follows this priority order:
 
@@ -465,7 +477,7 @@ For embedded diagrams:
 2. If not specified, embedded diagrams inherit layout engine settings from the configuration file
 3. If neither is available, embedded diagrams use their type-specific built-in defaults
 
-## 14. Command Line Usage
+## 15. Command Line Usage
 
 Filament diagrams can be rendered using the command line tool:
 

@@ -1,13 +1,13 @@
 diagram component;
 
 // Define component types with distinctive colors for better visualization
-type System = Rectangle [fill_color = "#F5F5F5", line_color = "#9E9E9E", rounded = "2"];
-type Service = Rectangle [fill_color = "#FFECB3", line_color = "#FFA000", rounded = "10"];
-type Database = Rectangle [fill_color = "#B3E5FC", line_color = "#0288D1", rounded = "5"];
+type System = Rectangle [fill_color = "#F5F5F5", line_color = "#9E9E9E", rounded = 2.0];
+type Service = Rectangle [fill_color = "#FFECB3", line_color = "#FFA000", rounded = 10.0];
+type Database = Rectangle [fill_color = "#B3E5FC", line_color = "#0288D1", rounded = 5.0];
 type API = Oval [fill_color = "#E8F5E9", line_color = "#388E3C"];
 type UI = Oval [fill_color = "#F3E5F5", line_color = "#9C27B0"];
-type Queue = Rectangle [fill_color = "#C8E6C9", line_color = "#43A047", rounded = "15"];
-type Cache = Rectangle [fill_color = "#DCEDC8", line_color = "#7CB342", rounded = "8"];
+type Queue = Rectangle [fill_color = "#C8E6C9", line_color = "#43A047", rounded = 15.0];
+type Cache = Rectangle [fill_color = "#DCEDC8", line_color = "#7CB342", rounded = 8.0];
 
 // Main system with multiple nesting levels
 main_system: System {

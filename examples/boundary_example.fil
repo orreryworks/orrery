@@ -14,7 +14,7 @@ system_boundary as "Order Processing System": SystemBoundary;
 // Define internal system components
 web_app as "Web Application": Rectangle [fill_color="#f0f0f0"];
 order_service as "Order Service": Rectangle [fill_color="#d4edda"];
-inventory_db as "Inventory DB": Rectangle [fill_color="lightblue", rounded="10"];
+inventory_db as "Inventory DB": Rectangle [fill_color="lightblue", rounded=10.0];
 
 // Relationships showing boundary interactions
 // Notice how boundary actors interact with the system

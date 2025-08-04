@@ -1,8 +1,8 @@
 diagram component;
 
-type Database = Rectangle [fill_color="lightblue", rounded="10", line_width="2"];
-type Service = Rectangle [fill_color="#e6f3ff", line_width="1"];
-type MicroService = Rectangle [fill_color="#fffae6", line_width="1"];
+type Database = Rectangle [fill_color="lightblue", rounded=10.0, line_width=2.0];
+type Service = Rectangle [fill_color="#e6f3ff", line_width=1.0];
+type MicroService = Rectangle [fill_color="#fffae6", line_width=1.0];
 type Client = Oval [fill_color="#ffe6e6"];
 
 // Example with a very long name to test text measurements

@@ -25,7 +25,7 @@ data_interface as "Data Access Interface": Interface;
 
 // Supporting components (regular shapes for comparison)
 web_app as "Web Application": Rectangle [fill_color="#e6f3ff"];
-database as "Database": Rectangle [fill_color="lightblue", rounded="10"];
+database as "Database": Rectangle [fill_color="lightblue", rounded=10.0];
 
 // ========================================
 // BASIC INTERACTIONS
@@ -90,6 +90,6 @@ styled_control -> styled_interface: "API Access";
 // Compare with regular shapes that CAN contain content:
 regular_container as "Service Container": Rectangle {
     internal_service as "Internal Service": Rectangle;
-    internal_db as "Internal Database": Rectangle [fill_color="lightblue", rounded="5"];
+    internal_db as "Internal Database": Rectangle [fill_color="lightblue", rounded=5.0];
     internal_service -> internal_db: "Data Access";
 };

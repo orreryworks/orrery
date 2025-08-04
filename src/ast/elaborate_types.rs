@@ -267,7 +267,7 @@ impl TextAttributeExtractor {
 
         match *name {
             "font_size" => {
-                let val = value.parse::<u16>().map_err(|_| {
+                let val = value.as_u16().map_err(|_| {
                     ElaborationDiagnosticError::from_span(
                         format!("Invalid font_size value '{value}'"),
                         attr.span(),
@@ -279,13 +279,28 @@ impl TextAttributeExtractor {
                 Ok(true)
             }
             "font_family" => {
-                text_def.set_font_family(value);
+                text_def.set_font_family(value.as_str().map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        err,
+                        attr.span(),
+                        "invalid font family",
+                        Some("Font family must be a string value".to_string()),
+                    )
+                })?);
                 Ok(true)
             }
             "text_background_color" => {
-                let val = Color::new(value).map_err(|err| {
+                let val = Color::new(value.as_str().map_err(|err| {
                     ElaborationDiagnosticError::from_span(
-                        format!("Invalid text_background_color '{value}': {err}"),
+                        err,
+                        attr.span(),
+                        "invalid color value",
+                        Some("Color values must be strings".to_string()),
+                    )
+                })?)
+                .map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        format!("Invalid text_background_color: {err}"),
                         attr.span(),
                         "invalid color",
                         Some("Use a CSS color".to_string()),
@@ -295,9 +310,9 @@ impl TextAttributeExtractor {
                 Ok(true)
             }
             "text_padding" => {
-                let val = value.parse::<f32>().map_err(|_| {
+                let val = value.as_float().map_err(|err| {
                     ElaborationDiagnosticError::from_span(
-                        format!("Invalid text_padding value '{value}'"),
+                        format!("Invalid text_padding value: {err}"),
                         attr.span(),
                         "invalid number",
                         Some("Text padding must be a positive number".to_string()),
@@ -330,7 +345,15 @@ impl TypeDefinition {
 
                     match *name {
                         "fill_color" => {
-                            let val = Color::new(value).map_err(|err| {
+                            let val = Color::new(value.as_str().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err,
+                                    attr.span(),
+                                    "invalid color value",
+                                    Some("Color values must be strings".to_string()),
+                                )
+                            })?)
+                            .map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
                                     format!("Invalid fill_color '{value}': {err}"),
                                     attr.span(),
@@ -348,9 +371,17 @@ impl TypeDefinition {
                             })?;
                         }
                         "line_color" => {
-                            let val = Color::new(value).map_err(|err| {
+                            let val = Color::new(value.as_str().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
-                                    format!("Invalid line_color '{value}': {err}"),
+                                    err,
+                                    attr.span(),
+                                    "invalid color value",
+                                    Some("Color values must be strings".to_string()),
+                                )
+                            })?)
+                            .map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    format!("Invalid line_color: {err}"),
                                     attr.span(),
                                     "invalid color",
                                     Some("Use a CSS color".to_string()),
@@ -366,9 +397,9 @@ impl TypeDefinition {
                             })?;
                         }
                         "line_width" => {
-                            let val = value.parse::<usize>().map_err(|_| {
+                            let val = value.as_usize().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
-                                    format!("Invalid line_width value '{value}'"),
+                                    format!("Invalid line_width value: {err}"),
                                     attr.span(),
                                     "invalid number",
                                     Some("Width must be a positive number".to_string()),
@@ -384,9 +415,9 @@ impl TypeDefinition {
                             })?;
                         }
                         "rounded" => {
-                            let val = value.parse::<usize>().map_err(|_| {
+                            let val = value.as_usize().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
-                                    format!("Invalid rounded value '{value}'"),
+                                    format!("Invalid rounded value: {err}"),
                                     attr.span(),
                                     "invalid number",
                                     Some("Rounded must be a positive number".to_string()),
@@ -430,9 +461,17 @@ impl TypeDefinition {
 
                     match *name {
                         "color" => {
-                            let val = Color::new(value).map_err(|err| {
+                            let val = Color::new(value.as_str().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
-                                    format!("Invalid color '{value}': {err}"),
+                                    err,
+                                    attr.span(),
+                                    "invalid color value",
+                                    Some("Color values must be strings".to_string()),
+                                )
+                            })?)
+                            .map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    format!("Invalid color: {err}"),
                                     attr.span(),
                                     "invalid color",
                                     Some("Use a CSS color".to_string()),
@@ -441,9 +480,9 @@ impl TypeDefinition {
                             new_arrow_def.set_color(val);
                         }
                         "width" => {
-                            let val = value.parse::<usize>().map_err(|_| {
+                            let val = value.as_usize().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
-                                    format!("Invalid width value '{value}'"),
+                                    format!("Invalid width value: {err}"),
                                     attr.span(),
                                     "invalid number",
                                     Some("Width must be a positive number".to_string()),
@@ -452,9 +491,18 @@ impl TypeDefinition {
                             new_arrow_def.set_width(val);
                         }
                         "style" => {
-                            let val = draw::ArrowStyle::from_str(value).map_err(|_| {
-                                ElaborationDiagnosticError::from_span(
-                                    format!("Invalid arrow style '{value}'"),
+                            let val =
+                                draw::ArrowStyle::from_str(value.as_str().map_err(|err| {
+                                    ElaborationDiagnosticError::from_span(
+                                        err,
+                                        attr.span(),
+                                        "invalid style value",
+                                        Some("Style values must be strings".to_string()),
+                                    )
+                                })?)
+                                .map_err(|_| {
+                                    ElaborationDiagnosticError::from_span(
+                                    "Invalid arrow style".to_string(),
                                     attr.span(),
                                     "invalid style",
                                     Some(
@@ -462,7 +510,7 @@ impl TypeDefinition {
                                             .to_string(),
                                     ),
                                 )
-                            })?;
+                                })?;
                             new_arrow_def.set_style(val);
                         }
                         name => {

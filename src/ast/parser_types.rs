@@ -1,4 +1,5 @@
 use super::span::{Span, Spanned};
+use std::fmt;
 
 /// AST types that utilize span information
 /// This module contains parser types with a span.
@@ -22,10 +23,68 @@ impl TypeDefinition<'_> {
     }
 }
 
+/// Attribute values can be either strings or float numbers
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttributeValue {
+    String(String),
+    Float(f32),
+}
+
+impl fmt::Display for AttributeValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AttributeValue::String(s) => write!(f, "\"{s}\""),
+            AttributeValue::Float(n) => write!(f, "{n}"),
+        }
+    }
+}
+
+impl AttributeValue {
+    /// Extract a string reference, returning an error if this is not a string value
+    pub fn as_str(&self) -> Result<&str, String> {
+        match self {
+            AttributeValue::String(s) => Ok(s),
+            AttributeValue::Float(f) => Err(format!("Expected string value, found float: {f}")),
+        }
+    }
+
+    /// Extract a float value, returning an error if this is not a float value
+    pub fn as_float(&self) -> Result<f32, String> {
+        match self {
+            AttributeValue::Float(f) => Ok(*f),
+            AttributeValue::String(s) => Err(format!("Expected float value, found string: '{s}'")),
+        }
+    }
+
+    /// Extract a numeric value as u32 (casting f32 if necessary)
+    pub fn as_u32(&self) -> Result<u32, String> {
+        match self {
+            AttributeValue::Float(f) => Ok(*f as u32),
+            AttributeValue::String(s) => Err(format!("Expected float value, found string: '{s}'")),
+        }
+    }
+
+    /// Extract a numeric value as usize (casting f32 if necessary)
+    pub fn as_usize(&self) -> Result<usize, String> {
+        match self {
+            AttributeValue::Float(f) => Ok(*f as usize),
+            AttributeValue::String(s) => Err(format!("Expected float value, found string: '{s}'")),
+        }
+    }
+
+    /// Extract a numeric value as u16 (casting f32 if necessary)
+    pub fn as_u16(&self) -> Result<u16, String> {
+        match self {
+            AttributeValue::Float(f) => Ok(*f as u16),
+            AttributeValue::String(s) => Err(format!("Expected float value, found string: '{s}'")),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Attribute<'a> {
     pub name: Spanned<&'a str>,
-    pub value: Spanned<String>,
+    pub value: Spanned<AttributeValue>,
 }
 
 #[derive(Debug)]

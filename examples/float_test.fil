@@ -1,0 +1,61 @@
+diagram component [background_color="#f8f8f8"];
+
+// Type definitions using float attributes
+type FloatDatabase = Rectangle [
+    fill_color="lightblue",
+    line_width=2.5,
+    rounded=8,
+    font_size=14.5
+];
+
+type FloatService = Component [
+    fill_color="#e6f3ff",
+    line_width=1.5,
+    font_size=12,
+    text_padding=6.5
+];
+
+type ThickArrow = Arrow [
+    color="red",
+    width=3.5
+];
+
+type ThinArrow = Arrow [
+    color="blue",
+    width=1.2
+];
+
+// Components using float attributes
+database as "Primary Database": FloatDatabase;
+
+api_service as "API Service": Rectangle [
+    fill_color="#ffe6e6",
+    line_width=2,
+    rounded=5.5,
+    font_size=16,
+    text_padding=8
+];
+
+cache_service as "Cache Layer": FloatService;
+
+frontend as "Frontend App": Oval [
+    fill_color="#f0f8ff",
+    line_width=1.8,
+    font_size=13.5
+];
+
+// Relations with float attributes
+frontend -> [width=2.5, color="green"] api_service: "API Calls";
+api_service -> [ThickArrow] database: "Queries";
+api_service -> [ThinArrow] cache_service: "Cache Check";
+cache_service -> [width=1, color="orange"] database: "Cache Miss";
+
+// Scientific notation test
+monitoring as "Monitoring": Rectangle [
+    fill_color="yellow",
+    line_width=1e1,
+    font_size=1.2e1,
+    rounded=5e0
+];
+
+api_service -> [width=2.5] monitoring: "Metrics";

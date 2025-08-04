@@ -1,8 +1,8 @@
 diagram component [background_color="#F8F8F8", layout_engine="basic"];
 
 // Define custom types
-type Service = Rectangle [fill_color="#e6f3ff", rounded="5"];
-type Database = Rectangle [fill_color="lightblue", rounded="10", line_width="3"];
+type Service = Rectangle [fill_color="#e6f3ff", rounded=5.0];
+type Database = Rectangle [fill_color="lightblue", rounded=10.0, line_width=3.0];
 type Client = Oval [fill_color="#ffe6e6"];
 
 // Main components

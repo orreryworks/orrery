@@ -2,8 +2,8 @@
 diagram component;
 
 // Define custom types
-type Database = Rectangle [fill_color="lightblue", rounded="10", line_width="2"];
-type Service = Rectangle [fill_color="#e6f3ff", rounded="5"];
+type Database = Rectangle [fill_color="lightblue", rounded=10.0, line_width=2.0];
+type Service = Rectangle [fill_color="#e6f3ff", rounded=5.0];
 type Client = Oval [fill_color="#ffe6e6"];
 type ExternalSystem = Rectangle [fill_color="#f0f0f0", line_color="#666666"];
 
@@ -31,11 +31,11 @@ client -> services::api_gateway: "Straight (default)";
 services::user_service -> storage::user_db: "Straight";
 
 // Curved arrows
-services::api_gateway -> [style="curved", color="blue", width="2"] services::auth_service: "Curved";
+services::api_gateway -> [style="curved", color="blue", width=2.0] services::auth_service: "Curved";
 services::payment_service -> [style="curved", color="green"] external_api: "Curved";
 
 // Orthogonal arrows (follows x and y axes only)
-services::api_gateway -> [style="orthogonal", color="purple", width="2"] services::user_service: "Orthogonal";
+services::api_gateway -> [style="orthogonal", color="purple", width=2.0] services::user_service: "Orthogonal";
 services::auth_service -> [style="orthogonal", color="red"] services::payment_service: "Orthogonal";
 storage::payment_db -> [style="orthogonal", color="orange"] services::payment_service: "Orthogonal";
 

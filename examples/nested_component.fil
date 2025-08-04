@@ -1,10 +1,10 @@
 diagram component;
 
 // Define component types
-type Database = Rectangle [fill_color = "#B3E5FC", line_color = "#0288D1", rounded = "5"];
-type Service = Rectangle [fill_color = "#FFECB3", line_color = "#FFA000", rounded = "10"];
+type Database = Rectangle [fill_color = "#B3E5FC", line_color = "#0288D1", rounded = 5.0];
+type Service = Rectangle [fill_color = "#FFECB3", line_color = "#FFA000", rounded = 10.0];
 type Frontend = Oval [fill_color = "#E8F5E9", line_color = "#388E3C"];
-type Cache = Rectangle [fill_color = "#DCEDC8", line_color = "#7CB342", rounded = "8"];
+type Cache = Rectangle [fill_color = "#DCEDC8", line_color = "#7CB342", rounded = 8.0];
 
 // Define the outer components
 web_app: Frontend;

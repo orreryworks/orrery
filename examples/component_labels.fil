@@ -2,7 +2,7 @@
 diagram component;
 
 // Define our types
-type Database = Rectangle [fill_color="lightblue", rounded="10"];
+type Database = Rectangle [fill_color="lightblue", rounded=10.0];
 type Service = Rectangle [fill_color="#e6f3ff"];
 type Client = Oval [fill_color="#ffe6e6"];
 

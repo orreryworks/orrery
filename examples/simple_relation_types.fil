@@ -4,8 +4,8 @@ diagram component;
 
 // Define custom relation types
 type RedArrow = Arrow [color="red"];
-type ThickRedArrow = RedArrow [width="3"];
-type BlueArrow = Arrow [color="blue", width="2"];
+type ThickRedArrow = RedArrow [width=3.0];
+type BlueArrow = Arrow [color="blue", width=2.0];
 
 // Define some basic components
 app: Rectangle;
@@ -16,7 +16,7 @@ cache: Rectangle;
 app -> database;
 
 // Relation with direct attributes
-app -> [color="green", width="2"] cache: "Cache data";
+app -> [color="green", width=2.0] cache: "Cache data";
 
 // Relations using custom types
 database -> [ThickRedArrow] cache: "Sync";

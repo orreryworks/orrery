@@ -2,7 +2,7 @@ use super::span::Span;
 use super::tokens::{PositionedToken, Token};
 use winnow::{
     Parser as _,
-    ascii::multispace1,
+    ascii::{float, multispace1},
     combinator::{alt, delimited, not, peek, preceded, repeat, terminated},
     error::{ContextError, ModalResult, StrContext},
     token::{literal, none_of, one_of, take_while},
@@ -80,7 +80,15 @@ fn string_literal<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
         .parse_next(input)
 }
 
-/// Parse line comments starting with //
+/// Parse a float literal
+fn float_literal<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
+    float
+        .map(Token::FloatLiteral)
+        .context(StrContext::Label("float literal"))
+        .parse_next(input)
+}
+
+/// Parse line comment starting with '//'
 fn line_comment<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
     preceded("//", take_while(0.., |c| c != '\n'))
         .map(Token::LineComment)
@@ -187,6 +195,7 @@ fn positioned_token<'a>(
         string_literal,      // Must come before any single char
         multi_char_operator, // Must come before single char operators
         keyword,             // Must come before identifier
+        float_literal,       // Must come before identifier
         identifier,          // Must come before single chars
         single_char_token,   // Single character tokens
         newline,             // Must come before whitespace
@@ -280,6 +289,40 @@ mod tests {
         );
         test_single_token("\"\"", Token::StringLiteral("".to_string()));
         test_single_token("\"abc123\"", Token::StringLiteral("abc123".to_string()));
+    }
+
+    #[test]
+    fn test_float_literals() {
+        // Basic float literals
+        test_single_token("1.0", Token::FloatLiteral(1.0));
+        test_single_token("2.5", Token::FloatLiteral(2.5));
+        test_single_token("10.0", Token::FloatLiteral(10.0));
+        test_single_token("0.0", Token::FloatLiteral(0.0));
+
+        // Float literals with leading decimal
+        test_single_token(".5", Token::FloatLiteral(0.5));
+        test_single_token(".25", Token::FloatLiteral(0.25));
+
+        // Float literals with trailing decimal
+        test_single_token("5.", Token::FloatLiteral(5.0));
+        test_single_token("100.", Token::FloatLiteral(100.0));
+
+        // Scientific notation
+        test_single_token("1e5", Token::FloatLiteral(1e5));
+        test_single_token("2.5e-3", Token::FloatLiteral(2.5e-3));
+        test_single_token("1.23e+4", Token::FloatLiteral(1.23e+4));
+        test_single_token("1E5", Token::FloatLiteral(1E5));
+        test_single_token("2.5E-3", Token::FloatLiteral(2.5E-3));
+
+        // Large and small numbers
+        test_single_token("999999.999999", Token::FloatLiteral(999999.999999));
+        test_single_token("0.000001", Token::FloatLiteral(0.000001));
+
+        // Basic integer literals (converted to floats)
+        test_single_token("1", Token::FloatLiteral(1.0));
+        test_single_token("42", Token::FloatLiteral(42.0));
+        test_single_token("0", Token::FloatLiteral(0.0));
+        test_single_token("123", Token::FloatLiteral(123.0));
     }
 
     #[test]
