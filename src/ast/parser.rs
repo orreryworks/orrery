@@ -125,13 +125,23 @@ fn string_literal<'src>(input: &mut Input<'src>) -> IResult<'src, String> {
     .parse_next(input)
 }
 
-/// Parse an attribute value (string or float)
-fn attribute_value<'src>(input: &mut Input<'src>) -> IResult<'src, types::AttributeValue> {
-    any.verify_map(|token: &PositionedToken<'_>| match &token.token {
-        Token::StringLiteral(s) => Some(types::AttributeValue::String(s.clone())),
-        Token::FloatLiteral(f) => Some(types::AttributeValue::Float(*f)),
-        _ => None,
-    })
+/// Parse an attribute value (string, float, or nested attributes)
+fn attribute_value<'src>(input: &mut Input<'src>) -> IResult<'src, types::AttributeValue<'src>> {
+    alt((
+        // Parse nested attributes [attr1=val1, attr2=val2]
+        wrapped_attributes.map(types::AttributeValue::Attributes),
+        // Parse string or float literals
+        any.verify_map(|token: &PositionedToken<'_>| match &token.token {
+            Token::StringLiteral(s) => Some(types::AttributeValue::String(Spanned::new(
+                s.clone(),
+                token.span,
+            ))),
+            Token::FloatLiteral(f) => {
+                Some(types::AttributeValue::Float(Spanned::new(*f, token.span)))
+            }
+            _ => None,
+        }),
+    ))
     .context(StrContext::Label("attribute value"))
     .parse_next(input)
 }
@@ -153,7 +163,7 @@ fn attribute<'src>(input: &mut Input<'src>) -> IResult<'src, types::Attribute<'s
 
     Ok(types::Attribute {
         name: name_spanned,
-        value: make_spanned(value, Span::new(0..0)), // TODO: track proper span
+        value,
     })
 }
 
@@ -744,7 +754,7 @@ mod tests {
         assert!(result.is_ok());
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "color");
-        assert!(matches!(attr.value.inner(), types::AttributeValue::String(s) if s == "red"));
+        assert!(matches!(&attr.value, types::AttributeValue::String(s) if s.inner() == "red"));
 
         // Test failure cases
         let tokens = tokenize("color=unquoted").expect("Failed to tokenize");
@@ -758,7 +768,284 @@ mod tests {
         assert!(result.is_ok());
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "width");
-        assert!(matches!(attr.value.inner(), types::AttributeValue::Float(f) if *f == 2.5));
+        assert!(matches!(&attr.value, types::AttributeValue::Float(f) if *f.inner() == 2.5));
+    }
+
+    #[test]
+    fn test_nested_attribute_parsing() {
+        // Test basic nested attribute parsing
+        let tokens = tokenize("text=[font_size=12, padding=6.5]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_ok());
+        let attr = result.unwrap();
+        assert_eq!(*attr.name.inner(), "text");
+
+        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+            assert_eq!(nested_attrs.len(), 2);
+            assert_eq!(*nested_attrs[0].name.inner(), "font_size");
+            assert!(
+                matches!(&nested_attrs[0].value, types::AttributeValue::Float(f) if *f.inner() == 12.0)
+            );
+            assert_eq!(*nested_attrs[1].name.inner(), "padding");
+            assert!(
+                matches!(&nested_attrs[1].value, types::AttributeValue::Float(f) if *f.inner() == 6.5)
+            );
+        } else {
+            panic!("Expected nested attributes");
+        }
+
+        // Test empty nested attributes
+        let tokens = tokenize("text=[]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_ok());
+        let attr = result.unwrap();
+        assert_eq!(*attr.name.inner(), "text");
+        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+            assert_eq!(nested_attrs.len(), 0);
+        } else {
+            panic!("Expected nested attributes");
+        }
+
+        // Test single nested attribute
+        let tokens = tokenize("text=[font_size=16]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_ok());
+        let attr = result.unwrap();
+        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+            assert_eq!(nested_attrs.len(), 1);
+            assert_eq!(*nested_attrs[0].name.inner(), "font_size");
+            assert!(
+                matches!(&nested_attrs[0].value, types::AttributeValue::Float(f) if *f.inner() == 16.0)
+            );
+        } else {
+            panic!("Expected nested attributes");
+        }
+
+        // Test nested attributes with mixed types
+        let tokens =
+            tokenize("text=[font_family=\"Arial\", font_size=14]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_ok());
+        let attr = result.unwrap();
+        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+            assert_eq!(nested_attrs.len(), 2);
+            assert_eq!(*nested_attrs[0].name.inner(), "font_family");
+            assert!(
+                matches!(&nested_attrs[0].value, types::AttributeValue::String(s) if s.inner() == "Arial")
+            );
+            assert_eq!(*nested_attrs[1].name.inner(), "font_size");
+            assert!(
+                matches!(&nested_attrs[1].value, types::AttributeValue::Float(f) if *f.inner() == 14.0)
+            );
+        } else {
+            panic!("Expected nested attributes");
+        }
+    }
+
+    #[test]
+    fn test_nested_attribute_whitespace() {
+        // Test nested attributes with various whitespace
+        let tokens =
+            tokenize("text=[ font_size = 12 , padding = 6.5 ]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_ok());
+        let attr = result.unwrap();
+        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+            assert_eq!(nested_attrs.len(), 2);
+            assert_eq!(*nested_attrs[0].name.inner(), "font_size");
+            assert!(
+                matches!(&nested_attrs[0].value, types::AttributeValue::Float(f) if *f.inner() == 12.0)
+            );
+            assert_eq!(*nested_attrs[1].name.inner(), "padding");
+            assert!(
+                matches!(&nested_attrs[1].value, types::AttributeValue::Float(f) if *f.inner() == 6.5)
+            );
+        } else {
+            panic!("Expected nested attributes");
+        }
+    }
+
+    #[test]
+    fn test_nested_attribute_error_handling() {
+        // Test unclosed bracket
+        let tokens = tokenize("text=[font_size=12").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_err());
+
+        // Test missing equals in nested attribute
+        let tokens = tokenize("text=[font_size 12]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_err());
+
+        // Test missing value in nested attribute
+        let tokens = tokenize("text=[font_size=]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_err());
+
+        // Test invalid comma usage in nested attributes
+        let tokens = tokenize("text=[,font_size=12]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_err());
+
+        // Test trailing comma in nested attributes (should fail)
+        let tokens = tokenize("text=[font_size=12,]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_err());
+
+        // Test nested brackets (should error - not supported)
+        let tokens = tokenize("text=[style=[curved=true]]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_text_attribute_parsing() {
+        // Test complete text attribute group
+        let tokens = tokenize(
+            "text=[font_size=16, font_family=\"Arial\", background_color=\"white\", padding=8.0]",
+        )
+        .expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_ok());
+        let attr = result.unwrap();
+        assert_eq!(*attr.name.inner(), "text");
+
+        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+            assert_eq!(nested_attrs.len(), 4);
+
+            // Check font_size
+            assert_eq!(*nested_attrs[0].name.inner(), "font_size");
+            assert!(
+                matches!(&nested_attrs[0].value, types::AttributeValue::Float(f) if *f.inner() == 16.0)
+            );
+
+            // Check font_family
+            assert_eq!(*nested_attrs[1].name.inner(), "font_family");
+            assert!(
+                matches!(&nested_attrs[1].value, types::AttributeValue::String(s) if s.inner() == "Arial")
+            );
+
+            // Check background_color (simplified name)
+            assert_eq!(*nested_attrs[2].name.inner(), "background_color");
+            assert!(
+                matches!(&nested_attrs[2].value, types::AttributeValue::String(s) if s.inner() == "white")
+            );
+
+            // Check padding (simplified name)
+            assert_eq!(*nested_attrs[3].name.inner(), "padding");
+            assert!(
+                matches!(&nested_attrs[3].value, types::AttributeValue::Float(f) if *f.inner() == 8.0)
+            );
+        } else {
+            panic!("Expected nested text attributes");
+        }
+    }
+
+    #[test]
+    fn test_text_attribute_minimal_cases() {
+        // Test empty text attributes
+        let tokens = tokenize("text=[]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_ok());
+        let attr = result.unwrap();
+        assert_eq!(*attr.name.inner(), "text");
+        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+            assert_eq!(nested_attrs.len(), 0);
+        } else {
+            panic!("Expected empty text attributes");
+        }
+
+        // Test single text attribute
+        let tokens = tokenize("text=[font_size=20]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_ok());
+        let attr = result.unwrap();
+        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+            assert_eq!(nested_attrs.len(), 1);
+            assert_eq!(*nested_attrs[0].name.inner(), "font_size");
+            assert!(
+                matches!(&nested_attrs[0].value, types::AttributeValue::Float(f) if *f.inner() == 20.0)
+            );
+        } else {
+            panic!("Expected single text attribute");
+        }
+
+        // Test text attribute with whitespace variations
+        let tokens = tokenize("text=[ font_size = 14 , font_family = \"Helvetica\" ]")
+            .expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_ok());
+        let attr = result.unwrap();
+        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+            assert_eq!(nested_attrs.len(), 2);
+            assert_eq!(*nested_attrs[0].name.inner(), "font_size");
+            assert_eq!(*nested_attrs[1].name.inner(), "font_family");
+        } else {
+            panic!("Expected text attributes with whitespace");
+        }
+    }
+
+    #[test]
+    fn test_text_attribute_type_combinations() {
+        // Test all supported text attribute types
+        let tokens = tokenize("text=[font_size=12, font_family=\"Courier\", background_color=\"#ff0000\", padding=5.5]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = attribute(&mut input);
+        assert!(result.is_ok());
+        let attr = result.unwrap();
+
+        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+            assert_eq!(nested_attrs.len(), 4);
+
+            // Verify each attribute type
+            assert!(matches!(
+                &nested_attrs[0].value,
+                types::AttributeValue::Float(_)
+            )); // font_size
+            assert!(matches!(
+                &nested_attrs[1].value,
+                types::AttributeValue::String(_)
+            )); // font_family
+            assert!(matches!(
+                &nested_attrs[2].value,
+                types::AttributeValue::String(_)
+            )); // background_color
+            assert!(matches!(
+                &nested_attrs[3].value,
+                types::AttributeValue::Float(_)
+            )); // padding
+
+            // Verify specific values
+            if let types::AttributeValue::Float(f) = &nested_attrs[0].value {
+                assert_eq!(*f.inner(), 12.0);
+            }
+            if let types::AttributeValue::String(s) = &nested_attrs[1].value {
+                assert_eq!(s.inner(), "Courier");
+            }
+            if let types::AttributeValue::String(s) = &nested_attrs[2].value {
+                assert_eq!(s.inner(), "#ff0000");
+            }
+            if let types::AttributeValue::Float(f) = &nested_attrs[3].value {
+                assert_eq!(*f.inner(), 5.5);
+            }
+        } else {
+            panic!("Expected text attributes with various types");
+        }
     }
 
     #[test]

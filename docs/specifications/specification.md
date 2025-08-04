@@ -175,12 +175,26 @@ Filament supports two types of attribute values: string literals and float liter
 
 ### 7.3 Text Attributes
 
-Text attributes work consistently for both shapes and arrows, providing unified text styling:
+Text attributes must be grouped under the `text` attribute using nested attribute syntax.
 
-- `font_size`: Size of text labels (float, e.g., `16.0`, `12.5`)
+```filament
+text=[attribute1=value1, attribute2=value2, ...]
+```
+
+Available text attributes within the `text` group:
+
+- `font_size`: Size of text labels (float, e.g., `16`, `12.5`)
 - `font_family`: Font family name (string, e.g., `"Arial"`, `"Courier New"`, `"Helvetica"`)
-- `text_background_color`: Background color for text labels (string, e.g., `"white"`, `"#f0f0f0"`, `"rgba(255,255,255,0.8)"`)
-- `text_padding`: Padding around text content (float, e.g., `5.0`, `8.5`)
+- `background_color`: Background color behind text (string, e.g., `"white"`, `"#f0f0f0"`, `"rgba(255,255,255,0.8)"`)
+- `padding`: Padding around text content (float, e.g., `5.0`, `8.5`)
+
+Example usage:
+```filament
+type StyledButton = Rectangle [
+    fill_color="blue",
+    text=[font_size=16, font_family="Arial", background_color="white", padding=8.0]
+];
+```
 
 ### 7.4 Relation-specific Attributes
 
@@ -331,7 +345,7 @@ type RedArrow = Arrow [color="red"];
 type BlueArrow = Arrow [color="blue", width=2.0];
 
 // Define relation types extending other custom types
-type ThickRedArrow = RedArrow [width=3.0, font_size=16];
+type ThickRedArrow = RedArrow [width=3.0, text=[font_size=16]];
 type OrthogonalBlueArrow = BlueArrow [style="orthogonal"];
 
 end_user as "End User": Client;

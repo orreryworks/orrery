@@ -253,17 +253,30 @@ impl TypeDefinition {
 pub struct TextAttributeExtractor;
 
 impl TextAttributeExtractor {
-    /// Extract and apply text-related attributes to a TextDefinition.
+    /// Extract and apply text-related attributes to a TextDefinition from a group of nested attributes.
     ///
-    /// Returns `Ok(true)` if the attribute was a text attribute and was processed,
-    /// `Ok(false)` if the attribute is not a text attribute,
-    /// `Err(...)` if the attribute is a text attribute but has an invalid value.
-    fn extract_attribute(
+    /// Returns `Ok(())` if all attributes were processed successfully,
+    /// `Err(...)` if any attribute has an invalid value or is not a valid text attribute.
+    fn extract_text_attributes(
+        text_def: &mut draw::TextDefinition,
+        attrs: &[parser_types::Attribute],
+    ) -> Result<(), ElaborationDiagnosticError> {
+        for attr in attrs {
+            Self::extract_single_attribute(text_def, attr)?;
+        }
+        Ok(())
+    }
+
+    /// Extract and apply a single text-related attribute to a TextDefinition.
+    ///
+    /// Returns `Ok(())` if the attribute was processed successfully,
+    /// `Err(...)` if the attribute has an invalid value or is not a valid text attribute.
+    fn extract_single_attribute(
         text_def: &mut draw::TextDefinition,
         attr: &parser_types::Attribute,
-    ) -> Result<bool, ElaborationDiagnosticError> {
+    ) -> Result<(), ElaborationDiagnosticError> {
         let name = attr.name.inner();
-        let value = attr.value.inner();
+        let value = &attr.value;
 
         match *name {
             "font_size" => {
@@ -276,23 +289,23 @@ impl TextAttributeExtractor {
                     )
                 })?;
                 text_def.set_font_size(val);
-                Ok(true)
+                Ok(())
             }
             "font_family" => {
                 text_def.set_font_family(value.as_str().map_err(|err| {
                     ElaborationDiagnosticError::from_span(
-                        err,
+                        err.to_string(),
                         attr.span(),
                         "invalid font family",
                         Some("Font family must be a string value".to_string()),
                     )
                 })?);
-                Ok(true)
+                Ok(())
             }
-            "text_background_color" => {
+            "background_color" => {
                 let val = Color::new(value.as_str().map_err(|err| {
                     ElaborationDiagnosticError::from_span(
-                        err,
+                        err.to_string(),
                         attr.span(),
                         "invalid color value",
                         Some("Color values must be strings".to_string()),
@@ -300,28 +313,36 @@ impl TextAttributeExtractor {
                 })?)
                 .map_err(|err| {
                     ElaborationDiagnosticError::from_span(
-                        format!("Invalid text_background_color: {err}"),
+                        format!("Invalid background_color: {err}"),
                         attr.span(),
                         "invalid color",
                         Some("Use a CSS color".to_string()),
                     )
                 })?;
                 text_def.set_background_color(Some(val));
-                Ok(true)
+                Ok(())
             }
-            "text_padding" => {
+            "padding" => {
                 let val = value.as_float().map_err(|err| {
                     ElaborationDiagnosticError::from_span(
-                        format!("Invalid text_padding value: {err}"),
+                        format!("Invalid padding value: {err}"),
                         attr.span(),
                         "invalid number",
                         Some("Text padding must be a positive number".to_string()),
                     )
                 })?;
                 text_def.set_padding(Insets::uniform(val));
-                Ok(true)
+                Ok(())
             }
-            _ => Ok(false), // Not a text attribute
+            name => Err(ElaborationDiagnosticError::from_span(
+                format!("Unknown text attribute '{name}'"),
+                attr.span(),
+                "unknown text attribute",
+                Some(
+                    "Valid text attributes are: font_size, font_family, background_color, padding"
+                        .to_string(),
+                ),
+            )),
         }
     }
 }
@@ -341,13 +362,13 @@ impl TypeDefinition {
                 // Process shape attributes
                 for attr in attributes {
                     let name = attr.name.inner();
-                    let value = attr.value.inner();
+                    let value = &attr.value;
 
                     match *name {
                         "fill_color" => {
                             let val = Color::new(value.as_str().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
-                                    err,
+                                    err.to_string(),
                                     attr.span(),
                                     "invalid color value",
                                     Some("Color values must be strings".to_string()),
@@ -373,7 +394,7 @@ impl TypeDefinition {
                         "line_color" => {
                             let val = Color::new(value.as_str().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
-                                    err,
+                                    err.to_string(),
                                     attr.span(),
                                     "invalid color value",
                                     Some("Color values must be strings".to_string()),
@@ -432,19 +453,33 @@ impl TypeDefinition {
                                 )
                             })?;
                         }
-                        name => {
-                            // Try to extract text attributes first
-                            if !TextAttributeExtractor::extract_attribute(&mut text_def, attr)? {
-                                return Err(ElaborationDiagnosticError::from_span(
-                                    format!("Unknown shape attribute '{name}'"),
+                        "text" => {
+                            // Handle nested text attributes
+                            let nested_attrs = value.as_attributes().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
                                     attr.span(),
-                                    "unknown attribute",
-                                    Some(
-                                        "Valid shape attributes are: fill_color, line_color, line_width, rounded, font_size, font_family, text_background_color, text_padding"
-                                            .to_string(),
-                                    ),
-                                ));
-                            }
+                                    "invalid text attribute value",
+                                    Some("Text attribute must contain nested attributes like [font_size=12, padding=6.5]".to_string()),
+                                )
+                            })?;
+
+                            // Process all nested text attributes
+                            TextAttributeExtractor::extract_text_attributes(
+                                &mut text_def,
+                                nested_attrs,
+                            )?;
+                        }
+                        name => {
+                            return Err(ElaborationDiagnosticError::from_span(
+                                format!("Unknown shape attribute '{name}'"),
+                                attr.span(),
+                                "unknown attribute",
+                                Some(
+                                    "Valid shape attributes are: fill_color, line_color, line_width, rounded, text=[...]"
+                                        .to_string(),
+                                ),
+                            ));
                         }
                     }
                 }
@@ -457,13 +492,13 @@ impl TypeDefinition {
                 // Process arrow attributes
                 for attr in attributes {
                     let name = attr.name.inner();
-                    let value = attr.value.inner();
+                    let value = &attr.value;
 
                     match *name {
                         "color" => {
                             let val = Color::new(value.as_str().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
-                                    err,
+                                    err.to_string(),
                                     attr.span(),
                                     "invalid color value",
                                     Some("Color values must be strings".to_string()),
@@ -494,7 +529,7 @@ impl TypeDefinition {
                             let val =
                                 draw::ArrowStyle::from_str(value.as_str().map_err(|err| {
                                     ElaborationDiagnosticError::from_span(
-                                        err,
+                                        err.to_string(),
                                         attr.span(),
                                         "invalid style value",
                                         Some("Style values must be strings".to_string()),
@@ -513,19 +548,33 @@ impl TypeDefinition {
                                 })?;
                             new_arrow_def.set_style(val);
                         }
-                        name => {
-                            // Try to extract text attributes first
-                            if !TextAttributeExtractor::extract_attribute(&mut text_def, attr)? {
-                                return Err(ElaborationDiagnosticError::from_span(
-                                    format!("Unknown arrow attribute '{name}'"),
+                        "text" => {
+                            // Handle nested text attributes
+                            let nested_attrs = value.as_attributes().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
                                     attr.span(),
-                                    "unknown attribute",
-                                    Some(
-                                        "Valid arrow attributes are: color, width, style, font_size, font_family, text_background_color, text_padding"
-                                            .to_string(),
-                                    ),
-                                ));
-                            }
+                                    "invalid text attribute value",
+                                    Some("Text attribute must contain nested attributes like [font_size=12, padding=6.5]".to_string()),
+                                )
+                            })?;
+
+                            // Process all nested text attributes
+                            TextAttributeExtractor::extract_text_attributes(
+                                &mut text_def,
+                                nested_attrs,
+                            )?;
+                        }
+                        name => {
+                            return Err(ElaborationDiagnosticError::from_span(
+                                format!("Unknown arrow attribute '{name}'"),
+                                attr.span(),
+                                "unknown attribute",
+                                Some(
+                                    "Valid arrow attributes are: color, width, style, text=[...]"
+                                        .to_string(),
+                                ),
+                            ));
                         }
                     }
                 }
@@ -587,5 +636,145 @@ impl TypeDefinition {
             )),
             Rc::clone(default_arrow_definition),
         ]
+    }
+}
+
+#[cfg(test)]
+mod elaborate_tests {
+    use super::*;
+    use crate::ast::span::{Span, Spanned};
+
+    fn create_test_attribute(
+        name: &'static str,
+        value: parser_types::AttributeValue<'static>,
+    ) -> parser_types::Attribute<'static> {
+        parser_types::Attribute {
+            name: Spanned::new(name, Span::default()),
+            value,
+        }
+    }
+
+    fn create_string_value(s: &str) -> parser_types::AttributeValue<'static> {
+        parser_types::AttributeValue::String(Spanned::new(s.to_string(), Span::default()))
+    }
+
+    fn create_float_value(f: f32) -> parser_types::AttributeValue<'static> {
+        parser_types::AttributeValue::Float(Spanned::new(f, Span::default()))
+    }
+
+    #[test]
+    fn test_text_attribute_extractor_all_attributes() {
+        let mut text_def = draw::TextDefinition::new();
+
+        let attributes = vec![
+            create_test_attribute("font_size", create_float_value(16.0)),
+            create_test_attribute("font_family", create_string_value("Arial")),
+            create_test_attribute("background_color", create_string_value("white")),
+            create_test_attribute("padding", create_float_value(8.0)),
+        ];
+
+        let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_text_attribute_extractor_empty_attributes() {
+        let mut text_def = draw::TextDefinition::new();
+        let attributes = vec![];
+
+        let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_text_attribute_extractor_invalid_attribute_name() {
+        let mut text_def = draw::TextDefinition::new();
+        let attributes = vec![
+            create_test_attribute("font_size", create_float_value(16.0)),
+            create_test_attribute("invalid_attribute", create_string_value("test")),
+        ];
+
+        let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
+        assert!(result.is_err());
+
+        if let Err(error) = result {
+            let error_message = error.to_string();
+            assert!(error_message.contains("Unknown text attribute 'invalid_attribute'"));
+        }
+    }
+
+    #[test]
+    fn test_text_attribute_extractor_invalid_value_types() {
+        // Test font_size with string value (should be float)
+        let mut text_def = draw::TextDefinition::new();
+        let attributes = vec![create_test_attribute(
+            "font_size",
+            create_string_value("not_a_number"),
+        )];
+        let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
+        assert!(result.is_err());
+
+        // Test font_family with float value (should be string)
+        let mut text_def = draw::TextDefinition::new();
+        let attributes = vec![create_test_attribute(
+            "font_family",
+            create_float_value(123.0),
+        )];
+        let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_type_definition_with_text_attributes() {
+        // Create a base rectangle type
+        let base_id = TypeId::from_name("Rectangle");
+        let base_text_def = draw::TextDefinition::new();
+        let base_shape_def = Box::new(draw::RectangleDefinition::new());
+        let base_type = TypeDefinition::new_shape(base_id, base_text_def, base_shape_def);
+
+        // Create attributes including text group
+        let text_attrs = vec![
+            create_test_attribute("font_size", create_float_value(14.0)),
+            create_test_attribute("font_family", create_string_value("Arial")),
+        ];
+
+        let attributes = vec![
+            create_test_attribute("fill_color", create_string_value("blue")),
+            create_test_attribute("text", parser_types::AttributeValue::Attributes(text_attrs)),
+        ];
+
+        // Create new type from base with text attributes
+        let new_id = TypeId::from_name("StyledRectangle");
+        let result = TypeDefinition::from_base(new_id, &base_type, &attributes);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_type_definition_text_not_nested_attributes() {
+        // Create a base rectangle type
+        let base_id = TypeId::from_name("Rectangle");
+        let base_text_def = draw::TextDefinition::new();
+        let base_shape_def = Box::new(draw::RectangleDefinition::new());
+        let base_type = TypeDefinition::new_shape(base_id, base_text_def, base_shape_def);
+
+        // Try to use text with string value instead of nested attributes
+        let attributes = vec![
+            create_test_attribute("fill_color", create_string_value("blue")),
+            create_test_attribute(
+                "text",
+                create_string_value("this_should_be_nested_attributes"),
+            ),
+        ];
+
+        // This should fail because text must contain nested attributes
+        let new_id = TypeId::from_name("InvalidTextType");
+        let result = TypeDefinition::from_base(new_id, &base_type, &attributes);
+
+        assert!(result.is_err());
+        if let Err(error) = result {
+            let error_message = format!("{}", error);
+            assert!(error_message.contains("Expected nested attributes"));
+        }
     }
 }

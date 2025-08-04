@@ -23,68 +23,123 @@ impl TypeDefinition<'_> {
     }
 }
 
-/// Attribute values can be either strings or float numbers
-#[derive(Debug, Clone, PartialEq)]
-pub enum AttributeValue {
-    String(String),
-    Float(f32),
+/// Attribute values can be either strings, float numbers, or nested attributes
+#[derive(Debug, Clone)]
+pub enum AttributeValue<'a> {
+    String(Spanned<String>),
+    Float(Spanned<f32>),
+    Attributes(Vec<Attribute<'a>>),
 }
 
-impl fmt::Display for AttributeValue {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AttributeValue::String(s) => write!(f, "\"{s}\""),
-            AttributeValue::Float(n) => write!(f, "{n}"),
+impl<'a> PartialEq for AttributeValue<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (AttributeValue::String(s1), AttributeValue::String(s2)) => s1.inner() == s2.inner(),
+            (AttributeValue::Float(f1), AttributeValue::Float(f2)) => f1.inner() == f2.inner(),
+            (AttributeValue::Attributes(a1), AttributeValue::Attributes(a2)) => a1 == a2,
+            _ => false,
         }
     }
 }
 
-impl AttributeValue {
-    /// Extract a string reference, returning an error if this is not a string value
-    pub fn as_str(&self) -> Result<&str, String> {
+impl<'a> fmt::Display for AttributeValue<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AttributeValue::String(s) => Ok(s),
-            AttributeValue::Float(f) => Err(format!("Expected string value, found float: {f}")),
+            AttributeValue::String(s) => write!(f, "\"{}\"", s.inner()),
+            AttributeValue::Float(n) => write!(f, "{}", n.inner()),
+            AttributeValue::Attributes(attrs) => {
+                write!(f, "[")?;
+                for (i, attr) in attrs.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}={}", attr.name.inner(), attr.value)?;
+                }
+                write!(f, "]")
+            }
+        }
+    }
+}
+
+impl<'a> AttributeValue<'a> {
+    /// Get the span for this attribute value
+    pub fn span(&self) -> Span {
+        match self {
+            AttributeValue::String(spanned) => spanned.span(),
+            AttributeValue::Float(spanned) => spanned.span(),
+            AttributeValue::Attributes(attrs) => {
+                if attrs.is_empty() {
+                    Span::default()
+                } else {
+                    attrs
+                        .iter()
+                        .map(|attr| attr.span())
+                        .reduce(|acc, span| acc.union(span))
+                        .unwrap_or_default()
+                }
+            }
+        }
+    }
+
+    /// Extract a string reference, returning an error if this is not a string value
+    pub fn as_str(&self) -> Result<&str, &'static str> {
+        if let AttributeValue::String(s) = self {
+            Ok(s.inner())
+        } else {
+            Err("Expected string value")
         }
     }
 
     /// Extract a float value, returning an error if this is not a float value
-    pub fn as_float(&self) -> Result<f32, String> {
-        match self {
-            AttributeValue::Float(f) => Ok(*f),
-            AttributeValue::String(s) => Err(format!("Expected float value, found string: '{s}'")),
+    pub fn as_float(&self) -> Result<f32, &'static str> {
+        if let AttributeValue::Float(f) = self {
+            Ok(*f.inner())
+        } else {
+            Err("Expected float value")
         }
     }
 
     /// Extract a numeric value as u32 (casting f32 if necessary)
-    pub fn as_u32(&self) -> Result<u32, String> {
-        match self {
-            AttributeValue::Float(f) => Ok(*f as u32),
-            AttributeValue::String(s) => Err(format!("Expected float value, found string: '{s}'")),
+    pub fn as_u32(&self) -> Result<u32, &'static str> {
+        if let AttributeValue::Float(f) = self {
+            Ok(*f.inner() as u32)
+        } else {
+            Err("Expected float value")
         }
     }
 
     /// Extract a numeric value as usize (casting f32 if necessary)
-    pub fn as_usize(&self) -> Result<usize, String> {
-        match self {
-            AttributeValue::Float(f) => Ok(*f as usize),
-            AttributeValue::String(s) => Err(format!("Expected float value, found string: '{s}'")),
+    pub fn as_usize(&self) -> Result<usize, &'static str> {
+        if let AttributeValue::Float(f) = self {
+            Ok(*f.inner() as usize)
+        } else {
+            Err("Expected float value")
         }
     }
 
     /// Extract a numeric value as u16 (casting f32 if necessary)
-    pub fn as_u16(&self) -> Result<u16, String> {
-        match self {
-            AttributeValue::Float(f) => Ok(*f as u16),
-            AttributeValue::String(s) => Err(format!("Expected float value, found string: '{s}'")),
+    pub fn as_u16(&self) -> Result<u16, &'static str> {
+        if let AttributeValue::Float(f) = self {
+            Ok(*f.inner() as u16)
+        } else {
+            Err("Expected float value")
+        }
+    }
+
+    /// Extract nested attributes, returning an error if this is an attributes value
+    pub fn as_attributes(&self) -> Result<&[Attribute<'a>], &'static str> {
+        if let AttributeValue::Attributes(attrs) = self {
+            Ok(attrs)
+        } else {
+            Err("Expected nested attributes")
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Attribute<'a> {
     pub name: Spanned<&'a str>,
-    pub value: Spanned<AttributeValue>,
+    pub value: AttributeValue<'a>,
 }
 
 #[derive(Debug)]

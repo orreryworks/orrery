@@ -155,7 +155,7 @@ Float literals are stored as IEEE 754 single-precision floating-point numbers:
 
 Float literals are used for:
 - **Dimensions**: `line_width=2.5`, `rounded=10`
-- **Text sizing**: `font_size=16`, `text_padding=8.0`
+- **Text sizing**: `text=[font_size=16, padding=8.0]`
 - **Positioning**: Coordinate and measurement values
 - **Relation widths**: `width=2`
 
@@ -169,8 +169,7 @@ component: Rectangle [
 
 // Text attributes
 label: Rectangle [
-    font_size=16,       // Text size (whole number)
-    text_padding=8.5,   // Padding around text
+    text=[font_size=16, padding=8.5]  // Nested text attributes
 ];
 
 // Relation attributes
@@ -196,7 +195,7 @@ component: Rectangle [
     fill_color="blue",      // String literal
     line_width=2.5,         // Float literal
     rounded=10,             // Float literal
-    font_family="Arial"     // String literal
+    text=[font_family="Arial"]  // Nested text attributes
 ];
 
 // ✅ Correct: Mixed attribute types
@@ -229,10 +228,7 @@ component: Rectangle [
 | `line_color` | String | `"blue"`, `"rgb(0,0,255)"` |
 | `line_width` | Float | `2.0`, `1.5`, `.5`, `2` |
 | `rounded` | Float | `10.0`, `5.`, `1e1`, `10` |
-| `font_size` | Float | `16.0`, `12.5`, `16` |
-| `font_family` | String | `"Arial"`, `"Helvetica"` |
-| `text_padding` | Float | `8.0`, `5.5` |
-| `text_background_color` | String | `"white"`, `"#f0f0f0"` |
+| `text` (group) | Nested | `[font_size=16, padding=8.0]` |
 | `width` | Float | `2.0`, `3.5`, `2` (relations) |
 | `color` | String | `"red"`, `"green"` (relations) |
 | `style` | String | `"curved"`, `"orthogonal"` |
