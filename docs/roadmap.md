@@ -29,6 +29,7 @@ The Filament roadmap serves as a central repository for tracking language evolut
 - [Adding More UML Shapes](#adding-more-uml-shapes)
 - [Support Shapes with Custom Icons](#support-shapes-with-custom-icons)
 - [Custom Shape Definitions](#custom-shape-definitions)
+- [Alpha Transparency Support](#alpha-transparency-support)
 - [Animation Support](#animation-support)
 
 ### 2.6 Tooling
@@ -420,6 +421,48 @@ type PulsingComponent = Rectangle [
     ]
 ];
 ```
+
+---
+
+#### Alpha Transparency Support
+
+**Description**:
+Add comprehensive support for alpha transparency (opacity) in all color attributes throughout Filament, enabling semi-transparent colors for more sophisticated visual designs.
+
+**Current Limitation**:
+Currently, alpha transparency is only partially supported in some color contexts. A comprehensive system is needed to support RGBA colors consistently across all color attributes.
+
+**Proposed Implementation**:
+```filament
+type SemiTransparentBox = Rectangle [
+    fill_color="rgba(255, 0, 0, 0.5)",     // Semi-transparent red background
+    line_color="rgba(0, 0, 255, 0.8)",     // Semi-transparent blue border
+    text=[
+        color="rgba(255, 255, 255, 0.9)",   // Semi-transparent white text
+        background_color="rgba(0, 0, 0, 0.3)" // Semi-transparent black text background
+    ]
+];
+
+// Relations with transparency
+component1 -> [color="rgba(0, 255, 0, 0.6)"] component2: "Semi-transparent relation";
+
+// Diagram background with transparency
+diagram component [background_color="rgba(240, 240, 240, 0.8)"];
+```
+
+**Benefits**:
+- Enhanced visual design capabilities
+- Support for layered visual effects
+- Better integration with complex backgrounds
+- Professional-looking semi-transparent overlays
+- Consistent alpha support across all color attributes
+
+**Implementation Considerations**:
+- Ensure RGBA support in all color parsing contexts
+- Maintain backward compatibility with existing color formats
+- Proper SVG opacity attribute generation
+- Documentation updates for RGBA syntax
+- Error handling for invalid alpha values (must be 0.0-1.0)
 
 ---
 
