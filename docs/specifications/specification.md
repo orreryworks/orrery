@@ -185,6 +185,7 @@ Available text attributes within the `text` group:
 
 - `font_size`: Size of text labels (float, e.g., `16`, `12.5`)
 - `font_family`: Font family name (string, e.g., `"Arial"`, `"Courier New"`, `"Helvetica"`)
+- `color`: Text color (string, e.g., `"red"`, `"#ff0000"`, `"rgb(255,0,0)"`, `"rgba(255,0,0,0.5)"`)
 - `background_color`: Background color behind text (string, e.g., `"white"`, `"#f0f0f0"`, `"rgba(255,255,255,0.8)"`)
 - `padding`: Padding around text content (float, e.g., `5.0`, `8.5`)
 
@@ -192,7 +193,18 @@ Example usage:
 ```filament
 type StyledButton = Rectangle [
     fill_color="blue",
-    text=[font_size=16, font_family="Arial", background_color="white", padding=8.0]
+    text=[font_size=16, font_family="Arial", color="white", background_color="blue", padding=8.0]
+];
+
+type WarningButton = Rectangle [
+    fill_color="white",
+    text=[color="red", font_size=18, background_color="yellow", padding=5.0]
+];
+
+// Text with alpha transparency
+type SemiTransparentText = Rectangle [
+    fill_color="white",
+    text=[color="rgba(255, 0, 0, 0.5)", font_size=16]
 ];
 ```
 
@@ -202,7 +214,7 @@ type StyledButton = Rectangle [
 - `width`: The thickness of the relation line (float, e.g., `2.0`, `1.5`)
 - `style`: The style of the arrow line (string: `"straight"`, `"curved"`, or `"orthogonal"`, default is `"straight"`)
 
-Relations also support all text attributes listed in section 6.2 for styling their labels.
+Relations also support all text attributes listed in section 7.3 for styling their labels, including text color.
 
 ### 7.5 Relation Labels
 

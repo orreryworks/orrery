@@ -334,12 +334,32 @@ impl TextAttributeExtractor {
                 text_def.set_padding(Insets::uniform(val));
                 Ok(())
             }
+            "color" => {
+                let val = Color::new(value.as_str().map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        err.to_string(),
+                        attr.span(),
+                        "invalid color value",
+                        Some("Color values must be strings".to_string()),
+                    )
+                })?)
+                .map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        format!("Invalid color: {err}"),
+                        attr.span(),
+                        "invalid color",
+                        Some("Use a CSS color".to_string()),
+                    )
+                })?;
+                text_def.set_color(Some(val));
+                Ok(())
+            }
             name => Err(ElaborationDiagnosticError::from_span(
                 format!("Unknown text attribute '{name}'"),
                 attr.span(),
                 "unknown text attribute",
                 Some(
-                    "Valid text attributes are: font_size, font_family, background_color, padding"
+                    "Valid text attributes are: font_size, font_family, background_color, padding, color"
                         .to_string(),
                 ),
             )),
@@ -665,16 +685,29 @@ mod elaborate_tests {
     #[test]
     fn test_text_attribute_extractor_all_attributes() {
         let mut text_def = draw::TextDefinition::new();
-
         let attributes = vec![
             create_test_attribute("font_size", create_float_value(16.0)),
-            create_test_attribute("font_family", create_string_value("Arial")),
-            create_test_attribute("background_color", create_string_value("white")),
-            create_test_attribute("padding", create_float_value(8.0)),
+            create_test_attribute("font_family", create_string_value("Helvetica")),
+            create_test_attribute("background_color", create_string_value("red")),
+            create_test_attribute("padding", create_float_value(5.0)),
+            create_test_attribute("color", create_string_value("blue")),
         ];
-
         let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_text_attribute_extractor_color_attribute() {
+        let mut text_def = draw::TextDefinition::new();
+        let attributes = vec![create_test_attribute("color", create_string_value("red"))];
+        let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
+        assert!(result.is_ok());
+
+        // Test with invalid color value (should be string)
+        let mut text_def = draw::TextDefinition::new();
+        let attributes = vec![create_test_attribute("color", create_float_value(255.0))];
+        let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
+        assert!(result.is_err());
     }
 
     #[test]

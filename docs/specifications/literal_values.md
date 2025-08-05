@@ -195,14 +195,32 @@ component: Rectangle [
     fill_color="blue",      // String literal
     line_width=2.5,         // Float literal
     rounded=10,             // Float literal
-    text=[font_family="Arial"]  // Nested text attributes
+    text=[font_family="Arial", color="white"]  // Nested text attributes with color
 ];
 
 // ✅ Correct: Mixed attribute types
 type Database = Rectangle [
     fill_color="lightblue", // String
     rounded=10,             // Float
-    line_width=2            // Float
+    line_width=2,           // Float
+    text=[color="darkblue", font_size=14]  // Text with color
+];
+
+// ✅ Correct: Text colors with various formats
+type ColorfulText = Rectangle [
+    fill_color="white",
+    text=[
+        color="red",                    // Named color
+        font_size=16,                   // Float
+        background_color="#ffff00",     // Hex color
+        padding=5.0                     // Float
+    ]
+];
+
+// ✅ Correct: Semi-transparent text color
+type TransparentText = Rectangle [
+    fill_color="black",
+    text=[color="rgba(255, 255, 255, 0.7)", font_size=18]  // Alpha transparency
 ];
 ```
 
@@ -218,6 +236,16 @@ component: Rectangle [
 component: Rectangle [
     fill_color=255.0        // Error: Expected string, found float
 ];
+
+// ❌ Incorrect: Using float for text color
+component: Rectangle [
+    text=[color=255.0]      // Error: Expected string, found float
+];
+
+// ❌ Incorrect: Using numeric value for text color
+component: Rectangle [
+    text=[color=16777215]   // Error: Expected string, found float
+];
 ```
 
 ### 4.4 Attribute Type Reference
@@ -228,7 +256,7 @@ component: Rectangle [
 | `line_color` | String | `"blue"`, `"rgb(0,0,255)"` |
 | `line_width` | Float | `2.0`, `1.5`, `.5`, `2` |
 | `rounded` | Float | `10.0`, `5.`, `1e1`, `10` |
-| `text` (group) | Nested | `[font_size=16, padding=8.0]` |
+| `text` (group) | Nested | `[color="red", font_size=16, padding=8.0]` |
 | `width` | Float | `2.0`, `3.5`, `2` (relations) |
 | `color` | String | `"red"`, `"green"` (relations) |
 | `style` | String | `"curved"`, `"orthogonal"` |

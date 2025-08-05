@@ -16,6 +16,7 @@ pub struct TextDefinition {
     font_family: String,
     font_size: u16,
     background_color: Option<Color>,
+    color: Option<Color>,
     padding: Insets,
 }
 
@@ -50,6 +51,18 @@ impl TextDefinition {
         self.background_color = color;
     }
 
+    /// Sets the text color for the text content.
+    ///
+    /// When set to `Some(color)`, text will be rendered in the specified color.
+    /// When set to `None`, the default text color (usually black) will be used.
+    ///
+    /// # Arguments
+    ///
+    /// * `color` - Optional text color. Use `None` for default color.
+    pub fn set_color(&mut self, color: Option<Color>) {
+        self.color = color;
+    }
+
     /// Sets the padding around the text content.
     ///
     /// Padding affects the size of the background rectangle (if present) and creates
@@ -72,6 +85,11 @@ impl TextDefinition {
         self.background_color.as_ref()
     }
 
+    /// Returns a reference to the text color, if set.
+    fn color(&self) -> Option<&Color> {
+        self.color.as_ref()
+    }
+
     /// Returns the current padding configuration.
     fn padding(&self) -> Insets {
         self.padding
@@ -83,6 +101,7 @@ impl Default for TextDefinition {
         Self {
             font_size: 15,
             background_color: None,
+            color: None,
             padding: Insets::default(),
             font_family: "Arial".to_string(),
         }
@@ -124,13 +143,20 @@ impl Drawable for Text {
         let text_size = self.calculate_size();
         let padding = self.definition.padding();
 
-        let rendered_text = svg_element::Text::new(self.content())
+        let mut rendered_text = svg_element::Text::new(self.content())
             .set("x", position.x())
             .set("y", position.y())
             .set("text-anchor", "middle")
             .set("dominant-baseline", "middle")
             .set("font-family", self.definition.font_family())
             .set("font-size", self.definition.font_size());
+
+        // Set text color if specified
+        if let Some(color) = self.definition.color() {
+            rendered_text = rendered_text
+                .set("fill", color.to_string())
+                .set("fill-opacity", color.alpha());
+        }
 
         // Add background rectangle if color is specified
         if let Some(bg_color) = self.definition.background_color() {

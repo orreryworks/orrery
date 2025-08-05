@@ -1,0 +1,65 @@
+// Text Color Showcase - Comprehensive demonstration of text color functionality in Filament
+//
+// This example demonstrates:
+// - Basic named colors (red, blue, green, purple)
+// - Hex color values (#ff6600, #dc143c)
+// - Text colors with background colors (highlighted text)
+// - Different font families (Arial, Helvetica, Courier New)
+// - Various font sizes (12px, 16px, 18px, 20px)
+// - Default text color behavior (browser default)
+// - Dark theme text styling (white text on dark backgrounds)
+// - Custom type definitions with predefined text colors
+// - Integration with other attributes (padding, rounded corners, etc.)
+// - Relation labels with colored text (including alpha transparency)
+diagram component;
+
+// Components with different text colors
+red_text: Rectangle [
+    fill_color="white",
+    text=[color="red", font_size=16]
+];
+
+blue_text: Rectangle [
+    fill_color="lightgray",
+    text=[color="blue", font_size=18]
+];
+
+green_text: Rectangle [
+    fill_color="white",
+    text=[color="green", font_size=14]
+];
+
+// Text color with background
+highlighted: Rectangle [
+    fill_color="white",
+    text=[color="purple", background_color="yellow", font_size=16, padding=5.0]
+];
+
+// Default text color (no color specified)
+default_text: Rectangle [
+    fill_color="lightblue",
+    text=[font_size=16, font_family="Arial"]
+];
+
+// Hex color values
+hex_color: Rectangle [
+    fill_color="white",
+    text=[color="#ff6600", font_size=20]
+];
+
+// Relations with colored text labels
+red_text -> [text=[color="red", font_size=14]] blue_text: "Red Label";
+
+blue_text -> [text=[color="darkgreen", background_color="lightgreen", padding=3.0]] green_text: "Green with Background";
+
+green_text -> [text=[color="purple", font_size=18, font_family="Arial"]] highlighted: "Large Purple Text";
+
+highlighted -> [text=[color="rgba(255, 0, 0, 0.5)", background_color="white", padding=4.0]] default_text: "Semi-transparent Red";
+
+default_text -> [text=[color="#0066cc", font_family="Courier New", font_size=12]] hex_color: "Blue Monospace";
+
+// Additional relations to show more color variations
+hex_color -> [text=[color="rgba(128, 0, 128, 0.7)", font_size=16]] red_text: "Semi-transparent Purple";
+
+// Relation with default text color for comparison
+blue_text -> [text=[background_color="yellow", padding=2.0]] highlighted: "Default Color with Background";

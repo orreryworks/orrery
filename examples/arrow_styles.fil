@@ -1,11 +1,27 @@
 // This example demonstrates all available arrow styles in Filament
 diagram component;
 
-// Define custom types
-type Database = Rectangle [fill_color="lightblue", rounded=10.0, line_width=2.0];
-type Service = Rectangle [fill_color="#e6f3ff", rounded=5.0];
-type Client = Oval [fill_color="#ffe6e6"];
-type ExternalSystem = Rectangle [fill_color="#f0f0f0", line_color="#666666"];
+// Define custom types with text color styling
+type Database = Rectangle [
+    fill_color="lightblue",
+    rounded=10.0,
+    line_width=2.0,
+    text=[color="darkblue", font_size=14, font_family="Courier New"]
+];
+type Service = Rectangle [
+    fill_color="#e6f3ff",
+    rounded=5.0,
+    text=[color="#0066cc", font_size=16]
+];
+type Client = Oval [
+    fill_color="#ffe6e6",
+    text=[color="#cc0000", font_size=18, font_family="Arial"]
+];
+type ExternalSystem = Rectangle [
+    fill_color="#f0f0f0",
+    line_color="#666666",
+    text=[color="#333333", font_size=15]
+];
 
 // Define components with a layout that will show arrow styles clearly
 client: Client;
@@ -24,22 +40,22 @@ storage: Rectangle [fill_color="#f9f9f9"] {
 
 external_api: ExternalSystem;
 
-// Define relationships with different arrow styles
+// Define relationships with different arrow styles and text colors
 
-// Straight arrows (default style)
-client -> services::api_gateway: "Straight (default)";
-services::user_service -> storage::user_db: "Straight";
+// Straight arrows (default style) with colored text
+client -> [text=[color="black"]] services::api_gateway: "Straight (default)";
+services::user_service -> [text=[color="darkblue", background_color="lightblue", padding=3.0]] storage::user_db: "Straight";
 
-// Curved arrows
-services::api_gateway -> [style="curved", color="blue", width=2.0] services::auth_service: "Curved";
-services::payment_service -> [style="curved", color="green"] external_api: "Curved";
+// Curved arrows with matching text colors
+services::api_gateway -> [style="curved", color="blue", width=2.0, text=[color="blue", font_size=14]] services::auth_service: "Curved";
+services::payment_service -> [style="curved", color="green", text=[color="darkgreen", background_color="lightgreen"]] external_api: "Curved";
 
-// Orthogonal arrows (follows x and y axes only)
-services::api_gateway -> [style="orthogonal", color="purple", width=2.0] services::user_service: "Orthogonal";
-services::auth_service -> [style="orthogonal", color="red"] services::payment_service: "Orthogonal";
-storage::payment_db -> [style="orthogonal", color="orange"] services::payment_service: "Orthogonal";
+// Orthogonal arrows with contrasting text colors
+services::api_gateway -> [style="orthogonal", color="purple", width=2.0, text=[color="purple", font_family="Arial", font_size=16]] services::user_service: "Orthogonal";
+services::auth_service -> [style="orthogonal", color="red", text=[color="red", background_color="white", padding=4.0]] services::payment_service: "Orthogonal";
+storage::payment_db -> [style="orthogonal", color="orange", text=[color="darkorange", font_size=13]] services::payment_service: "Orthogonal";
 
-// Mix of styles with different relation types
-client <- [style="curved", color="#666666"] external_api: "Response";
-services::user_service <-> [style="orthogonal", color="#333333"] storage::payment_db: "Read/Write";
-services::payment_service - [style="straight", color="#999999"] storage::user_db;
+// Mix of styles with different relation types and text styling
+client <- [style="curved", color="#666666", text=[color="#666666", font_family="Helvetica"]] external_api: "Response";
+services::user_service <-> [style="orthogonal", color="#333333", text=[color="white", background_color="#333333", padding=5.0]] storage::payment_db: "Read/Write";
+services::payment_service - [style="straight", color="#999999", text=[color="#666666", font_size=12]] storage::user_db: "Simple connection";

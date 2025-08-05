@@ -28,7 +28,6 @@ The Filament roadmap serves as a central repository for tracking language evolut
 ### 2.5 Rendering
 - [Adding More UML Shapes](#adding-more-uml-shapes)
 - [Support Shapes with Custom Icons](#support-shapes-with-custom-icons)
-- [Add Text Color Support](#add-text-color-support)
 - [Custom Shape Definitions](#custom-shape-definitions)
 - [Animation Support](#animation-support)
 
@@ -388,28 +387,6 @@ type CustomService = Rectangle [
 
 ---
 
-#### Add Text Color Support
-
-**Description**:
-Add support for customizing text color in all text-supporting elements.
-
-**Proposed Implementation**:
-```filament
-type WarningComponent = Rectangle [
-    fill_color="yellow",
-    text=[font_size=16, text_color="red", background_color="white"]
-];
-
-user -> service: "Request" [text=[text_color="blue"]];
-```
-
-**Benefits**:
-- Better visual hierarchy
-- Improved accessibility options
-- More styling flexibility
-
----
-
 #### Custom Shape Definitions
 
 **Description**:
@@ -604,5 +581,3 @@ Replace current panic-based error handling with structured error reporting using
 - Migration from panic-based error handling
 - Integration with existing error reporting system
 - Maintaining source location accuracy
-
-
