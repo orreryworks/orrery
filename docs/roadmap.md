@@ -10,7 +10,9 @@ The Filament roadmap serves as a central repository for tracking language evolut
 
 ### 2.1 Language Core
 - [Named Types for Nested Attributes](#named-types-for-nested-attributes)
-- [Support Sequence Diagram Span (Activation)](#support-sequence-diagram-span-activation)
+- [Explicit Activate/Deactivate Statements](#explicit-activatedeactivate-statements)
+- [Scoped Activate Blocks](#scoped-activate-blocks)
+- [Relation-Triggered Activation](#relation-triggered-activation)
 - [Support for Importing Other .fil Files](#support-for-importing-other-fil-files)
 - [Add Support for Class Diagrams](#add-support-for-class-diagrams)
 
@@ -334,30 +336,130 @@ main_db: Database [fill_color="green"];
 
 ---
 
-#### Support Sequence Diagram Span (Activation)
+#### Explicit Activate/Deactivate Statements
 
 **Description**:
-Add support for activation boxes (lifeline spans) in sequence diagrams to show when objects are active or processing.
+Add support for explicit `activate` and `deactivate` statements in sequence diagrams to provide granular control over activation boxes (lifeline spans). This approach is ideal for modeling asynchronous workflows or complex interactions where activation and deactivation events are not tightly scoped.
 
 **Proposed Syntax**:
 ```filament
+activate <component_name>;
+... // Component is active
+deactivate <component_name>;
+```
+
+**Example**:
+```filament
 diagram sequence;
-
 user: Rectangle;
-service: Rectangle;
-database: Rectangle;
+server: Rectangle;
 
-user -> service: "Request" {
-    service -> database: "Query" span;
-    database -> service: "Result";
-} span;
-service -> user: "Response";
+// User sends a job and immediately deactivates
+activate user;
+user -> server: "Process this job";
+deactivate user;
+
+// Server activates later to perform the work independently
+activate server;
+server -> server: "Working on job...";
+deactivate server;
 ```
 
 **Benefits**:
-- More expressive sequence diagrams
-- Better representation of processing time
-- Standard UML sequence diagram features
+- Most granular control over activation timing
+- Perfect for asynchronous communication patterns
+- Supports "fire-and-forget" message flows
+- Handles complex scenarios where activation scope isn't confined to a single block
+
+**Best Use Cases**:
+- Asynchronous communication
+- "Fire-and-forget" messages
+- Complex scenarios with independent activation lifecycles
+
+---
+
+#### Scoped Activate Blocks
+
+**Description**:
+Add support for scoped `activate` blocks that use block syntax `{...}` to define self-contained activation scopes. This approach is perfect for modeling structured, synchronous-style interactions where a component becomes active to perform a clear set of related tasks.
+
+**Proposed Syntax**:
+```filament
+activate <component_name> {
+    ... // Component is active for the duration of this block
+}
+```
+
+**Example**:
+```filament
+diagram sequence;
+user: Rectangle;
+server: Rectangle;
+
+activate user {
+    user -> server: "Get user data";
+
+    // The server's work is neatly scoped within the user's activation
+    activate server {
+        server -> server: "Query database";
+        server -> user: "Here is your data";
+    } // Server deactivates here
+
+    user -> user: "Continue processing data";
+} // User deactivates here
+```
+
+**Benefits**:
+- Clear visual scoping of activation periods
+- Automatic deactivation at block end
+- Natural nesting for hierarchical interactions
+- Reduces chance of forgetting deactivation statements
+
+**Best Use Cases**:
+- Request-response patterns
+- Modeling synchronous calls
+- Grouping series of actions within single activation
+
+---
+
+#### Relation-Triggered Activation
+
+**Description**:
+Add syntactic sugar that links an activation block directly to the message that triggers it. This provides an extremely concise way to express simple request-response flows by combining message sending with activation in a single statement.
+
+**Proposed Syntax**:
+```filament
+<source> -> <target>: "message" activate {
+    ... // Target is active here
+}
+```
+
+**Example**:
+```filament
+diagram sequence;
+user: Rectangle;
+server: Rectangle;
+
+// This one line replaces multiple lines from other approaches
+user -> server: "Get user data" activate {
+    server -> server: "Query database";
+    server -> user: "Here is your data";
+}
+```
+
+**Benefits**:
+- Most concise syntax for simple request-response patterns
+- Intuitive linking of trigger message to activation
+- Reduces boilerplate code
+- Clear cause-and-effect relationship
+
+**Implementation Note**:
+This can be implemented as syntactic sugar that transforms into a standard message followed by an `activate` block, making it compatible with the scoped activation approach.
+
+**Best Use Cases**:
+- Simple request-response flows
+- Method calls with immediate processing
+- Reducing syntax overhead for common patterns
 
 ---
 
