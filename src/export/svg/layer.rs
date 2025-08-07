@@ -228,7 +228,9 @@ impl Svg {
 
     /// Render component-specific content
     fn render_component_content(&mut self, content: &component::Layout) -> Vec<Box<dyn svg::Node>> {
-        let mut groups = Vec::with_capacity(content.components.len() + content.relations.len());
+        let mut groups = Vec::with_capacity(
+            content.components.len() + content.relations.len(),
+        );
         // Render all components within this positioned content
         for component in &content.components {
             groups.push(self.render_component(component));
@@ -247,7 +249,10 @@ impl Svg {
 
     /// Render sequence-specific content
     fn render_sequence_content(&mut self, content: &sequence::Layout) -> Vec<Box<dyn svg::Node>> {
-        let mut groups = Vec::with_capacity(content.participants.len() + content.messages.len());
+        let mut groups = Vec::with_capacity(
+            content.participants.len() + content.messages.len() + content.activations.len(),
+        );
+
         // Render all participants within this positioned content
         for participant in &content.participants {
             groups.push(self.render_participant(participant));
@@ -257,6 +262,12 @@ impl Svg {
         for message in &content.messages {
             groups.push(self.render_message(message, content));
         }
+
+        // Render all activation boxes within this positioned content
+        for activation_box in &content.activations {
+            groups.push(self.render_activation_box(activation_box, content));
+        }
+
         groups
     }
 }

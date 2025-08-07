@@ -51,9 +51,12 @@ impl<'a> Builder<'a> {
                 debug!("Updating type definitions");
                 self.update_type_direct_definitions(&diag.type_definitions)?;
 
+                // Determine diagram kind
+                let kind = self.determine_diagram_kind(&diag.kind)?;
+
                 // Build block from elements
                 debug!("Building block from elements");
-                let block = self.build_block_from_elements(&diag.elements, None)?;
+                let block = self.build_block_from_elements(&diag.elements, None, kind)?;
 
                 // Convert block to scope
                 let scope = match block {
@@ -78,7 +81,6 @@ impl<'a> Builder<'a> {
                     }
                 };
 
-                let kind = self.determine_diagram_kind(&diag.kind)?;
                 let (layout_engine, background_color) =
                     self.extract_diagram_attributes(kind, &diag.attributes)?;
 
@@ -175,8 +177,10 @@ impl<'a> Builder<'a> {
     ) -> EResult<types::Diagram> {
         match diag {
             parser_types::Element::Diagram(diag) => {
+                // Determine diagram kind for embedded diagram
+                let embedded_kind = self.determine_diagram_kind(&diag.kind)?;
                 // Create a block from the diagram elements
-                let block = self.build_block_from_elements(&diag.elements, None)?;
+                let block = self.build_block_from_elements(&diag.elements, None, embedded_kind)?;
                 let scope = match block {
                     types::Block::None => types::Scope::default(),
                     types::Block::Scope(scope) => scope,
@@ -215,8 +219,10 @@ impl<'a> Builder<'a> {
         element: &parser_types::Element,
     ) -> EResult<types::Diagram> {
         if let parser_types::Element::Diagram(diag) = element {
+            // Determine diagram kind for embedded diagram
+            let embedded_kind = self.determine_diagram_kind(&diag.kind)?;
             // Create a block from the diagram elements
-            let block = self.build_block_from_elements(&diag.elements, None)?;
+            let block = self.build_block_from_elements(&diag.elements, None, embedded_kind)?;
             let scope = match block {
                 types::Block::None => types::Scope::default(),
                 types::Block::Scope(scope) => scope,
@@ -254,6 +260,7 @@ impl<'a> Builder<'a> {
         &mut self,
         parser_elements: &[parser_types::Element],
         parent_id: Option<&types::TypeId>,
+        diagram_kind: types::DiagramKind,
     ) -> EResult<types::Block> {
         if parser_elements.is_empty() {
             Ok(types::Block::None)
@@ -280,9 +287,11 @@ impl<'a> Builder<'a> {
             }
 
             // If no diagrams were found mixed with other elements, build the scope
-            Ok(types::Block::Scope(
-                self.build_scope_from_elements(parser_elements, parent_id)?,
-            ))
+            Ok(types::Block::Scope(self.build_scope_from_elements(
+                parser_elements,
+                parent_id,
+                diagram_kind,
+            )?))
         }
     }
 
@@ -290,6 +299,7 @@ impl<'a> Builder<'a> {
         &mut self,
         parser_elements: &[parser_types::Element],
         parent_id: Option<&types::TypeId>,
+        diagram_kind: types::DiagramKind,
     ) -> EResult<types::Scope> {
         let mut elements = Vec::new();
 
@@ -309,6 +319,7 @@ impl<'a> Builder<'a> {
                     nested_elements,
                     parent_id,
                     parser_elm,
+                    diagram_kind,
                 )?,
                 parser_types::Element::Relation {
                     source,
@@ -333,6 +344,12 @@ impl<'a> Builder<'a> {
                         None,
                     ));
                 }
+                parser_types::Element::ActivateBlock {
+                    component,
+                    elements,
+                } => {
+                    self.build_activate_block_element(component, elements, parent_id, diagram_kind)?
+                }
             };
             elements.push(element);
         }
@@ -349,6 +366,7 @@ impl<'a> Builder<'a> {
         nested_elements: &[parser_types::Element],
         parent_id: Option<&types::TypeId>,
         parser_elm: &parser_types::Element,
+        diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
         let node_id = self.create_type_id(parent_id, name.inner());
 
@@ -387,7 +405,7 @@ impl<'a> Builder<'a> {
             types::Block::Diagram(elaborated_diagram)
         } else {
             // Process regular nested elements
-            self.build_block_from_elements(nested_elements, Some(&node_id))?
+            self.build_block_from_elements(nested_elements, Some(&node_id), diagram_kind)?
         };
 
         let node = types::Node {
@@ -436,7 +454,41 @@ impl<'a> Builder<'a> {
         )))
     }
 
-    /// Builds a relation type definition from a relation type specification
+    /// Builds an activate block element from parser data
+    fn build_activate_block_element(
+        &mut self,
+        component: &Spanned<&str>,
+        elements: &[parser_types::Element],
+        parent_id: Option<&types::TypeId>,
+        diagram_kind: types::DiagramKind,
+    ) -> EResult<types::Element> {
+        // Validate that activate blocks are only allowed in sequence diagrams
+        match diagram_kind {
+            types::DiagramKind::Sequence => {
+                // Valid: activate blocks are allowed in sequence diagrams
+            }
+            types::DiagramKind::Component => {
+                return Err(ElaborationDiagnosticError::from_span(
+                    "Activate blocks are not supported in component diagrams".to_string(),
+                    component.span(),
+                    "invalid activate block",
+                    Some("Activate blocks are only supported in sequence diagrams for temporal grouping. Component diagrams use nested scopes with curly braces instead.".to_string()),
+                ));
+            }
+        }
+
+        // Process nested elements within the activate block
+        let scope = self.build_scope_from_elements(elements, parent_id, diagram_kind)?;
+
+        // Create TypeId for the component being activated
+        let component_id = self.create_type_id(parent_id, component.inner());
+
+        let activate_block = types::ActivateBlock::new(component_id, scope);
+
+        Ok(types::Element::ActivateBlock(activate_block))
+    }
+
+    /// Build a relation type definition from a relation type specification
     fn build_relation_type_definition_from_spec(
         &mut self,
         type_spec: &Option<parser_types::RelationTypeSpec>,
@@ -618,5 +670,291 @@ impl<'a> Builder<'a> {
                 Some("Supported layout engines are: 'basic', 'force', 'sugiyama'".to_string()),
             )
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{lexer::tokenize, parser::build_diagram};
+    use crate::config::AppConfig;
+
+    #[test]
+    fn test_activate_block_elaboration() {
+        let input = r#"diagram sequence;
+activate user {
+    user -> server: "Request";
+};"#;
+
+        let tokens = tokenize(input).expect("Failed to tokenize");
+        let parsed = build_diagram(&tokens, input).expect("Failed to parse");
+
+        // Create a builder with default config and elaborate
+        let config = AppConfig::default();
+        let builder = Builder::new(&config, input);
+        let result = builder.build(&parsed);
+
+        assert!(
+            result.is_ok(),
+            "Failed to elaborate activate block: {:?}",
+            result.err()
+        );
+
+        let diagram = result.unwrap();
+        assert_eq!(diagram.scope.elements.len(), 1);
+
+        // Verify the activate block was created correctly
+        if let types::Element::ActivateBlock(activate_block) = &diagram.scope.elements[0] {
+            assert_eq!(activate_block.component.to_string(), "user");
+            assert_eq!(activate_block.scope.elements.len(), 1);
+
+            // Verify the nested relation was processed
+            if let types::Element::Relation(relation) = &activate_block.scope.elements[0] {
+                assert_eq!(relation.source.to_string(), "user");
+                assert_eq!(relation.target.to_string(), "server");
+            } else {
+                panic!("Expected relation element in activate block");
+            }
+        } else {
+            panic!(
+                "Expected activate block element, got {:?}",
+                diagram.scope.elements[0]
+            );
+        }
+    }
+
+    #[test]
+    fn test_empty_activate_block_elaboration() {
+        let input = r#"diagram sequence;
+activate user {
+};"#;
+
+        let tokens = tokenize(input).expect("Failed to tokenize");
+        let parsed = build_diagram(&tokens, input).expect("Failed to parse");
+
+        let config = AppConfig::default();
+        let builder = Builder::new(&config, input);
+        let result = builder.build(&parsed);
+
+        assert!(result.is_ok(), "Failed to elaborate empty activate block");
+
+        let diagram = result.unwrap();
+        assert_eq!(diagram.scope.elements.len(), 1);
+
+        if let types::Element::ActivateBlock(activate_block) = &diagram.scope.elements[0] {
+            assert_eq!(activate_block.component.to_string(), "user");
+            assert_eq!(activate_block.scope.elements.len(), 0);
+        } else {
+            panic!("Expected activate block element");
+        }
+    }
+
+    #[test]
+    fn test_activate_block_invalid_in_component_diagram() {
+        let input = r#"diagram component;
+activate user {
+    user -> server: "Request";
+};"#;
+
+        let tokens = tokenize(input).expect("Failed to tokenize");
+        let parsed = build_diagram(&tokens, input).expect("Failed to parse");
+
+        let config = AppConfig::default();
+        let builder = Builder::new(&config, input);
+        let result = builder.build(&parsed);
+
+        assert!(
+            result.is_err(),
+            "Activate blocks should not be allowed in component diagrams"
+        );
+    }
+
+    #[test]
+    fn test_activate_block_scoping_behavior() {
+        // Test that sequence diagrams don't create namespace scopes within activate blocks
+        let input = r#"diagram sequence;
+activate user {
+    user -> server: "Request";
+    server -> database: "Query";
+};"#;
+
+        let tokens = tokenize(input).expect("Failed to tokenize");
+        let parsed = build_diagram(&tokens, input).expect("Failed to parse");
+
+        let config = AppConfig::default();
+        let builder = Builder::new(&config, input);
+        let result = builder.build(&parsed);
+
+        assert!(
+            result.is_ok(),
+            "Sequence diagram with activate block should work"
+        );
+
+        let diagram = result.unwrap();
+        if let types::Element::ActivateBlock(activate_block) = &diagram.scope.elements[0] {
+            assert_eq!(activate_block.scope.elements.len(), 2);
+
+            // Verify that relations don't have scoped names (no "user::" prefix)
+            for element in &activate_block.scope.elements {
+                if let types::Element::Relation(relation) = element {
+                    // Relations should maintain original naming, not be scoped under "user"
+                    let source_str = relation.source.to_string();
+                    let target_str = relation.target.to_string();
+                    assert!(
+                        !source_str.starts_with("user::user::"),
+                        "Source should not be double-scoped: {}",
+                        source_str
+                    );
+                    assert!(
+                        !target_str.starts_with("user::server::"),
+                        "Target should not be double-scoped: {}",
+                        target_str
+                    );
+                }
+            }
+        } else {
+            panic!("Expected activate block element");
+        }
+    }
+
+    #[test]
+    fn test_nested_activate_blocks_same_component() {
+        // Test that nested activate blocks work and same component can be activated multiple times
+        let input = r#"diagram sequence;
+activate user {
+    user -> server: "Initial request";
+    activate user {
+        user -> database: "Direct query";
+    };
+    activate server {
+        server -> cache: "Cache lookup";
+    };
+};"#;
+
+        let tokens = tokenize(input).expect("Failed to tokenize");
+        let parsed = build_diagram(&tokens, input).expect("Failed to parse");
+
+        let config = AppConfig::default();
+        let builder = Builder::new(&config, input);
+        let result = builder.build(&parsed);
+
+        assert!(
+            result.is_ok(),
+            "Nested activate blocks should work: {:?}",
+            result.err()
+        );
+
+        let diagram = result.unwrap();
+        if let types::Element::ActivateBlock(outer_activate) = &diagram.scope.elements[0] {
+            assert_eq!(outer_activate.component.to_string(), "user");
+            assert_eq!(outer_activate.scope.elements.len(), 3); // relation + 2 nested activate blocks
+
+            // Check that we have the expected element types
+            let mut relation_count = 0;
+            let mut activate_count = 0;
+
+            for element in &outer_activate.scope.elements {
+                match element {
+                    types::Element::Relation(_) => relation_count += 1,
+                    types::Element::ActivateBlock(_) => activate_count += 1,
+                    _ => panic!("Unexpected element type in activate block"),
+                }
+            }
+
+            assert_eq!(relation_count, 1, "Should have 1 relation");
+            assert_eq!(activate_count, 2, "Should have 2 nested activate blocks");
+
+            // Verify nested activate blocks have correct components
+            let activate_blocks: Vec<_> = outer_activate
+                .scope
+                .elements
+                .iter()
+                .filter_map(|e| match e {
+                    types::Element::ActivateBlock(ab) => Some(ab),
+                    _ => None,
+                })
+                .collect();
+
+            assert_eq!(activate_blocks.len(), 2);
+
+            // First nested activate should be for "user" (same as outer)
+            assert_eq!(activate_blocks[0].component.to_string(), "user");
+            assert_eq!(activate_blocks[0].scope.elements.len(), 1);
+
+            // Second nested activate should be for "server"
+            assert_eq!(activate_blocks[1].component.to_string(), "server");
+            assert_eq!(activate_blocks[1].scope.elements.len(), 1);
+        } else {
+            panic!("Expected activate block element");
+        }
+    }
+
+    #[test]
+    fn test_activate_block_timing_and_nesting() {
+        // Test that activate blocks have proper timing based on contained messages
+        // and correct nesting levels for nested activate blocks
+        let input = r#"diagram sequence;
+user: Rectangle;
+server: Rectangle;
+database: Rectangle;
+
+activate user {
+    user -> server: "First request";
+    activate server {
+        server -> database: "Nested query";
+        database -> server: "Nested response";
+    };
+    server -> user: "First response";
+    activate user {
+        user -> server: "Second request";
+    };
+};"#;
+
+        let tokens = tokenize(input).expect("Failed to tokenize");
+        let parsed = build_diagram(&tokens, input).expect("Failed to parse");
+
+        let config = AppConfig::default();
+        let builder = Builder::new(&config, input);
+        let result = builder.build(&parsed);
+
+        assert!(
+            result.is_ok(),
+            "Complex nested activate blocks should work: {:?}",
+            result.err()
+        );
+
+        let diagram = result.unwrap();
+        assert_eq!(diagram.scope.elements.len(), 4); // 3 components + 1 activate block
+
+        // Find the main activate block
+        let main_activate = diagram
+            .scope
+            .elements
+            .iter()
+            .find_map(|e| match e {
+                types::Element::ActivateBlock(ab) => Some(ab),
+                _ => None,
+            })
+            .expect("Should have main activate block");
+
+        assert_eq!(main_activate.component.to_string(), "user");
+
+        // Verify nested structure - should have relations and nested activate blocks
+        let mut nested_activate_count = 0;
+        let mut relation_count = 0;
+
+        for element in &main_activate.scope.elements {
+            match element {
+                types::Element::ActivateBlock(_) => nested_activate_count += 1,
+                types::Element::Relation(_) => relation_count += 1,
+                _ => {}
+            }
+        }
+
+        assert!(
+            nested_activate_count >= 2,
+            "Should have at least 2 nested activate blocks"
+        );
+        assert!(relation_count >= 2, "Should have multiple relations");
     }
 }

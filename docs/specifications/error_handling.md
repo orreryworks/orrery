@@ -45,6 +45,8 @@ Errors detected during elaboration when syntax is valid but semantics are incorr
 - **Undefined component references** - Components used in relations but not declared
 - **Invalid attribute values** - Attribute values that don't match expected formats
 - **Type system violations** - Inconsistent or incompatible type usage
+- **Activate block diagram type errors** - Activate blocks used in component diagrams (only allowed in sequence diagrams)
+- **Activate block component errors** - Activate blocks referencing undefined components
 
 ## 4. Error Message Format
 
@@ -189,3 +191,82 @@ All error locations must be:
 - **Contextually relevant**: Show meaningful source context
 - **Visually clear**: Use consistent highlighting patterns
 - **Properly formatted**: Follow the standard visual format
+
+## 10. Activate Block Error Examples
+
+### 10.1 Diagram Type Validation
+
+**Error**: Using activate blocks in component diagrams
+
+```filament
+diagram component;
+user: Rectangle;
+server: Rectangle;
+
+activate user {  // Error: activate blocks not allowed in component diagrams
+    user -> server: "Request";
+};
+```
+
+**Error Message**:
+```
+Error: Activate blocks are only supported in sequence diagrams
+  --> example.filament:5:1
+   |
+ 5 | activate user {
+   | ^^^^^^^^ activate block not allowed here
+   |
+   = help: Activate blocks are used for temporal grouping in sequence diagrams
+   = note: Component diagrams use curly braces for embedded diagrams only
+```
+
+### 10.2 Component Reference Validation
+
+**Error**: Referencing non-existent components in activate blocks
+
+```filament
+diagram sequence;
+user: Rectangle;
+
+activate server {  // Error: 'server' component not defined
+    user -> server: "Request";
+};
+```
+
+**Error Message**:
+```
+Error: Component 'server' is not defined
+  --> example.filament:4:10
+   |
+ 4 | activate server {
+   |          ^^^^^^ undefined component
+   |
+   = help: Define the component before using it in an activate block
+   = note: Available components: user
+```
+
+### 10.3 Syntax Errors
+
+**Error**: Missing semicolon after activate block
+
+```filament
+diagram sequence;
+user: Rectangle;
+server: Rectangle;
+
+activate user {
+    user -> server: "Request";
+}  // Error: missing semicolon
+```
+
+**Error Message**:
+```
+Error: Expected ';' after activate block
+  --> example.filament:7:1
+   |
+ 7 | }
+   |  ^ expected ';'
+   |
+   = help: Activate blocks must be terminated with a semicolon
+   = note: All top-level elements require semicolon termination
+```

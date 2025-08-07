@@ -106,6 +106,7 @@ fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
             literal("type").context(StrContext::Label("type keyword")),
             literal("embed").context(StrContext::Label("embed keyword")),
             literal("as").context(StrContext::Label("as keyword")),
+            literal("activate").context(StrContext::Label("activate keyword")),
         )),
         // Ensure keyword is not followed by identifier character (word boundary)
         peek(not(one_of(|c: char| c.is_ascii_alphanumeric() || c == '_'))),
@@ -117,6 +118,7 @@ fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
         "type" => Token::Type,
         "embed" => Token::Embed,
         "as" => Token::As,
+        "activate" => Token::Activate,
         _ => unreachable!(),
     })
     .context(StrContext::Label("keyword"))
@@ -251,6 +253,7 @@ mod tests {
         test_single_token("type", Token::Type);
         test_single_token("embed", Token::Embed);
         test_single_token("as", Token::As);
+        test_single_token("activate", Token::Activate);
     }
 
     #[test]
@@ -259,6 +262,28 @@ mod tests {
         test_single_token("_private", Token::Identifier("_private"));
         test_single_token("var123", Token::Identifier("var123"));
         test_single_token("CamelCase", Token::Identifier("CamelCase"));
+    }
+
+    #[test]
+    fn test_activate_keyword_word_boundaries() {
+        // Test that "activate" is recognized as a keyword
+        test_single_token("activate", Token::Activate);
+
+        // Test that identifiers containing "activate" are still treated as identifiers
+        test_single_token("activateUser", Token::Identifier("activateUser"));
+        test_single_token("useractivate", Token::Identifier("useractivate"));
+        test_single_token("reactivate", Token::Identifier("reactivate"));
+
+        // Test that "activate_user" is treated as a single identifier (no word boundary)
+        test_single_token("activate_user", Token::Identifier("activate_user"));
+
+        // Test that "activate" followed by space and identifier tokenizes correctly
+        let input = "activate user";
+        let tokens = tokenize(input).unwrap();
+        assert_eq!(tokens.len(), 3); // activate, space, user
+        assert_eq!(tokens[0].token, Token::Activate);
+        assert_eq!(tokens[1].token, Token::Whitespace);
+        assert_eq!(tokens[2].token, Token::Identifier("user"));
     }
 
     #[test]

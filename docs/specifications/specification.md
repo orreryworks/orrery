@@ -155,6 +155,107 @@ app -> [RedArrow] cache: "Fast access";
 cache -> [BlueArrow; style="curved"] database: "Sync data";
 ```
 
+### 6.3 Activate Blocks
+
+Activate blocks are sequence diagram-specific elements that define periods when a component is active (also known as "focus of control"). They provide temporal grouping of interactions and are visually represented as rectangles on participant lifelines.
+
+**Syntax:**
+```
+activate <component_name> {
+    // Elements active during this period
+    // Can include relations, nested components, or other activate blocks
+};
+```
+
+**Key Properties:**
+- **Sequence diagrams only**: Activate blocks can only be used in sequence diagrams
+- **Temporal grouping**: They group events in time, not create component namespaces
+- **Visual representation**: Rendered as white rectangles with black borders on lifelines
+- **Nestable**: Support nested activate blocks for complex activation scenarios
+
+#### 6.3.1 Basic Usage
+
+Simple activate block with messages:
+
+```filament
+diagram sequence;
+
+user: Rectangle;
+server: Rectangle;
+
+activate user {
+    user -> server: "Request data";
+    server -> user: "Response data";
+};
+```
+
+#### 6.3.2 Nested Activate Blocks
+
+Activate blocks can be nested to show complex interaction patterns:
+
+```filament
+diagram sequence;
+
+client: Rectangle;
+server: Rectangle;
+database: Rectangle;
+
+activate client {
+    client -> server: "Initial request";
+    
+    activate server {
+        server -> database: "Query data";
+        database -> server: "Return results";
+    };
+    
+    server -> client: "Final response";
+};
+```
+
+#### 6.3.3 Multiple Activations
+
+The same component can be activated multiple times:
+
+```filament
+diagram sequence;
+
+user: Rectangle;
+service: Rectangle;
+
+activate user {
+    user -> service: "First interaction";
+    
+    activate user {
+        user -> service: "Nested interaction";
+    };
+    
+    service -> user: "Response";
+};
+```
+
+#### 6.3.4 Scoping Behavior
+
+**Important**: Activate blocks in sequence diagrams do NOT create component namespace scopes. Unlike component diagrams where `{}` creates nested scopes, activate blocks are purely for temporal grouping:
+
+- ✅ **Correct**: `user -> server` (maintains flat naming)
+- ❌ **Incorrect**: `user::server` (no namespace scoping in sequence diagrams)
+
+This ensures activate blocks serve their purpose as temporal grouping constructs rather than hierarchical component organization.
+
+#### 6.3.5 Diagram Type Restrictions
+
+Activate blocks are only supported in sequence diagrams:
+
+```filament
+// ✅ Valid: Activate blocks in sequence diagram
+diagram sequence;
+activate user { user -> server; };
+
+// ❌ Invalid: Activate blocks not allowed in component diagrams  
+diagram component;
+activate user { user -> server; }; // ERROR: Not supported in component diagrams
+```
+
 ## 7. Attributes
 
 Attributes customize the appearance and behavior of elements:

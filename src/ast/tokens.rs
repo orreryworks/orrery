@@ -12,6 +12,7 @@ pub enum Token<'src> {
     Type,
     Embed,
     As,
+    Activate,
 
     // Literals
     StringLiteral(String),
@@ -101,6 +102,7 @@ impl fmt::Display for Token<'_> {
             Token::Type => write!(f, "type"),
             Token::Embed => write!(f, "embed"),
             Token::As => write!(f, "as"),
+            Token::Activate => write!(f, "activate"),
 
             Token::StringLiteral(s) => write!(f, "\"{s}\""),
             Token::FloatLiteral(n) => write!(f, "{n}"),

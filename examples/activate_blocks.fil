@@ -1,0 +1,67 @@
+// Activate Blocks Example
+// This example demonstrates the use of activate blocks in sequence diagrams
+// to show periods when components are active (focus of control).
+
+diagram sequence;
+
+// Define participants
+user: Rectangle;
+web_server: Rectangle;
+auth_service: Rectangle;
+database: Rectangle;
+
+// User authentication flow with activate blocks
+activate user {
+    user -> web_server: "Login request";
+
+    // Web server processes the authentication
+    activate web_server {
+        web_server -> auth_service: "Validate credentials";
+
+        // Auth service queries the database
+        activate auth_service {
+            auth_service -> database: "SELECT user FROM users";
+
+            // Database is active during query processing
+            activate database {
+                database -> database: "Process query";
+                database -> auth_service: "User data";
+            };
+
+            auth_service -> web_server: "Authentication result";
+        };
+
+        web_server -> user: "Login response";
+    };
+
+    // User makes a data request
+    user -> web_server: "Get profile data";
+
+    // Server fetches data
+    activate web_server {
+        web_server -> database: "SELECT profile";
+
+        activate database {
+            database -> web_server: "Profile data";
+        };
+
+        web_server -> user: "Profile response";
+    };
+
+    user -> user: "Display profile";
+};
+
+// Another user session (different activation period)
+activate user {
+    user -> web_server: "Logout request";
+
+    activate web_server {
+        web_server -> auth_service: "Invalidate session";
+
+        activate auth_service {
+            auth_service -> web_server: "Session invalidated";
+        };
+
+        web_server -> user: "Logout confirmation";
+    };
+};

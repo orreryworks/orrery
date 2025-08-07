@@ -90,6 +90,32 @@ impl Svg {
             .unwrap_or_default()
     }
 
+    pub fn render_activation_box(
+        &self,
+        activation_box: &sequence::ActivationBox,
+        layout: &sequence::Layout,
+    ) -> Box<dyn svg::Node> {
+        let participant = &layout.participants[activation_box.participant_index];
+        let participant_x = participant.component.position().x();
+
+        // Width and horizontal offset for activation boxes
+        let box_width = 8.0;
+        let nesting_offset = activation_box.nesting_level as f32 * 4.0;
+        let box_x = participant_x - (box_width / 2.0) + nesting_offset;
+
+        // Create the activation box rectangle
+        let activation_rect = svg_element::Rectangle::new()
+            .set("x", box_x)
+            .set("y", activation_box.start_y)
+            .set("width", box_width)
+            .set("height", activation_box.end_y - activation_box.start_y)
+            .set("fill", "white")
+            .set("stroke", "black")
+            .set("stroke-width", 1);
+
+        activation_rect.into()
+    }
+
     // This method was removed as it's no longer used directly - sequence diagram rendering
     // is now handled through the layered layout system
 }

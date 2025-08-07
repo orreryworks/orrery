@@ -11,7 +11,6 @@ The Filament roadmap serves as a central repository for tracking language evolut
 ### 2.1 Language Core
 - [Named Types for Nested Attributes](#named-types-for-nested-attributes)
 - [Explicit Activate/Deactivate Statements](#explicit-activatedeactivate-statements)
-- [Scoped Activate Blocks](#scoped-activate-blocks)
 - [Relation-Triggered Activation](#relation-triggered-activation)
 - [Support for Importing Other .fil Files](#support-for-importing-other-fil-files)
 - [Add Support for Class Diagrams](#add-support-for-class-diagrams)
@@ -26,6 +25,7 @@ The Filament roadmap serves as a central repository for tracking language evolut
 ### 2.4 Type System
 - [Add Support for Prelude of Shapes](#add-support-for-prelude-of-shapes)
 - [Add Base Type Override Support](#add-base-type-override-support)
+- [Fix Scoping Types in graph::Graph](#fix-scoping-types-in-graphgraph)
 
 ### 2.5 Rendering
 - [Adding More UML Shapes](#adding-more-uml-shapes)
@@ -33,6 +33,9 @@ The Filament roadmap serves as a central repository for tracking language evolut
 - [Custom Shape Definitions](#custom-shape-definitions)
 - [Alpha Transparency Support](#alpha-transparency-support)
 - [Animation Support](#animation-support)
+- [Move Activation Rendering to draw::*](#move-activation-rendering-to-draw)
+- [Move Sequence Diagram Lifetime Rendering to draw::*](#move-sequence-diagram-lifetime-rendering-to-draw)
+- [Fix Activation Diagram Lifetime](#fix-activation-diagram-lifetime)
 
 ### 2.6 Tooling
 - [fmt Feature for Formatting .fil Files](#fmt-feature-for-formatting-fil-files)
@@ -190,7 +193,7 @@ The compiler currently stops at the first error, requiring multiple compilation 
 ```filament
 // Instead of stopping at first error, report all issues:
 // Error 1: Missing semicolon at line 5
-// Error 2: Undefined type 'Rectangl' at line 8 
+// Error 2: Undefined type 'Rectangl' at line 8
 // Error 3: Invalid attribute 'colour' at line 12
 ```
 
@@ -305,6 +308,30 @@ type ThickRedButton = BaseButton [fill_color="red", line_width=3.0]; // Implicit
 
 ---
 
+#### Fix Scoping Types in graph::Graph
+
+**Description**:
+Improve the scoping and type handling within the graph::Graph structure to provide better type resolution and namespace management.
+
+**Current Issues**:
+- Type scoping may not be properly handled in complex nested scenarios
+- Graph type resolution could be improved for better error reporting and validation
+- Type information propagation through the graph structure needs refinement
+
+**Proposed Implementation**:
+- Enhance type scope tracking within Graph structure
+- Improve type resolution algorithms for nested components
+- Better integration between AST type information and graph representation
+- Cleaner separation of type concerns in graph processing
+
+**Benefits**:
+- More accurate type checking and validation
+- Better error messages for type-related issues
+- Improved performance in type resolution
+- Cleaner graph processing pipeline
+
+---
+
 ### 3.5 Rendering
 
 #### Adding More UML Shapes
@@ -375,50 +402,6 @@ deactivate server;
 - Asynchronous communication
 - "Fire-and-forget" messages
 - Complex scenarios with independent activation lifecycles
-
----
-
-#### Scoped Activate Blocks
-
-**Description**:
-Add support for scoped `activate` blocks that use block syntax `{...}` to define self-contained activation scopes. This approach is perfect for modeling structured, synchronous-style interactions where a component becomes active to perform a clear set of related tasks.
-
-**Proposed Syntax**:
-```filament
-activate <component_name> {
-    ... // Component is active for the duration of this block
-}
-```
-
-**Example**:
-```filament
-diagram sequence;
-user: Rectangle;
-server: Rectangle;
-
-activate user {
-    user -> server: "Get user data";
-
-    // The server's work is neatly scoped within the user's activation
-    activate server {
-        server -> server: "Query database";
-        server -> user: "Here is your data";
-    } // Server deactivates here
-
-    user -> user: "Continue processing data";
-} // User deactivates here
-```
-
-**Benefits**:
-- Clear visual scoping of activation periods
-- Automatic deactivation at block end
-- Natural nesting for hierarchical interactions
-- Reduces chance of forgetting deactivation statements
-
-**Best Use Cases**:
-- Request-response patterns
-- Modeling synchronous calls
-- Grouping series of actions within single activation
 
 ---
 
@@ -568,6 +551,72 @@ diagram component [background_color="rgba(240, 240, 240, 0.8)"];
 
 ---
 
+#### Move Activation Rendering to draw::*
+
+**Description**:
+Refactor activation box rendering logic from export::svg::* modules to draw::* modules for better architectural separation and reusability.
+
+**Current Implementation**:
+Activation rendering is currently handled directly in SVG export modules, creating tight coupling between rendering logic and export format.
+
+**Proposed Implementation**:
+- Move activation box drawing logic to draw::activation or similar module
+- Create format-agnostic activation rendering interfaces
+- Enable reusability for potential future export formats (PDF, PNG, etc.)
+
+**Benefits**:
+- Better separation of concerns
+- Format-agnostic rendering logic
+- Improved testability of activation rendering
+- Easier maintenance and extension
+
+---
+
+#### Move Sequence Diagram Lifetime Rendering to draw::*
+
+**Description**:
+Refactor sequence diagram lifetime/lifeline rendering from export::svg::* to draw::* modules for consistency with other drawing components.
+
+**Current Implementation**:
+Sequence lifeline rendering is embedded within SVG-specific export code.
+
+**Proposed Implementation**:
+- Extract lifeline drawing logic to draw::sequence or similar module
+- Create reusable lifeline rendering components
+- Standardize lifeline drawing patterns across different sequence elements
+
+**Benefits**:
+- Consistent architecture with other drawing components
+- Reusable lifeline rendering logic
+- Better separation between drawing and export concerns
+- Improved code organization
+
+---
+
+#### Fix Activation Diagram Lifetime
+
+**Description**:
+Address issues with activation diagram lifetime management and visual representation to ensure correct activation periods and proper cleanup.
+
+**Current Issues**:
+- Activation lifetime calculations may not accurately reflect message timing
+- Visual representation of activation periods could be improved
+- Edge cases in activation start/end timing need better handling
+
+**Proposed Implementation**:
+- Improve activation lifetime calculation algorithms
+- Better integration between message timing and activation periods
+- Enhanced visual feedback for activation boundaries
+- Proper handling of nested activation lifetimes
+
+**Benefits**:
+- More accurate activation period representation
+- Better visual clarity in sequence diagrams
+- Improved user understanding of component activity periods
+- Robust handling of complex activation scenarios
+
+---
+
 ### 3.6 Tooling
 
 #### fmt Feature for Formatting .fil Files
@@ -712,7 +761,7 @@ Replace current panic-based error handling with structured error reporting using
 
 **Proposed Implementation**:
 - Convert panics to structured diagnostic reports
-- Provide source code context in error messages  
+- Provide source code context in error messages
 - Add help text and suggestions using miette's diagnostic system
 - Improve error message formatting and readability
 

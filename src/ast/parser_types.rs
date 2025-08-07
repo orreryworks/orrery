@@ -188,6 +188,10 @@ pub enum Element<'a> {
         label: Option<Spanned<String>>,
     },
     Diagram(Diagram<'a>),
+    ActivateBlock {
+        component: Spanned<&'a str>,
+        elements: Vec<Element<'a>>,
+    },
 }
 
 impl Element<'_> {
@@ -241,6 +245,13 @@ impl Element<'_> {
                 span
             }
             Element::Diagram(diagram) => diagram.span(),
+            Element::ActivateBlock {
+                component,
+                elements,
+            } => elements
+                .iter()
+                .map(|elem| elem.span())
+                .fold(component.span(), |acc, span| acc.union(span)),
         }
     }
 }

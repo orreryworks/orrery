@@ -60,6 +60,7 @@ pub struct Graph<'a> {
     diagram: &'a ast::Diagram,
     containment_scopes: Vec<ContainmentScope>,
     node_id_map: HashMap<ast::TypeId, NodeIndex>, // Maps node IDs to their indices
+    activate_blocks: Vec<&'a ast::ActivateBlock>,
 }
 
 /// Represents a collection of interconnected diagrams with hierarchical relationships.
@@ -79,6 +80,7 @@ impl<'a> Graph<'a> {
             diagram,
             containment_scopes: Vec::new(),
             node_id_map: HashMap::new(),
+            activate_blocks: Vec::new(),
         }
     }
 
@@ -86,6 +88,13 @@ impl<'a> Graph<'a> {
         self.diagram
     }
 
+    pub fn activate_blocks(&self) -> &[&'a ast::ActivateBlock] {
+        &self.activate_blocks
+    }
+
+    pub fn node_id_map(&self) -> &std::collections::HashMap<ast::TypeId, petgraph::graph::NodeIndex> {
+        &self.node_id_map
+    }
     pub fn containment_scopes(&self) -> &[ContainmentScope] {
         &self.containment_scopes
     }
@@ -231,7 +240,7 @@ impl<'a> Collection<'a> {
     /// Returns processed node indices for the current level and any hierarchy children
     fn process_containment_scope(
         &mut self,
-        graph: &mut Graph,
+        graph: &mut Graph<'a>,
         elements: &'a [ast::Element],
         container: Option<NodeIndex>,
     ) -> Result<Vec<(ast::TypeId, NodeIndex)>, FilamentError> {
@@ -283,6 +292,21 @@ impl<'a> Collection<'a> {
                         relation.source, relation.target
                     )));
                 }
+            }
+        }
+
+        // Third pass: collect activate blocks and recursively process their elements
+        for element in elements {
+            if let ast::Element::ActivateBlock(activate_block) = element {
+                graph.activate_blocks.push(activate_block);
+
+                // Recursively process elements within the activate block
+                let mut inner_hierarchy_children = self.process_containment_scope(
+                    graph,
+                    &activate_block.scope.elements,
+                    container,
+                )?;
+                hierarchy_children.append(&mut inner_hierarchy_children);
             }
         }
 

@@ -403,11 +403,65 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>
     })
 }
 
+/// Parse an activate block
+fn activate_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+    // Parse "activate" keyword
+    any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Activate))
+        .context(StrContext::Label("activate keyword"))
+        .parse_next(input)?;
+
+    ws_comments1
+        .context(StrContext::Label("whitespace after activate"))
+        .parse_next(input)?;
+
+    // Parse component identifier
+    let (component_name, component_span) = identifier
+        .context(StrContext::Label("component identifier"))
+        .parse_next(input)?;
+    let component_spanned = make_spanned(component_name, component_span);
+
+    ws_comments0.parse_next(input)?;
+
+    // Parse opening brace
+    any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace))
+        .context(StrContext::Label("opening brace '{'"))
+        .parse_next(input)?;
+
+    ws_comments0.parse_next(input)?;
+
+    // Parse nested elements
+    let nested_elements = elements
+        .context(StrContext::Label("activate block content"))
+        .parse_next(input)?;
+
+    ws_comments0.parse_next(input)?;
+
+    // Parse closing brace
+    any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace))
+        .context(StrContext::Label("closing brace '}'"))
+        .parse_next(input)?;
+
+    ws_comments0.parse_next(input)?;
+
+    // Parse semicolon
+    semicolon
+        .context(StrContext::Label("semicolon after activate block"))
+        .parse_next(input)?;
+
+    Ok(types::Element::ActivateBlock {
+        component: component_spanned,
+        elements: nested_elements,
+    })
+}
+
 /// Parse any element (component or relation)
 fn elements<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types::Element<'src>>> {
     repeat(
         0..,
-        preceded(ws_comments0, alt((component_with_elements, relation))),
+        preceded(
+            ws_comments0,
+            alt((component_with_elements, relation, activate_block)),
+        ),
     )
     .parse_next(input)
 }
@@ -1157,6 +1211,165 @@ mod tests {
                 input,
                 tokens[0].token
             );
+        }
+    }
+
+    #[test]
+    fn test_activate_block_parsing() {
+        let input = r#"activate user {
+            user -> server: "Request";
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = activate_block(&mut token_slice);
+        assert!(
+            result.is_ok(),
+            "Failed to parse activate block: {:?}",
+            result
+        );
+
+        let element = result.unwrap();
+        if let types::Element::ActivateBlock {
+            component,
+            elements,
+        } = element
+        {
+            assert_eq!(component.inner(), &"user");
+            assert_eq!(elements.len(), 1);
+        } else {
+            panic!("Expected ActivateBlock element, got {:?}", element);
+        }
+    }
+
+    #[test]
+    fn test_activate_block_missing_identifier() {
+        let input = r#"activate {
+            user -> server;
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = activate_block(&mut token_slice);
+        assert!(result.is_err(), "Should fail when identifier is missing");
+    }
+
+    #[test]
+    fn test_activate_block_missing_opening_brace() {
+        let input = r#"activate user
+            user -> server;
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = activate_block(&mut token_slice);
+        assert!(result.is_err(), "Should fail when opening brace is missing");
+    }
+
+    #[test]
+    fn test_activate_block_missing_closing_brace() {
+        let input = r#"activate user {
+            user -> server;"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = activate_block(&mut token_slice);
+        assert!(result.is_err(), "Should fail when closing brace is missing");
+    }
+
+    #[test]
+    fn test_activate_block_missing_semicolon() {
+        let input = r#"activate user {
+            user -> server;
+        }"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = activate_block(&mut token_slice);
+        assert!(result.is_err(), "Should fail when semicolon is missing");
+    }
+
+    #[test]
+    fn test_activate_block_empty_block() {
+        let input = r#"activate user {
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = activate_block(&mut token_slice);
+        assert!(result.is_ok(), "Empty activate block should be valid");
+
+        let element = result.unwrap();
+        if let types::Element::ActivateBlock {
+            component,
+            elements,
+        } = element
+        {
+            assert_eq!(component.inner(), &"user");
+            assert_eq!(elements.len(), 0);
+        } else {
+            panic!("Expected ActivateBlock element");
+        }
+    }
+
+    #[test]
+    fn test_nested_activate_blocks() {
+        let input = r#"activate user {
+            user -> server: "Request";
+            activate server {
+                server -> database: "Query";
+            };
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = activate_block(&mut token_slice);
+        assert!(result.is_ok(), "Nested activate blocks should be valid");
+
+        let element = result.unwrap();
+        if let types::Element::ActivateBlock {
+            component,
+            elements,
+        } = element
+        {
+            assert_eq!(component.inner(), &"user");
+            assert_eq!(elements.len(), 2); // relation + nested activate block
+
+            // Verify nested activate block exists
+            let has_nested_activate = elements
+                .iter()
+                .any(|el| matches!(el, types::Element::ActivateBlock { .. }));
+            assert!(has_nested_activate, "Should contain nested activate block");
+        } else {
+            panic!("Expected ActivateBlock element");
+        }
+    }
+
+    #[test]
+    fn test_activate_block_with_components() {
+        let input = r#"activate user {
+            service: Rectangle;
+            user -> service: "Call";
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = activate_block(&mut token_slice);
+        assert!(
+            result.is_ok(),
+            "Activate block with components should be valid"
+        );
+
+        let element = result.unwrap();
+        if let types::Element::ActivateBlock {
+            component,
+            elements,
+        } = element
+        {
+            assert_eq!(component.inner(), &"user");
+            assert_eq!(elements.len(), 2); // component + relation
+        } else {
+            panic!("Expected ActivateBlock element");
         }
     }
 }

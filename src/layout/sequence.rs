@@ -63,9 +63,30 @@ impl Message {
 }
 
 #[derive(Debug, Clone)]
+pub struct ActivationBox {
+    pub participant_index: usize,
+    pub start_y: f32,
+    pub end_y: f32,
+    pub nesting_level: u32,
+}
+
+impl ActivationBox {
+    /// Creates a new activation box
+    pub fn new(participant_index: usize, start_y: f32, end_y: f32, nesting_level: u32) -> Self {
+        Self {
+            participant_index,
+            start_y,
+            end_y,
+            nesting_level,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Layout<'a> {
     pub participants: Vec<Participant<'a>>,
     pub messages: Vec<Message>,
+    pub activations: Vec<ActivationBox>,
 }
 
 impl<'a> LayoutSizing for Layout<'a> {

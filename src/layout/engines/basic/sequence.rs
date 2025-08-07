@@ -3,6 +3,7 @@
 //! This module provides a layout engine for sequence diagrams
 //! using a simple, deterministic algorithm.
 
+use crate::layout::sequence::ActivationBox;
 use crate::{
     ast,
     draw::{self, Drawable},
@@ -102,6 +103,179 @@ impl Engine {
         crate::layout::positioning::calculate_label_spacing(labels, self.label_padding)
     }
 
+    /// Process activate blocks from the graph and generate activation boxes
+    fn process_activate_blocks<'a>(
+        &self,
+        graph: &'a Graph<'a>,
+        participant_indices: &HashMap<petgraph::graph::NodeIndex, usize>,
+        messages: &[Message],
+    ) -> Vec<ActivationBox> {
+        graph
+            .activate_blocks()
+            .iter()
+            .flat_map(|&activate_block| {
+                self.process_activate_block_recursive(
+                    activate_block,
+                    participant_indices,
+                    messages,
+                    graph,
+                    0, // Start with nesting level 0
+                )
+            })
+            .collect()
+    }
+
+    /// Process an activate block recursively, handling nested activations and proper timing
+    fn process_activate_block_recursive<'a>(
+        &self,
+        activate_block: &'a ast::ActivateBlock,
+        participant_indices: &HashMap<petgraph::graph::NodeIndex, usize>,
+        messages: &[Message],
+        graph: &'a Graph<'a>,
+        nesting_level: u32,
+    ) -> Vec<ActivationBox> {
+        let mut activation_boxes = Vec::new();
+
+        // Get the participant index for this activate block
+        if let Some(&participant_index) = participant_indices.get(
+            graph
+                .node_id_map()
+                .get(&activate_block.component)
+                .expect("Component not found in graph"),
+        ) {
+            // Calculate base Y position for timing calculations
+            // TODO: This should be calculated based on the height of the participant's messages
+            let participants_height = self.top_margin + self.message_spacing;
+
+            // Find messages that involve this component within the activation scope
+            let (start_y, end_y) = self.calculate_activation_timing(
+                activate_block,
+                messages,
+                participant_indices,
+                graph,
+                participant_index,
+                participants_height,
+            );
+
+            // Create activation box for this level
+            activation_boxes.push(ActivationBox::new(
+                participant_index,
+                start_y,
+                end_y,
+                nesting_level,
+            ));
+
+            // Process nested activate blocks within this one
+            for element in &activate_block.scope.elements {
+                if let ast::Element::ActivateBlock(nested_block) = element {
+                    let mut nested_activations = self.process_activate_block_recursive(
+                        nested_block,
+                        participant_indices,
+                        messages,
+                        graph,
+                        nesting_level + 1,
+                    );
+                    activation_boxes.append(&mut nested_activations);
+                }
+            }
+        }
+
+        activation_boxes
+    }
+
+    /// Calculate the timing bounds for an activation block based on its contained elements
+    fn calculate_activation_timing<'a>(
+        &self,
+        activate_block: &'a ast::ActivateBlock,
+        messages: &[Message],
+        participant_indices: &HashMap<petgraph::graph::NodeIndex, usize>,
+        graph: &'a Graph<'a>,
+        activated_participant_index: usize,
+        base_y: f32,
+    ) -> (f32, f32) {
+        // Find all messages that involve the activated component
+        let mut relevant_message_positions = Vec::new();
+
+        // Collect messages involving this component
+        for message in messages {
+            if message.source_index == activated_participant_index
+                || message.target_index == activated_participant_index
+            {
+                relevant_message_positions.push(message.y_position);
+            }
+        }
+
+        // Also check for messages within the activate block scope by looking at relations
+        Self::collect_messages_in_scope(
+            &activate_block.scope.elements,
+            messages,
+            participant_indices,
+            graph,
+            &mut relevant_message_positions,
+        );
+
+        if relevant_message_positions.is_empty() {
+            // No messages found, create a minimal activation
+            (base_y, base_y + self.message_spacing)
+        } else {
+            // Sort positions and use min/max with padding
+            relevant_message_positions.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let min_y = relevant_message_positions.first().unwrap_or(&0.0);
+            let max_y = relevant_message_positions.last().unwrap_or(&0.0);
+
+            // Add padding before first and after last message
+            let padding = self.message_spacing * 0.3;
+            (min_y - padding, max_y + padding)
+        }
+    }
+
+    /// Recursively collect message positions from elements within a scope
+    fn collect_messages_in_scope<'a>(
+        elements: &'a [ast::Element],
+        messages: &[Message],
+        participant_indices: &HashMap<petgraph::graph::NodeIndex, usize>,
+        graph: &'a Graph<'a>,
+        message_positions: &mut Vec<f32>,
+    ) {
+        for element in elements {
+            match element {
+                ast::Element::Relation(relation) => {
+                    // Find the message corresponding to this relation
+                    for message in messages {
+                        if let (Some(&source_idx), Some(&target_idx)) = (
+                            graph.node_id_map().get(&relation.source),
+                            graph.node_id_map().get(&relation.target),
+                        ) {
+                            if let (Some(&msg_source_idx), Some(&msg_target_idx)) = (
+                                participant_indices.get(&source_idx),
+                                participant_indices.get(&target_idx),
+                            ) {
+                                if message.source_index == msg_source_idx
+                                    && message.target_index == msg_target_idx
+                                {
+                                    message_positions.push(message.y_position);
+                                }
+                            }
+                        }
+                    }
+                }
+                ast::Element::ActivateBlock(nested_block) => {
+                    // Recursively process nested activate blocks
+                    Self::collect_messages_in_scope(
+                        &nested_block.scope.elements,
+                        messages,
+                        participant_indices,
+                        graph,
+                        message_positions,
+                    );
+                }
+                ast::Element::Node(_) => {
+                    // Nodes don't contribute to message timing
+                }
+            }
+        }
+    }
+
     /// Calculate layout for a sequence diagram
     pub fn calculate_layout<'a>(
         &self,
@@ -192,13 +366,13 @@ impl Engine {
 
         // Calculate message positions and update lifeline ends
         let mut messages = Vec::new();
-        let mut current_y = self.top_margin
-            + participants
-                .iter()
-                .map(|p| p.component.drawable().size().height())
-                .max_by(|a, b| a.partial_cmp(b).unwrap())
-                .unwrap_or_default()
-            + self.message_spacing;
+        let participants_height = participants
+            .iter()
+            .map(|p| p.component.drawable().size().height())
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap_or_default();
+
+        let mut current_y = self.top_margin + participants_height + self.message_spacing;
 
         for edge_idx in graph.edge_indices() {
             let (source_idx, target_idx) = graph.edge_endpoints(edge_idx).unwrap();
@@ -226,9 +400,12 @@ impl Engine {
             participant.lifeline_end = current_y + self.message_spacing;
         }
 
+        let activations = self.process_activate_blocks(graph, &participant_indices, &messages);
+
         let layout = Layout {
             participants,
             messages,
+            activations,
         };
 
         let mut content_stack = ContentStack::new();
