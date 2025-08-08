@@ -1,58 +1,54 @@
 # Filament Language Roadmap
 
-This document tracks proposed features, enhancements, and changes for the Filament diagram language. Items are organized by priority and implementation status to help guide development efforts.
+## Overview
 
-## 1. Overview
+This roadmap outlines the planned development path for the Filament language and its ecosystem. Filament is a domain-specific language for creating diagrams and visualizations with a focus on UML diagrams, sequence diagrams, and component diagrams.
 
-The Filament roadmap serves as a central repository for tracking language evolution and feature requests. Each proposal includes rationale, examples, and implementation considerations to facilitate informed decision-making during development.
+The roadmap is organized into major feature categories, each containing specific improvements and new capabilities planned for future releases.
 
-## 2. Feature Overview
+## Table of Contents
 
-### 2.1 Language Core
-- [Named Types for Nested Attributes](#named-types-for-nested-attributes)
-- [Explicit Activate/Deactivate Statements](#explicit-activatedeactivate-statements)
-- [Relation-Triggered Activation](#relation-triggered-activation)
-- [Configurable Activation Box Definitions](#configurable-activation-box-definitions)
-- [Support for Importing Other .fil Files](#support-for-importing-other-fil-files)
-- [Add Support for Class Diagrams](#add-support-for-class-diagrams)
+### Core Components
+- **[Language Core](#language-core)** - Core language features, syntax, and semantics
+  - [Named Types for Nested Attributes](#named-types-for-nested-attributes)
+  - [Support for Importing Other .fil Files](#support-for-importing-other-fil-files)
+  - [Add Support for Class Diagrams](#add-support-for-class-diagrams)
+  - [Configurable Activation Box Definitions](#configurable-activation-box-definitions)
+- **[AST](#ast)** - Parser improvements and error handling
+  - [Multi Error Reporting](#multi-error-reporting)
+  - [Improve Error Messages](#improve-error-messages)
+- **[Engines](#engines)** - Diagram generation and processing engines
+  - [Fix Cross Level Relations in Component Diagram](#fix-cross-level-relations-in-component-diagram)
+- **[Type System](#type-system)** - Type checking and validation system
+  - [Add Support for Prelude of Shapes](#add-support-for-prelude-of-shapes)
+  - [Add Base Type Override Support](#add-base-type-override-support)
+  - [Fix Scoping Types in graph::Graph](#fix-scoping-types-in-graphgraph)
+- **[Rendering](#rendering)** - Visual output and drawing capabilities
+  - [Adding More UML Shapes](#adding-more-uml-shapes)
+  - [Explicit Activate/Deactivate Statements](#explicit-activatedeactivate-statements)
+  - [Relation-Triggered Activation](#relation-triggered-activation)
+  - [Support Shapes with Custom Icons](#support-shapes-with-custom-icons)
+  - [Custom Shape Definitions](#custom-shape-definitions)
+  - [Animation Support](#animation-support)
+  - [Alpha Transparency Support](#alpha-transparency-support)
+  - [Move Sequence Diagram Lifetime Rendering to draw::*](#move-sequence-diagram-lifetime-rendering-to-draw)
+  - [Fix Activation Diagram Lifetime](#fix-activation-diagram-lifetime)
 
-### 2.2 AST
-- [Multi Error Reporting](#multi-error-reporting)
-- [Improve Error Messages](#improve-error-messages)
+### Tooling & Ecosystem
+- **[Tooling](#tooling)** - Development tools and utilities
+  - [fmt Feature for Formatting .fil Files](#fmt-feature-for-formatting-fil-files)
+  - [Add Support for Multi Config Loading with Priority](#add-support-for-multi-config-loading-with-priority)
+  - [Language Server Protocol (LSP)](#language-server-protocol-lsp)
+- **[Integrations](#integrations)** - Editor extensions and IDE support
+  - [Zed Extension](#zed-extension)
+  - [VS Code Extension](#vs-code-extension)
+  - [JetBrains Extension](#jetbrains-extension)
+- **[CLI](#cli)** - Command-line interface improvements
+  - [Formatting Panics Using miette](#formatting-panics-using-miette)
 
-### 2.3 Engines
-- [Fix Cross Level Relations in Component Diagram](#fix-cross-level-relations-in-component-diagram)
+## Features
 
-### 2.4 Type System
-- [Add Support for Prelude of Shapes](#add-support-for-prelude-of-shapes)
-- [Add Base Type Override Support](#add-base-type-override-support)
-- [Fix Scoping Types in graph::Graph](#fix-scoping-types-in-graphgraph)
-
-### 2.5 Rendering
-- [Adding More UML Shapes](#adding-more-uml-shapes)
-- [Support Shapes with Custom Icons](#support-shapes-with-custom-icons)
-- [Custom Shape Definitions](#custom-shape-definitions)
-- [Alpha Transparency Support](#alpha-transparency-support)
-- [Animation Support](#animation-support)
-- [Move Sequence Diagram Lifetime Rendering to draw::*](#move-sequence-diagram-lifetime-rendering-to-draw)
-- [Fix Activation Diagram Lifetime](#fix-activation-diagram-lifetime)
-
-### 2.6 Tooling
-- [fmt Feature for Formatting .fil Files](#fmt-feature-for-formatting-fil-files)
-- [Add Support for Multi Config Loading with Priority](#add-support-for-multi-config-loading-with-priority)
-- [Language Server Protocol (LSP)](#language-server-protocol-lsp)
-
-### 2.7 Integrations
-- [Zed Extension](#zed-extension)
-- [VS Code Extension](#vs-code-extension)
-- [JetBrains Extension](#jetbrains-extension)
-
-### 2.8 CLI
-- [Formatting Panics Using miette](#formatting-panics-using-miette)
-
-## 3. Proposed Features
-
-### 3.1 Language Core
+### Language Core
 
 #### Named Types for Nested Attributes
 
@@ -109,8 +105,6 @@ type ImportantButton = Rectangle [
 - Documentation updates for new syntax patterns
 
 ---
-
-
 
 #### Support for Importing Other .fil Files
 
@@ -226,7 +220,7 @@ activate server [fill_color="lightblue", line_color="darkblue", line_width=2.0] 
 
 ---
 
-### 3.2 AST
+### AST
 
 #### Multi Error Reporting
 
@@ -282,7 +276,7 @@ Improved: "Parse error: expected ';' after component definition
 
 ---
 
-### 3.3 Engines
+### Engines
 
 #### Fix Cross Level Relations in Component Diagram
 
@@ -304,7 +298,7 @@ Relations between components at different nesting levels may not render correctl
 
 ---
 
-### 3.4 Type System
+### Type System
 
 #### Add Support for Prelude of Shapes
 
@@ -379,7 +373,7 @@ Improve the scoping and type handling within the graph::Graph structure to provi
 
 ---
 
-### 3.5 Rendering
+### Rendering
 
 #### Adding More UML Shapes
 
@@ -643,9 +637,7 @@ Address issues with activation diagram lifetime management and visual representa
 
 ---
 
-
-
-### 3.6 Tooling
+### Tooling
 
 #### fmt Feature for Formatting .fil Files
 
@@ -721,7 +713,7 @@ Implement LSP support for Filament to enable rich editor features like syntax hi
 
 ---
 
-### 3.7 Integrations
+### Integrations
 
 #### Zed Extension
 
@@ -780,7 +772,7 @@ Develop a JetBrains plugin supporting Filament across IntelliJ IDEA, WebStorm, a
 
 ---
 
-### 3.8 CLI
+### CLI
 
 #### Formatting Panics Using miette
 
