@@ -223,7 +223,7 @@ impl<'a> Collection<'a> {
 
     pub fn diagram_tree_in_post_order(
         &self,
-    ) -> impl Iterator<Item = (Option<&ast::TypeId>, &Graph)> {
+    ) -> impl Iterator<Item = (Option<&ast::TypeId>, &Graph<'_>)> {
         DfsPostOrder::new(&self.diagram_tree, self.root_diagram.unwrap())
             .iter(&self.diagram_tree)
             .map(|idx| {

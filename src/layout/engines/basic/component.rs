@@ -245,17 +245,16 @@ impl Engine {
                 // Find layers for source and target nodes
                 let (source_layer, target_layer) = self.find_node_layers(graph, relation, layers);
 
-                if let (Some(src), Some(tgt)) = (source_layer, target_layer) {
-                    if src != tgt {
-                        // Only adjust spacing for relations between different layers
-                        let min_layer = src.min(tgt);
-                        let needed_spacing = label_width + 30.0; // Add some padding
+                if let (Some(src), Some(tgt)) = (source_layer, target_layer)
+                    && src != tgt
+                {
+                    // Only adjust spacing for relations between different layers
+                    let min_layer = src.min(tgt);
+                    let needed_spacing = label_width + 30.0; // Add some padding
 
-                        // Update spacing if label requires more space
-                        if min_layer < layer_spacings.len() {
-                            layer_spacings[min_layer] =
-                                layer_spacings[min_layer].max(needed_spacing);
-                        }
+                    // Update spacing if label requires more space
+                    if min_layer < layer_spacings.len() {
+                        layer_spacings[min_layer] = layer_spacings[min_layer].max(needed_spacing);
                     }
                 }
             }

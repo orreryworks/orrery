@@ -88,12 +88,10 @@ impl Engine {
                 if let (Some(&src_idx), Some(&tgt_idx)) = (
                     participant_indices.get(src_node),
                     participant_indices.get(tgt_node),
-                ) {
-                    if (src_idx == source_idx && tgt_idx == target_idx)
-                        || (src_idx == target_idx && tgt_idx == source_idx)
-                    {
-                        return Some(*relation);
-                    }
+                ) && ((src_idx == source_idx && tgt_idx == target_idx)
+                    || (src_idx == target_idx && tgt_idx == source_idx))
+                {
+                    return Some(*relation);
                 }
                 None
             });
@@ -245,17 +243,13 @@ impl Engine {
                         if let (Some(&source_idx), Some(&target_idx)) = (
                             graph.node_id_map().get(&relation.source),
                             graph.node_id_map().get(&relation.target),
-                        ) {
-                            if let (Some(&msg_source_idx), Some(&msg_target_idx)) = (
-                                participant_indices.get(&source_idx),
-                                participant_indices.get(&target_idx),
-                            ) {
-                                if message.source_index == msg_source_idx
-                                    && message.target_index == msg_target_idx
-                                {
-                                    message_positions.push(message.y_position);
-                                }
-                            }
+                        ) && let (Some(&msg_source_idx), Some(&msg_target_idx)) = (
+                            participant_indices.get(&source_idx),
+                            participant_indices.get(&target_idx),
+                        ) && message.source_index == msg_source_idx
+                            && message.target_index == msg_target_idx
+                        {
+                            message_positions.push(message.y_position);
                         }
                     }
                 }

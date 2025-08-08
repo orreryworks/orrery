@@ -241,14 +241,13 @@ impl Engine {
                 .find(|(_, node)| node.id == relation.target)
                 .map(|(idx, _)| *idx);
 
-            if let (Some(source_idx), Some(target_idx)) = (source_node_idx, target_node_idx) {
-                if let (Some(&source_id), Some(&target_id)) =
+            if let (Some(source_idx), Some(target_idx)) = (source_node_idx, target_node_idx)
+                && let (Some(&source_id), Some(&target_id)) =
                     (node_ids.get(&source_idx), node_ids.get(&target_idx))
-                {
-                    // Skip self-loops
-                    if source_id != target_id {
-                        edges.push((source_id, target_id));
-                    }
+            {
+                // Skip self-loops
+                if source_id != target_id {
+                    edges.push((source_id, target_id));
                 }
             }
         }

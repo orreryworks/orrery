@@ -275,30 +275,29 @@ impl Engine {
                     .find(|(_, node)| node.id == relation.target)
                     .map(|(idx, _)| idx);
 
-                if let (Some(source), Some(target)) = (source_node_idx, target_node_idx) {
-                    if let (Some(&pos_source), Some(&pos_target)) =
+                if let (Some(source), Some(target)) = (source_node_idx, target_node_idx)
+                    && let (Some(&pos_source), Some(&pos_target)) =
                         (positions.get(&source), positions.get(&target))
-                    {
-                        let dist = pos_source.sub_point(pos_target);
+                {
+                    let dist = pos_source.sub_point(pos_target);
 
-                        // Avoid division by zero
-                        let distance = dist.hypot().max(1.0);
+                    // Avoid division by zero
+                    let distance = dist.hypot().max(1.0);
 
-                        // Spring force (proportional to distance)
-                        let force = self.spring_constant * distance;
+                    // Spring force (proportional to distance)
+                    let force = self.spring_constant * distance;
 
-                        // Normalize direction vector
-                        let force_x = force * dist.x() / distance;
-                        let force_y = force * dist.y() / distance;
+                    // Normalize direction vector
+                    let force_x = force * dist.x() / distance;
+                    let force_y = force * dist.y() / distance;
 
-                        // Subtract force from source (pull towards target)
-                        let (fx_source, fy_source) = forces[&source];
-                        forces.insert(source, (fx_source - force_x, fy_source - force_y));
+                    // Subtract force from source (pull towards target)
+                    let (fx_source, fy_source) = forces[&source];
+                    forces.insert(source, (fx_source - force_x, fy_source - force_y));
 
-                        // Add force to target (pull towards source)
-                        let (fx_target, fy_target) = forces[&target];
-                        forces.insert(target, (fx_target + force_x, fy_target + force_y));
-                    }
+                    // Add force to target (pull towards source)
+                    let (fx_target, fy_target) = forces[&target];
+                    forces.insert(target, (fx_target + force_x, fy_target + force_y));
                 }
             }
 
