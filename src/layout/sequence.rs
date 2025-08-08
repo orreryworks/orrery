@@ -5,7 +5,7 @@ use crate::{
     layout::{component, layer, positioning::LayoutSizing},
 };
 use log::{debug, error};
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 #[derive(Debug, Clone)]
 pub struct Participant<'a> {
@@ -66,19 +66,26 @@ impl Message {
 pub struct ActivationBox {
     pub participant_index: usize,
     pub start_y: f32,
-    pub end_y: f32,
-    pub nesting_level: u32,
+    pub drawable: draw::ActivationBox,
 }
 
 impl ActivationBox {
-    /// Creates a new activation box
+    /// Creates a new activation box with a drawable component
     pub fn new(participant_index: usize, start_y: f32, end_y: f32, nesting_level: u32) -> Self {
+        let height = end_y - start_y;
+        let definition = Rc::new(draw::ActivationBoxDefinition::default());
+        let drawable = draw::ActivationBox::new(definition, height, nesting_level);
+
         Self {
             participant_index,
             start_y,
-            end_y,
-            nesting_level,
+            drawable,
         }
+    }
+
+    /// Returns the drawable activation box
+    pub fn drawable(&self) -> &draw::ActivationBox {
+        &self.drawable
     }
 }
 

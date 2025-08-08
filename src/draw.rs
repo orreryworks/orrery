@@ -1,3 +1,9 @@
+//! Drawable Components for Diagram Rendering
+//!
+//! This module provides drawable abstractions for rendering various diagram elements.
+//! All drawable components implement the [`Drawable`] trait, which provides a consistent
+//! interface for rendering to SVG and calculating size.
+mod activation_box;
 mod arrow;
 mod arrow_with_text;
 mod group;
@@ -7,6 +13,7 @@ mod shape_with_text;
 mod text;
 mod text_positioning;
 
+pub use activation_box::{ActivationBox, ActivationBoxDefinition};
 pub use arrow::{Arrow, ArrowDefinition, ArrowDirection, ArrowDrawer, ArrowStyle};
 pub use arrow_with_text::{ArrowWithText, ArrowWithTextDrawer};
 pub use positioned::PositionedDrawable;

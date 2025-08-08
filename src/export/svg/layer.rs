@@ -1,4 +1,5 @@
 use crate::{
+    draw::Drawable,
     geometry::Bounds,
     layout::{
         component,
@@ -228,9 +229,7 @@ impl Svg {
 
     /// Render component-specific content
     fn render_component_content(&mut self, content: &component::Layout) -> Vec<Box<dyn svg::Node>> {
-        let mut groups = Vec::with_capacity(
-            content.components.len() + content.relations.len(),
-        );
+        let mut groups = Vec::with_capacity(content.components.len() + content.relations.len());
         // Render all components within this positioned content
         for component in &content.components {
             groups.push(self.render_component(component));
@@ -265,7 +264,14 @@ impl Svg {
 
         // Render all activation boxes within this positioned content
         for activation_box in &content.activations {
-            groups.push(self.render_activation_box(activation_box, content));
+            // Calculate the center position for the activation box
+            let participant = &content.participants[activation_box.participant_index];
+            let participant_position = participant.component.position();
+            let center_y = activation_box.start_y + (activation_box.drawable().height() / 2.0);
+            let position = participant_position.with_y(center_y);
+
+            // Use the drawable to render the activation box
+            groups.push(activation_box.drawable().render_to_svg(position));
         }
 
         groups

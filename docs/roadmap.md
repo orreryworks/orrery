@@ -12,6 +12,7 @@ The Filament roadmap serves as a central repository for tracking language evolut
 - [Named Types for Nested Attributes](#named-types-for-nested-attributes)
 - [Explicit Activate/Deactivate Statements](#explicit-activatedeactivate-statements)
 - [Relation-Triggered Activation](#relation-triggered-activation)
+- [Configurable Activation Box Definitions](#configurable-activation-box-definitions)
 - [Support for Importing Other .fil Files](#support-for-importing-other-fil-files)
 - [Add Support for Class Diagrams](#add-support-for-class-diagrams)
 
@@ -33,7 +34,6 @@ The Filament roadmap serves as a central repository for tracking language evolut
 - [Custom Shape Definitions](#custom-shape-definitions)
 - [Alpha Transparency Support](#alpha-transparency-support)
 - [Animation Support](#animation-support)
-- [Move Activation Rendering to draw::*](#move-activation-rendering-to-draw)
 - [Move Sequence Diagram Lifetime Rendering to draw::*](#move-sequence-diagram-lifetime-rendering-to-draw)
 - [Fix Activation Diagram Lifetime](#fix-activation-diagram-lifetime)
 
@@ -176,6 +176,53 @@ UserService -> [association] Database: "uses";
 - Built-in UML class diagram conventions
 - Proper inheritance and association representations
 - Integration with existing type system
+
+---
+
+#### Configurable Activation Box Definitions
+
+**Description**:
+Make activation box styling configurable from the language syntax, allowing users to customize activation box appearance using attribute syntax similar to other visual elements.
+
+**Current Implementation**:
+- Activation boxes use hardcoded default styling (white fill with black border)
+- ActivationBoxDefinition is created with default values only
+- No language-level customization available for activation box appearance
+
+**Proposed Implementation**:
+- Add attribute support to activate block syntax: `activate component [fill_color="red", line_color="blue"] { ... };`
+- Extend ActivationBoxDefinition to support configurable attributes:
+  - `fill_color`: Background color of activation boxes
+  - `line_color`: Border color of activation boxes
+  - `line_width`: Border thickness of activation boxes
+  - `rounded`: Corner radius for rounded activation boxes
+- Update parser to handle optional attribute specifications in activate blocks
+- Integrate with existing attribute system for type safety and validation
+
+**Benefits**:
+- Enhanced visual customization for sequence diagrams
+- Consistent syntax with other language elements
+- Better visual distinction between different types of activations
+- Improved diagram aesthetics and readability
+- Maintains backward compatibility with existing syntax
+
+**Example Usage**:
+```filament
+diagram sequence;
+
+user: Rectangle;
+server: Rectangle;
+
+// Default styling
+activate user {
+    user -> server: "Request";
+};
+
+// Custom styling
+activate server [fill_color="lightblue", line_color="darkblue", line_width=2.0] {
+    server -> user: "Response";
+};
+```
 
 ---
 
@@ -551,27 +598,6 @@ diagram component [background_color="rgba(240, 240, 240, 0.8)"];
 
 ---
 
-#### Move Activation Rendering to draw::*
-
-**Description**:
-Refactor activation box rendering logic from export::svg::* modules to draw::* modules for better architectural separation and reusability.
-
-**Current Implementation**:
-Activation rendering is currently handled directly in SVG export modules, creating tight coupling between rendering logic and export format.
-
-**Proposed Implementation**:
-- Move activation box drawing logic to draw::activation or similar module
-- Create format-agnostic activation rendering interfaces
-- Enable reusability for potential future export formats (PDF, PNG, etc.)
-
-**Benefits**:
-- Better separation of concerns
-- Format-agnostic rendering logic
-- Improved testability of activation rendering
-- Easier maintenance and extension
-
----
-
 #### Move Sequence Diagram Lifetime Rendering to draw::*
 
 **Description**:
@@ -616,6 +642,8 @@ Address issues with activation diagram lifetime management and visual representa
 - Robust handling of complex activation scenarios
 
 ---
+
+
 
 ### 3.6 Tooling
 

@@ -92,7 +92,7 @@ impl<'a> Graph<'a> {
         &self.activate_blocks
     }
 
-    pub fn node_id_map(&self) -> &std::collections::HashMap<ast::TypeId, petgraph::graph::NodeIndex> {
+    pub fn node_id_map(&self) -> &HashMap<ast::TypeId, NodeIndex> {
         &self.node_id_map
     }
     pub fn containment_scopes(&self) -> &[ContainmentScope] {
