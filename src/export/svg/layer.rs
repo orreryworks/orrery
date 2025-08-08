@@ -1,5 +1,4 @@
 use crate::{
-    draw::Drawable,
     geometry::Bounds,
     layout::{
         component,
@@ -257,21 +256,18 @@ impl Svg {
             groups.push(self.render_participant(participant));
         }
 
+        // Render all activation boxes within this positioned content
+        // Sort by nesting level to ensure proper z-order (lower levels render first, higher levels on top)
+        let mut sorted_activations: Vec<_> = content.activations.iter().collect();
+        sorted_activations.sort_by_key(|activation_box| activation_box.drawable().nesting_level());
+
+        for activation_box in sorted_activations {
+            groups.push(self.render_activation_box(activation_box, content));
+        }
+
         // Render all messages within this positioned content
         for message in &content.messages {
             groups.push(self.render_message(message, content));
-        }
-
-        // Render all activation boxes within this positioned content
-        for activation_box in &content.activations {
-            // Calculate the center position for the activation box
-            let participant = &content.participants[activation_box.participant_index];
-            let participant_position = participant.component.position();
-            let center_y = activation_box.start_y + (activation_box.drawable().height() / 2.0);
-            let position = participant_position.with_y(center_y);
-
-            // Use the drawable to render the activation box
-            groups.push(activation_box.drawable().render_to_svg(position));
         }
 
         groups

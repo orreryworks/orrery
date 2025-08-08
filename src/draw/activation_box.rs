@@ -158,6 +158,11 @@ impl ActivationBox {
         self.height
     }
 
+    /// Gets the nesting level for z-order sorting
+    pub fn nesting_level(&self) -> u32 {
+        self.nesting_level
+    }
+
     /// Returns a reference to the activation box definition.
     fn definition(&self) -> &ActivationBoxDefinition {
         &self.definition

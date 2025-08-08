@@ -1,5 +1,6 @@
 use super::Svg;
 use crate::{
+    draw::Drawable,
     geometry::{Bounds, Point},
     layout::{layer::ContentStack, sequence},
 };
@@ -53,6 +54,21 @@ impl Svg {
             start_point,
             end_point,
         )
+    }
+
+    pub fn render_activation_box(
+        &self,
+        activation_box: &sequence::ActivationBox,
+        layout: &sequence::Layout,
+    ) -> Box<dyn svg::Node> {
+        // Calculate the center position for the activation box
+        let participant = &layout.participants[activation_box.participant_index];
+        let participant_position = participant.component.position();
+        let center_y = activation_box.start_y + (activation_box.drawable().height() / 2.0);
+        let position = participant_position.with_y(center_y);
+
+        // Use the drawable to render the activation box
+        activation_box.drawable().render_to_svg(position)
     }
 
     pub fn calculate_sequence_diagram_bounds(
