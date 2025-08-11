@@ -62,9 +62,9 @@ impl Svg {
         layout: &sequence::Layout,
     ) -> Box<dyn svg::Node> {
         // Calculate the center position for the activation box
-        let participant = &layout.participants[activation_box.participant_index];
+        let participant = &layout.participants[activation_box.participant_index()];
         let participant_position = participant.component.position();
-        let center_y = activation_box.start_y + (activation_box.drawable().height() / 2.0);
+        let center_y = activation_box.center_y();
         let position = participant_position.with_y(center_y);
 
         // Use the drawable to render the activation box

@@ -49,18 +49,41 @@ impl ContainmentScope {
     }
 }
 
+/// Represents ordered events.
+///
+/// # Variants
+///
+/// * [`Event::Relation`] - A relation between components
+/// * [`Event::Activate`] - Start of an activation period for a component
+/// * [`Event::Deactivate`] - End of an activation period for a component
+#[derive(Debug)]
+pub enum Event {
+    /// A relation between two components.
+    Relation(EdgeIndex),
+
+    /// Start of an activation period for a component.
+    ///
+    /// Contains the [`NodeIndex`] of the component that becomes active.
+    Activate(NodeIndex),
+
+    /// End of an activation period for a component.
+    ///
+    /// Contains the [`NodeIndex`] of the component that becomes inactive.
+    Deactivate(NodeIndex),
+}
+
 /// Represents a graph structure for a single diagram.
 ///
 /// This structure contains the graph representation of nodes and relations
 /// from a Filament diagram, along with organizational information about
-/// containment scopes.
+/// containment scopes and ordered events.
 #[derive(Debug)]
 pub struct Graph<'a> {
     graph: DiGraph<ast::Node, ast::Relation>,
     diagram: &'a ast::Diagram,
     containment_scopes: Vec<ContainmentScope>,
     node_id_map: HashMap<ast::TypeId, NodeIndex>, // Maps node IDs to their indices
-    activate_blocks: Vec<&'a ast::ActivateBlock>,
+    ordered_events: Vec<Event>,
 }
 
 /// Represents a collection of interconnected diagrams with hierarchical relationships.
@@ -80,16 +103,12 @@ impl<'a> Graph<'a> {
             diagram,
             containment_scopes: Vec::new(),
             node_id_map: HashMap::new(),
-            activate_blocks: Vec::new(),
+            ordered_events: Vec::new(),
         }
     }
 
     pub fn diagram(&self) -> &ast::Diagram {
         self.diagram
-    }
-
-    pub fn activate_blocks(&self) -> &[&'a ast::ActivateBlock] {
-        &self.activate_blocks
     }
 
     pub fn node_id_map(&self) -> &HashMap<ast::TypeId, NodeIndex> {
@@ -128,6 +147,56 @@ impl<'a> Graph<'a> {
 
     pub fn edge_endpoints(&self, edge_index: EdgeIndex) -> Option<(NodeIndex, NodeIndex)> {
         self.graph.edge_endpoints(edge_index)
+    }
+
+    /// Returns an iterator over all events in AST order.
+    ///
+    /// This method provides access to events (relations, activations, deactivations) in the exact
+    /// order they appear in the AST.
+    ///
+    /// # Returns
+    /// An iterator yielding `&Event` items in AST order.
+    pub fn ordered_events(&self) -> impl Iterator<Item = &Event> {
+        self.ordered_events.iter()
+    }
+
+    /// Returns an iterator over just relation events in AST order.
+    ///
+    /// This method filters the ordered events to return only `EdgeIndex` values for relations,
+    /// maintaining AST order.
+    ///
+    /// # Returns
+    /// An iterator yielding `EdgeIndex` values for relation events only, in AST order.
+    pub fn ordered_relations(&self) -> impl Iterator<Item = EdgeIndex> + '_ {
+        self.ordered_events().filter_map(|event| match event {
+            Event::Relation(edge_idx) => Some(*edge_idx),
+            _ => None,
+        })
+    }
+
+    /// Extract message information from a relation event.
+    ///
+    /// Given an `EdgeIndex` from a relation event, this method extracts all the information
+    /// needed to create a message: the source and target node indices, and the relation AST node.
+    /// This is a convenience method that combines `edge_endpoints()` and `edge_weight()` calls.
+    ///
+    /// # Parameters
+    /// * `edge_idx` - The edge index from an `Event::Relation` event
+    ///
+    /// # Returns
+    /// * `Some((source_node, target_node, relation))` if the edge exists
+    /// * `None` if the edge index is invalid
+    pub fn relation_message_info(
+        &self,
+        edge_idx: EdgeIndex,
+    ) -> Option<(NodeIndex, NodeIndex, &ast::Relation)> {
+        if let (Some(endpoints), Some(relation)) =
+            (self.edge_endpoints(edge_idx), self.edge_weight(edge_idx))
+        {
+            Some((endpoints.0, endpoints.1, relation))
+        } else {
+            None
+        }
     }
 
     /// Returns an iterator over nodes in a containment scope with their indices.
@@ -277,36 +346,43 @@ impl<'a> Collection<'a> {
             }
         }
 
-        // Second pass: add all relations to the graph
+        // Second pass: add all relations and activate blocks to the graph
         for element in elements {
-            if let ast::Element::Relation(relation) = element {
-                if let (Some(&source_idx), Some(&target_idx)) = (
-                    graph.node_id_map.get(&relation.source),
-                    graph.node_id_map.get(&relation.target),
-                ) {
-                    let edge_idx = graph.add_edge(source_idx, target_idx, relation);
-                    containment_scope.add_relation(edge_idx);
-                } else {
-                    return Err(FilamentError::Graph(format!(
-                        "Warning: Relation refers to undefined nodes: {} -> {}",
-                        relation.source, relation.target
-                    )));
+            match element {
+                ast::Element::Relation(relation) => {
+                    if let (Some(&source_idx), Some(&target_idx)) = (
+                        graph.node_id_map.get(&relation.source),
+                        graph.node_id_map.get(&relation.target),
+                    ) {
+                        let edge_idx = graph.add_edge(source_idx, target_idx, relation);
+                        containment_scope.add_relation(edge_idx);
+                        graph.ordered_events.push(Event::Relation(edge_idx))
+                    } else {
+                        return Err(FilamentError::Graph(format!(
+                            "Warning: Relation refers to undefined nodes: {} -> {}",
+                            relation.source, relation.target
+                        )));
+                    }
                 }
-            }
-        }
+                ast::Element::ActivateBlock(activate_block) => {
+                    let node_idx = *graph
+                        .node_id_map()
+                        .get(&activate_block.component)
+                        .expect("Node map is missing");
 
-        // Third pass: collect activate blocks and recursively process their elements
-        for element in elements {
-            if let ast::Element::ActivateBlock(activate_block) = element {
-                graph.activate_blocks.push(activate_block);
+                    graph.ordered_events.push(Event::Activate(node_idx));
 
-                // Recursively process elements within the activate block
-                let mut inner_hierarchy_children = self.process_containment_scope(
-                    graph,
-                    &activate_block.scope.elements,
-                    container,
-                )?;
-                hierarchy_children.append(&mut inner_hierarchy_children);
+                    // Recursively process elements within the activate block
+                    let mut inner_hierarchy_children = self.process_containment_scope(
+                        graph,
+                        &activate_block.scope.elements,
+                        container,
+                    )?;
+                    hierarchy_children.append(&mut inner_hierarchy_children);
+
+                    graph.ordered_events.push(Event::Deactivate(node_idx));
+                }
+                ast::Element::Node(..) => (),
             }
         }
 

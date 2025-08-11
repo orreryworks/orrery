@@ -62,28 +62,103 @@ impl Message {
     }
 }
 
+/// Represents a rendered activation box in a sequence diagram.
+///
+/// An [`ActivationBox`] is the final result of activation timing calculations, containing
+/// all the information needed to render an activation period on a participant's lifeline.
+/// It represents the visual rectangle that appears on the lifeline to indicate when
+/// a participant is active (has control focus).
+///
+/// # Key Features
+///
+/// - **Precise Positioning**: Contains exact center Y coordinate for rendering
+/// - **Proper Encapsulation**: Private fields with controlled access through methods
+/// - **Ready for Rendering**: Contains drawable object with styling and dimensions
+/// - **Participant Association**: Tracks which participant this activation belongs to
+///
+/// # Creation
+///
+/// `ActivationBox` objects are created directly from [`ActivationTiming`] objects
+/// during the ordered events processing using the [`ActivationTiming::to_activation_box`] method.
+/// This conversion happens at the exact moment of deactivation with the precise end position.
 #[derive(Debug, Clone)]
 pub struct ActivationBox {
-    pub participant_index: usize,
-    pub start_y: f32,
-    pub drawable: draw::ActivationBox,
+    participant_index: usize,
+    center_y: f32,
+    drawable: draw::ActivationBox,
 }
 
-impl ActivationBox {
-    /// Creates a new activation box with a drawable component
-    pub fn new(participant_index: usize, start_y: f32, end_y: f32, nesting_level: u32) -> Self {
-        let height = end_y - start_y;
-        let definition = Rc::new(draw::ActivationBoxDefinition::default());
-        let drawable = draw::ActivationBox::new(definition, height, nesting_level);
+/// Represents an activation period with precise timing information during processing.
+///
+/// [`ActivationTiming`] is a lightweight processing object used by the ordered events
+/// system to track activation periods as they are being built. It contains the minimal
+/// information needed during event processing and converts to an [`ActivationBox`]
+/// when the activation period is complete.
+///
+/// # Lifecycle
+///
+/// 1. **Creation**: Created immediately when [`Event::Activate`] occurs with exact start position
+/// 2. **Stack Management**: Stored in participant-specific activation stacks
+/// 3. **Conversion**: Converted to [`ActivationBox`] when [`Event::Deactivate`] occurs
+#[derive(Debug, Clone)]
+pub struct ActivationTiming {
+    participant_index: usize,
+    start_y: f32,
+    nesting_level: u32,
+}
 
+impl ActivationTiming {
+    /// Creates a new ActivationTiming with the given participant index, start position, and nesting level
+    pub fn new(participant_index: usize, start_y: f32, nesting_level: u32) -> Self {
         Self {
             participant_index,
             start_y,
+            nesting_level,
+        }
+    }
+
+    /// Converts this ActivationTiming to an ActivationBox with the given end_y position
+    pub fn to_activation_box(&self, end_y: f32) -> ActivationBox {
+        let center_y = (self.start_y() + end_y) / 2.0;
+        let height = end_y - self.start_y();
+        let definition = Rc::new(draw::ActivationBoxDefinition::default());
+        let drawable = draw::ActivationBox::new(definition, height, self.nesting_level());
+
+        ActivationBox {
+            participant_index: self.participant_index(),
+            center_y,
             drawable,
         }
     }
 
-    /// Returns the drawable activation box
+    /// Returns the participant index
+    fn participant_index(&self) -> usize {
+        self.participant_index
+    }
+
+    /// Returns the start Y coordinate
+    fn start_y(&self) -> f32 {
+        self.start_y
+    }
+
+    /// Returns the nesting level
+    fn nesting_level(&self) -> u32 {
+        self.nesting_level
+    }
+}
+
+impl ActivationBox {
+    /// Returns the participant index for this activation box
+    pub fn participant_index(&self) -> usize {
+        self.participant_index
+    }
+
+    /// Returns the center Y coordinate for this activation box
+    pub fn center_y(&self) -> f32 {
+        self.center_y
+    }
+
+    /// Returns a reference to the drawable activation box
     pub fn drawable(&self) -> &draw::ActivationBox {
         &self.drawable
     }

@@ -32,7 +32,6 @@ The roadmap is organized into major feature categories, each containing specific
   - [Animation Support](#animation-support)
   - [Alpha Transparency Support](#alpha-transparency-support)
   - [Move Sequence Diagram Lifetime Rendering to draw::*](#move-sequence-diagram-lifetime-rendering-to-draw)
-  - [Fix Activation Diagram Lifetime](#fix-activation-diagram-lifetime)
 
 ### Tooling & Ecosystem
 - **[Tooling](#tooling)** - Development tools and utilities
@@ -610,30 +609,6 @@ Sequence lifeline rendering is embedded within SVG-specific export code.
 - Reusable lifeline rendering logic
 - Better separation between drawing and export concerns
 - Improved code organization
-
----
-
-#### Fix Activation Diagram Lifetime
-
-**Description**:
-Address issues with activation diagram lifetime management and visual representation to ensure correct activation periods and proper cleanup.
-
-**Current Issues**:
-- Activation lifetime calculations may not accurately reflect message timing
-- Visual representation of activation periods could be improved
-- Edge cases in activation start/end timing need better handling
-
-**Proposed Implementation**:
-- Improve activation lifetime calculation algorithms
-- Better integration between message timing and activation periods
-- Enhanced visual feedback for activation boundaries
-- Proper handling of nested activation lifetimes
-
-**Benefits**:
-- More accurate activation period representation
-- Better visual clarity in sequence diagrams
-- Improved user understanding of component activity periods
-- Robust handling of complex activation scenarios
 
 ---
 

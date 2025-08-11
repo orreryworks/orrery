@@ -3,17 +3,19 @@
 //! This module provides a layout engine for sequence diagrams
 //! using a simple, deterministic algorithm.
 
-use crate::layout::sequence::ActivationBox;
 use crate::{
     ast,
     draw::{self, Drawable},
     geometry::{Insets, Point, Size},
-    graph::Graph,
+    graph::{Event, Graph},
     layout::{
         component::Component,
         engines::{EmbeddedLayouts, SequenceEngine},
         layer::{ContentStack, PositionedContent},
-        sequence::{Layout, Message, Participant, adjust_positioned_contents_offset},
+        sequence::{
+            ActivationBox, ActivationTiming, Layout, Message, Participant,
+            adjust_positioned_contents_offset,
+        },
     },
 };
 use petgraph::graph::NodeIndex;
@@ -99,175 +101,6 @@ impl Engine {
         // Extract labels from relations and use shared function to calculate spacing
         let labels = relevant_messages.map(|relation| relation.text());
         crate::layout::positioning::calculate_label_spacing(labels, self.label_padding)
-    }
-
-    /// Process activate blocks from the graph and generate activation boxes
-    fn process_activate_blocks<'a>(
-        &self,
-        graph: &'a Graph<'a>,
-        participant_indices: &HashMap<petgraph::graph::NodeIndex, usize>,
-        messages: &[Message],
-    ) -> Vec<ActivationBox> {
-        graph
-            .activate_blocks()
-            .iter()
-            .flat_map(|&activate_block| {
-                self.process_activate_block_recursive(
-                    activate_block,
-                    participant_indices,
-                    messages,
-                    graph,
-                    0, // Start with nesting level 0
-                )
-            })
-            .collect()
-    }
-
-    /// Process an activate block recursively, handling nested activations and proper timing
-    fn process_activate_block_recursive<'a>(
-        &self,
-        activate_block: &'a ast::ActivateBlock,
-        participant_indices: &HashMap<petgraph::graph::NodeIndex, usize>,
-        messages: &[Message],
-        graph: &'a Graph<'a>,
-        nesting_level: u32,
-    ) -> Vec<ActivationBox> {
-        let mut activation_boxes = Vec::new();
-
-        // Get the participant index for this activate block
-        if let Some(&participant_index) = participant_indices.get(
-            graph
-                .node_id_map()
-                .get(&activate_block.component)
-                .expect("Component not found in graph"),
-        ) {
-            // Calculate base Y position for timing calculations
-            // TODO: This should be calculated based on the height of the participant's messages
-            let participants_height = self.top_margin + self.message_spacing;
-
-            // Find messages that involve this component within the activation scope
-            let (start_y, end_y) = self.calculate_activation_timing(
-                activate_block,
-                messages,
-                participant_indices,
-                graph,
-                participant_index,
-                participants_height,
-            );
-
-            // Create activation box for this level
-            activation_boxes.push(ActivationBox::new(
-                participant_index,
-                start_y,
-                end_y,
-                nesting_level,
-            ));
-
-            // Process nested activate blocks within this one
-            for element in &activate_block.scope.elements {
-                if let ast::Element::ActivateBlock(nested_block) = element {
-                    let mut nested_activations = self.process_activate_block_recursive(
-                        nested_block,
-                        participant_indices,
-                        messages,
-                        graph,
-                        nesting_level + 1,
-                    );
-                    activation_boxes.append(&mut nested_activations);
-                }
-            }
-        }
-
-        activation_boxes
-    }
-
-    /// Calculate the timing bounds for an activation block based on its contained elements
-    fn calculate_activation_timing<'a>(
-        &self,
-        activate_block: &'a ast::ActivateBlock,
-        messages: &[Message],
-        participant_indices: &HashMap<petgraph::graph::NodeIndex, usize>,
-        graph: &'a Graph<'a>,
-        activated_participant_index: usize,
-        base_y: f32,
-    ) -> (f32, f32) {
-        // Find all messages that involve the activated component
-        let mut relevant_message_positions = Vec::new();
-
-        // Collect messages involving this component
-        for message in messages {
-            if message.source_index == activated_participant_index
-                || message.target_index == activated_participant_index
-            {
-                relevant_message_positions.push(message.y_position);
-            }
-        }
-
-        // Also check for messages within the activate block scope by looking at relations
-        Self::collect_messages_in_scope(
-            &activate_block.scope.elements,
-            messages,
-            participant_indices,
-            graph,
-            &mut relevant_message_positions,
-        );
-
-        if relevant_message_positions.is_empty() {
-            // No messages found, create a minimal activation
-            (base_y, base_y + self.message_spacing)
-        } else {
-            // Sort positions and use min/max with padding
-            relevant_message_positions.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            let min_y = relevant_message_positions.first().unwrap_or(&0.0);
-            let max_y = relevant_message_positions.last().unwrap_or(&0.0);
-
-            // Add padding before first and after last message
-            let padding = self.message_spacing * 0.3;
-            (min_y - padding, max_y + padding)
-        }
-    }
-
-    /// Recursively collect message positions from elements within a scope
-    fn collect_messages_in_scope<'a>(
-        elements: &'a [ast::Element],
-        messages: &[Message],
-        participant_indices: &HashMap<petgraph::graph::NodeIndex, usize>,
-        graph: &'a Graph<'a>,
-        message_positions: &mut Vec<f32>,
-    ) {
-        for element in elements {
-            match element {
-                ast::Element::Relation(relation) => {
-                    // Find the message corresponding to this relation
-                    for message in messages {
-                        if let (Some(&source_idx), Some(&target_idx)) = (
-                            graph.node_id_map().get(&relation.source),
-                            graph.node_id_map().get(&relation.target),
-                        ) && let (Some(&msg_source_idx), Some(&msg_target_idx)) = (
-                            participant_indices.get(&source_idx),
-                            participant_indices.get(&target_idx),
-                        ) && message.source_index == msg_source_idx
-                            && message.target_index == msg_target_idx
-                        {
-                            message_positions.push(message.y_position);
-                        }
-                    }
-                }
-                ast::Element::ActivateBlock(nested_block) => {
-                    // Recursively process nested activate blocks
-                    Self::collect_messages_in_scope(
-                        &nested_block.scope.elements,
-                        messages,
-                        participant_indices,
-                        graph,
-                        message_positions,
-                    );
-                }
-                ast::Element::Node(_) => {
-                    // Nodes don't contribute to message timing
-                }
-            }
-        }
     }
 
     /// Calculate layout for a sequence diagram
@@ -368,9 +201,8 @@ impl Engine {
 
         let mut current_y = self.top_margin + participants_height + self.message_spacing;
 
-        for edge_idx in graph.edge_indices() {
-            let (source_idx, target_idx) = graph.edge_endpoints(edge_idx).unwrap();
-            let relation = graph.edge_weight(edge_idx).unwrap();
+        for edge_idx in graph.ordered_relations() {
+            let (source_idx, target_idx, relation) = graph.relation_message_info(edge_idx).unwrap();
 
             let source_index = *participant_indices.get(&source_idx).unwrap();
             let target_index = *participant_indices.get(&target_idx).unwrap();
@@ -394,7 +226,7 @@ impl Engine {
             participant.lifeline_end = current_y + self.message_spacing;
         }
 
-        let activations = self.process_activate_blocks(graph, &participant_indices, &messages);
+        let activations = self.calculate_activation_boxes(graph, &participant_indices);
 
         let layout = Layout {
             participants,
@@ -408,6 +240,83 @@ impl Engine {
         adjust_positioned_contents_offset(&mut content_stack, graph);
 
         content_stack
+    }
+
+    /// Calculate activation boxes from ordered events using exact positioning.
+    ///
+    /// This method processes ordered events sequentially to create activation boxes with
+    /// precise timing based on exact activate/deactivate event positions. It uses a
+    /// HashMap-based stack approach (NodeIndex -> Vec<ActivationTiming>) to track
+    /// activation periods per participant and converts them directly to ActivationBox
+    /// objects when deactivation occurs.
+    ///
+    /// # Algorithm
+    /// 1. Iterate through ordered events sequentially
+    /// 2. For `Event::Relation`: Advance current Y position for next event
+    /// 3. For `Event::Activate`: Create ActivationTiming with exact current Y position, push to participant's stack
+    /// 4. For `Event::Deactivate`: Pop activation, convert to ActivationBox with exact current Y position
+    ///
+    /// # Parameters
+    /// * `graph` - The sequence diagram graph containing ordered events
+    /// * `participant_indices` - Mapping from NodeIndex to participant index
+    ///
+    /// # Returns
+    /// Vector of `ActivationBox` objects ready for rendering with precise positioning and nesting levels
+    fn calculate_activation_boxes(
+        &self,
+        graph: &crate::graph::Graph,
+        participant_indices: &HashMap<petgraph::graph::NodeIndex, usize>,
+    ) -> Vec<ActivationBox> {
+        let mut activation_boxes: Vec<_> = Vec::new();
+        let mut activation_stack: HashMap<NodeIndex, Vec<ActivationTiming>> = HashMap::new();
+
+        // Calculate initial Y position based on participants height and margin
+        let participants_height = self.top_margin + self.message_spacing;
+        let mut current_y = participants_height + self.message_spacing;
+
+        for event in graph.ordered_events() {
+            match event {
+                Event::Relation(..) => {
+                    current_y += self.message_spacing;
+                }
+                Event::Activate(node_idx) => {
+                    if let Some(&participant_index) = participant_indices.get(node_idx) {
+                        // Calculate nesting level for this node
+                        let nesting_level = activation_stack
+                            .get(node_idx)
+                            .map(|stack| stack.len() as u32)
+                            .unwrap_or(0);
+
+                        // Create new ActivationTiming with current Y position
+                        let new_timing =
+                            ActivationTiming::new(participant_index, current_y, nesting_level);
+
+                        // Add to the stack for this node
+                        activation_stack
+                            .entry(*node_idx)
+                            .or_insert_with(Vec::new)
+                            .push(new_timing);
+                    }
+                }
+                Event::Deactivate(node_idx) => {
+                    // Pop the most recent activation for this node
+                    if let Some(node_stack) = activation_stack.get_mut(node_idx) {
+                        if let Some(completed_timing) = node_stack.pop() {
+                            // Convert directly to ActivationBox using exact deactivate position
+                            let activation_box = completed_timing.to_activation_box(current_y);
+                            activation_boxes.push(activation_box);
+                        }
+
+                        // Clean up empty stacks to avoid memory bloat
+                        if node_stack.is_empty() {
+                            activation_stack.remove(node_idx);
+                        }
+                    }
+                }
+            }
+        }
+
+        activation_boxes
     }
 }
 
