@@ -21,7 +21,7 @@
 use crate::{
     color::Color,
     draw::Drawable,
-    geometry::{Point, Size},
+    geometry::{Bounds, Point, Size},
 };
 use std::rc::Rc;
 use svg::{self, node::element as svg_element};
@@ -163,6 +163,15 @@ impl ActivationBox {
         self.nesting_level
     }
 
+    /// Calculate the bounds for this activation box when positioned at the given position.
+    pub fn calculate_bounds(&self, position: Point) -> Bounds {
+        let def = self.definition();
+        let nesting_offset = self.nesting_level as f32 * def.nesting_offset();
+        let adjusted_position = position.with_x(position.x() + nesting_offset);
+        let size = self.size();
+        adjusted_position.to_bounds(size)
+    }
+
     /// Returns a reference to the activation box definition.
     fn definition(&self) -> &ActivationBoxDefinition {
         &self.definition
@@ -178,22 +187,15 @@ impl Drawable for ActivationBox {
     fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
         let def = self.definition();
 
-        // Apply nesting offset to the position
-        let nesting_offset = self.nesting_level as f32 * def.nesting_offset();
-        let adjusted_position = position.with_x(position.x() + nesting_offset);
-
-        // Calculate the top-left position of the rectangle
-        // Position is the center, so we need to offset by half width and height
-        let size = Size::new(def.width(), self.height);
-        let bounds = adjusted_position.to_bounds(size);
+        let bounds = self.calculate_bounds(position);
         let top_left = bounds.min_point();
 
         // Create the activation box rectangle
         let activation_rect = svg_element::Rectangle::new()
             .set("x", top_left.x())
             .set("y", top_left.y())
-            .set("width", size.width())
-            .set("height", size.height())
+            .set("width", bounds.width())
+            .set("height", bounds.height())
             .set("fill", def.fill_color().to_string())
             .set("stroke", def.stroke_color().to_string())
             .set("stroke-width", def.stroke_width());
@@ -268,5 +270,26 @@ mod tests {
         // Verify we get a valid SVG node (basic smoke test - no panic means success)
         // The Box<dyn svg::Node> cannot be null in safe Rust, so just getting here is sufficient
         drop(svg_node);
+    }
+
+    #[test]
+    fn test_calculate_bounds() {
+        // Test with custom definition values
+        let mut definition = ActivationBoxDefinition::new();
+        definition.set_width(12.0);
+        definition.set_nesting_offset(6.0);
+        let definition = Rc::new(definition);
+
+        let activation_box = ActivationBox::new(definition, 40.0, 1);
+        let position = Point::new(150.0, 300.0);
+
+        let bounds = activation_box.calculate_bounds(position);
+
+        // With custom width 12.0, nesting level 1, and offset 6.0
+        // X offset should be 6.0, half width should be 6.0
+        assert_eq!(bounds.min_x(), 150.0); // 150.0 + 6.0 - 6.0
+        assert_eq!(bounds.max_x(), 162.0); // 150.0 + 6.0 + 6.0
+        assert_eq!(bounds.min_y(), 280.0); // 300.0 - 20.0 (half height)
+        assert_eq!(bounds.max_y(), 320.0); // 300.0 + 20.0 (half height)
     }
 }

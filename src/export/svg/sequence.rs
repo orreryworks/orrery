@@ -39,12 +39,27 @@ impl Svg {
     ) -> Box<dyn svg::Node> {
         let source = &layout.participants[message.source_index];
         let target = &layout.participants[message.target_index];
-
-        let source_x = source.component.position().x();
-        let target_x = target.component.position().x();
         let message_y = message.y_position;
 
-        // Create points for the message line
+        // Calculate source X coordinate with activation box intersection if active
+        let source_x = sequence::calculate_message_endpoint_x(
+            &layout.activations,
+            &source.component,
+            message.source_index,
+            message_y,
+            target.component.position().x(), // Use target center X for direction detection
+        );
+
+        // Calculate target X coordinate with activation box intersection if active
+        let target_x = sequence::calculate_message_endpoint_x(
+            &layout.activations,
+            &target.component,
+            message.target_index,
+            message_y,
+            source.component.position().x(), // Use source center X for direction detection
+        );
+
+        // Create points for the message line (Y coordinate unchanged)
         let start_point = Point::new(source_x, message_y);
         let end_point = Point::new(target_x, message_y);
 
