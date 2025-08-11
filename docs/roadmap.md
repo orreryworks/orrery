@@ -19,6 +19,7 @@ The roadmap is organized into major feature categories, each containing specific
   - [Improve Error Messages](#improve-error-messages)
 - **[Engines](#engines)** - Diagram generation and processing engines
   - [Fix Cross Level Relations in Component Diagram](#fix-cross-level-relations-in-component-diagram)
+  - [Pre-compute Activation Box Associations for Messages](#pre-compute-activation-box-associations-for-messages)
 - **[Type System](#type-system)** - Type checking and validation system
   - [Add Support for Prelude of Shapes](#add-support-for-prelude-of-shapes)
   - [Add Base Type Override Support](#add-base-type-override-support)
@@ -294,6 +295,51 @@ Relations between components at different nesting levels may not render correctl
 - More flexible diagram structures
 - Better support for complex system architectures
 - Improved visual clarity
+
+#### Pre-compute Activation Box Associations for Messages
+
+**Description**:
+Optimize sequence diagram engine performance by pre-computing activation box associations during layout instead of searching for them during each message render operation.
+
+**Current Implementation**:
+The sequence engine searches for active activation boxes for each message during the render step, which involves:
+- Iterating through all activation boxes for each message
+- Checking if activation boxes are active at the message's Y position
+- Determining intersection points for each message independently
+
+**Proposed Implementation**:
+- Add two optional fields to the `Message` struct: `source_activation_box` and `target_activation_box`
+- Modify `calculate_activation_boxes()` function in the sequence engine to populate these fields during layout calculation
+- Update message rendering to use pre-computed activation box references directly
+
+**Technical Details**:
+```rust
+pub struct Message {
+    pub source_index: usize,
+    pub target_index: usize,
+    pub y_position: f32,
+    arrow_with_text: draw::ArrowWithText,
+    // New fields for sequence engine optimization
+    pub source_activation_box: Option<usize>, // Index into activation boxes array
+    pub target_activation_box: Option<usize>, // Index into activation boxes array
+}
+```
+
+**Benefits**:
+- **Significant performance improvement**: Eliminates O(n×m) search complexity (n messages × m activation boxes)
+- **Reduced computational overhead**: No repeated searches during sequence engine processing
+- **Better cache locality**: Pre-computed references improve memory access patterns
+- **Simplified render logic**: Direct activation box access instead of complex queries
+- **Maintains accuracy**: Same visual results with better performance
+
+**Implementation Strategy**:
+1. Extend `Message` struct with optional activation box indices
+2. Modify sequence engine's `calculate_activation_boxes()` to build activation box associations during layout
+3. Update message rendering to use pre-computed associations from the sequence engine
+4. Maintain backward compatibility for messages without activation boxes
+
+**Impact**:
+This sequence engine optimization is particularly beneficial for complex sequence diagrams with many messages and nested activation boxes, where the current search-based approach becomes a performance bottleneck.
 
 ---
 
@@ -611,6 +657,8 @@ Sequence lifeline rendering is embedded within SVG-specific export code.
 - Improved code organization
 
 ---
+
+
 
 ### Tooling
 
