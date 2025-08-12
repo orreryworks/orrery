@@ -226,7 +226,8 @@ impl Engine {
             participant.lifeline_end = current_y + self.message_spacing;
         }
 
-        let activations = self.calculate_activation_boxes(graph, &participant_indices);
+        let activations =
+            self.calculate_activation_boxes(graph, &participant_indices, participants_height);
 
         let layout = Layout {
             participants,
@@ -242,19 +243,19 @@ impl Engine {
         content_stack
     }
 
-    /// Calculate activation boxes from ordered events using exact positioning.
+    /// Calculate activation boxes from ordered events using message-based positioning.
     ///
     /// This method processes ordered events sequentially to create activation boxes with
-    /// precise timing based on exact activate/deactivate event positions. It uses a
-    /// HashMap-based stack approach (NodeIndex -> Vec<ActivationTiming>) to track
-    /// activation periods per participant and converts them directly to ActivationBox
-    /// objects when deactivation occurs.
+    /// precise timing based on the Y positions of messages contained within each activation.
+    /// It uses a HashMap-based stack approach (NodeIndex -> Vec<ActivationTiming>) to track
+    /// activation periods per participant and converts them to ActivationBox objects when
+    /// deactivation occurs, calculating bounds from first and last message positions.
     ///
     /// # Algorithm
     /// 1. Iterate through ordered events sequentially
-    /// 2. For `Event::Relation`: Advance current Y position for next event
-    /// 3. For `Event::Activate`: Create ActivationTiming with exact current Y position, push to participant's stack
-    /// 4. For `Event::Deactivate`: Pop activation, convert to ActivationBox with exact current Y position
+    /// 2. For `Event::Relation`: Add message Y position to all active activations, then advance current Y position
+    /// 3. For `Event::Activate`: Create ActivationTiming with activate Y position, push to participant's stack
+    /// 4. For `Event::Deactivate`: Pop activation, convert to ActivationBox using message-based bounds calculation
     ///
     /// # Parameters
     /// * `graph` - The sequence diagram graph containing ordered events
@@ -266,13 +267,13 @@ impl Engine {
         &self,
         graph: &crate::graph::Graph,
         participant_indices: &HashMap<petgraph::graph::NodeIndex, usize>,
+        participants_height: f32,
     ) -> Vec<ActivationBox> {
         let mut activation_boxes: Vec<_> = Vec::new();
         let mut activation_stack: HashMap<NodeIndex, Vec<ActivationTiming>> = HashMap::new();
 
-        // Calculate initial Y position based on participants height and margin
-        let participants_height = self.top_margin + self.message_spacing;
-        let mut current_y = participants_height + self.message_spacing;
+        // Calculate initial Y position using same calculation as messages
+        let mut current_y = self.top_margin + participants_height + self.message_spacing;
 
         for event in graph.ordered_events() {
             match event {
@@ -302,8 +303,11 @@ impl Engine {
                     // Pop the most recent activation for this node
                     if let Some(node_stack) = activation_stack.get_mut(node_idx) {
                         if let Some(completed_timing) = node_stack.pop() {
-                            // Convert directly to ActivationBox using exact deactivate position
-                            let activation_box = completed_timing.to_activation_box(current_y);
+                            // Convert to ActivationBox using last message position as end
+                            // Subtract message_spacing because current_y is at deactivate event position,
+                            // but we want activation box to end at the last message position
+                            let activation_box = completed_timing
+                                .to_activation_box(current_y - self.message_spacing);
                             activation_boxes.push(activation_box);
                         }
 

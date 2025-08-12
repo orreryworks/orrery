@@ -119,6 +119,14 @@ impl ActivationTiming {
 
     /// Converts this ActivationTiming to an ActivationBox with the given end_y position
     pub fn to_activation_box(&self, end_y: f32) -> ActivationBox {
+        const EDGE_CASE_BUFFER: f32 = 15.0;
+
+        let end_y = if end_y <= self.start_y {
+            self.start_y + EDGE_CASE_BUFFER
+        } else {
+            end_y
+        };
+
         let center_y = (self.start_y() + end_y) / 2.0;
         let height = end_y - self.start_y();
         let definition = Rc::new(draw::ActivationBoxDefinition::default());
