@@ -103,7 +103,7 @@ impl Engine {
         graph: &Graph<'a>,
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<NodeIndex, Size>,
-        embedded_layouts: &EmbeddedLayouts<'_>,
+        embedded_layouts: &EmbeddedLayouts,
     ) -> HashMap<NodeIndex, draw::ShapeWithText> {
         let mut component_shapes: HashMap<NodeIndex, draw::ShapeWithText> = HashMap::new();
 
@@ -372,9 +372,9 @@ impl ComponentEngine for Engine {
     fn calculate<'a>(
         &self,
         graph: &'a Graph<'a>,
-        embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> ContentStack<Layout<'a>> {
-        let mut content_stack = ContentStack::<Layout<'a>>::new();
+        embedded_layouts: &EmbeddedLayouts,
+    ) -> ContentStack<Layout> {
+        let mut content_stack = ContentStack::<Layout>::new();
         let mut positioned_content_sizes = HashMap::<NodeIndex, Size>::new();
 
         for containment_scope in graph.containment_scopes() {
@@ -401,7 +401,7 @@ impl ComponentEngine for Engine {
             let positions = self.run_force_simulation(graph, containment_scope, &component_sizes);
 
             // Build the final component list using the pre-configured shapes
-            let components: Vec<Component<'a>> = graph
+            let components: Vec<Component> = graph
                 .containment_scope_nodes_with_indices(containment_scope)
                 .map(|(node_idx, node)| {
                     let position = *positions.get(&node_idx).unwrap();

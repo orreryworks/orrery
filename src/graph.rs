@@ -1,4 +1,4 @@
-use crate::{ast, error::FilamentError};
+use crate::{FilamentError, ast, identifier::Id};
 use log::{debug, trace};
 use petgraph::{
     Direction,
@@ -82,7 +82,7 @@ pub struct Graph<'a> {
     graph: DiGraph<ast::Node, ast::Relation>,
     diagram: &'a ast::Diagram,
     containment_scopes: Vec<ContainmentScope>,
-    node_id_map: HashMap<ast::TypeId, NodeIndex>, // Maps node IDs to their indices
+    node_id_map: HashMap<Id, NodeIndex>, // Maps node IDs to their indices
     ordered_events: Vec<Event>,
 }
 
@@ -92,7 +92,7 @@ pub struct Graph<'a> {
 /// organizing them into a tree structure.
 #[derive(Debug)]
 pub struct Collection<'a> {
-    diagram_tree: DiGraph<Graph<'a>, ast::TypeId>,
+    diagram_tree: DiGraph<Graph<'a>, Id>,
     root_diagram: Option<NodeIndex>,
 }
 
@@ -111,7 +111,7 @@ impl<'a> Graph<'a> {
         self.diagram
     }
 
-    pub fn node_id_map(&self) -> &HashMap<ast::TypeId, NodeIndex> {
+    pub fn node_id_map(&self) -> &HashMap<Id, NodeIndex> {
         &self.node_id_map
     }
     pub fn containment_scopes(&self) -> &[ContainmentScope] {
@@ -256,21 +256,6 @@ impl<'a> Graph<'a> {
     ) -> EdgeIndex {
         self.graph.add_edge(source, target, relation.clone())
     }
-
-    // pub fn container_elements_in_post_order(
-    //     &self,
-    // ) -> impl Iterator<Item = (Option<&ast::TypeId>, &Graph)> {
-    //     DfsPostOrder::new(&self.hierarchy, self.hierarchy_root.unwrap())
-    //         .iter(&self.hierarchy)
-    //         .map(|idx| {
-    //             (
-    //                 self.hierarchy
-    //                     .first_edge(idx, Direction::Incoming)
-    //                     .map(|edge_idx| self.hierarchy.edge_weight(edge_idx).unwrap()),
-    //                 self.hierarchy.node_weight(idx).unwrap(),
-    //             )
-    //         })
-    // }
 }
 
 impl<'a> Collection<'a> {
@@ -290,16 +275,19 @@ impl<'a> Collection<'a> {
         Ok(collection)
     }
 
-    pub fn diagram_tree_in_post_order(
-        &self,
-    ) -> impl Iterator<Item = (Option<&ast::TypeId>, &Graph<'_>)> {
+    pub fn diagram_tree_in_post_order(&self) -> impl Iterator<Item = (Option<Id>, &Graph<'_>)> {
         DfsPostOrder::new(&self.diagram_tree, self.root_diagram.unwrap())
             .iter(&self.diagram_tree)
             .map(|idx| {
                 (
                     self.diagram_tree
                         .first_edge(idx, Direction::Incoming)
-                        .map(|edge_idx| self.diagram_tree.edge_weight(edge_idx).unwrap()),
+                        .map(|edge_idx| {
+                            self.diagram_tree
+                                .edge_weight(edge_idx)
+                                .expect("Edge weight should exist")
+                        })
+                        .cloned(),
                     self.diagram_tree.node_weight(idx).unwrap(),
                 )
             })
@@ -312,7 +300,7 @@ impl<'a> Collection<'a> {
         graph: &mut Graph<'a>,
         elements: &'a [ast::Element],
         container: Option<NodeIndex>,
-    ) -> Result<Vec<(ast::TypeId, NodeIndex)>, FilamentError> {
+    ) -> Result<Vec<(Id, NodeIndex)>, FilamentError> {
         let mut hierarchy_children = vec![];
 
         let mut containment_scope = ContainmentScope::new(container);
@@ -321,8 +309,8 @@ impl<'a> Collection<'a> {
         for element in elements {
             if let ast::Element::Node(node) = element {
                 let node_idx = graph.add_node(node);
-                // Use ToString trait to convert TypeId to String
-                graph.node_id_map.insert(node.id.clone(), node_idx);
+                // Use ToString trait to convert Id to String
+                graph.node_id_map.insert(node.id, node_idx);
                 containment_scope.add_node(node_idx);
 
                 // Process the node's inner block recursively
@@ -339,7 +327,7 @@ impl<'a> Collection<'a> {
                     ast::Block::Diagram(inner_diagram) => {
                         debug!("Processing nested diagram of kind {:?}", inner_diagram.kind);
                         let inner_hierarchy_child = self.add_diagram_to_tree(inner_diagram)?;
-                        hierarchy_children.push((node.id.clone(), inner_hierarchy_child));
+                        hierarchy_children.push((node.id, inner_hierarchy_child));
                     }
                     ast::Block::None => {}
                 }

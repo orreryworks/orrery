@@ -1,5 +1,6 @@
 use crate::{
     ast::parser_types, color::Color, draw, error::ElaborationDiagnosticError, geometry::Insets,
+    identifier::Id,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -8,18 +9,15 @@ use std::{
     str::FromStr,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TypeId(String);
-
 #[derive(Debug, Clone)]
 pub struct Attribute {
-    pub name: TypeId,
+    pub name: Id,
     pub value: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct Node {
-    pub id: TypeId,
+    pub id: Id,
     pub name: String,
     pub display_name: Option<String>,
     pub block: Block,
@@ -36,8 +34,8 @@ impl Node {
 
 #[derive(Debug, Clone)]
 pub struct Relation {
-    pub source: TypeId,
-    pub target: TypeId,
+    pub source: Id,
+    pub target: Id,
     pub arrow_direction: draw::ArrowDirection,
     label: Option<String>,
     type_definition: Rc<TypeDefinition>,
@@ -45,8 +43,8 @@ pub struct Relation {
 
 impl Relation {
     pub fn new(
-        source: TypeId,
-        target: TypeId,
+        source: Id,
+        target: Id,
         arrow_direction: draw::ArrowDirection,
         label: Option<String>,
         type_definition: Rc<TypeDefinition>,
@@ -80,12 +78,12 @@ impl Relation {
 
 #[derive(Debug, Clone)]
 pub struct ActivateBlock {
-    pub component: TypeId,
+    pub component: Id,
     pub scope: Scope,
 }
 
 impl ActivateBlock {
-    pub fn new(component: TypeId, scope: Scope) -> Self {
+    pub fn new(component: Id, scope: Scope) -> Self {
         Self { component, scope }
     }
 }
@@ -116,7 +114,7 @@ pub enum DrawDefinition {
 
 #[derive(Debug)]
 pub struct TypeDefinition {
-    pub id: TypeId,
+    pub id: Id,
     pub text_definition: Rc<draw::TextDefinition>,
     pub draw_definition: DrawDefinition,
 }
@@ -180,36 +178,8 @@ pub enum Block {
     Diagram(Diagram),
 }
 
-impl TypeId {
-    /// Creates a `TypeId` from a component name as defined in the diagram
-    pub fn from_name(name: &str) -> Self {
-        Self(name.to_string())
-    }
-
-    /// Creates an internal `TypeId` used for generated types
-    /// (e.g., for anonymous type definitions)
-    pub fn from_anonymous(idx: usize) -> Self {
-        Self(format!("__{idx}"))
-    }
-
-    /// Creates a nested ID by combining parent ID and child ID with '::' separator
-    pub fn create_nested(&self, child_id: &str) -> Self {
-        Self(format!("{}::{}", self.0, child_id))
-    }
-}
-
-impl fmt::Display for TypeId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
 impl TypeDefinition {
-    fn new(
-        id: TypeId,
-        text_definition: draw::TextDefinition,
-        draw_definition: DrawDefinition,
-    ) -> Self {
+    fn new(id: Id, text_definition: draw::TextDefinition, draw_definition: DrawDefinition) -> Self {
         Self {
             id,
             text_definition: Rc::new(text_definition),
@@ -218,7 +188,7 @@ impl TypeDefinition {
     }
 
     pub fn new_shape(
-        id: TypeId,
+        id: Id,
         text_definition: draw::TextDefinition,
         shape_definition: Box<dyn draw::ShapeDefinition>,
     ) -> Self {
@@ -230,7 +200,7 @@ impl TypeDefinition {
     }
 
     pub fn new_arrow(
-        id: TypeId,
+        id: Id,
         text_definition: draw::TextDefinition,
         arrow_definition: draw::ArrowDefinition,
     ) -> Self {
@@ -382,7 +352,7 @@ impl TextAttributeExtractor {
 
 impl TypeDefinition {
     pub fn from_base(
-        id: TypeId,
+        id: Id,
         base: &Self,
         attributes: &[parser_types::Attribute],
     ) -> Result<Self, ElaborationDiagnosticError> {
@@ -619,7 +589,7 @@ impl TypeDefinition {
 
     pub fn default_arrow_definition() -> Rc<Self> {
         Rc::from(Self::new_arrow(
-            TypeId::from_name("Arrow"),
+            Id::new("Arrow"),
             draw::TextDefinition::new(),
             draw::ArrowDefinition::new(),
         ))
@@ -628,42 +598,42 @@ impl TypeDefinition {
     pub fn defaults(default_arrow_definition: &Rc<Self>) -> Vec<Rc<Self>> {
         vec![
             Rc::new(Self::new_shape(
-                TypeId::from_name("Rectangle"),
+                Id::new("Rectangle"),
                 draw::TextDefinition::new(),
                 Box::new(draw::RectangleDefinition::new()),
             )),
             Rc::new(Self::new_shape(
-                TypeId::from_name("Oval"),
+                Id::new("Oval"),
                 draw::TextDefinition::new(),
                 Box::new(draw::OvalDefinition::new()),
             )),
             Rc::new(Self::new_shape(
-                TypeId::from_name("Component"),
+                Id::new("Component"),
                 draw::TextDefinition::new(),
                 Box::new(draw::ComponentDefinition::new()),
             )),
             Rc::new(Self::new_shape(
-                TypeId::from_name("Boundary"),
+                Id::new("Boundary"),
                 draw::TextDefinition::new(),
                 Box::new(draw::BoundaryDefinition::new()),
             )),
             Rc::new(Self::new_shape(
-                TypeId::from_name("Actor"),
+                Id::new("Actor"),
                 draw::TextDefinition::new(),
                 Box::new(draw::ActorDefinition::new()),
             )),
             Rc::new(Self::new_shape(
-                TypeId::from_name("Entity"),
+                Id::new("Entity"),
                 draw::TextDefinition::new(),
                 Box::new(draw::EntityDefinition::new()),
             )),
             Rc::new(Self::new_shape(
-                TypeId::from_name("Control"),
+                Id::new("Control"),
                 draw::TextDefinition::new(),
                 Box::new(draw::ControlDefinition::new()),
             )),
             Rc::new(Self::new_shape(
-                TypeId::from_name("Interface"),
+                Id::new("Interface"),
                 draw::TextDefinition::new(),
                 Box::new(draw::InterfaceDefinition::new()),
             )),
@@ -773,7 +743,7 @@ mod elaborate_tests {
     #[test]
     fn test_type_definition_with_text_attributes() {
         // Create a base rectangle type
-        let base_id = TypeId::from_name("Rectangle");
+        let base_id = Id::new("Rectangle");
         let base_text_def = draw::TextDefinition::new();
         let base_shape_def = Box::new(draw::RectangleDefinition::new());
         let base_type = TypeDefinition::new_shape(base_id, base_text_def, base_shape_def);
@@ -790,7 +760,7 @@ mod elaborate_tests {
         ];
 
         // Create new type from base with text attributes
-        let new_id = TypeId::from_name("StyledRectangle");
+        let new_id = Id::new("StyledRectangle");
         let result = TypeDefinition::from_base(new_id, &base_type, &attributes);
 
         assert!(result.is_ok());
@@ -799,7 +769,7 @@ mod elaborate_tests {
     #[test]
     fn test_type_definition_text_not_nested_attributes() {
         // Create a base rectangle type
-        let base_id = TypeId::from_name("Rectangle");
+        let base_id = Id::new("Rectangle");
         let base_text_def = draw::TextDefinition::new();
         let base_shape_def = Box::new(draw::RectangleDefinition::new());
         let base_type = TypeDefinition::new_shape(base_id, base_text_def, base_shape_def);
@@ -814,7 +784,7 @@ mod elaborate_tests {
         ];
 
         // This should fail because text must contain nested attributes
-        let new_id = TypeId::from_name("InvalidTextType");
+        let new_id = Id::new("InvalidTextType");
         let result = TypeDefinition::from_base(new_id, &base_type, &attributes);
 
         assert!(result.is_err());

@@ -5,6 +5,7 @@ use crate::{
     config::AppConfig,
     draw,
     error::ElaborationDiagnosticError,
+    identifier::Id,
 };
 use log::{debug, info, trace};
 use std::{collections::HashMap, rc::Rc, str::FromStr};
@@ -16,7 +17,7 @@ pub struct Builder<'a> {
     cfg: &'a AppConfig,
     default_arrow_type: Rc<types::TypeDefinition>,
     type_definitions: Vec<Rc<types::TypeDefinition>>,
-    type_definition_map: HashMap<types::TypeId, Rc<types::TypeDefinition>>,
+    type_definition_map: HashMap<Id, Rc<types::TypeDefinition>>,
     _phantom: std::marker::PhantomData<&'a str>, // Use PhantomData to maintain the lifetime parameter
 }
 
@@ -27,7 +28,7 @@ impl<'a> Builder<'a> {
         let type_definitions = types::TypeDefinition::defaults(&default_arrow_type);
         let type_definition_map = type_definitions
             .iter()
-            .map(|def| (def.id.clone(), Rc::clone(def)))
+            .map(|def| (def.id, Rc::clone(def)))
             .collect();
 
         Self {
@@ -107,7 +108,7 @@ impl<'a> Builder<'a> {
         type_def: types::TypeDefinition,
         span: Span,
     ) -> EResult<Rc<types::TypeDefinition>> {
-        let id = type_def.id.clone();
+        let id = type_def.id;
         let type_def = Rc::new(type_def);
         self.type_definitions.push(Rc::clone(&type_def));
 
@@ -135,7 +136,7 @@ impl<'a> Builder<'a> {
         type_definitions: &Vec<parser_types::TypeDefinition<'a>>,
     ) -> EResult<()> {
         for type_def in type_definitions {
-            let base_type_name = types::TypeId::from_name(&type_def.base_type);
+            let base_type_name = Id::new(&type_def.base_type);
             let base = self
                 .type_definition_map
                 .get(&base_type_name)
@@ -150,7 +151,7 @@ impl<'a> Builder<'a> {
 
             // Try to create the type definition
             match types::TypeDefinition::from_base(
-                types::TypeId::from_name(&type_def.name),
+                Id::new(&type_def.name),
                 base,
                 &type_def.attributes,
             ) {
@@ -259,7 +260,7 @@ impl<'a> Builder<'a> {
     fn build_block_from_elements(
         &mut self,
         parser_elements: &[parser_types::Element],
-        parent_id: Option<&types::TypeId>,
+        parent_id: Option<Id>,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Block> {
         if parser_elements.is_empty() {
@@ -298,7 +299,7 @@ impl<'a> Builder<'a> {
     fn build_scope_from_elements(
         &mut self,
         parser_elements: &[parser_types::Element],
-        parent_id: Option<&types::TypeId>,
+        parent_id: Option<Id>,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Scope> {
         let mut elements = Vec::new();
@@ -364,7 +365,7 @@ impl<'a> Builder<'a> {
         type_name: &Spanned<&str>,
         attributes: &[parser_types::Attribute],
         nested_elements: &[parser_types::Element],
-        parent_id: Option<&types::TypeId>,
+        parent_id: Option<Id>,
         parser_elm: &parser_types::Element,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
@@ -405,7 +406,7 @@ impl<'a> Builder<'a> {
             types::Block::Diagram(elaborated_diagram)
         } else {
             // Process regular nested elements
-            self.build_block_from_elements(nested_elements, Some(&node_id), diagram_kind)?
+            self.build_block_from_elements(nested_elements, Some(node_id), diagram_kind)?
         };
 
         let node = types::Node {
@@ -427,7 +428,7 @@ impl<'a> Builder<'a> {
         relation_type: &Spanned<&str>,
         type_spec: &Option<parser_types::RelationTypeSpec>,
         label: &Option<Spanned<String>>,
-        parent_id: Option<&types::TypeId>,
+        parent_id: Option<Id>,
     ) -> EResult<types::Element> {
         // Extract relation type definition from type_spec
         let relation_type_def = self.build_relation_type_definition_from_spec(type_spec)?;
@@ -459,7 +460,7 @@ impl<'a> Builder<'a> {
         &mut self,
         component: &Spanned<&str>,
         elements: &[parser_types::Element],
-        parent_id: Option<&types::TypeId>,
+        parent_id: Option<Id>,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
         // Validate that activate blocks are only allowed in sequence diagrams
@@ -480,7 +481,7 @@ impl<'a> Builder<'a> {
         // Process nested elements within the activate block
         let scope = self.build_scope_from_elements(elements, parent_id, diagram_kind)?;
 
-        // Create TypeId for the component being activated
+        // Create Id for the component being activated
         let component_id = self.create_type_id(parent_id, component.inner());
 
         let activate_block = types::ActivateBlock::new(component_id, scope);
@@ -517,7 +518,7 @@ impl<'a> Builder<'a> {
         attributes: &[parser_types::Attribute],
     ) -> EResult<Rc<types::TypeDefinition>> {
         // Look up the base type
-        let type_id = types::TypeId::from_name(type_name);
+        let type_id = Id::new(type_name);
         let Some(base) = self.type_definition_map.get(&type_id) else {
             return Err(
                 self.create_undefined_type_error(type_name, &format!("Unknown type '{type_name}'"))
@@ -530,7 +531,7 @@ impl<'a> Builder<'a> {
         }
 
         // Otherwise, create a new anonymous type based on the base type
-        let id = types::TypeId::from_anonymous(self.type_definition_map.len());
+        let id = Id::from_anonymous(self.type_definition_map.len());
         match types::TypeDefinition::from_base(id, base, attributes) {
             Ok(new_type) => self.insert_type_definition(new_type, type_name.span()),
             Err(err) => Err(self.create_undefined_type_error(
@@ -554,16 +555,13 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// Creates a TypeId from a string name, considering the parent context if available
+    /// Creates an Id from a string name, considering the parent context if available
     ///
     /// This function is used for both component names (simple identifiers) and relation
     /// source/target names (which may be nested identifiers like "frontend::app" created
     /// by joining parts with "::").
-    fn create_type_id(&self, parent_id: Option<&types::TypeId>, name: &str) -> types::TypeId {
-        parent_id.map_or_else(
-            || types::TypeId::from_name(name),
-            |parent| parent.create_nested(name),
-        )
+    fn create_type_id(&self, parent_id: Option<Id>, name: &str) -> Id {
+        parent_id.map_or_else(|| Id::new(name), |parent| parent.create_nested(name))
     }
 
     /// Creates a standardized error for undefined type situations
@@ -588,7 +586,7 @@ impl<'a> Builder<'a> {
         &self,
         attributes: &Vec<parser_types::Attribute<'_>>,
     ) -> EResult<types::TypeDefinition> {
-        let id = types::TypeId::from_anonymous(self.type_definition_map.len());
+        let id = Id::from_anonymous(self.type_definition_map.len());
         types::TypeDefinition::from_base(id, &self.default_arrow_type, attributes)
     }
 

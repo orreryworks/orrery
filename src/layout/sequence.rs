@@ -8,8 +8,8 @@ use log::{debug, error, warn};
 use std::{collections::HashMap, rc::Rc};
 
 #[derive(Debug, Clone)]
-pub struct Participant<'a> {
-    pub component: component::Component<'a>,
+pub struct Participant {
+    pub component: component::Component,
     pub lifeline_end: f32, // y-coordinate where lifeline ends
 }
 
@@ -287,13 +287,13 @@ pub fn calculate_message_endpoint_x(
 }
 
 #[derive(Debug, Clone)]
-pub struct Layout<'a> {
-    pub participants: Vec<Participant<'a>>,
+pub struct Layout {
+    pub participants: Vec<Participant>,
     pub messages: Vec<Message>,
     pub activations: Vec<ActivationBox>,
 }
 
-impl<'a> LayoutSizing for Layout<'a> {
+impl LayoutSizing for Layout {
     fn layout_size(&self) -> Size {
         // For sequence layouts, calculate bounds based on participants and messages
         if self.participants.is_empty() {
@@ -533,7 +533,7 @@ mod tests {
 /// This method handles the proper positioning of nested elements within their containers.
 // TODO: Once added enough abstractions, make this a method on ContentStack.
 pub fn adjust_positioned_contents_offset<'a>(
-    content_stack: &mut layer::ContentStack<Layout<'a>>,
+    content_stack: &mut layer::ContentStack<Layout>,
     graph: &'a graph::Graph<'a>,
 ) {
     let container_indices: HashMap<_, _> = graph
@@ -562,7 +562,7 @@ pub fn adjust_positioned_contents_offset<'a>(
                 .content()
                 .participants
                 .iter()
-                .find(|participant| *participant.component.node_id() == node.id)
+                .find(|participant| participant.component.node_id() == node.id)
                 .expect("Participant must exist in source layer");
 
             let target_offset = source

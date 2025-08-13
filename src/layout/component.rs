@@ -2,6 +2,7 @@ use crate::{
     ast, draw,
     geometry::{self, Size},
     graph,
+    identifier::Id,
     layout::{layer, positioning::LayoutSizing},
 };
 use log::{debug, error};
@@ -11,22 +12,22 @@ use std::{collections::HashMap, rc::Rc};
 /// TODO: Do I need Clone?!
 /// Find a better name and location for this struct.
 #[derive(Debug, Clone)]
-pub struct Component<'a> {
-    node_id: &'a ast::TypeId, // TODO: Can I get rid of this?
+pub struct Component {
+    node_id: Id, // TODO: Can I get rid of this?
     drawable: Rc<draw::PositionedDrawable<draw::ShapeWithText>>, // TODO: Consider removing Rc.
 }
 
-impl Component<'_> {
+impl Component {
     /// Creates a new component with the specified properties.
-    pub fn new<'a>(
-        node: &'a ast::Node,
+    pub fn new(
+        node: &ast::Node,
         shape_with_text: draw::ShapeWithText,
         position: geometry::Point,
-    ) -> Component<'a> {
+    ) -> Component {
         let drawable =
             Rc::new(draw::PositionedDrawable::new(shape_with_text).with_position(position));
         Component {
-            node_id: &node.id,
+            node_id: node.id,
             drawable,
         }
     }
@@ -54,7 +55,7 @@ impl Component<'_> {
 
     /// Returns the unique identifier of the AST node this component represents.
     // TODO: Can I get rid of this method?
-    pub fn node_id(&self) -> &ast::TypeId {
+    pub fn node_id(&self) -> Id {
         self.node_id
     }
 }
@@ -112,17 +113,17 @@ impl LayoutRelation {
 /// for a diagram. It provides methods to access related components and calculate
 /// overall layout dimensions.
 #[derive(Debug, Clone)]
-pub struct Layout<'a> {
-    pub components: Vec<Component<'a>>,
+pub struct Layout {
+    pub components: Vec<Component>,
     pub relations: Vec<LayoutRelation>,
 }
 
-impl<'a> Layout<'a> {
+impl Layout {
     /// Returns a reference to the source component of the given relation.
     ///
     /// # Panics
     /// Panics if the source index is out of bounds.
-    pub fn source(&self, lr: &LayoutRelation) -> &Component<'a> {
+    pub fn source(&self, lr: &LayoutRelation) -> &Component {
         &self.components[lr.source_index]
     }
 
@@ -130,12 +131,12 @@ impl<'a> Layout<'a> {
     ///
     /// # Panics
     /// Panics if the target index is out of bounds.
-    pub fn target(&self, lr: &LayoutRelation) -> &Component<'a> {
+    pub fn target(&self, lr: &LayoutRelation) -> &Component {
         &self.components[lr.target_index]
     }
 }
 
-impl<'a> LayoutSizing for Layout<'a> {
+impl LayoutSizing for Layout {
     fn layout_size(&self) -> Size {
         // For component layouts, get the bounding box of all components
         if self.components.is_empty() {
@@ -175,7 +176,7 @@ impl<'a> LayoutSizing for Layout<'a> {
 /// corresponding layout layer.
 // TODO: Once added enough abstractions, make this a method on ContentStack.
 pub fn adjust_positioned_contents_offset<'a>(
-    content_stack: &mut layer::ContentStack<Layout<'a>>,
+    content_stack: &mut layer::ContentStack<Layout>,
     graph: &'a graph::Graph<'a>,
 ) {
     let container_indices: HashMap<_, _> = graph
@@ -204,7 +205,7 @@ pub fn adjust_positioned_contents_offset<'a>(
                 .content()
                 .components
                 .iter()
-                .find(|component| component.node_id == &node.id)
+                .find(|component| component.node_id == node.id)
                 .expect("Component must exist in source layer");
             let target_offset = source
                 .offset()

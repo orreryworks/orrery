@@ -6,6 +6,7 @@ mod error;
 mod export;
 pub mod geometry;
 mod graph;
+pub mod identifier;
 mod layout;
 
 use clap::Parser;

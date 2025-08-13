@@ -7,35 +7,35 @@ use log::debug;
 
 /// Content types that can be laid out in a layer
 #[derive(Debug)]
-pub enum LayoutContent<'a> {
-    Component(ContentStack<component::Layout<'a>>),
-    Sequence(ContentStack<sequence::Layout<'a>>),
+pub enum LayoutContent {
+    Component(ContentStack<component::Layout>),
+    Sequence(ContentStack<sequence::Layout>),
 }
 
 /// A rendering layer containing either component or sequence diagram content
 #[derive(Debug)]
-pub struct Layer<'a> {
+pub struct Layer {
     pub z_index: usize,
     /// Global coordinate offset for this layer
     pub offset: Point,
     /// Optional clipping boundary to keep content within parent
     pub clip_bounds: Option<Bounds>,
     /// The content of this layer
-    pub content: LayoutContent<'a>, // TODO: Remove this one.
+    pub content: LayoutContent, // TODO: Remove this one.
 }
 
 /// Collection of all diagram layers for rendering
 #[derive(Debug)]
-pub struct LayeredLayout<'a> {
+pub struct LayeredLayout {
     /// Ordered layers from bottom (0) to top
     /// Layers are rendered from bottom to top, with higher indices appearing on top
-    layers: Vec<Layer<'a>>,
+    layers: Vec<Layer>,
 }
 
 // LayerContent implementation was simplified by removing unused conversion methods
 // If conversion methods are needed in the future, they can be re-added here
 
-impl<'a> LayeredLayout<'a> {
+impl<'a> LayeredLayout {
     /// Creates a new empty layered layout
     pub fn new() -> Self {
         Self { layers: Vec::new() }
@@ -45,7 +45,7 @@ impl<'a> LayeredLayout<'a> {
     ///
     /// The z_index is assigned based on the layer's position in the stack,
     /// with higher indices (newer layers) appearing on top.
-    pub fn add_layer(&mut self, content: LayoutContent<'a>) -> usize {
+    pub fn add_layer(&mut self, content: LayoutContent) -> usize {
         let z_index = self.layers.len();
 
         self.layers.push(Layer {
@@ -125,7 +125,7 @@ impl<'a> LayeredLayout<'a> {
 
     /// Returns an iterator over the layers, starting from the bottom (background) layer
     /// This ordering is appropriate for rendering, where bottom layers should be drawn first
-    pub fn iter_from_bottom(&'a self) -> impl Iterator<Item = &'a Layer<'a>> {
+    pub fn iter_from_bottom(&'a self) -> impl Iterator<Item = &'a Layer> {
         self.layers.iter().rev()
     }
 }

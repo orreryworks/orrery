@@ -107,9 +107,9 @@ impl Engine {
     pub fn calculate_layout<'a>(
         &self,
         graph: &'a Graph<'a>,
-        embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> ContentStack<Layout<'a>> {
-        let mut participants: Vec<Participant<'a>> = Vec::new();
+        embedded_layouts: &EmbeddedLayouts,
+    ) -> ContentStack<Layout> {
+        let mut participants: Vec<Participant> = Vec::new();
         let mut participant_indices = HashMap::new();
 
         // Create shapes with text for participants
@@ -328,8 +328,8 @@ impl SequenceEngine for Engine {
     fn calculate<'a>(
         &self,
         graph: &'a Graph<'a>,
-        embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> ContentStack<Layout<'a>> {
+        embedded_layouts: &EmbeddedLayouts,
+    ) -> ContentStack<Layout> {
         self.calculate_layout(graph, embedded_layouts)
     }
 }

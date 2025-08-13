@@ -1,0 +1,242 @@
+//! Identifier management using string interning for efficient string storage and comparison
+//!
+//! This module provides the `Id` type with an efficient string-interner based approach.
+
+use lazy_static::lazy_static;
+use std::{fmt, sync::Mutex};
+use string_interner::{DefaultStringInterner, DefaultSymbol};
+
+lazy_static! {
+    /// Global string interner for efficient identifier storage.
+    ///
+    /// # Thread Safety
+    ///
+    /// This uses `Mutex` for thread-safe access to the string interner.
+    static ref INTERNER: Mutex<DefaultStringInterner> = Mutex::new(DefaultStringInterner::new());
+}
+
+/// Efficient identifier type using string interning
+///
+/// This type provides efficient storage and comparison of string identifiers through
+/// string interning.
+///
+/// # Examples
+///
+/// ```
+/// use filament::identifier::Id;
+///
+/// // Create identifiers from names
+/// let rect_id = Id::new("Rectangle");
+/// let user_id = Id::new("user_service");
+///
+/// // Create anonymous identifiers
+/// let anon_id = Id::from_anonymous(0);
+///
+/// // Create nested identifiers
+/// let nested_id = user_id.create_nested("database");
+/// assert_eq!(nested_id.to_string(), "user_service::database");
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Id(DefaultSymbol);
+
+impl Id {
+    /// Creates an `Id` from &str.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The string representation of the identifier
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use filament::identifier::Id;
+    ///
+    /// let component_id = Id::new("user_service");
+    /// let type_id = Id::new("Rectangle");
+    /// ```
+    pub fn new(name: &str) -> Self {
+        let mut interner = INTERNER.lock().expect("Failed to acquire interner lock");
+        let symbol = interner.get_or_intern(name);
+        Self(symbol)
+    }
+
+    /// Creates an internal `Id` identifier without string representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `idx` - A unique index used to generate the anonymous identifier.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use filament::identifier::Id;
+    ///
+    /// let anon_id = Id::from_anonymous(42);
+    /// ```
+    pub fn from_anonymous(idx: usize) -> Self {
+        let name = format!("__{idx}");
+        Self::new(&name)
+    }
+
+    /// Creates a nested ID by combining parent ID and child ID with '::' separator.
+    ///
+    /// # Arguments
+    ///
+    /// * `child_id` - The child identifier string to append.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use filament::identifier::Id;
+    ///
+    /// let parent = Id::new("frontend");
+    /// let nested = parent.create_nested("app");
+    /// assert_eq!(nested.to_string(), "frontend::app");
+    /// ```
+    pub fn create_nested(&self, child_id: &str) -> Self {
+        let mut interner = INTERNER.lock().unwrap();
+        let parent_str = interner
+            .resolve(self.0)
+            .expect("Parent ID should exist in interner");
+        let nested_name = format!("{}::{}", parent_str, child_id);
+        let symbol = interner.get_or_intern(&nested_name);
+        Self(symbol)
+    }
+}
+
+impl fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let interner = INTERNER.lock().unwrap();
+        let str_value = interner
+            .resolve(self.0)
+            .expect("Symbol should exist in interner");
+        write!(f, "{}", str_value)
+    }
+}
+
+impl std::str::FromStr for Id {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut interner = INTERNER.lock().unwrap();
+        let symbol = interner.get_or_intern(s);
+        Ok(Self(symbol))
+    }
+}
+
+impl From<&str> for Id {
+    /// Creates an `Id` from a string slice
+    ///
+    /// This is a convenience implementation that calls `Id::new`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use filament::identifier::Id;
+    ///
+    /// let id: Id = "example".into();
+    /// assert_eq!(id.to_string(), "example");
+    /// ```
+    fn from(name: &str) -> Self {
+        Self::new(name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        let id1 = Id::new("Rectangle");
+        let id2 = Id::new("Rectangle");
+        let id3 = Id::new("Oval");
+
+        assert_eq!(id1, id2);
+        assert_ne!(id1, id3);
+        assert_eq!(id1.to_string(), "Rectangle");
+    }
+
+    #[test]
+    fn test_from_anonymous() {
+        let id1 = Id::from_anonymous(0);
+        let id2 = Id::from_anonymous(1);
+        let id3 = Id::from_anonymous(0);
+
+        assert_ne!(id1, id2);
+        assert_eq!(id1, id3);
+    }
+
+    #[test]
+    fn test_create_nested() {
+        let parent = Id::new("frontend");
+        let nested1 = parent.create_nested("app");
+        let nested2 = parent.create_nested("service");
+
+        assert_ne!(nested1, nested2);
+        assert_eq!(nested1.to_string(), "frontend::app");
+        assert_eq!(nested2.to_string(), "frontend::service");
+    }
+
+    #[test]
+    fn test_deep_nesting() {
+        let root = Id::new("system");
+        let level1 = root.create_nested("frontend");
+        let level2 = level1.create_nested("app");
+        let level3 = level2.create_nested("component");
+
+        assert_eq!(level3.to_string(), "system::frontend::app::component");
+    }
+
+    #[test]
+    fn test_to_string() {
+        let id = Id::new("test_component");
+        assert_eq!(id.to_string(), "test_component");
+    }
+
+    #[test]
+    fn test_display_trait() {
+        let id = Id::new("display_test");
+        assert_eq!(format!("{}", id), "display_test");
+    }
+
+    #[test]
+    fn test_from_trait() {
+        let id1: Id = "test_string".into();
+        let id2 = Id::new("test_string");
+
+        assert_eq!(id1, id2);
+        assert_eq!(id1.to_string(), "test_string");
+    }
+
+    #[test]
+    fn test_hash_and_eq() {
+        use std::collections::HashMap;
+
+        let id1 = Id::new("key1");
+        let id2 = Id::new("key1");
+        let id3 = Id::new("key2");
+
+        let mut map = HashMap::new();
+        map.insert(id1, "value1");
+        map.insert(id3, "value2");
+
+        assert_eq!(map.get(&id2), Some(&"value1"));
+        assert_eq!(map.len(), 2);
+    }
+
+    #[test]
+    fn test_copy_trait() {
+        let id1 = Id::new("copy_test");
+        let id2 = id1; // This should work because Id implements Copy
+        let id3 = id1; // id1 should still be usable after id2 assignment
+
+        // All three should be equal and id1 should still be usable
+        assert_eq!(id1, id2);
+        assert_eq!(id1, id3);
+        assert_eq!(id2, id3);
+        assert_eq!(id1.to_string(), "copy_test");
+        assert_eq!(id2.to_string(), "copy_test");
+        assert_eq!(id3.to_string(), "copy_test");
+    }
+}

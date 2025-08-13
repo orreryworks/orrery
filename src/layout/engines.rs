@@ -14,10 +14,11 @@ mod force;
 mod sugiyama;
 
 use crate::{
-    ast::{DiagramKind, LayoutEngine, TypeId},
+    ast::{DiagramKind, LayoutEngine},
     draw,
     geometry::{self, Insets},
     graph::{Collection, Graph},
+    identifier::Id,
     layout::{
         component,
         layer::{LayeredLayout, LayoutContent},
@@ -32,13 +33,13 @@ use super::layer::ContentStack;
 /// Enum to store different layout results based on diagram type
 /// Contains the direct layout information without any embedded diagram data
 #[derive(Debug, Clone)]
-pub enum LayoutResult<'a> {
+pub enum LayoutResult {
     // TODO: Do I need this?
-    Component(ContentStack<component::Layout<'a>>),
-    Sequence(ContentStack<sequence::Layout<'a>>),
+    Component(ContentStack<component::Layout>),
+    Sequence(ContentStack<sequence::Layout>),
 }
 
-impl<'a> LayoutResult<'a> {
+impl LayoutResult {
     /// Calculate the size of this layout, using the appropriate sizing implementation
     fn calculate_size(&self) -> geometry::Size {
         match self {
@@ -49,8 +50,8 @@ impl<'a> LayoutResult<'a> {
 }
 
 /// Map type containing pre-calculated layout information for embedded diagrams,
-/// indexed by the TypeId of the node containing the embedded diagram
-pub type EmbeddedLayouts<'a> = HashMap<TypeId, LayoutResult<'a>>;
+/// indexed by the Id of the node containing the embedded diagram
+pub type EmbeddedLayouts = HashMap<Id, LayoutResult>;
 
 // Trait defining the interface for component diagram layout engines
 pub trait ComponentEngine {
@@ -58,14 +59,14 @@ pub trait ComponentEngine {
     ///
     /// - `graph`: The graph representing the diagram to layout
     /// - `embedded_layouts`: Pre-calculated layouts for any embedded diagrams,
-    ///   indexed by their TypeId. When a node contains an embedded diagram,
+    ///   indexed by their Id. When a node contains an embedded diagram,
     ///   its size should be determined by looking up its layout here rather than
     ///   calculating it again.
     fn calculate<'a>(
         &self,
         graph: &'a Graph<'a>,
-        embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> ContentStack<component::Layout<'a>>;
+        embedded_layouts: &EmbeddedLayouts,
+    ) -> ContentStack<component::Layout>;
 }
 
 /// Trait defining the interface for sequence diagram layout engines
@@ -74,14 +75,14 @@ pub trait SequenceEngine {
     ///
     /// - `graph`: The graph representing the diagram to layout
     /// - `embedded_layouts`: Pre-calculated layouts for any embedded diagrams,
-    ///   indexed by their TypeId. When a node contains an embedded diagram,
+    ///   indexed by their Id. When a node contains an embedded diagram,
     ///   its size should be determined by looking up its layout here rather than
     ///   calculating it again.
     fn calculate<'a>(
         &self,
         graph: &'a Graph<'a>,
-        embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> ContentStack<sequence::Layout<'a>>;
+        embedded_layouts: &EmbeddedLayouts,
+    ) -> ContentStack<sequence::Layout>;
 }
 
 /// Builder for creating and configuring layout engines.
@@ -187,13 +188,13 @@ impl EngineBuilder {
     /// This is a two-phase process:
     /// 1. Calculate layouts for all diagrams in post-order (innermost to outermost)
     /// 2. Adjust positions of embedded diagrams relative to their containers
-    pub fn build<'a>(mut self, collection: &'a Collection<'a>) -> LayeredLayout<'a> {
+    pub fn build<'a>(mut self, collection: &'a Collection<'a>) -> LayeredLayout {
         let mut layered_layout = LayeredLayout::new();
 
-        let mut layout_info: HashMap<TypeId, LayoutResult<'a>> = HashMap::new();
+        let mut layout_info: HashMap<Id, LayoutResult> = HashMap::new();
 
         // Map from container ID to its layer index in the layered_layout
-        let mut container_element_to_layer: HashMap<TypeId, usize> = HashMap::new();
+        let mut container_element_to_layer: HashMap<Id, usize> = HashMap::new();
 
         // Track container-embedded diagram relationships for position adjustment in the second phase
         // Format: (container_layer_idx, container_position, container_shape, embedded_layer_idx)
@@ -234,7 +235,7 @@ impl EngineBuilder {
 
             // Record the mapping from container ID to its layer index
             if let Some(id) = type_id {
-                container_element_to_layer.insert(id.clone(), layer_idx);
+                container_element_to_layer.insert(id, layer_idx);
             }
 
             if !container_element_to_layer.is_empty() {
@@ -245,7 +246,7 @@ impl EngineBuilder {
                             // Check for embedded diagrams in each positioned content
                             for component in &positioned_content.content().components {
                                 if let Some(embedded_idx) =
-                                    container_element_to_layer.get(component.node_id())
+                                    container_element_to_layer.get(&component.node_id())
                                 {
                                     // Store information needed to position the embedded diagram within its container:
                                     // (container layer index, container position, container shape, embedded diagram layer index)
@@ -263,7 +264,7 @@ impl EngineBuilder {
                         for positioned_content in layout.iter() {
                             for participant in &positioned_content.content().participants {
                                 if let Some(embedded_idx) =
-                                    container_element_to_layer.get(participant.component.node_id())
+                                    container_element_to_layer.get(&participant.component.node_id())
                                 {
                                     // Store information needed to position the embedded diagram within a sequence participant:
                                     // (container layer index, participant position, participant shape, embedded diagram layer index)
@@ -281,7 +282,7 @@ impl EngineBuilder {
 
             // Store the layout for embedded diagram references
             if let Some(id) = type_id {
-                layout_info.insert(id.clone(), layout_result);
+                layout_info.insert(id, layout_result);
             }
         }
 
