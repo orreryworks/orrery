@@ -43,8 +43,6 @@ The roadmap is organized into major feature categories, each containing specific
   - [Zed Extension](#zed-extension)
   - [VS Code Extension](#vs-code-extension)
   - [JetBrains Extension](#jetbrains-extension)
-- **[CLI](#cli)** - Command-line interface improvements
-  - [Formatting Panics Using miette](#formatting-panics-using-miette)
 
 ## Features
 
@@ -792,29 +790,3 @@ Develop a JetBrains plugin supporting Filament across IntelliJ IDEA, WebStorm, a
 - Enterprise development environment support
 - Advanced IDE features
 - Professional workflow integration
-
----
-
-### CLI
-
-#### Formatting Panics Using miette
-
-**Description**:
-Replace current panic-based error handling with structured error reporting using the `miette` crate for better user experience and debugging.
-
-**Proposed Implementation**:
-- Convert panics to structured diagnostic reports
-- Provide source code context in error messages
-- Add help text and suggestions using miette's diagnostic system
-- Improve error message formatting and readability
-
-**Benefits**:
-- More user-friendly error reporting
-- Better debugging information for developers
-- Consistent error message formatting
-- Integration with development tools
-
-**Implementation Considerations**:
-- Migration from panic-based error handling
-- Integration with existing error reporting system
-- Maintaining source location accuracy
