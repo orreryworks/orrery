@@ -4,6 +4,8 @@ use log::{LevelFilter, debug, error, info};
 use std::{process, str::FromStr};
 
 fn main() {
+    // Install miette's pretty panic hook early for better panic reports
+    miette::set_panic_hook();
     // Parse configuration first
     let cfg = Config::parse();
 
