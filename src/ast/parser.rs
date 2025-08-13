@@ -741,7 +741,7 @@ mod tests {
         assert!(result.is_ok());
         let (name, span) = result.unwrap();
         assert_eq!(name, "hello");
-        assert!(span.len() > 0);
+        assert!(!span.is_empty());
 
         // Test keywords as identifiers
         let tokens = tokenize("Component").expect("Failed to tokenize");
@@ -766,7 +766,7 @@ mod tests {
         assert!(result.is_ok());
         let (name, span) = result.unwrap();
         assert_eq!(name, "simple");
-        assert!(span.len() > 0);
+        assert!(!span.is_empty());
 
         // Test nested identifiers
         let tokens = tokenize("parent::child").expect("Failed to tokenize");

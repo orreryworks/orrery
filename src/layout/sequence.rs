@@ -323,6 +323,73 @@ impl LayoutSizing for Layout {
     }
 }
 
+/// Adjusts the offset of positioned contents in a content stack based on containment relationships.
+///
+/// This method handles the proper positioning of nested elements within their containers.
+// TODO: Once added enough abstractions, make this a method on ContentStack.
+pub fn adjust_positioned_contents_offset<'a>(
+    content_stack: &mut layer::ContentStack<Layout>,
+    graph: &'a graph::Graph<'a>,
+) {
+    let container_indices: HashMap<_, _> = graph
+        .containment_scopes()
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, scope)| scope.container().map(|container| (container, idx)))
+        .collect();
+
+    for (source_idx, source_scope) in graph.containment_scopes().iter().enumerate().rev() {
+        for (node_idx, destination_idx) in source_scope.node_indices().filter_map(|node_idx| {
+            container_indices
+                .get(&node_idx)
+                .map(|&destination_idx| (node_idx, destination_idx))
+        }) {
+            if source_idx == destination_idx {
+                // If the source and destination are the same, skip
+                error!(index = source_idx; "Source and destination indices are the same");
+                continue;
+            }
+            let source = content_stack.get_unchecked(source_idx);
+            let node = graph.node_from_idx(node_idx);
+
+            // Find the participant in the source layer that matches the node
+            let source_participant = source
+                .content()
+                .participants
+                .iter()
+                .find(|participant| participant.component.node_id() == node.id)
+                .expect("Participant must exist in source layer");
+
+            let target_offset = source
+                .offset()
+                .add_point(source_participant.component.bounds().min_point())
+                .add_point(
+                    source_participant
+                        .component
+                        .drawable()
+                        .inner()
+                        .shape_to_inner_content_min_point(),
+                ); // TODO: This does not account for text.
+
+            debug!(
+                node_id:? = node.id,
+                source_offset:? = source.offset();
+                "Adjusting positioned content offset [source]",
+            );
+
+            let target = content_stack.get_mut_unchecked(destination_idx);
+            debug!(
+                node_id:? = node.id,
+                original_offset:? = target.offset(),
+                new_offset:? = target_offset;
+                "Adjusting positioned content offset [target]",
+            );
+
+            target.set_offset(target_offset);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -525,72 +592,5 @@ mod tests {
         // Test with activation box not active at Y coordinate (should fallback)
         let result = find_active_activation_box_for_participant(&activation_boxes, 1, 200.0);
         assert!(result.is_none());
-    }
-}
-
-/// Adjusts the offset of positioned contents in a content stack based on containment relationships.
-///
-/// This method handles the proper positioning of nested elements within their containers.
-// TODO: Once added enough abstractions, make this a method on ContentStack.
-pub fn adjust_positioned_contents_offset<'a>(
-    content_stack: &mut layer::ContentStack<Layout>,
-    graph: &'a graph::Graph<'a>,
-) {
-    let container_indices: HashMap<_, _> = graph
-        .containment_scopes()
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, scope)| scope.container().map(|container| (container, idx)))
-        .collect();
-
-    for (source_idx, source_scope) in graph.containment_scopes().iter().enumerate().rev() {
-        for (node_idx, destination_idx) in source_scope.node_indices().filter_map(|node_idx| {
-            container_indices
-                .get(&node_idx)
-                .map(|&destination_idx| (node_idx, destination_idx))
-        }) {
-            if source_idx == destination_idx {
-                // If the source and destination are the same, skip
-                error!(index = source_idx; "Source and destination indices are the same");
-                continue;
-            }
-            let source = content_stack.get_unchecked(source_idx);
-            let node = graph.node_from_idx(node_idx);
-
-            // Find the participant in the source layer that matches the node
-            let source_participant = source
-                .content()
-                .participants
-                .iter()
-                .find(|participant| participant.component.node_id() == node.id)
-                .expect("Participant must exist in source layer");
-
-            let target_offset = source
-                .offset()
-                .add_point(source_participant.component.bounds().min_point())
-                .add_point(
-                    source_participant
-                        .component
-                        .drawable()
-                        .inner()
-                        .shape_to_inner_content_min_point(),
-                ); // TODO: This does not account for text.
-
-            debug!(
-                node_id:? = node.id,
-                source_offset:? = source.offset();
-                "Adjusting positioned content offset [source]",
-            );
-
-            let target = content_stack.get_mut_unchecked(destination_idx);
-            debug!(
-                node_id:? = node.id,
-                original_offset:? = target.offset(),
-                new_offset:? = target_offset;
-                "Adjusting positioned content offset [target]",
-            );
-
-            target.set_offset(target_offset);
-        }
     }
 }

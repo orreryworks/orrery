@@ -399,6 +399,5 @@ mod tests {
     fn test_sugiyama_layout_basics() {
         // Create a minimal engine and ensure it can be instantiated
         let _engine = Engine::new();
-        assert!(true, "Engine successfully instantiated");
     }
 }
