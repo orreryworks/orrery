@@ -1,5 +1,6 @@
 use crate::{
-    ast, draw,
+    ast,
+    draw::{self, Lifeline, PositionedDrawable},
     geometry::{Bounds, Point, Size},
     graph,
     layout::{component, layer, positioning::LayoutSizing},
@@ -10,7 +11,7 @@ use std::{collections::HashMap, rc::Rc};
 #[derive(Debug, Clone)]
 pub struct Participant {
     pub component: component::Component,
-    pub lifeline_end: f32, // y-coordinate where lifeline ends
+    pub lifeline: PositionedDrawable<Lifeline>, // Positioned lifeline drawable
 }
 
 #[derive(Debug, Clone)]
@@ -291,6 +292,7 @@ pub struct Layout {
     pub participants: Vec<Participant>,
     pub messages: Vec<Message>,
     pub activations: Vec<ActivationBox>,
+    pub max_lifeline_end: f32, // TODO: Consider calculating on the fly.
 }
 
 impl LayoutSizing for Layout {
@@ -299,13 +301,6 @@ impl LayoutSizing for Layout {
         if self.participants.is_empty() {
             return Size::default();
         }
-
-        // Find max lifeline end for height
-        let max_y = self
-            .participants
-            .iter()
-            .map(|p| p.lifeline_end)
-            .fold(0.0, f32::max);
 
         // Find bounds for width
         let bounds = self
@@ -318,7 +313,7 @@ impl LayoutSizing for Layout {
 
         Size::new(
             bounds.width(),
-            max_y - bounds.min_y(), // Height from top to bottom lifeline
+            self.max_lifeline_end - bounds.min_y(), // Height from top to bottom lifeline
         )
     }
 }

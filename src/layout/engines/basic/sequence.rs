@@ -5,7 +5,7 @@
 
 use crate::{
     ast,
-    draw::{self, Drawable},
+    draw::{self, Drawable as _},
     geometry::{Insets, Point, Size},
     graph::{Event, Graph},
     layout::{
@@ -109,8 +109,7 @@ impl Engine {
         graph: &'a Graph<'a>,
         embedded_layouts: &EmbeddedLayouts,
     ) -> ContentStack<Layout> {
-        let mut participants: Vec<Participant> = Vec::new();
-        let mut participant_indices = HashMap::new();
+        let mut components_indices = HashMap::new();
 
         // Create shapes with text for participants
         let mut participant_shapes: HashMap<_, _> = graph
@@ -158,7 +157,7 @@ impl Engine {
         let mut spacings = Vec::with_capacity(node_count.saturating_sub(1));
         for i in 1..node_count {
             let spacing =
-                self.calculate_message_label_spacing(i - 1, i, &messages_vec, &participant_indices);
+                self.calculate_message_label_spacing(i - 1, i, &messages_vec, &components_indices);
             spacings.push(spacing);
         }
 
@@ -178,24 +177,24 @@ impl Engine {
             Some(&spacings),
         );
 
+        let mut components = Vec::new();
         // Create participants and store their indices
         for (i, (node_idx, node)) in graph.nodes_with_indices().enumerate() {
             let shape_with_text = participant_shapes.remove(&node_idx).unwrap();
             let position = Point::new(x_positions[i], self.top_margin);
 
-            participants.push(Participant {
-                component: Component::new(node, shape_with_text, position),
-                lifeline_end: self.top_margin, // Will be updated later
-            });
+            let component = Component::new(node, shape_with_text, position);
 
-            participant_indices.insert(node_idx, i);
+            components.push(component);
+
+            components_indices.insert(node_idx, i);
         }
 
         // Calculate message positions and update lifeline ends
         let mut messages = Vec::new();
-        let participants_height = participants
+        let participants_height = components
             .iter()
-            .map(|p| p.component.drawable().size().height())
+            .map(|component| component.drawable().size().height())
             .max_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap_or_default();
 
@@ -204,8 +203,8 @@ impl Engine {
         for edge_idx in graph.ordered_relations() {
             let (source_idx, target_idx, relation) = graph.relation_message_info(edge_idx).unwrap();
 
-            let source_index = *participant_indices.get(&source_idx).unwrap();
-            let target_index = *participant_indices.get(&target_idx).unwrap();
+            let source_index = *components_indices.get(&source_idx).unwrap();
+            let target_index = *components_indices.get(&target_idx).unwrap();
 
             messages.push(Message::from_ast(
                 relation,
@@ -214,25 +213,41 @@ impl Engine {
                 current_y,
             ));
 
-            // Update lifeline end for both source and target participants
-            participants[source_index].lifeline_end = current_y;
-            participants[target_index].lifeline_end = current_y;
-
             current_y += self.message_spacing;
         }
 
-        // Update lifeline ends to match diagram height
-        for participant in &mut participants {
-            participant.lifeline_end = current_y + self.message_spacing;
-        }
+        let mut max_lifeline_end = 0.0f32;
+
+        // Update lifeline ends to match diagram height and finalize lifelines
+        let participants: Vec<_> = components
+            .into_iter()
+            .map(|component| {
+                let lifeline_end = current_y + self.message_spacing;
+                max_lifeline_end = max_lifeline_end.max(lifeline_end);
+
+                // Rebuild the positioned lifeline with the final height
+                let position = component.position();
+                let lifeline_start_y = component.bounds().max_y();
+                let height = (lifeline_end - lifeline_start_y).max(0.0);
+                let lifeline =
+                    draw::PositionedDrawable::new(draw::Lifeline::with_default_style(height))
+                        .with_position(Point::new(position.x(), lifeline_start_y));
+
+                Participant {
+                    component,
+                    lifeline,
+                }
+            })
+            .collect();
 
         let activations =
-            self.calculate_activation_boxes(graph, &participant_indices, participants_height);
+            self.calculate_activation_boxes(graph, &components_indices, participants_height);
 
         let layout = Layout {
             participants,
             messages,
             activations,
+            max_lifeline_end,
         };
 
         let mut content_stack = ContentStack::new();

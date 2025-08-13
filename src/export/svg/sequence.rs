@@ -14,22 +14,10 @@ impl Svg {
         // Use the renderer to generate the SVG for the participant
         let shape_group = component.drawable().render_to_svg();
 
-        // Calculate where the lifeline should start (bottom of the shape)
-        let component_bounds = component.bounds();
-        let lifeline_start_y = component_bounds.max_y();
-        let position = component.position();
+        // Render the pre-positioned lifeline from the participant
+        let lifeline_svg = participant.lifeline.render_to_svg();
 
-        // Lifeline
-        let lifeline = svg_element::Line::new()
-            .set("x1", position.x())
-            .set("y1", lifeline_start_y)
-            .set("x2", position.x())
-            .set("y2", participant.lifeline_end)
-            .set("stroke", "Black") // TODO: &shape_def.line_color())
-            .set("stroke-width", 1)
-            .set("stroke-dasharray", "4");
-
-        group.add(shape_group).add(lifeline).into()
+        group.add(shape_group).add(lifeline_svg).into()
     }
 
     pub fn render_message(
@@ -108,13 +96,7 @@ impl Svg {
                         acc.merge(&bounds)
                     });
 
-                content_bounds.set_max_y(
-                    layout
-                        .participants
-                        .iter()
-                        .map(|p| p.lifeline_end)
-                        .fold(0.0, f32::max),
-                );
+                content_bounds.set_max_y(layout.max_lifeline_end);
 
                 content_bounds
             })

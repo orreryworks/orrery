@@ -32,7 +32,6 @@ The roadmap is organized into major feature categories, each containing specific
   - [Custom Shape Definitions](#custom-shape-definitions)
   - [Animation Support](#animation-support)
   - [Alpha Transparency Support](#alpha-transparency-support)
-  - [Move Sequence Diagram Lifetime Rendering to draw::*](#move-sequence-diagram-lifetime-rendering-to-draw)
 
 ### Tooling & Ecosystem
 - **[Tooling](#tooling)** - Development tools and utilities
@@ -634,28 +633,6 @@ diagram component [background_color="rgba(240, 240, 240, 0.8)"];
 - Error handling for invalid alpha values (must be 0.0-1.0)
 
 ---
-
-#### Move Sequence Diagram Lifetime Rendering to draw::*
-
-**Description**:
-Refactor sequence diagram lifetime/lifeline rendering from export::svg::* to draw::* modules for consistency with other drawing components.
-
-**Current Implementation**:
-Sequence lifeline rendering is embedded within SVG-specific export code.
-
-**Proposed Implementation**:
-- Extract lifeline drawing logic to draw::sequence or similar module
-- Create reusable lifeline rendering components
-- Standardize lifeline drawing patterns across different sequence elements
-
-**Benefits**:
-- Consistent architecture with other drawing components
-- Reusable lifeline rendering logic
-- Better separation between drawing and export concerns
-- Improved code organization
-
----
-
 
 
 ### Tooling

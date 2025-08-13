@@ -7,6 +7,7 @@ mod activation_box;
 mod arrow;
 mod arrow_with_text;
 mod group;
+mod lifeline;
 mod positioned;
 mod shape;
 mod shape_with_text;
@@ -16,6 +17,7 @@ mod text_positioning;
 pub use activation_box::{ActivationBox, ActivationBoxDefinition};
 pub use arrow::{Arrow, ArrowDefinition, ArrowDirection, ArrowDrawer, ArrowStyle};
 pub use arrow_with_text::{ArrowWithText, ArrowWithTextDrawer};
+pub use lifeline::{Lifeline, LifelineDefinition};
 pub use positioned::PositionedDrawable;
 pub use shape::{
     ActorDefinition, BoundaryDefinition, ComponentDefinition, ControlDefinition, EntityDefinition,
