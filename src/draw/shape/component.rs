@@ -63,11 +63,14 @@ impl Icon for ComponentIcon {
             .set("d", path_data)
             .set("fill", "white")
             .set("stroke", line_color.to_string())
+            .set("stroke-opacity", line_color.alpha())
             .set("stroke-width", 1)
             .set("fill-rule", "evenodd");
 
         if let Some(fill_color) = fill_color {
-            component_icon = component_icon.set("fill", fill_color.to_string());
+            component_icon = component_icon
+                .set("fill", fill_color.to_string())
+                .set("fill-opacity", fill_color.alpha());
         }
 
         component_icon.into()
@@ -202,12 +205,15 @@ where
             .set("width", size.width())
             .set("height", size.height())
             .set("stroke", self.line_color().to_string())
+            .set("stroke-opacity", self.line_color().alpha())
             .set("stroke-width", self.line_width())
             .set("fill", "white")
             .set("rx", self.rounded());
 
         if let Some(fill_color) = self.fill_color() {
-            rect = rect.set("fill", fill_color.to_string());
+            rect = rect
+                .set("fill", fill_color.to_string())
+                .set("fill-opacity", fill_color.alpha());
         }
 
         group = group.add(rect);

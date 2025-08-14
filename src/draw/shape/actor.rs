@@ -105,11 +105,14 @@ impl ShapeDefinition for ActorDefinition {
             .set("cy", head_center.y())
             .set("r", head_radius)
             .set("stroke", self.line_color().to_string())
+            .set("stroke-opacity", self.line_color().alpha())
             .set("stroke-width", self.line_width())
             .set("fill", "white");
 
         if let Some(fill_color) = self.fill_color() {
-            head = head.set("fill", fill_color.to_string());
+            head = head
+                .set("fill", fill_color.to_string())
+                .set("fill-opacity", fill_color.alpha());
         }
 
         group = group.add(head);
@@ -124,6 +127,7 @@ impl ShapeDefinition for ActorDefinition {
             .set("x2", body_bottom.x())
             .set("y2", body_bottom.y())
             .set("stroke", self.line_color().to_string())
+            .set("stroke-opacity", self.line_color().alpha())
             .set("stroke-width", self.line_width())
             .set("stroke-linecap", "round");
 
@@ -139,6 +143,7 @@ impl ShapeDefinition for ActorDefinition {
             .set("x2", arm_center.x() - arm_length)
             .set("y2", arm_center.y() + 8.0)
             .set("stroke", self.line_color().to_string())
+            .set("stroke-opacity", self.line_color().alpha())
             .set("stroke-width", self.line_width())
             .set("stroke-linecap", "round");
 
@@ -151,6 +156,7 @@ impl ShapeDefinition for ActorDefinition {
             .set("x2", arm_center.x() + arm_length)
             .set("y2", arm_center.y() + 8.0)
             .set("stroke", self.line_color().to_string())
+            .set("stroke-opacity", self.line_color().alpha())
             .set("stroke-width", self.line_width())
             .set("stroke-linecap", "round");
 
@@ -164,6 +170,7 @@ impl ShapeDefinition for ActorDefinition {
             .set("x2", body_bottom.x() - 10.0)
             .set("y2", body_bottom.y() + leg_length)
             .set("stroke", self.line_color().to_string())
+            .set("stroke-opacity", self.line_color().alpha())
             .set("stroke-width", self.line_width())
             .set("stroke-linecap", "round");
 
@@ -176,6 +183,7 @@ impl ShapeDefinition for ActorDefinition {
             .set("x2", body_bottom.x() + 10.0)
             .set("y2", body_bottom.y() + leg_length)
             .set("stroke", self.line_color().to_string())
+            .set("stroke-opacity", self.line_color().alpha())
             .set("stroke-width", self.line_width())
             .set("stroke-linecap", "round");
 

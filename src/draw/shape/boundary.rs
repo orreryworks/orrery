@@ -104,11 +104,14 @@ impl ShapeDefinition for BoundaryDefinition {
             .set("cy", circle_position.y())
             .set("r", circle_radius)
             .set("stroke", self.line_color().to_string())
+            .set("stroke-opacity", self.line_color().alpha())
             .set("stroke-width", self.line_width())
             .set("fill", "white");
 
         if let Some(fill_color) = self.fill_color() {
-            circle = circle.set("fill", fill_color.to_string());
+            circle = circle
+                .set("fill", fill_color.to_string())
+                .set("fill-opacity", fill_color.alpha());
         }
 
         group = group.add(circle);
@@ -123,6 +126,7 @@ impl ShapeDefinition for BoundaryDefinition {
             .set("x2", line_x2.x())
             .set("y2", line_x2.y())
             .set("stroke", self.line_color().to_string())
+            .set("stroke-opacity", self.line_color().alpha())
             .set("stroke-width", self.line_width())
             .set("stroke-linecap", "round");
 
@@ -138,6 +142,7 @@ impl ShapeDefinition for BoundaryDefinition {
             .set("x2", line_x2.x())
             .set("y2", line_x2.y())
             .set("stroke", self.line_color().to_string())
+            .set("stroke-opacity", self.line_color().alpha())
             .set("stroke-width", self.line_width())
             .set("stroke-linecap", "round");
 

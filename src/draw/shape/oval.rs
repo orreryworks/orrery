@@ -158,11 +158,14 @@ impl ShapeDefinition for OvalDefinition {
             .set("rx", rx)
             .set("ry", ry)
             .set("stroke", self.line_color().to_string())
+            .set("stroke-opacity", self.line_color().alpha())
             .set("stroke-width", self.line_width())
             .set("fill", "white");
 
         if let Some(fill_color) = self.fill_color() {
-            ellipse = ellipse.set("fill", fill_color.to_string());
+            ellipse = ellipse
+                .set("fill", fill_color.to_string())
+                .set("fill-opacity", fill_color.alpha());
         }
 
         ellipse.into()

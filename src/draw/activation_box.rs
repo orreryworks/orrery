@@ -197,7 +197,9 @@ impl Drawable for ActivationBox {
             .set("width", bounds.width())
             .set("height", bounds.height())
             .set("fill", def.fill_color().to_string())
+            .set("fill-opacity", def.fill_color().alpha())
             .set("stroke", def.stroke_color().to_string())
+            .set("stroke-opacity", def.stroke_color().alpha())
             .set("stroke-width", def.stroke_width());
 
         activation_rect.into()

@@ -126,6 +126,8 @@ impl Drawable for Lifeline {
             .set("x2", position.x())
             .set("y2", position.y() + self.height)
             .set("stroke", self.definition.stroke_color().to_string())
+            .set("stroke-opacity", self.definition.stroke_color().alpha())
+            .set("fill-opacity", self.definition.stroke_color().alpha())
             .set("stroke-width", self.definition.stroke_width());
 
         // Add dash pattern if specified

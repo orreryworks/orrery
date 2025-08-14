@@ -221,6 +221,7 @@ impl Arrow {
             .set("d", path_data)
             .set("fill", "none")
             .set("stroke", self.definition.color.to_string())
+            .set("stroke-opacity", self.definition.color.alpha())
             .set("stroke-width", self.definition.width);
 
         // Get marker references for this specific color and direction
@@ -351,7 +352,8 @@ impl Arrow {
             .add(
                 svg_element::Path::new()
                     .set("d", "M 0 0 L 10 5 L 0 10 z")
-                    .set("fill", color.to_string()),
+                    .set("fill", color.to_string())
+                    .set("fill-opacity", color.alpha()),
             )
     }
 
@@ -367,7 +369,8 @@ impl Arrow {
             .add(
                 svg_element::Path::new()
                     .set("d", "M 10 0 L 0 5 L 10 10 z")
-                    .set("fill", color.to_string()),
+                    .set("fill", color.to_string())
+                    .set("fill-opacity", color.alpha()),
             )
     }
 }

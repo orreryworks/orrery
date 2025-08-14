@@ -99,7 +99,8 @@ impl Svg {
                 .set("y", 0)
                 .set("width", size.width())
                 .set("height", size.height())
-                .set("fill", bg_color.to_string());
+                .set("fill", bg_color.to_string())
+                .set("fill-opacity", bg_color.alpha());
             doc = doc.add(bg);
         }
 

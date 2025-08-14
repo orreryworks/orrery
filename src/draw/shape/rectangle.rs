@@ -127,12 +127,15 @@ impl ShapeDefinition for RectangleDefinition {
             .set("width", size.width())
             .set("height", size.height())
             .set("stroke", self.line_color().to_string())
+            .set("stroke-opacity", self.line_color().alpha())
             .set("stroke-width", self.line_width())
             .set("fill", "white")
             .set("rx", self.rounded());
 
         if let Some(fill_color) = self.fill_color() {
-            rect = rect.set("fill", fill_color.to_string());
+            rect = rect
+                .set("fill", fill_color.to_string())
+                .set("fill-opacity", fill_color.alpha());
         }
 
         rect.into()
