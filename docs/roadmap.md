@@ -14,6 +14,7 @@ The roadmap is organized into major feature categories, each containing specific
   - [Support for Importing Other .fil Files](#support-for-importing-other-fil-files)
   - [Add Support for Class Diagrams](#add-support-for-class-diagrams)
   - [Configurable Activation Box Definitions](#configurable-activation-box-definitions)
+  - [Configurable Lifeline Definitions from Sequence Attributes](#configurable-lifeline-definitions-from-sequence-attributes)
 - **[AST](#ast)** - Parser improvements and error handling
   - [Multi Error Reporting](#multi-error-reporting)
   - [Improve Error Messages](#improve-error-messages)
@@ -213,6 +214,65 @@ activate user {
 activate server [fill_color="lightblue", line_color="darkblue", line_width=2.0] {
     server -> user: "Response";
 };
+```
+
+---
+
+#### Configurable Lifeline Definitions from Sequence Attributes
+
+**Description**:
+Enable configuring lifeline visual and layout properties directly from sequence diagram attributes. Lifelines are the vertical lines that represent participant existence over time. Today, their appearance and spacing are fixed; this feature makes them first-class configurable elements to match different visual styles and layout needs.
+
+**Current Limitation**:
+- Lifeline line color, width, and style are not customizable via the language
+- Horizontal spacing between participants is fixed or globally internal
+- Top/bottom margins for lifelines cannot be tuned per diagram
+
+**Proposed Implementation**:
+- Add a `lifeline=[...]` nested attribute group to sequence diagram declarations:
+  - `line_color` (string): Color of lifeline (e.g., `"#bbbbbb"`, `"gray"`)
+  - `line_width` (float): Stroke width of lifeline (e.g., `1.0`, `1.5`)
+  - `line_style` (string): Line style, e.g., `"solid"` or `"dashed"`
+  - `spacing` (float): Horizontal distance between adjacent participants
+  - `top_padding` (float): Vertical padding before the first message
+  - `bottom_padding` (float): Vertical padding after the last message
+- Parsing:
+  - Extend the sequence diagram parser to accept an optional `lifeline=[...]` attribute group on the `diagram sequence [...]` declaration
+- Engine integration:
+  - Use `spacing` during participant layout
+  - Apply `line_color`, `line_width`, `line_style` when drawing lifelines
+  - Respect `top_padding` and `bottom_padding` when computing the diagram height and lifeline lengths
+- Validation:
+  - Enforce value types (strings for colors/styles, floats for numeric values)
+  - Provide clear errors for invalid `line_style` values
+
+**Benefits**:
+- Consistent, theme-able lifeline styling across sequence diagrams
+- Better control over density and readability via adjustable spacing
+- Professional look that matches organizational branding or documentation style
+- Backward-compatible: defaults preserve current behavior when `lifeline` is omitted
+
+**Example Usage**:
+```filament
+diagram sequence [
+    lifeline=[
+        line_color="#bbbbbb",
+        line_width=1.5,
+        line_style="dashed",
+        spacing=160.0,
+        top_padding=24.0,
+        bottom_padding=16.0
+    ]
+];
+
+client: Rectangle;
+service: Rectangle;
+db: Rectangle;
+
+client -> service: "Request";
+service -> db: "Query";
+db -> service: "Result";
+service -> client: "Response";
 ```
 
 ---
