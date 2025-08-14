@@ -15,6 +15,8 @@ The roadmap is organized into major feature categories, each containing specific
   - [Add Support for Class Diagrams](#add-support-for-class-diagrams)
   - [Configurable Activation Box Definitions](#configurable-activation-box-definitions)
   - [Configurable Lifeline Definitions from Sequence Attributes](#configurable-lifeline-definitions-from-sequence-attributes)
+  - [Alt/If Blocks for Sequence Diagrams](#altif-blocks-for-sequence-diagrams)
+  - [Loop/While Blocks for Sequence Diagrams](#loopwhile-blocks-for-sequence-diagrams)
 - **[AST](#ast)** - Parser improvements and error handling
   - [Multi Error Reporting](#multi-error-reporting)
   - [Improve Error Messages](#improve-error-messages)
@@ -272,6 +274,120 @@ client -> service: "Request";
 service -> db: "Query";
 db -> service: "Result";
 service -> client: "Response";
+```
+
+---
+
+#### Alt/If Blocks for Sequence Diagrams
+
+**Description**:
+Introduce support for UML-style alternative (alt) fragments to represent conditional flows in sequence diagrams. Each branch can be labeled with a guard/condition, with an optional `else` branch.
+
+**Current Limitation**:
+- No native syntax for conditional fragments; users must model branches as separate diagrams or rely on comments.
+
+**Proposed Implementation**:
+- Syntax:
+  ```filament
+  alt "user is authenticated" {
+      user -> server: "Access resource";
+  } else {
+      user -> server: "Show login";
+  };
+  ```
+  - Optional multi-branch form:
+    ```filament
+    alt "role == admin" {
+        admin -> system: "Admin action";
+    } else "role == user" {
+        user -> system: "User action";
+    } else {
+        guest -> system: "Limited access";
+    };
+    ```
+- Parsing:
+  - Add `alt` keyword producing an AST node with ordered branches: `(guard_label: Option<String>, block)`.
+  - `else` branches may include an optional label; the final `else` may be unlabeled.
+- Engine integration:
+  - Render each branch as a stacked fragment with a labeled header band.
+  - Allocate vertical space per branch based on content; maintain consistent participant spacing.
+- Styling (future attribute group on fragments):
+  - `title_color`, `border_color`, `border_width`, `fill_color`, `title_background_color`, `padding`.
+
+**Benefits**:
+- First-class conditional modeling within a single sequence diagram.
+- Clear, standard UML representation for branching logic.
+- Improves readability and reduces duplication across diagrams.
+
+**Example Usage**:
+```filament
+diagram sequence;
+
+user: Rectangle;
+server: Rectangle;
+
+alt "valid token" {
+    user -> server: "Request data";
+    server -> user: "200 OK";
+} else {
+    user -> server: "Request data";
+    server -> user: "401 Unauthorized";
+};
+```
+
+---
+
+#### Loop/While Blocks for Sequence Diagrams
+
+**Description**:
+Add support for UML-style loop fragments to represent repeated interactions driven by a condition (while semantics) or a count.
+
+**Current Limitation**:
+- Repetition must be manually duplicated, obscuring intent and making changes error-prone.
+
+**Proposed Implementation**:
+- Syntax (while-style guard):
+  ```filament
+  loop while "has more items" {
+      producer -> consumer: "Next item";
+  };
+  ```
+- Syntax (count/iterations):
+  ```filament
+  loop times=3 {
+      client -> server: "Ping";
+  };
+  ```
+- Parsing:
+  - Add `loop` keyword with either:
+    - `while "label"` guard form, or
+    - attribute form `loop [times=3] { ... };` for numeric iteration.
+- Engine integration:
+  - Render a single loop fragment with a header showing the guard (or times) and a dashed border (UML convention).
+  - Content renders once; renderer denotes repetition via the fragment label rather than duplicating nodes.
+- Validation:
+  - `times` must be a positive float (treated as integer); reject non-positive values with clear diagnostics.
+
+**Benefits**:
+- Explicit, concise representation of repetition.
+- Aligns with UML sequence diagram notation.
+- Improves maintainability by avoiding duplicated message blocks.
+
+**Example Usage**:
+```filament
+diagram sequence;
+
+client: Rectangle;
+server: Rectangle;
+
+loop while "retry < 3 && !ok" {
+    client -> server: "Attempt request";
+    server -> client: "Response";
+};
+
+loop times=2 {
+    client -> server: "Heartbeat";
+};
 ```
 
 ---
