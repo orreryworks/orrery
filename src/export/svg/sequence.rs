@@ -9,13 +9,13 @@ use svg::node::element as svg_element;
 impl Svg {
     pub fn render_participant(&self, participant: &sequence::Participant) -> Box<dyn svg::Node> {
         let group = svg_element::Group::new();
-        let component = &participant.component;
+        let component = participant.component();
 
         // Use the renderer to generate the SVG for the participant
         let shape_group = component.drawable().render_to_svg();
 
         // Render the pre-positioned lifeline from the participant
-        let lifeline_svg = participant.lifeline.render_to_svg();
+        let lifeline_svg = participant.lifeline().render_to_svg();
 
         group.add(shape_group).add(lifeline_svg).into()
     }
@@ -25,26 +25,26 @@ impl Svg {
         message: &sequence::Message,
         layout: &sequence::Layout,
     ) -> Box<dyn svg::Node> {
-        let source = &layout.participants[message.source_index];
-        let target = &layout.participants[message.target_index];
-        let message_y = message.y_position;
+        let source = &layout.participants()[message.source_index()];
+        let target = &layout.participants()[message.target_index()];
+        let message_y = message.y_position();
 
         // Calculate source X coordinate with activation box intersection if active
         let source_x = sequence::calculate_message_endpoint_x(
-            &layout.activations,
-            &source.component,
-            message.source_index,
+            layout.activations(),
+            source.component(),
+            message.source_index(),
             message_y,
-            target.component.position().x(), // Use target center X for direction detection
+            target.component().position().x(), // Use target center X for direction detection
         );
 
         // Calculate target X coordinate with activation box intersection if active
         let target_x = sequence::calculate_message_endpoint_x(
-            &layout.activations,
-            &target.component,
-            message.target_index,
+            layout.activations(),
+            target.component(),
+            message.target_index(),
             message_y,
-            source.component.position().x(), // Use source center X for direction detection
+            source.component().position().x(), // Use source center X for direction detection
         );
 
         // Create points for the message line (Y coordinate unchanged)
@@ -65,8 +65,8 @@ impl Svg {
         layout: &sequence::Layout,
     ) -> Box<dyn svg::Node> {
         // Calculate the center position for the activation box
-        let participant = &layout.participants[activation_box.participant_index()];
-        let participant_position = participant.component.position();
+        let participant = &layout.participants()[activation_box.participant_index()];
+        let participant_position = participant.component().position();
         let center_y = activation_box.center_y();
         let position = participant_position.with_y(center_y);
 
@@ -83,20 +83,21 @@ impl Svg {
             .map(|positioned_content| {
                 let layout = &positioned_content.content();
 
-                if layout.participants.is_empty() {
+                if layout.participants().is_empty() {
                     return Bounds::default();
                 }
 
                 let mut content_bounds = layout
-                    .participants
+                    .participants()
                     .iter()
                     .skip(1)
-                    .map(|p| p.component.bounds())
-                    .fold(layout.participants[0].component.bounds(), |acc, bounds| {
-                        acc.merge(&bounds)
-                    });
+                    .map(|p| p.component().bounds())
+                    .fold(
+                        layout.participants()[0].component().bounds(),
+                        |acc, bounds| acc.merge(&bounds),
+                    );
 
-                content_bounds.set_max_y(layout.max_lifeline_end);
+                content_bounds.set_max_y(layout.max_lifeline_end());
 
                 content_bounds
             })

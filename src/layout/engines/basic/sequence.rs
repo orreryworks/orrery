@@ -233,22 +233,14 @@ impl Engine {
                     draw::PositionedDrawable::new(draw::Lifeline::with_default_style(height))
                         .with_position(Point::new(position.x(), lifeline_start_y));
 
-                Participant {
-                    component,
-                    lifeline,
-                }
+                Participant::new(component, lifeline)
             })
             .collect();
 
         let activations =
             self.calculate_activation_boxes(graph, &components_indices, participants_height);
 
-        let layout = Layout {
-            participants,
-            messages,
-            activations,
-            max_lifeline_end,
-        };
+        let layout = Layout::new(participants, messages, activations, max_lifeline_end);
 
         let mut content_stack = ContentStack::new();
         content_stack.push(PositionedContent::new(layout));

@@ -8,17 +8,42 @@ use crate::{
 use log::{debug, error, warn};
 use std::{collections::HashMap, rc::Rc};
 
+/// Sequence diagram participant that holds its drawable component and lifeline.
 #[derive(Debug, Clone)]
 pub struct Participant {
-    pub component: component::Component,
-    pub lifeline: PositionedDrawable<Lifeline>, // Positioned lifeline drawable
+    component: component::Component,
+    lifeline: draw::PositionedDrawable<draw::Lifeline>,
+}
+
+impl Participant {
+    /// Create a participant from its component and lifeline.
+    pub fn new(
+        component: component::Component,
+        lifeline: draw::PositionedDrawable<draw::Lifeline>,
+    ) -> Self {
+        Self {
+            component,
+            lifeline,
+        }
+    }
+
+    /// Borrow the underlying component for this participant.
+    pub fn component(&self) -> &component::Component {
+        &self.component
+    }
+
+    /// Borrow the positioned lifeline drawable.
+    pub fn lifeline(&self) -> &PositionedDrawable<Lifeline> {
+        &self.lifeline
+    }
 }
 
 #[derive(Debug, Clone)]
+/// A rendered message between two participants at a specific Y position.
 pub struct Message {
-    pub source_index: usize,
-    pub target_index: usize,
-    pub y_position: f32,
+    source_index: usize,
+    target_index: usize,
+    y_position: f32,
     arrow_with_text: draw::ArrowWithText,
 }
 
@@ -60,6 +85,21 @@ impl Message {
     /// Returns a reference to the arrow with text for this message.
     pub fn arrow_with_text(&self) -> &draw::ArrowWithText {
         &self.arrow_with_text
+    }
+
+    /// Index of the source participant in the layout
+    pub fn source_index(&self) -> usize {
+        self.source_index
+    }
+
+    /// Index of the target participant in the layout
+    pub fn target_index(&self) -> usize {
+        self.target_index
+    }
+
+    /// The y-coordinate where this message appears
+    pub fn y_position(&self) -> f32 {
+        self.y_position
     }
 }
 
@@ -287,33 +327,72 @@ pub fn calculate_message_endpoint_x(
     }
 }
 
+/// Sequence layout containing participants, messages, activation boxes and metrics.
 #[derive(Debug, Clone)]
 pub struct Layout {
-    pub participants: Vec<Participant>,
-    pub messages: Vec<Message>,
-    pub activations: Vec<ActivationBox>,
-    pub max_lifeline_end: f32, // TODO: Consider calculating on the fly.
+    participants: Vec<Participant>,
+    messages: Vec<Message>,
+    activations: Vec<ActivationBox>,
+    max_lifeline_end: f32, // TODO: Consider calculating on the fly.
+}
+
+impl Layout {
+    /// Construct a new sequence layout.
+    pub fn new(
+        participants: Vec<Participant>,
+        messages: Vec<Message>,
+        activations: Vec<ActivationBox>,
+        max_lifeline_end: f32,
+    ) -> Self {
+        Self {
+            participants,
+            messages,
+            activations,
+            max_lifeline_end,
+        }
+    }
+
+    /// Borrow all participants in this sequence layout.
+    pub fn participants(&self) -> &[Participant] {
+        &self.participants
+    }
+
+    /// Borrow all messages in this sequence layout.
+    pub fn messages(&self) -> &[Message] {
+        &self.messages
+    }
+
+    /// Borrow all activation boxes in this sequence layout.
+    pub fn activations(&self) -> &[ActivationBox] {
+        &self.activations
+    }
+
+    /// The maximum Y coordinate (bottom) reached by any lifeline.
+    pub fn max_lifeline_end(&self) -> f32 {
+        self.max_lifeline_end
+    }
 }
 
 impl LayoutSizing for Layout {
+    /// Calculate the overall size of this sequence layout.
     fn layout_size(&self) -> Size {
         // For sequence layouts, calculate bounds based on participants and messages
-        if self.participants.is_empty() {
+        if self.participants().is_empty() {
             return Size::default();
         }
 
         // Find bounds for width
         let bounds = self
-            .participants
+            .participants()
             .iter()
             .skip(1)
-            .fold(self.participants[0].component.bounds(), |acc, p| {
-                acc.merge(&p.component.bounds())
+            .fold(self.participants()[0].component().bounds(), |acc, p| {
+                acc.merge(&p.component().bounds())
             });
 
         Size::new(
             bounds.width(),
-            self.max_lifeline_end - bounds.min_y(), // Height from top to bottom lifeline
+            self.max_lifeline_end() - bounds.min_y(), // Height from top to bottom lifeline
         )
     }
 }
@@ -350,17 +429,17 @@ pub fn adjust_positioned_contents_offset<'a>(
             // Find the participant in the source layer that matches the node
             let source_participant = source
                 .content()
-                .participants
+                .participants()
                 .iter()
-                .find(|participant| participant.component.node_id() == node.id)
+                .find(|participant| participant.component().node_id() == node.id)
                 .expect("Participant must exist in source layer");
 
             let target_offset = source
                 .offset()
-                .add_point(source_participant.component.bounds().min_point())
+                .add_point(source_participant.component().bounds().min_point())
                 .add_point(
                     source_participant
-                        .component
+                        .component()
                         .drawable()
                         .inner()
                         .shape_to_inner_content_min_point(),

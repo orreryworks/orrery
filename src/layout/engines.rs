@@ -262,15 +262,15 @@ impl EngineBuilder {
                     LayoutResult::Sequence(layout) => {
                         // Check for embedded diagrams in sequence layout
                         for positioned_content in layout.iter() {
-                            for participant in &positioned_content.content().participants {
-                                if let Some(embedded_idx) =
-                                    container_element_to_layer.get(&participant.component.node_id())
+                            for participant in positioned_content.content().participants() {
+                                if let Some(embedded_idx) = container_element_to_layer
+                                    .get(&participant.component().node_id())
                                 {
                                     // Store information needed to position the embedded diagram within a sequence participant:
                                     // (container layer index, participant position, participant shape, embedded diagram layer index)
                                     embedded_diagrams.push((
                                         layer_idx,
-                                        participant.component.drawable().clone(),
+                                        participant.component().drawable().clone(), // Get rid of the clone()
                                         *embedded_idx,
                                     ));
                                 }

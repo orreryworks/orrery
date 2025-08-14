@@ -248,17 +248,17 @@ impl Svg {
     /// Render sequence-specific content
     fn render_sequence_content(&mut self, content: &sequence::Layout) -> Vec<Box<dyn svg::Node>> {
         let mut groups = Vec::with_capacity(
-            content.participants.len() + content.messages.len() + content.activations.len(),
+            content.participants().len() + content.messages().len() + content.activations().len(),
         );
 
         // Render all participants within this positioned content
-        for participant in &content.participants {
+        for participant in content.participants() {
             groups.push(self.render_participant(participant));
         }
 
         // Render all activation boxes within this positioned content
         // Sort by nesting level to ensure proper z-order (lower levels render first, higher levels on top)
-        let mut sorted_activations: Vec<_> = content.activations.iter().collect();
+        let mut sorted_activations: Vec<_> = content.activations().iter().collect();
         sorted_activations.sort_by_key(|activation_box| activation_box.drawable().nesting_level());
 
         for activation_box in sorted_activations {
@@ -266,7 +266,7 @@ impl Svg {
         }
 
         // Render all messages within this positioned content
-        for message in &content.messages {
+        for message in content.messages() {
             groups.push(self.render_message(message, content));
         }
 
