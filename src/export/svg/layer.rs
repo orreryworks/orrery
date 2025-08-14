@@ -228,14 +228,14 @@ impl Svg {
 
     /// Render component-specific content
     fn render_component_content(&mut self, content: &component::Layout) -> Vec<Box<dyn svg::Node>> {
-        let mut groups = Vec::with_capacity(content.components.len() + content.relations.len());
+        let mut groups = Vec::with_capacity(content.components().len() + content.relations().len());
         // Render all components within this positioned content
-        for component in &content.components {
+        for component in content.components() {
             groups.push(self.render_component(component));
         }
 
         // Render all relations within this positioned content
-        for relation in &content.relations {
+        for relation in content.relations() {
             groups.push(self.render_relation(
                 content.source(relation),
                 content.target(relation),

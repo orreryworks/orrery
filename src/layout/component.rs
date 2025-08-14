@@ -114,11 +114,29 @@ impl LayoutRelation {
 /// overall layout dimensions.
 #[derive(Debug, Clone)]
 pub struct Layout {
-    pub components: Vec<Component>,
-    pub relations: Vec<LayoutRelation>,
+    components: Vec<Component>,
+    relations: Vec<LayoutRelation>,
 }
 
 impl Layout {
+    /// Creates a new layout with the given components and relations.
+    pub fn new(components: Vec<Component>, relations: Vec<LayoutRelation>) -> Self {
+        Self {
+            components,
+            relations,
+        }
+    }
+
+    /// Returns a reference to the components in this layout.
+    pub fn components(&self) -> &[Component] {
+        &self.components
+    }
+
+    /// Returns a reference to the relations in this layout.
+    pub fn relations(&self) -> &[LayoutRelation] {
+        &self.relations
+    }
+
     /// Returns a reference to the source component of the given relation.
     ///
     /// # Panics
@@ -203,7 +221,7 @@ pub fn adjust_positioned_contents_offset<'a>(
             // Find the component in the source layer that matches the node
             let source_component = source
                 .content()
-                .components
+                .components()
                 .iter()
                 .find(|component| component.node_id == node.id)
                 .expect("Component must exist in source layer");

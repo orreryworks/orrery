@@ -244,7 +244,7 @@ impl EngineBuilder {
                         // Check for embedded diagrams in each positioned content
                         for positioned_content in layout.iter() {
                             // Check for embedded diagrams in each positioned content
-                            for component in &positioned_content.content().components {
+                            for component in positioned_content.content().components() {
                                 if let Some(embedded_idx) =
                                     container_element_to_layer.get(&component.node_id())
                                 {

@@ -120,10 +120,7 @@ impl Engine {
                 })
                 .collect();
 
-            let positioned_content = PositionedContent::new(Layout {
-                components,
-                relations,
-            });
+            let positioned_content = PositionedContent::new(Layout::new(components, relations));
 
             if let Some(container) = containment_scope.container() {
                 // If this layer is a container, we need to adjust its size based on its contents

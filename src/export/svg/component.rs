@@ -46,16 +46,16 @@ impl Svg {
             .map(|positioned_content| {
                 let layout = &positioned_content.content();
 
-                if layout.components.is_empty() {
+                if layout.components().is_empty() {
                     return Bounds::default();
                 }
 
                 layout
-                    .components
+                    .components()
                     .iter()
                     .skip(1)
                     .map(|component| component.bounds())
-                    .fold(layout.components[0].bounds(), |acc, bounds| {
+                    .fold(layout.components()[0].bounds(), |acc, bounds| {
                         acc.merge(&bounds)
                     })
             })
