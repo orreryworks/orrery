@@ -22,7 +22,9 @@
 /// ## Other Modules
 /// - `span`: Provides location tracking for AST elements
 /// - `parser_types`: Contains spanned versions of parser types with source location tracking
+/// - `desugar`: Performs AST normalization between parsing and elaboration
 /// - `elaborate`: Handles AST elaboration with rich error diagnostics
+mod desugar;
 mod elaborate;
 mod elaborate_types;
 mod lexer;
@@ -41,8 +43,9 @@ pub use elaborate_types::*;
 /// This function centralizes the process of building a Filament diagram AST by:
 /// 1. Tokenizing the source code
 /// 2. Parsing the tokens into an AST
-/// 3. Elaborating the AST to resolve references and validate the structure
-/// 4. Handling error wrapping and source code association for diagnostics
+/// 3. Applying desugaring transformations to normalize the AST
+/// 4. Elaborating the AST to resolve references and validate the structure
+/// 5. Handling error wrapping and source code association for diagnostics
 ///
 /// ## Parser Features
 ///
@@ -90,9 +93,12 @@ pub fn build_ast(cfg: &AppConfig, source: &str) -> Result<elaborate_types::Diagr
     // Step 2: Parse the tokens into AST
     let parsed_ast = parser::build_diagram(&tokens, source)?;
 
-    // Step 3: Elaborate the AST with rich error handling
+    // Step 3: Apply desugaring transformations
+    let desugared_ast = desugar::desugar(parsed_ast);
+
+    // Step 4: Elaborate the AST with rich error handling
     let elaborate_builder = elaborate::Builder::new(cfg, source);
     elaborate_builder
-        .build(&parsed_ast)
+        .build(&desugared_ast)
         .map_err(|e| FilamentError::new_elaboration_error(e, source))
 }
