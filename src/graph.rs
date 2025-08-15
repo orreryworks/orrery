@@ -370,6 +370,26 @@ impl<'a> Collection<'a> {
 
                     graph.ordered_events.push(Event::Deactivate(node_idx));
                 }
+                ast::Element::Activate(component_id) => {
+                    if let Some(&node_idx) = graph.node_id_map.get(component_id) {
+                        graph.ordered_events.push(Event::Activate(node_idx));
+                    } else {
+                        return Err(FilamentError::Graph(format!(
+                            "Activate refers to undefined component: {}",
+                            component_id
+                        )));
+                    }
+                }
+                ast::Element::Deactivate(component_id) => {
+                    if let Some(&node_idx) = graph.node_id_map.get(component_id) {
+                        graph.ordered_events.push(Event::Deactivate(node_idx));
+                    } else {
+                        return Err(FilamentError::Graph(format!(
+                            "Deactivate refers to undefined component: {}",
+                            component_id
+                        )));
+                    }
+                }
                 ast::Element::Node(..) => (),
             }
         }

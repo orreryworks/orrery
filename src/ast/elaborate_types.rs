@@ -93,6 +93,8 @@ pub enum Element {
     Node(Node),
     Relation(Relation),
     ActivateBlock(ActivateBlock),
+    Activate(Id),
+    Deactivate(Id),
 }
 
 #[derive(Debug, Default, Clone)]

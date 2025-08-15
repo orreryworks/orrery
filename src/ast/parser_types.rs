@@ -192,6 +192,14 @@ pub enum Element<'a> {
         component: Spanned<&'a str>,
         elements: Vec<Element<'a>>,
     },
+    /// Explicit activation of a component
+    Activate {
+        component: Spanned<&'a str>,
+    },
+    /// Explicit deactivation of a component
+    Deactivate {
+        component: Spanned<&'a str>,
+    },
 }
 
 impl Element<'_> {
@@ -252,6 +260,8 @@ impl Element<'_> {
                 .iter()
                 .map(|elem| elem.span())
                 .fold(component.span(), |acc, span| acc.union(span)),
+            Element::Activate { component } => component.span(),
+            Element::Deactivate { component } => component.span(),
         }
     }
 }

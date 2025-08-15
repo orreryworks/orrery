@@ -135,6 +135,8 @@ trait Folder<'a> {
                 component,
                 elements,
             } => self.fold_activate_block(component, elements),
+            Element::Activate { component } => Element::Activate { component },
+            Element::Deactivate { component } => Element::Deactivate { component },
         }
     }
 

@@ -34,6 +34,7 @@ mod parser_tests;
 mod parser_types;
 pub mod span;
 mod tokens;
+mod validate;
 
 use crate::{config::AppConfig, error::FilamentError};
 pub use elaborate_types::*;
@@ -96,7 +97,13 @@ pub fn build_ast(cfg: &AppConfig, source: &str) -> Result<elaborate_types::Diagr
     // Step 3: Apply desugaring transformations
     let desugared_ast = desugar::desugar(parsed_ast);
 
-    // Step 4: Elaborate the AST with rich error handling
+    // Step 4: Validate activation pairs at syntax level before elaboration
+    if let parser_types::Element::Diagram(diagram) = desugared_ast.inner() {
+        validate::validate_activation_pairs(diagram)
+            .map_err(|e| FilamentError::new_elaboration_error(e, source))?;
+    }
+
+    // Step 5: Elaborate the AST with rich error handling
     let elaborate_builder = elaborate::Builder::new(cfg, source);
     elaborate_builder
         .build(&desugared_ast)

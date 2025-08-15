@@ -351,6 +351,12 @@ impl<'a> Builder<'a> {
                 } => {
                     self.build_activate_block_element(component, elements, parent_id, diagram_kind)?
                 }
+                parser_types::Element::Activate { component } => {
+                    self.build_activate_element(component, parent_id, diagram_kind)?
+                }
+                parser_types::Element::Deactivate { component } => {
+                    self.build_deactivate_element(component, parent_id, diagram_kind)?
+                }
             };
             elements.push(element);
         }
@@ -485,8 +491,59 @@ impl<'a> Builder<'a> {
         let component_id = self.create_type_id(parent_id, component.inner());
 
         let activate_block = types::ActivateBlock::new(component_id, scope);
-
         Ok(types::Element::ActivateBlock(activate_block))
+    }
+
+    /// Builds an activate element from parser data
+    fn build_activate_element(
+        &mut self,
+        component: &Spanned<&str>,
+        parent_id: Option<Id>,
+        diagram_kind: types::DiagramKind,
+    ) -> EResult<types::Element> {
+        // Only allow activate in sequence diagrams
+        if diagram_kind != types::DiagramKind::Sequence {
+            return Err(ElaborationDiagnosticError::from_span(
+                "Activate statements are only supported in sequence diagrams".to_string(),
+                component.span(),
+                "activate not allowed here",
+                Some(
+                    "Activate statements are used for temporal grouping in sequence diagrams"
+                        .to_string(),
+                ),
+            ));
+        }
+
+        // Create Id for the component being activated
+        let component_id = self.create_type_id(parent_id, component.inner());
+
+        Ok(types::Element::Activate(component_id))
+    }
+
+    /// Builds a deactivate element from parser data
+    fn build_deactivate_element(
+        &mut self,
+        component: &Spanned<&str>,
+        parent_id: Option<Id>,
+        diagram_kind: types::DiagramKind,
+    ) -> EResult<types::Element> {
+        // Only allow deactivate in sequence diagrams
+        if diagram_kind != types::DiagramKind::Sequence {
+            return Err(ElaborationDiagnosticError::from_span(
+                "Deactivate statements are only supported in sequence diagrams".to_string(),
+                component.span(),
+                "deactivate not allowed here",
+                Some(
+                    "Deactivate statements are used for temporal grouping in sequence diagrams"
+                        .to_string(),
+                ),
+            ));
+        }
+
+        // Create Id for the component being deactivated
+        let component_id = self.create_type_id(parent_id, component.inner());
+
+        Ok(types::Element::Deactivate(component_id))
     }
 
     /// Build a relation type definition from a relation type specification
@@ -884,6 +941,129 @@ activate user {
             assert_eq!(activate_blocks[1].scope.elements.len(), 1);
         } else {
             panic!("Expected activate block element");
+        }
+
+        #[test]
+        fn test_explicit_activate_in_sequence_diagram() {
+            use crate::config::AppConfig;
+            let config = AppConfig::default();
+            let mut builder = Builder::new(&config, "test");
+
+            // Create a simple sequence diagram with explicit activate
+            let elements = vec![
+                // Define a component
+                parser_types::Element::Component {
+                    name: Spanned::new("user", Span::new(0..4)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(5..14)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                // Activate the component
+                parser_types::Element::Activate {
+                    component: Spanned::new("user", Span::new(0..4)),
+                },
+                // Deactivate the component
+                parser_types::Element::Deactivate {
+                    component: Spanned::new("user", Span::new(0..4)),
+                },
+            ];
+
+            let diagram = parser_types::Diagram {
+                kind: Spanned::new("sequence", Span::new(0..8)),
+                attributes: vec![],
+                type_definitions: vec![],
+                elements,
+            };
+
+            let spanned_element =
+                Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
+
+            let result = builder.build(&spanned_element);
+            assert!(
+                result.is_ok(),
+                "Should successfully build sequence diagram with explicit activate/deactivate"
+            );
+
+            let elaborate_diagram = result.unwrap();
+            let elements = &elaborate_diagram.scope.elements;
+
+            // Check that we have the expected elements
+            assert_eq!(
+                elements.len(),
+                3,
+                "Should have 3 elements: component, activate, deactivate"
+            );
+
+            // Verify the activate element
+            if let types::Element::Activate(id) = &elements[1] {
+                assert_eq!(
+                    id.to_string(),
+                    "user",
+                    "Activate should reference 'user' component"
+                );
+            } else {
+                panic!("Second element should be Activate");
+            }
+
+            // Verify the deactivate element
+            if let types::Element::Deactivate(id) = &elements[2] {
+                assert_eq!(
+                    id.to_string(),
+                    "user",
+                    "Deactivate should reference 'user' component"
+                );
+            } else {
+                panic!("Third element should be Deactivate");
+            }
+        }
+
+        #[test]
+        fn test_explicit_activate_not_allowed_in_component_diagram() {
+            use crate::config::AppConfig;
+            let config = AppConfig::default();
+            let mut builder = Builder::new(&config, "test");
+
+            // Create a component diagram with explicit activate (should fail)
+            let elements = vec![
+                // Define a component
+                parser_types::Element::Component {
+                    name: Spanned::new("user", Span::new(0..4)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(5..14)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                // Try to activate the component (should fail)
+                parser_types::Element::Activate {
+                    component: Spanned::new("user", Span::new(0..4)),
+                },
+            ];
+
+            let diagram = parser_types::Diagram {
+                kind: Spanned::new("component", Span::new(0..9)),
+                attributes: vec![],
+                type_definitions: vec![],
+                elements,
+            };
+
+            let spanned_element =
+                Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
+
+            let result = builder.build(&spanned_element);
+            assert!(
+                result.is_err(),
+                "Should fail to build component diagram with explicit activate"
+            );
+
+            if let Err(err) = result {
+                let error_message = format!("{}", err);
+                assert!(
+                    error_message
+                        .contains("Activate statements are only supported in sequence diagrams"),
+                    "Error should mention that activate is not allowed in component diagrams"
+                );
+            }
         }
     }
 
