@@ -244,14 +244,30 @@ trait Folder<'a> {
     }
 }
 
-/// The identity folder - passes everything through unchanged.
-///
-/// This is the default implementation that preserves the AST structure.
-/// It serves as the base for future desugaring transformations.
-pub struct IdentityFolder;
+pub struct DesugarActivateBlocks;
 
-impl<'a> Folder<'a> for IdentityFolder {
-    // All methods use the default implementations from the trait
+impl<'a> Folder<'a> for DesugarActivateBlocks {
+    fn fold_elements(&mut self, elements: Vec<Element<'a>>) -> Vec<Element<'a>> {
+        let mut out = Vec::with_capacity(elements.len());
+        for elem in elements {
+            match elem {
+                Element::ActivateBlock {
+                    component,
+                    elements: inner,
+                } => {
+                    let comp = self.fold_activate_component(component);
+                    out.push(Element::Activate {
+                        component: comp.clone(),
+                    });
+                    let inner_folded = self.fold_elements(inner);
+                    out.extend(inner_folded);
+                    out.push(Element::Deactivate { component: comp });
+                }
+                _ => out.push(self.fold_element(elem)),
+            }
+        }
+        out
+    }
 }
 
 /// Main entry point for the desugaring pass.
@@ -259,11 +275,10 @@ impl<'a> Folder<'a> for IdentityFolder {
 /// This function applies desugaring transformations to the parsed AST
 /// before it's passed to the elaboration phase.
 ///
-/// Currently, it uses the IdentityFolder which passes everything through
-/// unchanged. Future desugaring transformations can be added by implementing
-/// custom folders.
+/// It rewrites [`ActivateBlock`] elements into explicit
+/// `activate`/`deactivate` statements while preserving order and spans.
 pub fn desugar<'a>(diagram: Spanned<Element<'a>>) -> Spanned<Element<'a>> {
-    let mut folder = IdentityFolder;
+    let mut folder = DesugarActivateBlocks;
     let span = diagram.span();
     let desugared = folder.fold_element(diagram.into_inner());
     Spanned::new(desugared, span)
@@ -273,6 +288,13 @@ pub fn desugar<'a>(diagram: Spanned<Element<'a>>) -> Spanned<Element<'a>> {
 mod tests {
     use super::*;
     use crate::ast::span::Span;
+
+    // Test-only IdentityFolder for verifying identity transformations
+    struct IdentityFolder;
+
+    impl<'a> Folder<'a> for IdentityFolder {
+        // Use default methods: identity behavior for all nodes
+    }
 
     /// Helper to create a spanned value for testing
     fn spanned<T>(value: T) -> Spanned<T> {
@@ -291,10 +313,11 @@ mod tests {
         let wrapped = spanned(diagram);
 
         // Apply the identity folder
-        let result = desugar(wrapped);
+        let mut folder = IdentityFolder;
+        let result_elem = folder.fold_element(wrapped.into_inner());
 
         // Verify the structure is unchanged
-        match result.into_inner() {
+        match result_elem {
             Element::Diagram(d) => {
                 assert_eq!(*d.kind.inner(), "component");
                 assert!(d.attributes.is_empty());
@@ -326,10 +349,11 @@ mod tests {
         let wrapped = spanned(diagram);
 
         // Apply the identity folder
-        let result = desugar(wrapped);
+        let mut folder = IdentityFolder;
+        let result_elem = folder.fold_element(wrapped.into_inner());
 
         // Verify attributes are preserved
-        match result.into_inner() {
+        match result_elem {
             Element::Diagram(d) => {
                 assert_eq!(d.attributes.len(), 2);
                 assert_eq!(*d.attributes[0].name.inner(), "background_color");
@@ -361,10 +385,11 @@ mod tests {
         let wrapped = spanned(diagram);
 
         // Apply the identity folder
-        let result = desugar(wrapped);
+        let mut folder = IdentityFolder;
+        let result_elem = folder.fold_element(wrapped.into_inner());
 
         // Verify type definitions are preserved
-        match result.into_inner() {
+        match result_elem {
             Element::Diagram(d) => {
                 assert_eq!(d.type_definitions.len(), 1);
                 assert_eq!(*d.type_definitions[0].name.inner(), "Database");
@@ -396,10 +421,11 @@ mod tests {
         let wrapped = spanned(diagram);
 
         // Apply the identity folder
-        let result = desugar(wrapped);
+        let mut folder = IdentityFolder;
+        let result_elem = folder.fold_element(wrapped.into_inner());
 
         // Verify component is preserved
-        match result.into_inner() {
+        match result_elem {
             Element::Diagram(d) => {
                 assert_eq!(d.elements.len(), 1);
                 match &d.elements[0] {
@@ -447,10 +473,11 @@ mod tests {
         let wrapped = spanned(diagram);
 
         // Apply the identity folder
-        let result = desugar(wrapped);
+        let mut folder = IdentityFolder;
+        let result_elem = folder.fold_element(wrapped.into_inner());
 
         // Verify relation is preserved
-        match result.into_inner() {
+        match result_elem {
             Element::Diagram(d) => {
                 assert_eq!(d.elements.len(), 1);
                 match &d.elements[0] {
@@ -475,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    fn test_identity_folder_preserves_activate_blocks() {
+    fn test_identity_folder_preserves_activate_block() {
         // Create a diagram with an activate block
         let diagram = Element::Diagram(Diagram {
             kind: spanned("sequence"),
@@ -495,10 +522,11 @@ mod tests {
         let wrapped = spanned(diagram);
 
         // Apply the identity folder
-        let result = desugar(wrapped);
+        let mut folder = IdentityFolder;
+        let result_elem = folder.fold_element(wrapped.into_inner());
 
         // Verify activate block is preserved
-        match result.into_inner() {
+        match result_elem {
             Element::Diagram(d) => {
                 assert_eq!(d.elements.len(), 1);
                 match &d.elements[0] {
@@ -515,7 +543,58 @@ mod tests {
                             _ => panic!("Expected relation in activate block"),
                         }
                     }
-                    _ => panic!("Expected activate block element"),
+                    _ => panic!("Expected ActivateBlock element"),
+                }
+            }
+            _ => panic!("Expected diagram element"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_rewrites_activate_blocks() {
+        // Create a diagram with an activate block
+        let diagram = Element::Diagram(Diagram {
+            kind: spanned("sequence"),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements: vec![Element::ActivateBlock {
+                component: spanned("user"),
+                elements: vec![Element::Relation {
+                    source: spanned("user".to_string()),
+                    target: spanned("server".to_string()),
+                    relation_type: spanned("->"),
+                    type_spec: None,
+                    label: Some(spanned("Request".to_string())),
+                }],
+            }],
+        });
+        let wrapped = spanned(diagram);
+
+        // Apply DesugarActivateBlocks folder directly
+        let mut folder = DesugarActivateBlocks;
+        let result_elem = folder.fold_element(wrapped.into_inner());
+
+        // Verify activate block was rewritten into explicit statements
+        match result_elem {
+            Element::Diagram(d) => {
+                assert_eq!(d.elements.len(), 3, "Expected Activate, inner, Deactivate");
+                match &d.elements[0] {
+                    Element::Activate { component } => {
+                        assert_eq!(*component.inner(), "user");
+                    }
+                    _ => panic!("Expected Activate element"),
+                }
+                match &d.elements[1] {
+                    Element::Relation { label, .. } => {
+                        assert_eq!(label.as_ref().unwrap().inner(), "Request");
+                    }
+                    _ => panic!("Expected inner Relation element"),
+                }
+                match &d.elements[2] {
+                    Element::Deactivate { component } => {
+                        assert_eq!(*component.inner(), "user");
+                    }
+                    _ => panic!("Expected Deactivate element"),
                 }
             }
             _ => panic!("Expected diagram element"),

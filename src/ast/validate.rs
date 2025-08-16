@@ -309,7 +309,7 @@ impl<'a> Visitor<'a> for ActivationValidator {
 /// - Err(ElaborationDiagnosticError) with the first collected error otherwise
 pub fn validate_activation_pairs(diagram: &Diagram<'_>) -> Result<(), ElaborationDiagnosticError> {
     let mut validator = ActivationValidator::new();
-    let _ = visit_diagram(&mut validator, diagram);
+    visit_diagram(&mut validator, diagram);
     // TODO: Support multi error.
     if let Some(err) = validator.errors.into_iter().next() {
         Err(err)

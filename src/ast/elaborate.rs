@@ -345,11 +345,10 @@ impl<'a> Builder<'a> {
                         None,
                     ));
                 }
-                parser_types::Element::ActivateBlock {
-                    component,
-                    elements,
-                } => {
-                    self.build_activate_block_element(component, elements, parent_id, diagram_kind)?
+                parser_types::Element::ActivateBlock { .. } => {
+                    unreachable!(
+                        "ActivateBlock should have been desugared into explicit activate/deactivate statements before elaboration"
+                    );
                 }
                 parser_types::Element::Activate { component } => {
                     self.build_activate_element(component, parent_id, diagram_kind)?
@@ -459,39 +458,6 @@ impl<'a> Builder<'a> {
             label.as_ref().map(|l| l.to_string()),
             relation_type_def,
         )))
-    }
-
-    /// Builds an activate block element from parser data
-    fn build_activate_block_element(
-        &mut self,
-        component: &Spanned<&str>,
-        elements: &[parser_types::Element],
-        parent_id: Option<Id>,
-        diagram_kind: types::DiagramKind,
-    ) -> EResult<types::Element> {
-        // Validate that activate blocks are only allowed in sequence diagrams
-        match diagram_kind {
-            types::DiagramKind::Sequence => {
-                // Valid: activate blocks are allowed in sequence diagrams
-            }
-            types::DiagramKind::Component => {
-                return Err(ElaborationDiagnosticError::from_span(
-                    "Activate blocks are not supported in component diagrams".to_string(),
-                    component.span(),
-                    "invalid activate block",
-                    Some("Activate blocks are only supported in sequence diagrams for temporal grouping. Component diagrams use nested scopes with curly braces instead.".to_string()),
-                ));
-            }
-        }
-
-        // Process nested elements within the activate block
-        let scope = self.build_scope_from_elements(elements, parent_id, diagram_kind)?;
-
-        // Create Id for the component being activated
-        let component_id = self.create_type_id(parent_id, component.inner());
-
-        let activate_block = types::ActivateBlock::new(component_id, scope);
-        Ok(types::Element::ActivateBlock(activate_block))
     }
 
     /// Builds an activate element from parser data
@@ -731,114 +697,71 @@ impl<'a> Builder<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{lexer::tokenize, parser::build_diagram};
-    use crate::config::AppConfig;
 
     #[test]
-    fn test_activate_block_elaboration() {
-        let input = r#"diagram sequence;
-activate user {
-    user -> server: "Request";
-};"#;
+    #[should_panic(expected = "ActivateBlock should have been desugared")]
+    fn test_activate_block_panics_in_elaboration() {
+        // Build a parser_types diagram directly with an ActivateBlock element
+        let elements = vec![parser_types::Element::ActivateBlock {
+            component: Spanned::new("user", Span::new(0..4)),
+            elements: vec![],
+        }];
 
-        let tokens = tokenize(input).expect("Failed to tokenize");
-        let parsed = build_diagram(&tokens, input).expect("Failed to parse");
+        let diagram = parser_types::Diagram {
+            kind: Spanned::new("component", Span::new(0..9)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements,
+        };
 
-        // Create a builder with default config and elaborate
+        let spanned_element =
+            Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
+
         let config = AppConfig::default();
-        let builder = Builder::new(&config, input);
-        let result = builder.build(&parsed);
-
-        assert!(
-            result.is_ok(),
-            "Failed to elaborate activate block: {:?}",
-            result.err()
-        );
-
-        let diagram = result.unwrap();
-        assert_eq!(diagram.scope.elements.len(), 1);
-
-        // Verify the activate block was created correctly
-        if let types::Element::ActivateBlock(activate_block) = &diagram.scope.elements[0] {
-            assert_eq!(activate_block.component.to_string(), "user");
-            assert_eq!(activate_block.scope.elements.len(), 1);
-
-            // Verify the nested relation was processed
-            if let types::Element::Relation(relation) = &activate_block.scope.elements[0] {
-                assert_eq!(relation.source.to_string(), "user");
-                assert_eq!(relation.target.to_string(), "server");
-            } else {
-                panic!("Expected relation element in activate block");
-            }
-        } else {
-            panic!(
-                "Expected activate block element, got {:?}",
-                diagram.scope.elements[0]
-            );
-        }
+        let builder = Builder::new(&config, "test");
+        // This should panic due to unreachable!() on ActivateBlock during elaboration
+        let _ = builder.build(&spanned_element);
     }
 
     #[test]
-    fn test_empty_activate_block_elaboration() {
-        let input = r#"diagram sequence;
-activate user {
-};"#;
-
-        let tokens = tokenize(input).expect("Failed to tokenize");
-        let parsed = build_diagram(&tokens, input).expect("Failed to parse");
-
-        let config = AppConfig::default();
-        let builder = Builder::new(&config, input);
-        let result = builder.build(&parsed);
-
-        assert!(result.is_ok(), "Failed to elaborate empty activate block");
-
-        let diagram = result.unwrap();
-        assert_eq!(diagram.scope.elements.len(), 1);
-
-        if let types::Element::ActivateBlock(activate_block) = &diagram.scope.elements[0] {
-            assert_eq!(activate_block.component.to_string(), "user");
-            assert_eq!(activate_block.scope.elements.len(), 0);
-        } else {
-            panic!("Expected activate block element");
-        }
-    }
-
-    #[test]
-    fn test_activate_block_invalid_in_component_diagram() {
-        let input = r#"diagram component;
-activate user {
-    user -> server: "Request";
-};"#;
-
-        let tokens = tokenize(input).expect("Failed to tokenize");
-        let parsed = build_diagram(&tokens, input).expect("Failed to parse");
-
-        let config = AppConfig::default();
-        let builder = Builder::new(&config, input);
-        let result = builder.build(&parsed);
-
-        assert!(
-            result.is_err(),
-            "Activate blocks should not be allowed in component diagrams"
-        );
-    }
-
-    #[test]
-    fn test_activate_block_scoping_behavior() {
+    fn test_explicit_activation_scoping_behavior() {
         // Test that sequence diagrams don't create namespace scopes within activate blocks
-        let input = r#"diagram sequence;
-activate user {
-    user -> server: "Request";
-    server -> database: "Query";
-};"#;
+        let elements = vec![
+            parser_types::Element::Activate {
+                component: Spanned::new("user", Span::new(0..4)),
+            },
+            parser_types::Element::Relation {
+                source: Spanned::new("user".to_string(), Span::new(0..4)),
+                target: Spanned::new("server".to_string(), Span::new(0..6)),
+                relation_type: Spanned::new("->", Span::new(0..2)),
+                type_spec: None,
+                label: Some(Spanned::new("Request".to_string(), Span::new(0..7))),
+            },
+            parser_types::Element::Relation {
+                source: Spanned::new("server".to_string(), Span::new(0..6)),
+                target: Spanned::new("database".to_string(), Span::new(0..8)),
+                relation_type: Spanned::new("->", Span::new(0..2)),
+                type_spec: None,
+                label: Some(Spanned::new("Query".to_string(), Span::new(0..5))),
+            },
+            parser_types::Element::Deactivate {
+                component: Spanned::new("user", Span::new(0..4)),
+            },
+        ];
 
-        let tokens = tokenize(input).expect("Failed to tokenize");
-        let parsed = build_diagram(&tokens, input).expect("Failed to parse");
+        let diagram = parser_types::Diagram {
+            kind: Spanned::new("sequence", Span::new(0..8)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements,
+        };
+
+        let spanned_element =
+            Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
 
         let config = AppConfig::default();
-        let builder = Builder::new(&config, input);
-        let result = builder.build(&parsed);
+        let builder = Builder::new(&config, "test");
+        let result = builder.build(&spanned_element);
 
         assert!(
             result.is_ok(),
@@ -846,52 +769,87 @@ activate user {
         );
 
         let diagram = result.unwrap();
-        if let types::Element::ActivateBlock(activate_block) = &diagram.scope.elements[0] {
-            assert_eq!(activate_block.scope.elements.len(), 2);
-
-            // Verify that relations don't have scoped names (no "user::" prefix)
-            for element in &activate_block.scope.elements {
-                if let types::Element::Relation(relation) = element {
-                    // Relations should maintain original naming, not be scoped under "user"
-                    let source_str = relation.source.to_string();
-                    let target_str = relation.target.to_string();
-                    assert!(
-                        !source_str.starts_with("user::user::"),
-                        "Source should not be double-scoped: {}",
-                        source_str
-                    );
-                    assert!(
-                        !target_str.starts_with("user::server::"),
-                        "Target should not be double-scoped: {}",
-                        target_str
-                    );
-                }
+        // After desugaring, relations remain unscoped; ensure names were not prefixed
+        for element in &diagram.scope.elements {
+            if let types::Element::Relation(relation) = element {
+                // Relations should maintain original naming, not be scoped under "user"
+                let source_str = relation.source.to_string();
+                let target_str = relation.target.to_string();
+                assert!(
+                    !source_str.starts_with("user::user::"),
+                    "Source should not be double-scoped: {}",
+                    source_str
+                );
+                assert!(
+                    !target_str.starts_with("user::server::"),
+                    "Target should not be double-scoped: {}",
+                    target_str
+                );
             }
-        } else {
-            panic!("Expected activate block element");
         }
     }
 
     #[test]
-    fn test_nested_activate_blocks_same_component() {
+    fn test_nested_explicit_activations_same_component() {
         // Test that nested activate blocks work and same component can be activated multiple times
-        let input = r#"diagram sequence;
-activate user {
-    user -> server: "Initial request";
-    activate user {
-        user -> database: "Direct query";
-    };
-    activate server {
-        server -> cache: "Cache lookup";
-    };
-};"#;
+        let elements = vec![
+            parser_types::Element::Activate {
+                component: Spanned::new("user", Span::new(0..4)),
+            },
+            parser_types::Element::Relation {
+                source: Spanned::new("user".to_string(), Span::new(0..4)),
+                target: Spanned::new("server".to_string(), Span::new(0..6)),
+                relation_type: Spanned::new("->", Span::new(0..2)),
+                type_spec: None,
+                label: Some(Spanned::new(
+                    "Initial request".to_string(),
+                    Span::new(0..16),
+                )),
+            },
+            parser_types::Element::Activate {
+                component: Spanned::new("user", Span::new(0..4)),
+            },
+            parser_types::Element::Relation {
+                source: Spanned::new("user".to_string(), Span::new(0..4)),
+                target: Spanned::new("database".to_string(), Span::new(0..8)),
+                relation_type: Spanned::new("->", Span::new(0..2)),
+                type_spec: None,
+                label: Some(Spanned::new("Direct query".to_string(), Span::new(0..12))),
+            },
+            parser_types::Element::Deactivate {
+                component: Spanned::new("user", Span::new(0..4)),
+            },
+            parser_types::Element::Activate {
+                component: Spanned::new("server", Span::new(0..6)),
+            },
+            parser_types::Element::Relation {
+                source: Spanned::new("server".to_string(), Span::new(0..6)),
+                target: Spanned::new("cache".to_string(), Span::new(0..5)),
+                relation_type: Spanned::new("->", Span::new(0..2)),
+                type_spec: None,
+                label: Some(Spanned::new("Cache lookup".to_string(), Span::new(0..12))),
+            },
+            parser_types::Element::Deactivate {
+                component: Spanned::new("server", Span::new(0..6)),
+            },
+            parser_types::Element::Deactivate {
+                component: Spanned::new("user", Span::new(0..4)),
+            },
+        ];
 
-        let tokens = tokenize(input).expect("Failed to tokenize");
-        let parsed = build_diagram(&tokens, input).expect("Failed to parse");
+        let diagram = parser_types::Diagram {
+            kind: Spanned::new("sequence", Span::new(0..8)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements,
+        };
+
+        let spanned_element =
+            Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
 
         let config = AppConfig::default();
-        let builder = Builder::new(&config, input);
-        let result = builder.build(&parsed);
+        let builder = Builder::new(&config, "test");
+        let result = builder.build(&spanned_element);
 
         assert!(
             result.is_ok(),
@@ -900,200 +858,288 @@ activate user {
         );
 
         let diagram = result.unwrap();
-        if let types::Element::ActivateBlock(outer_activate) = &diagram.scope.elements[0] {
-            assert_eq!(outer_activate.component.to_string(), "user");
-            assert_eq!(outer_activate.scope.elements.len(), 3); // relation + 2 nested activate blocks
+        let elems = &diagram.scope.elements;
 
-            // Check that we have the expected element types
-            let mut relation_count = 0;
-            let mut activate_count = 0;
-
-            for element in &outer_activate.scope.elements {
-                match element {
-                    types::Element::Relation(_) => relation_count += 1,
-                    types::Element::ActivateBlock(_) => activate_count += 1,
-                    _ => panic!("Unexpected element type in activate block"),
+        let activations: Vec<_> = elems
+            .iter()
+            .filter_map(|e| {
+                if let types::Element::Activate(id) = e {
+                    Some(id.to_string())
+                } else {
+                    None
                 }
-            }
+            })
+            .collect();
+        let deactivations: Vec<_> = elems
+            .iter()
+            .filter_map(|e| {
+                if let types::Element::Deactivate(id) = e {
+                    Some(id.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let relations: Vec<_> = elems
+            .iter()
+            .filter_map(|e| {
+                if let types::Element::Relation(r) = e {
+                    Some((r.source.to_string(), r.target.to_string()))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
-            assert_eq!(relation_count, 1, "Should have 1 relation");
-            assert_eq!(activate_count, 2, "Should have 2 nested activate blocks");
+        assert_eq!(
+            relations.len(),
+            3,
+            "Should have 3 relations after desugaring"
+        );
+        assert_eq!(
+            activations.len(),
+            3,
+            "Should have 3 activation starts after desugaring"
+        );
+        assert_eq!(
+            deactivations.len(),
+            3,
+            "Should have 3 activation ends after desugaring"
+        );
 
-            // Verify nested activate blocks have correct components
-            let activate_blocks: Vec<_> = outer_activate
-                .scope
-                .elements
-                .iter()
-                .filter_map(|e| match e {
-                    types::Element::ActivateBlock(ab) => Some(ab),
-                    _ => None,
-                })
-                .collect();
+        assert_eq!(
+            activations[0], "user",
+            "First activation should be for 'user'"
+        );
+        assert_eq!(
+            deactivations.last().unwrap(),
+            "user",
+            "Last deactivation should be for 'user'"
+        );
+    }
 
-            assert_eq!(activate_blocks.len(), 2);
+    #[test]
+    fn test_explicit_activate_in_sequence_diagram() {
+        use crate::config::AppConfig;
+        let config = AppConfig::default();
+        let builder = Builder::new(&config, "test");
 
-            // First nested activate should be for "user" (same as outer)
-            assert_eq!(activate_blocks[0].component.to_string(), "user");
-            assert_eq!(activate_blocks[0].scope.elements.len(), 1);
-
-            // Second nested activate should be for "server"
-            assert_eq!(activate_blocks[1].component.to_string(), "server");
-            assert_eq!(activate_blocks[1].scope.elements.len(), 1);
-        } else {
-            panic!("Expected activate block element");
-        }
-
-        #[test]
-        fn test_explicit_activate_in_sequence_diagram() {
-            use crate::config::AppConfig;
-            let config = AppConfig::default();
-            let mut builder = Builder::new(&config, "test");
-
-            // Create a simple sequence diagram with explicit activate
-            let elements = vec![
-                // Define a component
-                parser_types::Element::Component {
-                    name: Spanned::new("user", Span::new(0..4)),
-                    display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(5..14)),
-                    attributes: vec![],
-                    nested_elements: vec![],
-                },
-                // Activate the component
-                parser_types::Element::Activate {
-                    component: Spanned::new("user", Span::new(0..4)),
-                },
-                // Deactivate the component
-                parser_types::Element::Deactivate {
-                    component: Spanned::new("user", Span::new(0..4)),
-                },
-            ];
-
-            let diagram = parser_types::Diagram {
-                kind: Spanned::new("sequence", Span::new(0..8)),
+        // Create a simple sequence diagram with explicit activate
+        let elements = vec![
+            // Define a component
+            parser_types::Element::Component {
+                name: Spanned::new("user", Span::new(0..4)),
+                display_name: None,
+                type_name: Spanned::new("Rectangle", Span::new(5..14)),
                 attributes: vec![],
-                type_definitions: vec![],
-                elements,
-            };
+                nested_elements: vec![],
+            },
+            // Activate the component
+            parser_types::Element::Activate {
+                component: Spanned::new("user", Span::new(0..4)),
+            },
+            // Deactivate the component
+            parser_types::Element::Deactivate {
+                component: Spanned::new("user", Span::new(0..4)),
+            },
+        ];
 
-            let spanned_element =
-                Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
+        let diagram = parser_types::Diagram {
+            kind: Spanned::new("sequence", Span::new(0..8)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements,
+        };
 
-            let result = builder.build(&spanned_element);
-            assert!(
-                result.is_ok(),
-                "Should successfully build sequence diagram with explicit activate/deactivate"
-            );
+        let spanned_element =
+            Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
 
-            let elaborate_diagram = result.unwrap();
-            let elements = &elaborate_diagram.scope.elements;
+        let result = builder.build(&spanned_element);
+        assert!(
+            result.is_ok(),
+            "Should successfully build sequence diagram with explicit activate/deactivate"
+        );
 
-            // Check that we have the expected elements
+        let elaborate_diagram = result.unwrap();
+        let elements = &elaborate_diagram.scope.elements;
+
+        // Check that we have the expected elements
+        assert_eq!(
+            elements.len(),
+            3,
+            "Should have 3 elements: component, activate, deactivate"
+        );
+
+        // Verify the activate element
+        if let types::Element::Activate(id) = &elements[1] {
             assert_eq!(
-                elements.len(),
-                3,
-                "Should have 3 elements: component, activate, deactivate"
+                id.to_string(),
+                "user",
+                "Activate should reference 'user' component"
             );
-
-            // Verify the activate element
-            if let types::Element::Activate(id) = &elements[1] {
-                assert_eq!(
-                    id.to_string(),
-                    "user",
-                    "Activate should reference 'user' component"
-                );
-            } else {
-                panic!("Second element should be Activate");
-            }
-
-            // Verify the deactivate element
-            if let types::Element::Deactivate(id) = &elements[2] {
-                assert_eq!(
-                    id.to_string(),
-                    "user",
-                    "Deactivate should reference 'user' component"
-                );
-            } else {
-                panic!("Third element should be Deactivate");
-            }
+        } else {
+            panic!("Second element should be Activate");
         }
 
-        #[test]
-        fn test_explicit_activate_not_allowed_in_component_diagram() {
-            use crate::config::AppConfig;
-            let config = AppConfig::default();
-            let mut builder = Builder::new(&config, "test");
-
-            // Create a component diagram with explicit activate (should fail)
-            let elements = vec![
-                // Define a component
-                parser_types::Element::Component {
-                    name: Spanned::new("user", Span::new(0..4)),
-                    display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(5..14)),
-                    attributes: vec![],
-                    nested_elements: vec![],
-                },
-                // Try to activate the component (should fail)
-                parser_types::Element::Activate {
-                    component: Spanned::new("user", Span::new(0..4)),
-                },
-            ];
-
-            let diagram = parser_types::Diagram {
-                kind: Spanned::new("component", Span::new(0..9)),
-                attributes: vec![],
-                type_definitions: vec![],
-                elements,
-            };
-
-            let spanned_element =
-                Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
-
-            let result = builder.build(&spanned_element);
-            assert!(
-                result.is_err(),
-                "Should fail to build component diagram with explicit activate"
+        // Verify the deactivate element
+        if let types::Element::Deactivate(id) = &elements[2] {
+            assert_eq!(
+                id.to_string(),
+                "user",
+                "Deactivate should reference 'user' component"
             );
-
-            if let Err(err) = result {
-                let error_message = format!("{}", err);
-                assert!(
-                    error_message
-                        .contains("Activate statements are only supported in sequence diagrams"),
-                    "Error should mention that activate is not allowed in component diagrams"
-                );
-            }
+        } else {
+            panic!("Third element should be Deactivate");
         }
     }
 
     #[test]
-    fn test_activate_block_timing_and_nesting() {
+    fn test_explicit_activate_not_allowed_in_component_diagram() {
+        use crate::config::AppConfig;
+        let config = AppConfig::default();
+        let builder = Builder::new(&config, "test");
+
+        // Create a component diagram with explicit activate (should fail)
+        let elements = vec![
+            // Define a component
+            parser_types::Element::Component {
+                name: Spanned::new("user", Span::new(0..4)),
+                display_name: None,
+                type_name: Spanned::new("Rectangle", Span::new(5..14)),
+                attributes: vec![],
+                nested_elements: vec![],
+            },
+            // Try to activate the component (should fail)
+            parser_types::Element::Activate {
+                component: Spanned::new("user", Span::new(0..4)),
+            },
+        ];
+
+        let diagram = parser_types::Diagram {
+            kind: Spanned::new("component", Span::new(0..9)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements,
+        };
+
+        let spanned_element =
+            Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
+
+        let result = builder.build(&spanned_element);
+        assert!(
+            result.is_err(),
+            "Should fail to build component diagram with explicit activate"
+        );
+
+        if let Err(err) = result {
+            let error_message = format!("{}", err);
+            assert!(
+                error_message
+                    .contains("Activate statements are only supported in sequence diagrams"),
+                "Error should mention that activate is not allowed in component diagrams"
+            );
+        }
+    }
+
+    #[test]
+    fn test_explicit_activation_timing_and_nesting() {
         // Test that activate blocks have proper timing based on contained messages
         // and correct nesting levels for nested activate blocks
-        let input = r#"diagram sequence;
-user: Rectangle;
-server: Rectangle;
-database: Rectangle;
+        let elements = vec![
+            // components
+            parser_types::Element::Component {
+                name: Spanned::new("user", Span::new(0..4)),
+                display_name: None,
+                type_name: Spanned::new("Rectangle", Span::new(0..9)),
+                attributes: vec![],
+                nested_elements: vec![],
+            },
+            parser_types::Element::Component {
+                name: Spanned::new("server", Span::new(0..6)),
+                display_name: None,
+                type_name: Spanned::new("Rectangle", Span::new(0..9)),
+                attributes: vec![],
+                nested_elements: vec![],
+            },
+            parser_types::Element::Component {
+                name: Spanned::new("database", Span::new(0..8)),
+                display_name: None,
+                type_name: Spanned::new("Rectangle", Span::new(0..9)),
+                attributes: vec![],
+                nested_elements: vec![],
+            },
+            // activations and relations
+            parser_types::Element::Activate {
+                component: Spanned::new("user", Span::new(0..4)),
+            },
+            parser_types::Element::Relation {
+                source: Spanned::new("user".to_string(), Span::new(0..4)),
+                target: Spanned::new("server".to_string(), Span::new(0..6)),
+                relation_type: Spanned::new("->", Span::new(0..2)),
+                type_spec: None,
+                label: Some(Spanned::new("First request".to_string(), Span::new(0..13))),
+            },
+            parser_types::Element::Activate {
+                component: Spanned::new("server", Span::new(0..6)),
+            },
+            parser_types::Element::Relation {
+                source: Spanned::new("server".to_string(), Span::new(0..6)),
+                target: Spanned::new("database".to_string(), Span::new(0..8)),
+                relation_type: Spanned::new("->", Span::new(0..2)),
+                type_spec: None,
+                label: Some(Spanned::new("Nested query".to_string(), Span::new(0..12))),
+            },
+            parser_types::Element::Relation {
+                source: Spanned::new("database".to_string(), Span::new(0..8)),
+                target: Spanned::new("server".to_string(), Span::new(0..6)),
+                relation_type: Spanned::new("->", Span::new(0..2)),
+                type_spec: None,
+                label: Some(Spanned::new(
+                    "Nested response".to_string(),
+                    Span::new(0..15),
+                )),
+            },
+            parser_types::Element::Deactivate {
+                component: Spanned::new("server", Span::new(0..6)),
+            },
+            parser_types::Element::Relation {
+                source: Spanned::new("server".to_string(), Span::new(0..6)),
+                target: Spanned::new("user".to_string(), Span::new(0..4)),
+                relation_type: Spanned::new("->", Span::new(0..2)),
+                type_spec: None,
+                label: Some(Spanned::new("First response".to_string(), Span::new(0..14))),
+            },
+            parser_types::Element::Activate {
+                component: Spanned::new("user", Span::new(0..4)),
+            },
+            parser_types::Element::Relation {
+                source: Spanned::new("user".to_string(), Span::new(0..4)),
+                target: Spanned::new("server".to_string(), Span::new(0..6)),
+                relation_type: Spanned::new("->", Span::new(0..2)),
+                type_spec: None,
+                label: Some(Spanned::new("Second request".to_string(), Span::new(0..14))),
+            },
+            parser_types::Element::Deactivate {
+                component: Spanned::new("user", Span::new(0..4)),
+            },
+            parser_types::Element::Deactivate {
+                component: Spanned::new("user", Span::new(0..4)),
+            },
+        ];
 
-activate user {
-    user -> server: "First request";
-    activate server {
-        server -> database: "Nested query";
-        database -> server: "Nested response";
-    };
-    server -> user: "First response";
-    activate user {
-        user -> server: "Second request";
-    };
-};"#;
+        let diagram = parser_types::Diagram {
+            kind: Spanned::new("sequence", Span::new(0..8)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements,
+        };
 
-        let tokens = tokenize(input).expect("Failed to tokenize");
-        let parsed = build_diagram(&tokens, input).expect("Failed to parse");
+        let spanned_element =
+            Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
 
         let config = AppConfig::default();
-        let builder = Builder::new(&config, input);
-        let result = builder.build(&parsed);
+        let builder = Builder::new(&config, "test");
+        let result = builder.build(&spanned_element);
 
         assert!(
             result.is_ok(),
@@ -1102,37 +1148,36 @@ activate user {
         );
 
         let diagram = result.unwrap();
-        assert_eq!(diagram.scope.elements.len(), 4); // 3 components + 1 activate block
 
-        // Find the main activate block
-        let main_activate = diagram
-            .scope
-            .elements
+        // After desugaring, ensure we have multiple relations and activation statements
+        let elems = &diagram.scope.elements;
+        let relations = elems
             .iter()
-            .find_map(|e| match e {
-                types::Element::ActivateBlock(ab) => Some(ab),
-                _ => None,
-            })
-            .expect("Should have main activate block");
-
-        assert_eq!(main_activate.component.to_string(), "user");
-
-        // Verify nested structure - should have relations and nested activate blocks
-        let mut nested_activate_count = 0;
-        let mut relation_count = 0;
-
-        for element in &main_activate.scope.elements {
-            match element {
-                types::Element::ActivateBlock(_) => nested_activate_count += 1,
-                types::Element::Relation(_) => relation_count += 1,
-                _ => {}
-            }
-        }
+            .filter(|e| matches!(e, types::Element::Relation(_)))
+            .count();
+        let activates = elems
+            .iter()
+            .filter(|e| matches!(e, types::Element::Activate(_)))
+            .count();
+        let deactivates = elems
+            .iter()
+            .filter(|e| matches!(e, types::Element::Deactivate(_)))
+            .count();
 
         assert!(
-            nested_activate_count >= 2,
-            "Should have at least 2 nested activate blocks"
+            relations >= 5,
+            "Should have at least 5 relations after desugaring, found {}",
+            relations
         );
-        assert!(relation_count >= 2, "Should have multiple relations");
+        assert!(
+            activates >= 3,
+            "Should have at least 3 activates after desugaring, found {}",
+            activates
+        );
+        assert!(
+            deactivates >= 3,
+            "Should have at least 3 deactivates after desugaring, found {}",
+            deactivates
+        );
     }
 }

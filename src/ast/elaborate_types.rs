@@ -77,22 +77,9 @@ impl Relation {
 }
 
 #[derive(Debug, Clone)]
-pub struct ActivateBlock {
-    pub component: Id,
-    pub scope: Scope,
-}
-
-impl ActivateBlock {
-    pub fn new(component: Id, scope: Scope) -> Self {
-        Self { component, scope }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub enum Element {
     Node(Node),
     Relation(Relation),
-    ActivateBlock(ActivateBlock),
     Activate(Id),
     Deactivate(Id),
 }

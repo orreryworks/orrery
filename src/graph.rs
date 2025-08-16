@@ -110,10 +110,6 @@ impl<'a> Graph<'a> {
     pub fn diagram(&self) -> &ast::Diagram {
         self.diagram
     }
-
-    pub fn node_id_map(&self) -> &HashMap<Id, NodeIndex> {
-        &self.node_id_map
-    }
     pub fn containment_scopes(&self) -> &[ContainmentScope] {
         &self.containment_scopes
     }
@@ -334,7 +330,7 @@ impl<'a> Collection<'a> {
             }
         }
 
-        // Second pass: add all relations and activate blocks to the graph
+        // Second pass: add all relations and activation statements to the graph
         for element in elements {
             match element {
                 ast::Element::Relation(relation) => {
@@ -351,24 +347,6 @@ impl<'a> Collection<'a> {
                             relation.source, relation.target
                         )));
                     }
-                }
-                ast::Element::ActivateBlock(activate_block) => {
-                    let node_idx = *graph
-                        .node_id_map()
-                        .get(&activate_block.component)
-                        .expect("Node map is missing");
-
-                    graph.ordered_events.push(Event::Activate(node_idx));
-
-                    // Recursively process elements within the activate block
-                    let mut inner_hierarchy_children = self.process_containment_scope(
-                        graph,
-                        &activate_block.scope.elements,
-                        container,
-                    )?;
-                    hierarchy_children.append(&mut inner_hierarchy_children);
-
-                    graph.ordered_events.push(Event::Deactivate(node_idx));
                 }
                 ast::Element::Activate(component_id) => {
                     if let Some(&node_idx) = graph.node_id_map.get(component_id) {
