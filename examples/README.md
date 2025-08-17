@@ -28,9 +28,11 @@ The generated SVG will be saved as `out.svg` in the current directory.
 - `uml_basic_example.fil` - UML-style component diagram
 - `simple_relation_types.fil` - Different relation types and styles
 
-### Sequence Diagrams
-- `activate_blocks.fil` - Complex activate blocks demonstration
-- `activate_blocks_simple.fil` - Simple activate blocks usage
+### Sequence Diagrams (Activation: Blocks and Explicit Statements)
+- `activate_blocks.fil` - Complex activation using block syntax (sugar for explicit statements)
+- `activate_blocks_simple.fil` - Simple activation using block syntax (sugar for explicit statements)
+- `activate_explicit.fil` - Activation using explicit statements (activate/deactivate)
+- `activate_mixed.fil` - Mixed block and explicit activation usage
 
 ### Layout and Styling
 - `arrow_styles.fil` - Different arrow and relation styles
@@ -41,4 +43,4 @@ The generated SVG will be saved as `out.svg` in the current directory.
 - `elaboration_errors.fil` - Common elaboration errors
 - `error_example.fil` - General error scenarios
 - `uml_error_example.fil` - UML-specific errors
-- `error/` - Directory with additional error examples
+- `errors/` - Directory with additional error examples

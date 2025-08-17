@@ -1,0 +1,14 @@
+// Error Example: Explicit Activation in Component Diagram
+//
+// Activation (both block form and explicit statements) is only supported in sequence diagrams.
+// Using explicit activate/deactivate statements inside a component diagram should produce an error.
+
+diagram component;
+
+user: Rectangle;
+server: Rectangle;
+
+// ❌ Invalid: explicit activation statements are not allowed in component diagrams
+activate user;
+user -> server;
+deactivate user;

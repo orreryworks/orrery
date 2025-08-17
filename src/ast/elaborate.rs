@@ -463,7 +463,7 @@ impl<'a> Builder<'a> {
     /// Builds an activate element from parser data
     fn build_activate_element(
         &mut self,
-        component: &Spanned<&str>,
+        component: &Spanned<String>,
         parent_id: Option<Id>,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
@@ -489,7 +489,7 @@ impl<'a> Builder<'a> {
     /// Builds a deactivate element from parser data
     fn build_deactivate_element(
         &mut self,
-        component: &Spanned<&str>,
+        component: &Spanned<String>,
         parent_id: Option<Id>,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
@@ -703,7 +703,7 @@ mod tests {
     fn test_activate_block_panics_in_elaboration() {
         // Build a parser_types diagram directly with an ActivateBlock element
         let elements = vec![parser_types::Element::ActivateBlock {
-            component: Spanned::new("user", Span::new(0..4)),
+            component: Spanned::new("user".to_string(), Span::new(0..4)),
             elements: vec![],
         }];
 
@@ -728,7 +728,7 @@ mod tests {
         // Test that sequence diagrams don't create namespace scopes within activate blocks
         let elements = vec![
             parser_types::Element::Activate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             },
             parser_types::Element::Relation {
                 source: Spanned::new("user".to_string(), Span::new(0..4)),
@@ -745,7 +745,7 @@ mod tests {
                 label: Some(Spanned::new("Query".to_string(), Span::new(0..5))),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             },
         ];
 
@@ -794,7 +794,7 @@ mod tests {
         // Test that nested activate blocks work and same component can be activated multiple times
         let elements = vec![
             parser_types::Element::Activate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             },
             parser_types::Element::Relation {
                 source: Spanned::new("user".to_string(), Span::new(0..4)),
@@ -807,7 +807,7 @@ mod tests {
                 )),
             },
             parser_types::Element::Activate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             },
             parser_types::Element::Relation {
                 source: Spanned::new("user".to_string(), Span::new(0..4)),
@@ -817,10 +817,10 @@ mod tests {
                 label: Some(Spanned::new("Direct query".to_string(), Span::new(0..12))),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             },
             parser_types::Element::Activate {
-                component: Spanned::new("server", Span::new(0..6)),
+                component: Spanned::new("server".to_string(), Span::new(0..6)),
             },
             parser_types::Element::Relation {
                 source: Spanned::new("server".to_string(), Span::new(0..6)),
@@ -830,10 +830,10 @@ mod tests {
                 label: Some(Spanned::new("Cache lookup".to_string(), Span::new(0..12))),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("server", Span::new(0..6)),
+                component: Spanned::new("server".to_string(), Span::new(0..6)),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             },
         ];
 
@@ -936,11 +936,11 @@ mod tests {
             },
             // Activate the component
             parser_types::Element::Activate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             },
             // Deactivate the component
             parser_types::Element::Deactivate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             },
         ];
 
@@ -1011,7 +1011,7 @@ mod tests {
             },
             // Try to activate the component (should fail)
             parser_types::Element::Activate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             },
         ];
 
@@ -1070,7 +1070,7 @@ mod tests {
             },
             // activations and relations
             parser_types::Element::Activate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             },
             parser_types::Element::Relation {
                 source: Spanned::new("user".to_string(), Span::new(0..4)),
@@ -1080,7 +1080,7 @@ mod tests {
                 label: Some(Spanned::new("First request".to_string(), Span::new(0..13))),
             },
             parser_types::Element::Activate {
-                component: Spanned::new("server", Span::new(0..6)),
+                component: Spanned::new("server".to_string(), Span::new(0..6)),
             },
             parser_types::Element::Relation {
                 source: Spanned::new("server".to_string(), Span::new(0..6)),
@@ -1100,7 +1100,7 @@ mod tests {
                 )),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("server", Span::new(0..6)),
+                component: Spanned::new("server".to_string(), Span::new(0..6)),
             },
             parser_types::Element::Relation {
                 source: Spanned::new("server".to_string(), Span::new(0..6)),
@@ -1110,7 +1110,7 @@ mod tests {
                 label: Some(Spanned::new("First response".to_string(), Span::new(0..14))),
             },
             parser_types::Element::Activate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             },
             parser_types::Element::Relation {
                 source: Spanned::new("user".to_string(), Span::new(0..4)),
@@ -1120,10 +1120,10 @@ mod tests {
                 label: Some(Spanned::new("Second request".to_string(), Span::new(0..14))),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             },
         ];
 

@@ -27,7 +27,7 @@ The system must process errors through these stages:
 
 ## 3. Error Categories
 
-### 3.1 Syntax Errors
+### 10.3 Syntax Errors (Blocks and Explicit)
 
 Errors detected during the parsing phase when source code doesn't conform to Filament's grammar:
 
@@ -47,6 +47,8 @@ Errors detected during elaboration when syntax is valid but semantics are incorr
 - **Type system violations** - Inconsistent or incompatible type usage
 - **Activate block diagram type errors** - Activate blocks used in component diagrams (only allowed in sequence diagrams)
 - **Activate block component errors** - Activate blocks referencing undefined components
+- **Explicit activation diagram type errors** - `activate`/`deactivate` statements used in component diagrams (only allowed in sequence diagrams)
+- **Activation pairing violations** - Unpaired `activate`/`deactivate` statements or out-of-order deactivation before activation
 
 ## 4. Error Message Format
 
@@ -192,45 +194,57 @@ All error locations must be:
 - **Visually clear**: Use consistent highlighting patterns
 - **Properly formatted**: Follow the standard visual format
 
-## 10. Activate Block Error Examples
+### 10. Activation Error Examples (Blocks and Explicit Statements)
 
-### 10.1 Diagram Type Validation
+### 10.1 Diagram Type Validation (Blocks and Explicit)
 
-**Error**: Using activate blocks in component diagrams
+**Error**: Using activation in component diagrams (block or explicit)
 
 ```filament
 diagram component;
 user: Rectangle;
 server: Rectangle;
 
-activate user {  // Error: activate blocks not allowed in component diagrams
+// Block form (error in component diagrams)
+activate user {  // Error
     user -> server: "Request";
 };
+
+// Explicit form (error in component diagrams)
+activate user;    // Error
+deactivate user;  // Error
 ```
 
 **Error Message**:
 ```
-Error: Activate blocks are only supported in sequence diagrams
+Error: Activation is only supported in sequence diagrams
   --> example.filament:5:1
    |
  5 | activate user {
-   | ^^^^^^^^ activate block not allowed here
+   | ^^^^^^^^ activation not allowed here
    |
-   = help: Activate blocks are used for temporal grouping in sequence diagrams
+   = help: Activation is used for temporal grouping in sequence diagrams
    = note: Component diagrams use curly braces for embedded diagrams only
 ```
 
-### 10.2 Component Reference Validation
+### 10.2 Component Reference Validation (Blocks and Explicit)
 
-**Error**: Referencing non-existent components in activate blocks
+**Error**: Referencing non-existent components in activation (block or explicit)
 
 ```filament
 diagram sequence;
 user: Rectangle;
 
+// Block form
 activate server {  // Error: 'server' component not defined
     user -> server: "Request";
 };
+
+// Explicit form
+activate server;   // Error: 'server' component not defined
+
+// Explicit form
+activate server;   // Error: 'server' component not defined
 ```
 
 **Error Message**:
@@ -245,9 +259,9 @@ Error: Component 'server' is not defined
    = note: Available components: user
 ```
 
-### 10.3 Syntax Errors
+### 10.3 Syntax Errors (Blocks and Explicit)
 
-**Error**: Missing semicolon after activate block
+**Block form**: Missing semicolon after activate block
 
 ```filament
 diagram sequence;
@@ -269,4 +283,45 @@ Error: Expected ';' after activate block
    |
    = help: Activate blocks must be terminated with a semicolon
    = note: All top-level elements require semicolon termination
+```
+
+### 10.4 Explicit Statement Errors
+
+Explicit activation statements provide fine-grained control over lifeline activation timing. Errors related to these statements include diagram-type violations and pairing/order issues.
+
+#### 10.4.1 Diagram Type Validation (Explicit Statements)
+
+```
+Error: Activate statements are only supported in sequence diagrams
+  --> example.filament:3:1
+   |
+ 3 | activate user;
+   | ^^^^^^^^ not allowed here
+   |
+   = help: Explicit activate/deactivate statements are sequence-diagram features
+   = note: Use sequence diagrams for temporal grouping; component diagrams do not support activation
+```
+
+#### 10.4.2 Deactivate Before Activate
+
+```
+Error: Deactivate without matching activate
+  --> example.filament:6:1
+   |
+ 6 | deactivate user;
+   | ^^^^^^^^^^ no prior activation for 'user'
+   |
+   = help: Ensure each deactivate matches a preceding activate for the same component
+```
+
+#### 10.4.3 Unpaired Activate at End of Scope
+
+```
+Error: Unpaired activate at end of scope
+  --> example.filament:4:1
+   |
+ 4 | activate server;
+   | ^^^^^^^^ activation not closed by a matching deactivate
+   |
+   = help: Add a 'deactivate server;' before the end of the current scope
 ```

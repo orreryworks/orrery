@@ -189,19 +189,19 @@ pub trait Visitor<'a> {
     fn visit_relation_label(&mut self, _label: &Spanned<String>) {}
 
     /// Visit an activate block element
-    fn visit_activate_block(&mut self, component: &Spanned<&'a str>, elements: &[Element<'a>]) {
+    fn visit_activate_block(&mut self, component: &Spanned<String>, elements: &[Element<'a>]) {
         self.visit_activate_component(component);
         self.visit_elements(elements);
     }
 
     /// Visit an activate block component reference
-    fn visit_activate_component(&mut self, _component: &Spanned<&'a str>) {}
+    fn visit_activate_component(&mut self, _component: &Spanned<String>) {}
 
     /// Visit an activate statement
-    fn visit_activate(&mut self, _component: &Spanned<&'a str>) {}
+    fn visit_activate(&mut self, _component: &Spanned<String>) {}
 
     /// Visit a deactivate statement
-    fn visit_deactivate(&mut self, _component: &Spanned<&'a str>) {}
+    fn visit_deactivate(&mut self, _component: &Spanned<String>) {}
 }
 
 /// Entry point for running a visitor on a diagram
@@ -269,13 +269,13 @@ impl<'a> Visitor<'a> for ActivationValidator {
         }
     }
 
-    fn visit_activate(&mut self, component: &Spanned<&'a str>) {
+    fn visit_activate(&mut self, component: &Spanned<String>) {
         let id = Id::new(component.inner());
         let state = self.current_state_mut();
         state.entry(id).or_default().push(component.span());
     }
 
-    fn visit_deactivate(&mut self, component: &Spanned<&'a str>) {
+    fn visit_deactivate(&mut self, component: &Spanned<String>) {
         let id = Id::new(component.inner());
         let state = self.current_state_mut();
         match state.get_mut(&id) {
@@ -383,11 +383,11 @@ mod tests {
             }
         }
 
-        fn visit_activate(&mut self, _component: &Spanned<&'a str>) {
+        fn visit_activate(&mut self, _component: &Spanned<String>) {
             self.activate_count += 1;
         }
 
-        fn visit_deactivate(&mut self, _component: &Spanned<&'a str>) {
+        fn visit_deactivate(&mut self, _component: &Spanned<String>) {
             self.deactivate_count += 1;
         }
     }
@@ -408,7 +408,7 @@ mod tests {
                     nested_elements: vec![],
                 },
                 Element::Activate {
-                    component: Spanned::new("user", Span::new(30..34)),
+                    component: Spanned::new("user".to_string(), Span::new(30..34)),
                 },
                 Element::Relation {
                     source: Spanned::new("user".to_string(), Span::new(40..44)),
@@ -418,7 +418,7 @@ mod tests {
                     label: None,
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user", Span::new(60..64)),
+                    component: Spanned::new("user".to_string(), Span::new(60..64)),
                 },
             ],
         };
@@ -440,10 +440,10 @@ mod tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Activate {
-                    component: Spanned::new("user", Span::new(0..4)),
+                    component: Spanned::new("user".to_string(), Span::new(0..4)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user", Span::new(5..9)),
+                    component: Spanned::new("user".to_string(), Span::new(5..9)),
                 },
             ],
         };
@@ -459,7 +459,7 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::Deactivate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             }],
         };
 
@@ -474,7 +474,7 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::Activate {
-                component: Spanned::new("user", Span::new(0..4)),
+                component: Spanned::new("user".to_string(), Span::new(0..4)),
             }],
         };
 
@@ -490,16 +490,16 @@ mod tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Activate {
-                    component: Spanned::new("user", Span::new(0..4)),
+                    component: Spanned::new("user".to_string(), Span::new(0..4)),
                 },
                 Element::Activate {
-                    component: Spanned::new("user", Span::new(5..9)),
+                    component: Spanned::new("user".to_string(), Span::new(5..9)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user", Span::new(10..14)),
+                    component: Spanned::new("user".to_string(), Span::new(10..14)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user", Span::new(15..19)),
+                    component: Spanned::new("user".to_string(), Span::new(15..19)),
                 },
             ],
         };
@@ -516,16 +516,16 @@ mod tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Activate {
-                    component: Spanned::new("user", Span::new(0..4)),
+                    component: Spanned::new("user".to_string(), Span::new(0..4)),
                 },
                 Element::Activate {
-                    component: Spanned::new("server", Span::new(5..11)),
+                    component: Spanned::new("server".to_string(), Span::new(5..11)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user", Span::new(12..16)),
+                    component: Spanned::new("user".to_string(), Span::new(12..16)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("server", Span::new(17..23)),
+                    component: Spanned::new("server".to_string(), Span::new(17..23)),
                 },
             ],
         };
@@ -542,10 +542,10 @@ mod tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Deactivate {
-                    component: Spanned::new("user", Span::new(0..4)),
+                    component: Spanned::new("user".to_string(), Span::new(0..4)),
                 },
                 Element::Activate {
-                    component: Spanned::new("user", Span::new(5..9)),
+                    component: Spanned::new("user".to_string(), Span::new(5..9)),
                 },
             ],
         };

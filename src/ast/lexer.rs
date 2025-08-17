@@ -106,6 +106,7 @@ fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
             literal("type").context(StrContext::Label("type keyword")),
             literal("embed").context(StrContext::Label("embed keyword")),
             literal("as").context(StrContext::Label("as keyword")),
+            literal("deactivate").context(StrContext::Label("deactivate keyword")),
             literal("activate").context(StrContext::Label("activate keyword")),
         )),
         // Ensure keyword is not followed by identifier character (word boundary)
@@ -118,6 +119,7 @@ fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
         "type" => Token::Type,
         "embed" => Token::Embed,
         "as" => Token::As,
+        "deactivate" => Token::Deactivate,
         "activate" => Token::Activate,
         _ => unreachable!(),
     })
@@ -253,6 +255,7 @@ mod tests {
         test_single_token("type", Token::Type);
         test_single_token("embed", Token::Embed);
         test_single_token("as", Token::As);
+        test_single_token("deactivate", Token::Deactivate);
         test_single_token("activate", Token::Activate);
     }
 

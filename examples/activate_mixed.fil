@@ -1,0 +1,109 @@
+// Activation (Mixed Styles) – Sequence Diagram Example
+//
+// This example demonstrates mixed usage of activation:
+// - Block form (sugar) for clear lexical scopes
+// - Explicit statements (activate/deactivate) for asynchronous or non‑contiguous spans
+//
+// Notes:
+// - Activation is supported only in sequence diagrams
+// - Blocks are syntactic sugar and are desugared into explicit activate/deactivate statements
+// - Prefer blocks when a lexical scope exists; use explicit statements when spans are non‑contiguous
+
+diagram sequence;
+
+// Participants
+client: Rectangle;
+api: Rectangle;
+auth: Rectangle;
+db: Rectangle;
+cache: Rectangle;
+
+// --------------------------------------------------------------------------
+// 1) Block form (sugar) – a clear, scoped request/response
+// --------------------------------------------------------------------------
+activate client {
+    client -> api: "Request: /login";
+
+    // API does quick pre-checks within a scoped activation
+    activate api {
+        api -> client: "Ack: received";
+    };
+};
+
+// --------------------------------------------------------------------------
+// 2) Explicit statements – asynchronous processing outside a single scope
+// --------------------------------------------------------------------------
+// API begins an async validation step and returns immediately
+activate api;
+api -> auth: "Validate credentials";
+api -> client: "Processing... (async)";
+// Keep API active while waiting on downstream work; do not deactivate yet
+
+// --------------------------------------------------------------------------
+// 3) Nested block form within a longer explicit activation
+// --------------------------------------------------------------------------
+// Auth performs DB lookups in a clearly scoped block
+activate auth {
+    auth -> db: "SELECT user FROM users";
+    activate db {
+        db -> db: "Execute query";
+        db -> auth: "User row";
+    };
+    auth -> api: "Validation result";
+};
+
+// Now API finalizes and deactivates explicitly
+api -> client: "Login OK";
+deactivate api;
+
+// --------------------------------------------------------------------------
+// 4) Mixed: explicit + block interleaved
+// --------------------------------------------------------------------------
+// Client triggers a profile fetch asynchronously, deactivates immediately
+activate client;
+client -> api: "Get /profile";
+
+// API uses a block to fetch and shape the response (clear lexical scope)
+activate api {
+    api -> cache: "Lookup profile cache";
+    // Cache miss path triggers DB fetch in its own scope
+    activate cache {
+        cache -> api: "MISS";
+        deactivate client;
+    };
+    api -> db: "SELECT profile FROM profiles";
+    db -> api: "Profile row";
+    api -> client: "Profile data";
+};
+
+// Optional post-processing, modeled with explicit activation for non-contiguous steps
+activate api;
+api -> api: "Post-process profile";
+deactivate api;
+
+// --------------------------------------------------------------------------
+// 5) Interleaved activations – independent lifecycles
+// --------------------------------------------------------------------------
+// Two independent activation lifecycles interleaved in time
+activate client;
+client -> api: "Start task A";
+
+activate auth;
+auth -> db: "Prepare session";
+db -> auth: "Session prepared";
+deactivate auth;
+
+api -> client: "Ack task A";
+deactivate client;
+
+// Another short hop using block form
+activate client {
+    client -> api: "Start task B";
+    api -> client: "Ack task B";
+};
+
+// Final explicit ping-pong
+activate api;
+api -> db: "Warm path";
+db -> api: "Warm OK";
+deactivate api;

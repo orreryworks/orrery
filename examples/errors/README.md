@@ -25,6 +25,12 @@ This directory contains example files demonstrating Filament's error reporting s
 - [`keyword_typo.fil`](keyword_typo.fil) - Common keyword typos
 - [`error_example.fil`](error_example.fil) - Complex multi-error example
 
+### Activation Errors (Blocks and Explicit Statements)
+- [`activation_in_component_diagram_block.fil`](activation_in_component_diagram_block.fil) - Activation (block form) used in a component diagram (invalid)
+- [`activation_in_component_diagram_explicit.fil`](activation_in_component_diagram_explicit.fil) - Activation (explicit form) used in a component diagram (invalid)
+- [`deactivate_without_activate.fil`](deactivate_without_activate.fil) - Deactivate without a matching prior activate
+- [`unpaired_activate_end_of_scope.fil`](unpaired_activate_end_of_scope.fil) - Unpaired activate at end of scope
+
 ### Complex Scenarios
 - [`complex_nested.fil`](complex_nested.fil) - Error in complex nested architecture
 
@@ -37,5 +43,5 @@ This directory contains example files demonstrating Filament's error reporting s
 Run any example to see the error messages:
 
 ```bash
-cargo run examples/error/missing_semicolon_component.fil
+cargo run examples/errors/missing_semicolon_component.fil
 ```

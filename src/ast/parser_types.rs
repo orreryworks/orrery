@@ -189,16 +189,16 @@ pub enum Element<'a> {
     },
     Diagram(Diagram<'a>),
     ActivateBlock {
-        component: Spanned<&'a str>,
+        component: Spanned<String>,
         elements: Vec<Element<'a>>,
     },
     /// Explicit activation of a component
     Activate {
-        component: Spanned<&'a str>,
+        component: Spanned<String>,
     },
     /// Explicit deactivation of a component
     Deactivate {
-        component: Spanned<&'a str>,
+        component: Spanned<String>,
     },
 }
 

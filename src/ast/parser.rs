@@ -404,19 +404,30 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>
 }
 
 /// Parse an activate block
+///
+/// Grammar:
+///   activate <nested_identifier> { <elements> };
+///
+/// Notes:
+/// - Accepts nested identifiers (e.g., `parent::child`) and returns `Spanned<String>`
+///   for the component. The element span equals the identifier span; the `activate`
+///   keyword and the trailing semicolon are not included in the element span
+///   (consistent with `Element::span()` semantics using the inner `component` span).
+/// - Whitespace and line comments are allowed between tokens as handled by
+///   `ws_comments0/1`.
 fn activate_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
     // Parse "activate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Activate))
         .context(StrContext::Label("activate keyword"))
         .parse_next(input)?;
 
+    // Require at least one space or comment after the keyword
     ws_comments1
         .context(StrContext::Label("whitespace after activate"))
         .parse_next(input)?;
 
-    // Parse component identifier
-    let (component_name, component_span) = identifier
-        .context(StrContext::Label("component identifier"))
+    let (component_name, component_span) = nested_identifier
+        .context(StrContext::Label("component nested identifier"))
         .parse_next(input)?;
     let component_spanned = make_spanned(component_name, component_span);
 
@@ -454,13 +465,93 @@ fn activate_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
     })
 }
 
+/// Shared helper to parse an activation-style statement after a specific keyword.
+///
+/// Grammar:
+///   <keyword> <nested_identifier> ;
+///
+/// Where:
+/// - <keyword> is one of: `activate`, `deactivate` (passed as a Token)
+/// - <nested_identifier> supports `::`-qualified names and returns (String, Span)
+/// - Optional whitespace and line comments are permitted between tokens
+///
+/// Span guarantees:
+/// - The returned `Spanned<String>` covers only the nested identifier; the keyword
+///   and the trailing semicolon are excluded.
+/// - This aligns with `Element::span()` behavior that mirrors the identifier span.
+fn parse_keyword_then_nested_identifier_then_semicolon<'src>(
+    input: &mut Input<'src>,
+    keyword: Token,
+) -> IResult<'src, Spanned<String>> {
+    any.verify(|token: &PositionedToken<'_>| token.token == keyword)
+        .void()
+        .context(StrContext::Label("keyword"))
+        .parse_next(input)?;
+    // Require at least one whitespace/comment after the keyword
+    ws_comments1
+        .context(StrContext::Label("whitespace after keyword"))
+        .parse_next(input)?;
+    let (name, name_span) = nested_identifier
+        .context(StrContext::Label("component nested identifier"))
+        .parse_next(input)?;
+    ws_comments0.parse_next(input)?;
+    semicolon
+        .context(StrContext::Label("semicolon after activation statement"))
+        .parse_next(input)?;
+    Ok(Spanned::new(name, name_span))
+}
+
+/// Parse an explicit activate statement: `activate <nested_identifier>;`
+///
+/// Notes:
+/// - Produces `Element::Activate { component: Spanned<String> }`
+/// - The element span is the identifier span (see `Element::span()` in parser_types)
+fn activate_statement<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+    let component = parse_keyword_then_nested_identifier_then_semicolon(input, Token::Activate)?;
+    Ok(types::Element::Activate { component })
+}
+
+/// Parse an explicit deactivate statement: `deactivate <nested_identifier>;`
+///
+/// Notes:
+/// - Produces `Element::Deactivate { component: Spanned<String> }`
+/// - The element span is the identifier span (see `Element::span()` in parser_types)
+fn deactivate_statement<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+    let component = parse_keyword_then_nested_identifier_then_semicolon(input, Token::Deactivate)?;
+    Ok(types::Element::Deactivate { component })
+}
+
+/// Parse an activate element (explicit statement or block) with checkpoint routing
+///
+/// Behavior:
+/// - If an `activate {` block is present, parse the block
+/// - Otherwise, parse an explicit `activate <nested_identifier>;` statement
+fn activate_element<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+    // Try parsing an activate block first; if it fails, reset and parse explicit statement.
+    let checkpoint = input.checkpoint();
+    match activate_block.parse_next(input) {
+        Ok(elem) => Ok(elem),
+        Err(_) => {
+            input.reset(&checkpoint);
+            activate_statement.parse_next(input)
+        }
+    }
+}
+
 /// Parse any element (component or relation)
 fn elements<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types::Element<'src>>> {
     repeat(
         0..,
         preceded(
             ws_comments0,
-            alt((component_with_elements, relation, activate_block)),
+            // Prioritize keyword-based items; explicit activate/deactivate first,
+            // then blocks, then relations and components.
+            alt((
+                activate_element,
+                deactivate_statement,
+                relation,
+                component_with_elements,
+            )),
         ),
     )
     .parse_next(input)
@@ -587,8 +678,34 @@ mod tests {
     use super::*;
     use crate::ast::lexer::tokenize;
 
+    // Test helpers
     fn parse_tokens(input: &str) -> Vec<PositionedToken<'_>> {
         tokenize(input).expect("Failed to tokenize input")
+    }
+
+    // Helpers for span assertions in tests
+    fn first_identifier_span(tokens: &[PositionedToken<'_>]) -> Span {
+        tokens
+            .iter()
+            .find_map(|t| match &t.token {
+                Token::Identifier(_) => Some(t.span),
+                _ => None,
+            })
+            .expect("identifier token not found")
+    }
+
+    fn nested_identifier_span(tokens: &[PositionedToken<'_>]) -> Span {
+        let mut id_spans = tokens.iter().filter_map(|t| match &t.token {
+            Token::Identifier(_) => Some(t.span),
+            _ => None,
+        });
+
+        let first = id_spans
+            .next()
+            .expect("at least one identifier expected for nested identifier");
+        let last = id_spans.last().unwrap_or(first);
+
+        Span::new(first.start()..last.end())
     }
 
     #[test]
@@ -636,6 +753,201 @@ mod tests {
         let tokens = parse_tokens(input);
         let result = build_diagram(&tokens, input);
         assert!(result.is_ok());
+    }
+
+    // Activation statement tests
+
+    #[test]
+    fn test_activate_statement_parsing_basic() {
+        let input = "activate user;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let elem = activate_statement.parse_next(&mut slice);
+        assert!(elem.is_ok(), "activate statement should parse");
+
+        match elem.unwrap() {
+            types::Element::Activate { component } => {
+                assert_eq!(component.inner(), "user");
+                let id_span = first_identifier_span(&tokens);
+                assert_eq!(
+                    component.span(),
+                    id_span,
+                    "component span should match identifier span"
+                );
+            }
+            other => panic!("expected Activate element, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_deactivate_statement_parsing_basic() {
+        let input = "deactivate server;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let elem = deactivate_statement.parse_next(&mut slice);
+        assert!(elem.is_ok(), "deactivate statement should parse");
+
+        match elem.unwrap() {
+            types::Element::Deactivate { component } => {
+                assert_eq!(component.inner(), "server");
+                let id_span = first_identifier_span(&tokens);
+                assert_eq!(
+                    component.span(),
+                    id_span,
+                    "component span should match identifier span"
+                );
+            }
+            other => panic!("expected Deactivate element, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_activate_statement_whitespace_and_comments() {
+        let input = "activate // comment\n  user   ;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let elem = activate_statement.parse_next(&mut slice);
+        assert!(
+            elem.is_ok(),
+            "activate with comments/whitespace should parse"
+        );
+        match elem.unwrap() {
+            types::Element::Activate { component } => {
+                assert_eq!(component.inner(), "user");
+            }
+            other => panic!("expected Activate element, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_deactivate_statement_whitespace_and_comments() {
+        let input = "deactivate  \n  user // trailing\n ;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let elem = deactivate_statement.parse_next(&mut slice);
+        assert!(
+            elem.is_ok(),
+            "deactivate with comments/whitespace should parse"
+        );
+        match elem.unwrap() {
+            types::Element::Deactivate { component } => {
+                assert_eq!(component.inner(), "user");
+            }
+            other => panic!("expected Deactivate element, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_activate_statement_missing_semicolon_error() {
+        let input = "activate user";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let elem = activate_statement.parse_next(&mut slice);
+        assert!(elem.is_err(), "missing semicolon should fail");
+    }
+
+    #[test]
+    fn test_deactivate_statement_missing_identifier_error() {
+        let input = "deactivate ;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let elem = deactivate_statement.parse_next(&mut slice);
+        assert!(elem.is_err(), "missing identifier should fail");
+    }
+
+    #[test]
+    fn test_activate_statement_span_accuracy_nested_identifier() {
+        let input = "activate parent::child;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let elem = activate_statement.parse_next(&mut slice);
+        assert!(elem.is_ok(), "activate with nested identifier should parse");
+        match elem.unwrap() {
+            types::Element::Activate { component } => {
+                assert_eq!(component.inner(), "parent::child");
+                let expected_span = nested_identifier_span(&tokens);
+                assert_eq!(
+                    component.span(),
+                    expected_span,
+                    "component span should cover from first to last identifier"
+                );
+            }
+            other => panic!("expected Activate element, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_deactivate_statement_span_accuracy_nested_identifier() {
+        let input = "deactivate a::b::c;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let elem = deactivate_statement.parse_next(&mut slice);
+        assert!(
+            elem.is_ok(),
+            "deactivate with nested identifier should parse"
+        );
+        match elem.unwrap() {
+            types::Element::Deactivate { component } => {
+                assert_eq!(component.inner(), "a::b::c");
+                let expected_span = nested_identifier_span(&tokens);
+                assert_eq!(
+                    component.span(),
+                    expected_span,
+                    "component span should cover from first to last identifier"
+                );
+            }
+            other => panic!("expected Deactivate element, got {:?}", other),
+        }
+    }
+
+    // Activation statement tests
+
+    #[test]
+    fn test_activate_block_parsing() {
+        let input = r#"activate user {
+            user -> server: "Request";
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = activate_block(&mut token_slice);
+        assert!(
+            result.is_ok(),
+            "Failed to parse activate block: {:?}",
+            result
+        );
+
+        let element = result.unwrap();
+        if let types::Element::ActivateBlock {
+            component,
+            elements,
+        } = element
+        {
+            assert_eq!(component.inner(), "user");
+            assert_eq!(elements.len(), 1);
+        } else {
+            panic!("Expected ActivateBlock element, got {:?}", element);
+        }
+    }
+
+    #[test]
+    fn test_activate_block_missing_identifier() {
+        let input = r#"activate {
+            user -> server;
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = activate_block(&mut token_slice);
+        assert!(result.is_err(), "Should fail when identifier is missing");
     }
 
     #[test]
@@ -1212,46 +1524,6 @@ mod tests {
                 tokens[0].token
             );
         }
-    }
-
-    #[test]
-    fn test_activate_block_parsing() {
-        let input = r#"activate user {
-            user -> server: "Request";
-        };"#;
-        let tokens = parse_tokens(input);
-        let mut token_slice = TokenSlice::new(&tokens);
-
-        let result = activate_block(&mut token_slice);
-        assert!(
-            result.is_ok(),
-            "Failed to parse activate block: {:?}",
-            result
-        );
-
-        let element = result.unwrap();
-        if let types::Element::ActivateBlock {
-            component,
-            elements,
-        } = element
-        {
-            assert_eq!(component.inner(), &"user");
-            assert_eq!(elements.len(), 1);
-        } else {
-            panic!("Expected ActivateBlock element, got {:?}", element);
-        }
-    }
-
-    #[test]
-    fn test_activate_block_missing_identifier() {
-        let input = r#"activate {
-            user -> server;
-        };"#;
-        let tokens = parse_tokens(input);
-        let mut token_slice = TokenSlice::new(&tokens);
-
-        let result = activate_block(&mut token_slice);
-        assert!(result.is_err(), "Should fail when identifier is missing");
     }
 
     #[test]

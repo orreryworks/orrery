@@ -1,0 +1,94 @@
+// Explicit Activation Examples (Sequence Diagram)
+// This example file demonstrates:
+// 1) Activation using explicit statements (activate/deactivate)
+// 2) Nested explicit activations (multiple activates before matching deactivates)
+// 3) Mixed usage: explicit statements alongside block-form activation (sugar)
+//
+// Notes:
+// - Activation is supported only in sequence diagrams
+// - Prefer the block form when a clear lexical scope exists; use explicit statements when spans
+//   are non-contiguous or intentionally asynchronous. Both forms are equivalent (blocks are sugar).
+
+diagram sequence;
+
+// Participants
+user: Rectangle;
+api: Rectangle;
+auth: Rectangle;
+db: Rectangle;
+
+// --------------------------------------------------------------------------
+// 1) Basic explicit activation
+// --------------------------------------------------------------------------
+// User sends a login request and immediately deactivates
+activate user;
+user -> api: "Login request";
+deactivate user;
+
+// API processes the request and hands off to auth
+activate api;
+api -> auth: "Validate credentials";
+deactivate api;
+
+// --------------------------------------------------------------------------
+// 2) Nested explicit activation (multiple activates before matching closes)
+// --------------------------------------------------------------------------
+// Auth is active while contacting the database; DB activation is nested within Auth's activation
+activate auth;
+auth -> db: "SELECT user FROM users";
+
+// DB is doing work inside the auth activation span
+activate db;
+db -> db: "Process query";
+db -> auth: "User found";
+deactivate db;
+
+// Auth finishes and returns to the API
+auth -> api: "Validation result";
+deactivate auth;
+
+// --------------------------------------------------------------------------
+// 3) Mixed usage: explicit statements + block-form activation (sugar)
+// --------------------------------------------------------------------------
+// User triggers a data fetch asynchronously, deactivates immediately
+activate user;
+user -> api: "Get profile";
+deactivate user;
+
+// API handles the request with a scoped (block) activation, which is sugar for explicit statements
+activate api {
+    api -> db: "SELECT profile";
+    db -> api: "Profile rows";
+    api -> user: "Profile data";
+};
+
+// Another asynchronous processing step demonstrated with explicit activation again
+activate api;
+api -> api: "Post-processing…";
+deactivate api;
+
+// --------------------------------------------------------------------------
+// 4) Interleaved explicit activations across participants
+// --------------------------------------------------------------------------
+// This illustrates multiple independent activation lifecycles interleaved in time
+activate user;
+user -> api: "Start task A";
+
+activate auth;
+auth -> db: "Prepare cache";
+deactivate auth;
+
+api -> user: "Ack A";
+deactivate user;
+
+// A second interaction independent of the previous activation
+activate user;
+user -> api: "Start task B";
+api -> user: "Ack B";
+deactivate user;
+
+// Final synchronous ping-pong using explicit statements
+activate api;
+api -> db: "Warm-up";
+db -> api: "Ready";
+deactivate api;

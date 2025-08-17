@@ -155,11 +155,21 @@ app -> [RedArrow] cache: "Fast access";
 cache -> [BlueArrow; style="curved"] database: "Sync data";
 ```
 
-### 6.3 Activate Blocks
+### 6.3 Activation (Blocks and Explicit Statements)
 
-Activate blocks are sequence diagram-specific elements that define periods when a component is active (also known as "focus of control"). They provide temporal grouping of interactions and are visually represented as rectangles on participant lifelines.
+Activation defines periods when a component is active (also known as "focus of control") in sequence diagrams. Activation can be written in two interchangeable syntaxes that are fully equivalent: an explicit form using standalone statements, and a block form that provides a clearer lexical scope. Internally, block syntax is syntactic sugar that is desugared into explicit statements during compilation.
 
-**Syntax:**
+Preferred style: use block syntax whenever a clear lexical scope exists (it is more readable and self‑documenting). Use explicit statements when activation spans are non‑contiguous or intentionally asynchronous.
+
+**Syntax (two equivalent forms):**
+
+1) Explicit statements
+```
+activate <component_name>;
+deactivate <component_name>;
+```
+
+2) Block (sugar for explicit)
 ```
 activate <component_name> {
     // Elements active during this period
@@ -168,14 +178,13 @@ activate <component_name> {
 ```
 
 **Key Properties:**
-- **Sequence diagrams only**: Activate blocks can only be used in sequence diagrams
-- **Temporal grouping**: They group events in time, not create component namespaces
+- **Sequence diagrams only**: Activation is supported only in sequence diagrams
+- **Temporal grouping**: Activation groups events in time; it does not create component namespaces
 - **Visual representation**: Rendered as white rectangles with black borders on lifelines
-- **Nestable**: Support nested activate blocks for complex activation scenarios
+- **Nestable**: Nested activation is supported (both statement and block forms)
+- **Coexistence**: Both forms can be mixed; block form is preferred when a lexical scope exists
 
-#### 6.3.1 Basic Usage
-
-Simple activate block with messages:
+#### 6.3.1 Basic Usage (Block)
 
 ```filament
 diagram sequence;
@@ -189,9 +198,7 @@ activate user {
 };
 ```
 
-#### 6.3.2 Nested Activate Blocks
-
-Activate blocks can be nested to show complex interaction patterns:
+#### 6.3.2 Nested Activation (Block)
 
 ```filament
 diagram sequence;
@@ -202,19 +209,17 @@ database: Rectangle;
 
 activate client {
     client -> server: "Initial request";
-    
+
     activate server {
         server -> database: "Query data";
         database -> server: "Return results";
     };
-    
+
     server -> client: "Final response";
 };
 ```
 
 #### 6.3.3 Multiple Activations
-
-The same component can be activated multiple times:
 
 ```filament
 diagram sequence;
@@ -224,11 +229,11 @@ service: Rectangle;
 
 activate user {
     user -> service: "First interaction";
-    
+
     activate user {
         user -> service: "Nested interaction";
     };
-    
+
     service -> user: "Response";
 };
 ```
@@ -251,10 +256,71 @@ Activate blocks are only supported in sequence diagrams:
 diagram sequence;
 activate user { user -> server; };
 
-// ❌ Invalid: Activate blocks not allowed in component diagrams  
+// ❌ Invalid: Activate blocks not allowed in component diagrams
 diagram component;
 activate user { user -> server; }; // ERROR: Not supported in component diagrams
 ```
+
+#### 6.3.6 Explicit Usage (Statements)
+
+Explicit activation statements provide granular control over lifeline activation timing and coexist with the block form. They are ideal for asynchronous workflows or cases where activation scope is not confined to a single block.
+
+Syntax:
+```
+activate <component_name>;
+deactivate <component_name>;
+```
+
+Notes:
+- Preferred: Use the block form when a clear lexical scope exists; it provides better clarity and groups related interactions
+- Supported only in sequence diagrams
+- Component names can be nested identifiers (e.g., `parent::child`)
+- Statements must appear in valid pairs for each component within a scope (activate first, then deactivate)
+- Nesting is allowed (multiple activates before matching deactivates)
+- Block form remains supported and is desugared to explicit statements internally
+
+Example (explicit statements):
+```
+diagram sequence;
+user: Rectangle;
+server: Rectangle;
+
+// User sends a job and immediately deactivates
+activate user;
+user -> server: "Process this job";
+deactivate user;
+
+// Server activates later to perform the work independently
+activate server;
+server -> server: "Working on job...";
+deactivate server;
+```
+
+Equivalent using the block form (sugar):
+```
+diagram sequence;
+user: Rectangle;
+server: Rectangle;
+
+activate user {
+    user -> server: "Process this job";
+};
+
+activate server {
+    server -> server: "Working on job...";
+};
+```
+
+Desugaring:
+- The compiler rewrites:
+  - `activate <component> { ... };`
+  - into `activate <component>; ... deactivate <component>;` preserving order and spans
+- After desugaring, later phases (validation, elaboration, graph) operate only on explicit `activate`/`deactivate` statements
+- Any `ActivateBlock` reaching elaboration is considered unreachable (internal compiler invariant)
+
+Validation:
+- A syntax-level validation pass ensures activation pairs are balanced and correctly ordered
+- Semantic checks (diagram kind, component existence) occur during elaboration
 
 ## 7. Attributes
 

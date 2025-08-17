@@ -1,0 +1,25 @@
+// Error Example: Deactivate Without Prior Activate
+//
+// This file demonstrates an activation pairing violation in a sequence diagram.
+// A `deactivate <component>;` statement must be preceded by a matching
+// `activate <component>;` within the same scope (nested blocks/statements are allowed).
+//
+// Expected Behavior:
+// - The validator should report an error for `deactivate user;` because
+//   there is no prior `activate user;` in the current scope.
+
+diagram sequence;
+
+user: Rectangle;
+server: Rectangle;
+
+// Regular message (valid)
+user -> server: "Ping";
+
+// ❌ Invalid: Deactivate without prior activate for 'user'
+deactivate user;
+
+// (For comparison, the correct pairing would be:)
+// activate user;
+// user -> server: "Ping";
+// deactivate user;

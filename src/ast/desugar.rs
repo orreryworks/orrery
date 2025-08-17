@@ -229,7 +229,7 @@ trait Folder<'a> {
     /// Fold an activate block element
     fn fold_activate_block(
         &mut self,
-        component: Spanned<&'a str>,
+        component: Spanned<String>,
         elements: Vec<Element<'a>>,
     ) -> Element<'a> {
         Element::ActivateBlock {
@@ -238,8 +238,8 @@ trait Folder<'a> {
         }
     }
 
-    /// Fold an activate block component reference
-    fn fold_activate_component(&mut self, component: Spanned<&'a str>) -> Spanned<&'a str> {
+    /// Fold an activate component identifier into an owned `String`
+    fn fold_activate_component(&mut self, component: Spanned<String>) -> Spanned<String> {
         component
     }
 }
@@ -509,7 +509,7 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::ActivateBlock {
-                component: spanned("user"),
+                component: spanned("user".to_string()),
                 elements: vec![Element::Relation {
                     source: spanned("user".to_string()),
                     target: spanned("server".to_string()),
@@ -558,7 +558,7 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::ActivateBlock {
-                component: spanned("user"),
+                component: spanned("user".to_string()),
                 elements: vec![Element::Relation {
                     source: spanned("user".to_string()),
                     target: spanned("server".to_string()),

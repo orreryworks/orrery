@@ -937,6 +937,114 @@ db: Rectangle;"#;
     }
 }
 
+#[cfg(test)]
+mod explicit_activation_tests {
+    use super::*;
+
+    #[test]
+    fn test_explicit_activate_then_relation_then_deactivate() {
+        let source = r#"
+            diagram sequence;
+            user: Rectangle;
+            server: Rectangle;
+
+            activate user;
+            user -> server;
+            deactivate user;
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_multiple_interleaved_activations() {
+        let source = r#"
+            diagram sequence;
+            a: Rectangle;
+            b: Rectangle;
+            c: Rectangle;
+
+            activate a;
+            a -> b;
+            activate b;
+            b -> c;
+            deactivate a;
+            c -> b;
+            deactivate b;
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_coexistence_with_activate_block() {
+        let source = r#"
+            diagram sequence;
+            user: Rectangle;
+            server: Rectangle;
+
+            // explicit activation
+            activate user;
+            user -> server;
+
+            // block-based activation
+            activate server {
+                server -> user: "Response";
+            };
+
+            deactivate user;
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_activate_block_and_explicit_ordering() {
+        // Ensure parser preserves order between explicit statements and blocks
+        let source = r#"
+            diagram sequence;
+            client: Rectangle;
+            api: Rectangle;
+
+            // explicit first
+            activate client;
+            client -> api;
+
+            // then block
+            activate api {
+                api -> client: "Ack";
+
+                // then explicit
+                deactivate client;
+            };
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_error_missing_semicolon_in_explicit_activation() {
+        // Missing semicolon after explicit activate should fail
+        let source = r#"
+            diagram sequence;
+            user: Rectangle;
+            activate user
+            user -> user;
+            deactivate user;
+        "#;
+        assert_parse_fails(source);
+    }
+
+    #[test]
+    fn test_error_missing_identifier_in_explicit_activation() {
+        // Missing identifier in explicit deactivate should fail
+        let source = r#"
+            diagram sequence;
+            user: Rectangle;
+            activate user;
+            user -> user;
+            deactivate ;
+        "#;
+        assert_parse_fails(source);
+    }
+}
+
 mod regression_tests {
     use super::*;
 

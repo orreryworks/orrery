@@ -1,0 +1,26 @@
+// Error Example: Unpaired Activate at End of Scope
+//
+// This file demonstrates an activation pairing violation in a sequence diagram.
+// An `activate <component>;` must be followed by a matching `deactivate <component>;`
+// within the same scope. If the end of the scope (or the file) is reached first,
+// the validator should report an "unpaired activate at end of scope" error.
+//
+// Expected Behavior:
+// - The validator should report an error for `activate user;` because there is no
+//   matching `deactivate user;` before the end of the diagram.
+
+diagram sequence;
+
+user: Rectangle;
+server: Rectangle;
+
+// ❌ Invalid: Unpaired activate for 'user' (missing corresponding 'deactivate user;')
+activate user;
+user -> server: "Start task";
+
+// Correctly paired activation for comparison:
+activate server;
+server -> user: "Ack";
+deactivate server;
+
+// End of file reached without 'deactivate user;'
