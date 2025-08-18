@@ -15,13 +15,55 @@ pub enum LayoutContent {
 /// A rendering layer containing either component or sequence diagram content
 #[derive(Debug)]
 pub struct Layer {
-    pub z_index: usize,
+    z_index: usize,
     /// Global coordinate offset for this layer
-    pub offset: Point,
+    offset: Point,
     /// Optional clipping boundary to keep content within parent
-    pub clip_bounds: Option<Bounds>,
+    clip_bounds: Option<Bounds>,
     /// The content of this layer
-    pub content: LayoutContent, // TODO: Remove this one.
+    content: LayoutContent, // TODO: Remove this one.
+}
+
+impl Layer {
+    /// Create a new layer with the given z-index and content.
+    fn new(z_index: usize, content: LayoutContent) -> Self {
+        Self {
+            z_index,
+            offset: Point::default(),
+            clip_bounds: None,
+            content,
+        }
+    }
+
+    /// Get this layer's z-index (render order).
+    pub fn z_index(&self) -> usize {
+        self.z_index
+    }
+
+    /// Get the global offset applied to this layer.
+    pub fn offset(&self) -> Point {
+        self.offset
+    }
+
+    /// Get the clipping bounds if present.
+    pub fn clip_bounds(&self) -> Option<Bounds> {
+        self.clip_bounds
+    }
+
+    /// Access the content for this layer.
+    pub fn content(&self) -> &LayoutContent {
+        &self.content
+    }
+
+    /// Set the global offset applied to this layer.
+    fn set_offset(&mut self, offset: Point) {
+        self.offset = offset;
+    }
+
+    /// Set or clear the clipping bounds.
+    fn set_clip_bounds(&mut self, clip_bounds: Option<Bounds>) {
+        self.clip_bounds = clip_bounds;
+    }
 }
 
 /// Collection of all diagram layers for rendering
@@ -48,12 +90,7 @@ impl<'a> LayeredLayout {
     pub fn add_layer(&mut self, content: LayoutContent) -> usize {
         let z_index = self.layers.len();
 
-        self.layers.push(Layer {
-            z_index,
-            offset: Point::default(),
-            clip_bounds: None,
-            content,
-        });
+        self.layers.push(Layer::new(z_index, content));
         z_index
     }
 
@@ -85,8 +122,8 @@ impl<'a> LayeredLayout {
 
         debug!(
             positioned_shape:?, container_bounds:?,
-            container_idx, container_offset:?=container_layer.offset, container_clip_bounds:?=container_layer.clip_bounds,
-            embedded_idx, embedded_offset:?=embedded_layer.offset, embedded_clip_bounds:?=embedded_layer.clip_bounds;
+            container_idx, container_offset:?=container_layer.offset(), container_clip_bounds:?=container_layer.clip_bounds(),
+            embedded_idx, embedded_offset:?=embedded_layer.offset(), embedded_clip_bounds:?=embedded_layer.clip_bounds();
             "Embedded layer before adjustment",
         );
 
@@ -94,21 +131,23 @@ impl<'a> LayeredLayout {
         // 1. Add the container layer's offset (for nested containers)
         // 2. Add the container's top-left position
         // 3. Add padding to inset from the edges
-        embedded_layer.offset = embedded_layer
-            .offset
-            .add_point(container_layer.offset)
-            .add_point(container_bounds.min_point())
-            .add_point(positioned_shape.inner().shape_to_inner_content_min_point());
+        embedded_layer.set_offset(
+            embedded_layer
+                .offset()
+                .add_point(container_layer.offset())
+                .add_point(container_bounds.min_point())
+                .add_point(positioned_shape.inner().shape_to_inner_content_min_point()),
+        );
 
         // Set clip bounds with padding
         let padded_clip_bounds = container_bounds
             .inverse_translate(container_bounds.min_point())
             .translate(Point::new(-padding.left(), -padding.top()));
 
-        embedded_layer.clip_bounds = Some(padded_clip_bounds);
+        embedded_layer.set_clip_bounds(Some(padded_clip_bounds));
 
         debug!(
-            offset:?=embedded_layer.offset, clip_bounds:?=embedded_layer.clip_bounds;
+            offset:?=embedded_layer.offset(), clip_bounds:?=embedded_layer.clip_bounds();
             "Adjusted embedded layer",
         );
     }

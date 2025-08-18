@@ -37,8 +37,8 @@ impl Svg {
         // Add clip paths for all layers that need clipping
         // Each clip path gets a unique ID based on the layer's z-index
         for layer in layout.iter_from_bottom() {
-            if let Some(bounds) = &layer.clip_bounds {
-                let clip_id = format!("clip-layer-{}", layer.z_index);
+            if let Some(bounds) = layer.clip_bounds() {
+                let clip_id = format!("clip-layer-{}", layer.z_index());
                 let clip_path = self.create_clip_path(&clip_id, bounds);
                 doc = doc.add(clip_path);
             }
@@ -79,7 +79,7 @@ impl Svg {
     /// # Parameters
     /// * `clip_id` - Unique identifier for the clip path
     /// * `bounds` - The bounds to use for clipping
-    fn create_clip_path(&self, clip_id: &str, bounds: &Bounds) -> svg_element::Definitions {
+    fn create_clip_path(&self, clip_id: &str, bounds: Bounds) -> svg_element::Definitions {
         let defs = svg_element::Definitions::new();
 
         // Create a clip path with a rectangle matching the bounds
@@ -122,7 +122,7 @@ impl Svg {
             let layer_bounds = self.calculate_layer_bounds(layer);
 
             // Adjust bounds for layer offset by creating a translated copy
-            let offset_bounds = layer_bounds.translate(layer.offset);
+            let offset_bounds = layer_bounds.translate(layer.offset());
 
             // Merge with the combined bounds to include this layer
             combined_bounds = combined_bounds.merge(&offset_bounds);
@@ -133,7 +133,7 @@ impl Svg {
 
     /// Calculate bounds for a single layer
     fn calculate_layer_bounds(&self, layer: &Layer) -> Bounds {
-        match &layer.content {
+        match layer.content() {
             LayoutContent::Component(comp_layout) => {
                 self.calculate_component_diagram_bounds(comp_layout)
             }
@@ -157,24 +157,25 @@ impl Svg {
         // Create a group for this layer
         let mut layer_group = svg_element::Group::new();
 
+        let offset = layer.offset();
         // Apply offset transformation if not at origin
-        if !layer.offset.is_zero() {
+        if !offset.is_zero() {
             layer_group = layer_group.set(
                 "transform",
-                format!("translate({}, {})", layer.offset.x(), layer.offset.y()),
+                format!("translate({}, {})", offset.x(), offset.y()),
             );
         }
 
         // Apply clipping if specified for this layer
-        if let Some(_bounds) = &layer.clip_bounds {
+        if let Some(_bounds) = layer.clip_bounds() {
             // Create a unique clip ID for this layer based on its z-index
-            let clip_id = format!("clip-layer-{}", layer.z_index);
+            let clip_id = format!("clip-layer-{}", layer.z_index());
             // Apply the clip-path property referencing the previously defined clip path
             layer_group = layer_group.set("clip-path", format!("url(#{clip_id})"));
         }
 
         // Render the layer content based on its type
-        self.render_layer_content(&layer.content)
+        self.render_layer_content(layer.content())
             .into_iter()
             .fold(layer_group, |group, content_group| group.add(content_group))
     }
