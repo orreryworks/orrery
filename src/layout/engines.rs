@@ -208,15 +208,15 @@ impl EngineBuilder {
         for (type_id, graph) in collection.diagram_tree_in_post_order() {
             // Calculate the layout for this diagram using the appropriate engine
             let diagram = graph.diagram();
-            let layout_result = match diagram.kind {
+            let layout_result = match diagram.kind() {
                 DiagramKind::Component => {
-                    let engine = self.component_engine(diagram.layout_engine);
+                    let engine = self.component_engine(diagram.layout_engine());
 
                     let layout = engine.calculate(graph, &layout_info);
                     LayoutResult::Component(layout)
                 }
                 DiagramKind::Sequence => {
-                    let engine = self.sequence_engine(diagram.layout_engine);
+                    let engine = self.sequence_engine(diagram.layout_engine());
 
                     let layout = engine.calculate(graph, &layout_info);
                     LayoutResult::Sequence(layout)

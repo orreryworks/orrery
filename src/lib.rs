@@ -57,7 +57,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
 
     // Process diagram based on its type
     // Build the diagram graph (common for all types)
-    info!(diagram_kind:? = elaborated_ast.kind; "Building diagram graph");
+    info!(diagram_kind:? = elaborated_ast.kind(); "Building diagram graph");
     let graphs = graph::Collection::from_diagram(&elaborated_ast)?;
     debug!("Graph built successfully");
 

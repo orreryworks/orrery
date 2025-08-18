@@ -28,7 +28,7 @@ impl<'a> Builder<'a> {
         let type_definitions = types::TypeDefinition::defaults(&default_arrow_type);
         let type_definition_map = type_definitions
             .iter()
-            .map(|def| (def.id, Rc::clone(def)))
+            .map(|def| (def.id(), Rc::clone(def)))
             .collect();
 
         Self {
@@ -67,7 +67,7 @@ impl<'a> Builder<'a> {
                     }
                     types::Block::Scope(scope) => {
                         debug!(
-                            elements_len = scope.elements.len();
+                            elements_len = scope.elements().len();
                             "Using scope from block",
                         );
                         scope
@@ -86,12 +86,12 @@ impl<'a> Builder<'a> {
                     self.extract_diagram_attributes(kind, &diag.attributes)?;
 
                 info!(kind:?; "Diagram elaboration completed successfully");
-                Ok(types::Diagram {
+                Ok(types::Diagram::new(
                     kind,
                     scope,
                     layout_engine,
                     background_color,
-                })
+                ))
             }
             _ => Err(ElaborationDiagnosticError::from_span(
                 "Invalid element, expected Diagram".to_string(),
@@ -108,7 +108,7 @@ impl<'a> Builder<'a> {
         type_def: types::TypeDefinition,
         span: Span,
     ) -> EResult<Rc<types::TypeDefinition>> {
-        let id = type_def.id;
+        let id = type_def.id();
         let type_def = Rc::new(type_def);
         self.type_definitions.push(Rc::clone(&type_def));
 
@@ -123,7 +123,7 @@ impl<'a> Builder<'a> {
             // We could use a span here if we tracked where the duplicate was defined
             // For now, we use a simple error since we don't store that information
             Err(ElaborationDiagnosticError::from_span(
-                format!("Type definition '{}' already exists", type_def.id),
+                format!("Type definition '{}' already exists", type_def.id()),
                 span,
                 "duplicate type definition",
                 None,
@@ -199,12 +199,12 @@ impl<'a> Builder<'a> {
                 let (layout_engine, background_color) =
                     self.extract_diagram_attributes(kind, &diag.attributes)?;
 
-                Ok(types::Diagram {
+                Ok(types::Diagram::new(
                     kind,
                     scope,
                     layout_engine,
                     background_color,
-                })
+                ))
             }
             _ => Err(ElaborationDiagnosticError::from_span(
                 "Invalid element, expected Diagram".to_string(),
@@ -241,12 +241,12 @@ impl<'a> Builder<'a> {
             let (layout_engine, background_color) =
                 self.extract_diagram_attributes(kind, &diag.attributes)?;
 
-            Ok(types::Diagram {
+            Ok(types::Diagram::new(
                 kind,
                 scope,
                 layout_engine,
                 background_color,
-            })
+            ))
         } else {
             Err(ElaborationDiagnosticError::from_span(
                 "Expected diagram element".to_string(),
@@ -359,7 +359,7 @@ impl<'a> Builder<'a> {
             };
             elements.push(element);
         }
-        Ok(types::Scope { elements })
+        Ok(types::Scope::new(elements))
     }
 
     /// Builds a component element from parser data
@@ -388,7 +388,7 @@ impl<'a> Builder<'a> {
         // Check if this shape supports content before processing nested elements
         if !nested_elements.is_empty()
             && !type_def
-                .shape_definition()
+                .shape_definition_rc()
                 .is_ok_and(|s| s.supports_content())
         {
             return Err(ElaborationDiagnosticError::from_span(
@@ -414,13 +414,13 @@ impl<'a> Builder<'a> {
             self.build_block_from_elements(nested_elements, Some(node_id), diagram_kind)?
         };
 
-        let node = types::Node {
-            id: node_id,
-            name: name.to_string(),
-            display_name: display_name.as_ref().map(|n| n.to_string()),
+        let node = types::Node::new(
+            node_id,
+            name.to_string(),
+            display_name.as_ref().map(|n| n.to_string()),
             block,
-            type_definition: type_def,
-        };
+            type_def,
+        );
 
         Ok(types::Element::Node(node))
     }
@@ -770,11 +770,11 @@ mod tests {
 
         let diagram = result.unwrap();
         // After desugaring, relations remain unscoped; ensure names were not prefixed
-        for element in &diagram.scope.elements {
+        for element in diagram.scope().elements() {
             if let types::Element::Relation(relation) = element {
                 // Relations should maintain original naming, not be scoped under "user"
-                let source_str = relation.source.to_string();
-                let target_str = relation.target.to_string();
+                let source_str = relation.source().to_string();
+                let target_str = relation.target().to_string();
                 assert!(
                     !source_str.starts_with("user::user::"),
                     "Source should not be double-scoped: {}",
@@ -858,7 +858,7 @@ mod tests {
         );
 
         let diagram = result.unwrap();
-        let elems = &diagram.scope.elements;
+        let elems = diagram.scope().elements();
 
         let activations: Vec<_> = elems
             .iter()
@@ -884,7 +884,7 @@ mod tests {
             .iter()
             .filter_map(|e| {
                 if let types::Element::Relation(r) = e {
-                    Some((r.source.to_string(), r.target.to_string()))
+                    Some((r.source().to_string(), r.target().to_string()))
                 } else {
                     None
                 }
@@ -961,7 +961,7 @@ mod tests {
         );
 
         let elaborate_diagram = result.unwrap();
-        let elements = &elaborate_diagram.scope.elements;
+        let elements = elaborate_diagram.scope().elements();
 
         // Check that we have the expected elements
         assert_eq!(
@@ -1150,7 +1150,7 @@ mod tests {
         let diagram = result.unwrap();
 
         // After desugaring, ensure we have multiple relations and activation statements
-        let elems = &diagram.scope.elements;
+        let elems = diagram.scope().elements();
         let relations = elems
             .iter()
             .filter(|e| matches!(e, types::Element::Relation(_)))

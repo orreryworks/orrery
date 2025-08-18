@@ -703,7 +703,7 @@ mod tests {
         let first = id_spans
             .next()
             .expect("at least one identifier expected for nested identifier");
-        let last = id_spans.last().unwrap_or(first);
+        let last = id_spans.next_back().unwrap_or(first);
 
         Span::new(first.start()..last.end())
     }

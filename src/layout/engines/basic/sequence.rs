@@ -116,20 +116,20 @@ impl Engine {
             .nodes_with_indices()
             .map(|(node_idx, node)| {
                 let mut shape = draw::Shape::new(Rc::clone(
-                    node.type_definition
-                        .shape_definition()
+                    node.type_definition()
+                        .shape_definition_rc()
                         .expect("Node must have a shape definition for sequence layout"),
                 ));
                 shape.set_padding(self.padding);
                 let text = draw::Text::new(
-                    Rc::clone(&node.type_definition.text_definition),
+                    Rc::clone(node.type_definition().text_definition_rc()),
                     node.display_text().to_string(),
                 );
                 let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
-                if let ast::Block::Diagram(_) = &node.block {
+                if let ast::Block::Diagram(_) = node.block() {
                     // If this participant has an embedded diagram, use its layout size
-                    let content_size = if let Some(layout) = embedded_layouts.get(&node.id) {
+                    let content_size = if let Some(layout) = embedded_layouts.get(&node.id()) {
                         layout.calculate_size()
                     } else {
                         Size::default()

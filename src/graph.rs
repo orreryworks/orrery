@@ -306,24 +306,30 @@ impl<'a> Collection<'a> {
             if let ast::Element::Node(node) = element {
                 let node_idx = graph.add_node(node);
                 // Use ToString trait to convert Id to String
-                graph.node_id_map.insert(node.id, node_idx);
+                graph.node_id_map.insert(node.id(), node_idx);
                 containment_scope.add_node(node_idx);
 
                 // Process the node's inner block recursively
-                match &node.block {
+                match node.block() {
                     ast::Block::Scope(scope) => {
                         debug!(
                             "Processing nested scope with {} elements",
-                            scope.elements.len()
+                            scope.elements().len()
                         );
-                        let mut inner_hierarchy_children =
-                            self.process_containment_scope(graph, &scope.elements, Some(node_idx))?;
+                        let mut inner_hierarchy_children = self.process_containment_scope(
+                            graph,
+                            scope.elements(),
+                            Some(node_idx),
+                        )?;
                         hierarchy_children.append(&mut inner_hierarchy_children);
                     }
                     ast::Block::Diagram(inner_diagram) => {
-                        debug!("Processing nested diagram of kind {:?}", inner_diagram.kind);
+                        debug!(
+                            "Processing nested diagram of kind {:?}",
+                            inner_diagram.kind()
+                        );
                         let inner_hierarchy_child = self.add_diagram_to_tree(inner_diagram)?;
-                        hierarchy_children.push((node.id, inner_hierarchy_child));
+                        hierarchy_children.push((node.id(), inner_hierarchy_child));
                     }
                     ast::Block::None => {}
                 }
@@ -335,8 +341,8 @@ impl<'a> Collection<'a> {
             match element {
                 ast::Element::Relation(relation) => {
                     if let (Some(&source_idx), Some(&target_idx)) = (
-                        graph.node_id_map.get(&relation.source),
-                        graph.node_id_map.get(&relation.target),
+                        graph.node_id_map.get(&relation.source()),
+                        graph.node_id_map.get(&relation.target()),
                     ) {
                         let edge_idx = graph.add_edge(source_idx, target_idx, relation);
                         containment_scope.add_relation(edge_idx);
@@ -344,7 +350,8 @@ impl<'a> Collection<'a> {
                     } else {
                         return Err(FilamentError::Graph(format!(
                             "Warning: Relation refers to undefined nodes: {} -> {}",
-                            relation.source, relation.target
+                            relation.source(),
+                            relation.target()
                         )));
                     }
                 }
@@ -383,7 +390,7 @@ impl<'a> Collection<'a> {
     ) -> Result<NodeIndex, FilamentError> {
         let mut graph = Graph::new(diagram);
         let hierarchy_children =
-            self.process_containment_scope(&mut graph, &diagram.scope.elements, None)?;
+            self.process_containment_scope(&mut graph, diagram.scope().elements(), None)?;
 
         let hierarchy_idx = self.diagram_tree.add_node(graph);
         for child in hierarchy_children {

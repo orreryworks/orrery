@@ -106,8 +106,8 @@ impl Engine {
                     // Only include relations between visible components
                     // (not including relations within inner blocks)
                     if let (Some(&source_index), Some(&target_index)) = (
-                        component_indices.get(&relation.source),
-                        component_indices.get(&relation.target),
+                        component_indices.get(&relation.source()),
+                        component_indices.get(&relation.target()),
                     ) {
                         Some(LayoutRelation::from_ast(
                             relation,
@@ -148,23 +148,23 @@ impl Engine {
         // TODO: move it to the best place.
         for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
             let mut shape = draw::Shape::new(Rc::clone(
-                node.type_definition
-                    .shape_definition()
+                node.type_definition()
+                    .shape_definition_rc()
                     .expect("Node must have a shape definition for component layout"),
             ));
             shape.set_padding(self.padding);
             let text = draw::Text::new(
-                Rc::clone(&node.type_definition.text_definition),
+                Rc::clone(node.type_definition().text_definition_rc()),
                 node.display_text().to_string(),
             );
             let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
-            match node.block {
+            match node.block() {
                 ast::Block::Diagram(_) => {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
                     let layout = embedded_layouts
-                        .get(&node.id)
+                        .get(&node.id())
                         .expect("Embedded layout not found");
 
                     let content_size = layout.calculate_size();
@@ -274,10 +274,10 @@ impl Engine {
         for (layer_idx, layer_nodes) in layers.iter().enumerate() {
             for node_idx in layer_nodes {
                 let node = graph.node_from_idx(*node_idx);
-                if node.id == relation.source {
+                if node.id() == relation.source() {
                     source_layer = Some(layer_idx);
                 }
-                if node.id == relation.target {
+                if node.id() == relation.target() {
                     target_layer = Some(layer_idx);
                 }
             }

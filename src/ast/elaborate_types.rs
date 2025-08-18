@@ -9,22 +9,49 @@ use std::{
     str::FromStr,
 };
 
-#[derive(Debug, Clone)]
-pub struct Attribute {
-    pub name: Id,
-    pub value: String,
-}
-
+/// A diagram node (component/participant) with visual definition and nested content.
 #[derive(Debug, Clone)]
 pub struct Node {
-    pub id: Id,
-    pub name: String,
-    pub display_name: Option<String>,
-    pub block: Block,
-    pub type_definition: Rc<TypeDefinition>,
+    id: Id,
+    name: String,
+    display_name: Option<String>,
+    block: Block,
+    type_definition: Rc<TypeDefinition>,
 }
 
 impl Node {
+    /// Create a new Node.
+    pub fn new(
+        id: Id,
+        name: String,
+        display_name: Option<String>,
+        block: Block,
+        type_definition: Rc<TypeDefinition>,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            display_name,
+            block,
+            type_definition,
+        }
+    }
+
+    /// Get the node identifier.
+    pub fn id(&self) -> Id {
+        self.id
+    }
+
+    /// Borrow the node's content block.
+    pub fn block(&self) -> &Block {
+        &self.block
+    }
+
+    /// Borrow the node's type definition.
+    pub fn type_definition(&self) -> &TypeDefinition {
+        &self.type_definition
+    }
+
     /// Returns the display text for this node
     /// Uses display_name if present, otherwise falls back to the identifier name
     pub fn display_text(&self) -> &str {
@@ -32,16 +59,19 @@ impl Node {
     }
 }
 
+/// A relation (edge/message) between two nodes, carrying direction, text, and style.
 #[derive(Debug, Clone)]
 pub struct Relation {
-    pub source: Id,
-    pub target: Id,
-    pub arrow_direction: draw::ArrowDirection,
+    source: Id,
+    target: Id,
+    arrow_direction: draw::ArrowDirection,
     label: Option<String>,
     type_definition: Rc<TypeDefinition>,
 }
 
 impl Relation {
+    /// Create a new Relation between two node Ids with an optional label
+    /// and a type definition that determines appearance.
     pub fn new(
         source: Id,
         target: Id,
@@ -58,24 +88,44 @@ impl Relation {
         }
     }
 
+    /// Build a Text drawable for the relation's label using its text definition, if a label exists.
     pub fn text(&self) -> Option<draw::Text> {
         self.label.as_ref().map(|label| {
             draw::Text::new(
-                Rc::clone(&self.type_definition.text_definition),
+                Rc::clone(self.type_definition.text_definition_rc()),
                 label.clone(),
             )
         })
     }
 
+    /// Clone the underlying ArrowDefinition Rc for rendering this relation.
+    // TODO: Consider removing clone from here?!
     pub fn clone_arrow_definition(&self) -> Rc<draw::ArrowDefinition> {
         Rc::clone(
             self.type_definition
-                .arrow_definition()
+                .arrow_definition_rc()
                 .expect("Type definition must have an arrow definition"),
         )
     }
+
+    /// Get the source node Id of this relation.
+    pub fn source(&self) -> Id {
+        self.source
+    }
+
+    /// Get the target node Id of this relation.
+    pub fn target(&self) -> Id {
+        self.target
+    }
+
+    /// Get the arrow direction for this relation.
+    pub fn arrow_direction(&self) -> draw::ArrowDirection {
+        self.arrow_direction
+    }
 }
 
+/// Top-level elaborated element within a scope.
+/// Represents nodes, relations, and activation events in AST order.
 #[derive(Debug, Clone)]
 pub enum Element {
     Node(Node),
@@ -84,30 +134,48 @@ pub enum Element {
     Deactivate(Id),
 }
 
+/// A containment scope that groups a sequence of elements at the same nesting level.
 #[derive(Debug, Default, Clone)]
 pub struct Scope {
-    pub elements: Vec<Element>,
+    elements: Vec<Element>,
 }
 
+impl Scope {
+    /// Create a new Scope from a list of elements.
+    pub fn new(elements: Vec<Element>) -> Self {
+        Self { elements }
+    }
+
+    /// Borrow the elements contained in this scope.
+    pub fn elements(&self) -> &[Element] {
+        &self.elements
+    }
+}
+
+/// The kind of a diagram: component or sequence.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum DiagramKind {
     Component,
     Sequence,
 }
 
+/// Unified drawing definition for types: either a shape or an arrow.
 #[derive(Debug)]
 pub enum DrawDefinition {
     Shape(Rc<dyn draw::ShapeDefinition>),
     Arrow(Rc<draw::ArrowDefinition>),
 }
 
+/// A concrete, elaborated type with text styling and drawing definition.
 #[derive(Debug)]
 pub struct TypeDefinition {
-    pub id: Id,
-    pub text_definition: Rc<draw::TextDefinition>,
-    pub draw_definition: DrawDefinition,
+    id: Id,
+    text_definition: Rc<draw::TextDefinition>,
+    draw_definition: DrawDefinition,
 }
 
+/// Available layout engines controlling automatic positioning for diagrams.
+/// Names match external configuration strings (snake_case).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LayoutEngine {
@@ -152,14 +220,53 @@ impl Display for LayoutEngine {
     }
 }
 
+/// A fully elaborated diagram, with kind, content scope, layout engine, and optional background.
 #[derive(Debug, Clone)]
 pub struct Diagram {
-    pub kind: DiagramKind,
-    pub scope: Scope,
-    pub layout_engine: LayoutEngine,
-    pub background_color: Option<Color>,
+    kind: DiagramKind,
+    scope: Scope,
+    layout_engine: LayoutEngine,
+    background_color: Option<Color>,
 }
 
+impl Diagram {
+    /// Create a new Diagram with its kind, scope, layout engine, and optional background color.
+    pub fn new(
+        kind: DiagramKind,
+        scope: Scope,
+        layout_engine: LayoutEngine,
+        background_color: Option<Color>,
+    ) -> Self {
+        Self {
+            kind,
+            scope,
+            layout_engine,
+            background_color,
+        }
+    }
+
+    /// Get the diagram kind.
+    pub fn kind(&self) -> DiagramKind {
+        self.kind
+    }
+
+    /// Borrow the diagram's top-level scope.
+    pub fn scope(&self) -> &Scope {
+        &self.scope
+    }
+
+    /// Get the configured layout engine for this diagram.
+    pub fn layout_engine(&self) -> LayoutEngine {
+        self.layout_engine
+    }
+
+    /// Get the diagram's background color if specified.
+    pub fn background_color(&self) -> Option<Color> {
+        self.background_color
+    }
+}
+
+/// A block wrapper representing empty content, a nested scope, or an embedded diagram.
 #[derive(Debug, Clone)]
 pub enum Block {
     None,
@@ -176,6 +283,7 @@ impl TypeDefinition {
         }
     }
 
+    /// Construct a concrete shape type definition from a text definition and a shape definition.
     pub fn new_shape(
         id: Id,
         text_definition: draw::TextDefinition,
@@ -188,6 +296,7 @@ impl TypeDefinition {
         )
     }
 
+    /// Construct a concrete arrow type definition from a text definition and an arrow definition.
     pub fn new_arrow(
         id: Id,
         text_definition: draw::TextDefinition,
@@ -200,7 +309,22 @@ impl TypeDefinition {
         )
     }
 
-    pub fn shape_definition(&self) -> Result<&Rc<dyn draw::ShapeDefinition>, String> {
+    /// Get the identifier for this type definition.
+    pub fn id(&self) -> Id {
+        self.id
+    }
+
+    /// Borrow the Rc-backed text definition.
+    ///
+    /// This returns &Rc<_> so callers can explicitly Rc::clone when they need ownership.
+    pub fn text_definition_rc(&self) -> &Rc<draw::TextDefinition> {
+        &self.text_definition
+    }
+
+    /// Borrow the Rc-backed shape definition if this type is a shape; otherwise returns an error.
+    ///
+    /// Returning &Rc<_> makes cloning explicit at the call site when needed.
+    pub fn shape_definition_rc(&self) -> Result<&Rc<dyn draw::ShapeDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Shape(shape) => Ok(shape),
             DrawDefinition::Arrow(_) => Err(format!(
@@ -210,7 +334,10 @@ impl TypeDefinition {
         }
     }
 
-    pub fn arrow_definition(&self) -> Result<&Rc<draw::ArrowDefinition>, String> {
+    /// Borrow the Rc-backed arrow definition if this type is an arrow; otherwise returns an error.
+    ///
+    /// Returning &Rc<_> makes cloning explicit at the call site when needed.
+    pub fn arrow_definition_rc(&self) -> Result<&Rc<draw::ArrowDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Arrow(arrow) => Ok(arrow),
             DrawDefinition::Shape(_) => Err(format!(

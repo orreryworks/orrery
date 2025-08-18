@@ -69,7 +69,7 @@ impl Message {
         y_position: f32,
     ) -> Self {
         let arrow_def = relation.clone_arrow_definition();
-        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction);
+        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
         let mut arrow_with_text = draw::ArrowWithText::new(arrow);
         if let Some(text) = relation.text() {
             arrow_with_text.set_text(text);
@@ -431,7 +431,7 @@ pub fn adjust_positioned_contents_offset<'a>(
                 .content()
                 .participants()
                 .iter()
-                .find(|participant| participant.component().node_id() == node.id)
+                .find(|participant| participant.component().node_id() == node.id())
                 .expect("Participant must exist in source layer");
 
             let target_offset = source
@@ -446,14 +446,14 @@ pub fn adjust_positioned_contents_offset<'a>(
                 ); // TODO: This does not account for text.
 
             debug!(
-                node_id:? = node.id,
+                node_id:? = node.id(),
                 source_offset:? = source.offset();
                 "Adjusting positioned content offset [source]",
             );
 
             let target = content_stack.get_mut_unchecked(destination_idx);
             debug!(
-                node_id:? = node.id,
+                node_id:? = node.id(),
                 original_offset:? = target.offset(),
                 new_offset:? = target_offset;
                 "Adjusting positioned content offset [target]",
