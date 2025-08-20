@@ -1,0 +1,65 @@
+// Authentication Flow with Fragment Blocks (Sequence Diagram)
+//
+// This example demonstrates:
+// - Fragment blocks with multiple sections
+// - Nested fragments within sections
+// - Mixed content: relations, activation blocks, labels, and relation attributes
+// - Proper semicolon termination for sections and fragments
+
+diagram sequence;
+
+// Participants
+user: Rectangle;
+auth: Rectangle;
+system: Rectangle;
+db as "Database": Rectangle;
+
+// Top-level fragment grouping alternative paths
+fragment "Authentication Flow" {
+    // Successful login path
+    section {
+        user -> [color="blue"] auth: "Submit credentials";
+
+        // Auth service validates with the system
+        activate auth {
+            auth -> [color="green"] system: "Validate";
+            system -> [color="green"] auth: "Valid";
+        };
+
+        // Optional data fetch after successful auth
+        auth -> [color="purple"] db: "Load profile";
+        auth -> [color="blue"] user: "Access granted";
+    };
+
+    // Failed login path
+    section "failed login" {
+        user -> [color="blue"] auth: "Submit credentials";
+        activate auth {
+            auth -> [color="red"] system: "Validate";
+            system -> [color="red"] auth: "Invalid";
+        };
+        auth -> [color="red"] user: "Access denied";
+    };
+
+    // Account locked path with nested decision fragment
+    section "account locked" {
+        user -> [color="blue"] auth: "Submit credentials";
+        activate auth {
+            auth -> [color="orange"] system: "Validate";
+            system -> [color="orange"] auth: "Account locked";
+        };
+        auth -> [color="orange"] user: "Account locked";
+
+        // Nested fragment: recovery options
+        fragment "Recovery Options" {
+            section "password reset" {
+                user -> [color="teal"] auth: "Request reset";
+                auth -> [color="teal"] user: "Reset link sent";
+            };
+            section "contact support" {
+                user -> [color="gray"] auth: "Open support ticket";
+                auth -> [color="gray"] user: "Ticket created";
+            };
+        };
+    };
+};

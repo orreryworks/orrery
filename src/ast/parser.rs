@@ -10,7 +10,7 @@ use winnow::{
     Parser as _,
     combinator::{alt, delimited, not, opt, preceded, repeat, separated},
     error::{ContextError, ErrMode, StrContext},
-    stream::{Offset, Stream, TokenSlice},
+    stream::{Stream, TokenSlice},
     token::any,
 };
 
@@ -24,6 +24,16 @@ fn make_spanned<T>(value: T, span: Span) -> Spanned<T> {
     Spanned::new(value, span)
 }
 
+fn cut_err<'src, O, F>(input: &mut Input<'src>, f: F) -> IResult<'src, O>
+where
+    F: FnOnce(&mut Input<'src>) -> IResult<'src, O>,
+{
+    match f(input) {
+        Ok(o) => Ok(o),
+        Err(ErrMode::Backtrack(e)) | Err(ErrMode::Cut(e)) => Err(ErrMode::Cut(e)),
+        Err(e) => Err(e),
+    }
+}
 /// Parse whitespace and comments
 fn ws_comment<'src>(input: &mut Input<'src>) -> IResult<'src, ()> {
     any.verify(|token: &PositionedToken<'_>| {
@@ -116,9 +126,9 @@ fn nested_identifier<'src>(input: &mut Input<'src>) -> IResult<'src, (String, Sp
 }
 
 /// Parse string literal
-fn string_literal<'src>(input: &mut Input<'src>) -> IResult<'src, String> {
+fn string_literal<'src>(input: &mut Input<'src>) -> IResult<'src, Spanned<String>> {
     any.verify_map(|token: &PositionedToken<'_>| match &token.token {
-        Token::StringLiteral(s) => Some(s.clone()),
+        Token::StringLiteral(s) => Some(Spanned::new(s.clone(), token.span)),
         _ => None,
     })
     .context(StrContext::Label("string literal"))
@@ -297,8 +307,6 @@ fn relation_type<'src>(input: &mut Input<'src>) -> IResult<'src, &'src str> {
 
 /// Parse a component with optional nested elements
 fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
-    let start_checkpoint = input.checkpoint();
-
     let (name, name_span) = identifier.parse_next(input)?;
     let name_spanned = make_spanned(name, name_span);
 
@@ -346,12 +354,9 @@ fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<'src, types
     ws_comments0.parse_next(input)?;
     semicolon.parse_next(input)?;
 
-    let end_checkpoint = input.checkpoint();
-    let span = Span::new(input.offset_from(&start_checkpoint)..input.offset_from(&end_checkpoint));
-
     Ok(types::Element::Component {
         name: name_spanned,
-        display_name: display_name.map(|s| make_spanned(s, span)),
+        display_name,
         type_name: type_name_spanned,
         attributes,
         nested_elements,
@@ -399,7 +404,7 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>
         target: make_spanned(to_component, to_span),
         relation_type: make_spanned(relation_type, Span::new(0..0)), // TODO: track proper span
         type_spec,
-        label: label.map(|l| make_spanned(l, Span::new(0..0))), // TODO: track proper span
+        label,
     })
 }
 
@@ -462,6 +467,109 @@ fn activate_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
     Ok(types::Element::ActivateBlock {
         component: component_spanned,
         elements: nested_elements,
+    })
+}
+
+/// Parse a section block: `section "title" { elements };`
+fn section_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::FragmentSection<'src>> {
+    // Parse "section" keyword
+    any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Section))
+        .context(StrContext::Label("section keyword"))
+        .parse_next(input)?;
+
+    cut_err(input, |input| {
+        // Optional whitespace or comments after the keyword
+        ws_comments0.parse_next(input)?;
+
+        // Optional section title as a spanned string literal
+        let title = opt(string_literal.context(StrContext::Label("section title string literal")))
+            .parse_next(input)?;
+
+        ws_comments0.parse_next(input)?;
+
+        // Parse opening brace
+        any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace))
+            .context(StrContext::Label("opening brace '{'"))
+            .parse_next(input)?;
+
+        ws_comments0.parse_next(input)?;
+
+        // Parse nested elements inside the section
+        let elems = elements
+            .context(StrContext::Label("section content"))
+            .parse_next(input)?;
+
+        ws_comments0.parse_next(input)?;
+
+        // Parse closing brace
+        any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace))
+            .context(StrContext::Label("closing brace '}'"))
+            .parse_next(input)?;
+
+        ws_comments0.parse_next(input)?;
+
+        // Parse semicolon after the section block
+        semicolon
+            .context(StrContext::Label("semicolon after section"))
+            .parse_next(input)?;
+
+        Ok(types::FragmentSection {
+            title,
+            elements: elems,
+        })
+    })
+}
+
+/// Parse a fragment block: `fragment "operation" { section+ };`
+fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+    // Parse "fragment" keyword
+    any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Fragment))
+        .context(StrContext::Label("fragment keyword"))
+        .parse_next(input)?;
+
+    cut_err(input, |input| {
+        // Require at least one whitespace or comment after the keyword
+        ws_comments1
+            .context(StrContext::Label("whitespace after fragment"))
+            .parse_next(input)?;
+
+        // Parse the fragment operation (title) as a spanned string literal
+        let operation = string_literal
+            .context(StrContext::Label("fragment operation string literal"))
+            .parse_next(input)?;
+
+        ws_comments0.parse_next(input)?;
+
+        // Parse opening brace
+        any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace))
+            .context(StrContext::Label("opening brace '{'"))
+            .parse_next(input)?;
+
+        ws_comments0.parse_next(input)?;
+
+        // Parse one or more sections
+        let sections = repeat(1.., preceded(ws_comments0, section_block))
+            .context(StrContext::Label("fragment sections"))
+            .parse_next(input)?;
+
+        ws_comments0.parse_next(input)?;
+
+        // Parse closing brace
+        any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace))
+            .context(StrContext::Label("closing brace '}'"))
+            .parse_next(input)?;
+
+        ws_comments0.parse_next(input)?;
+
+        // Parse semicolon after the fragment block
+        semicolon
+            .context(StrContext::Label("semicolon after fragment"))
+            .parse_next(input)?;
+
+        Ok(types::Element::Fragment(types::Fragment {
+            operation,
+            sections,
+        }))
     })
 }
 
@@ -549,6 +657,7 @@ fn elements<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types::Element<'
             alt((
                 activate_element,
                 deactivate_statement,
+                fragment_block,
                 relation,
                 component_with_elements,
             )),
@@ -724,7 +833,7 @@ mod tests {
         let mut slice = TokenSlice::new(&tokens);
         let result = string_literal.parse_next(&mut slice);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "hello world");
+        assert_eq!(result.unwrap().inner(), "hello world");
     }
 
     #[test]
@@ -1096,14 +1205,14 @@ mod tests {
         let mut input = FilamentTokenSlice::new(&tokens);
         let result = string_literal(&mut input);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "hello");
+        assert_eq!(result.unwrap().inner(), "hello");
 
         // Test strings with escape sequences
         let tokens = tokenize("\"hello\\nworld\"").expect("Failed to tokenize");
         let mut input = FilamentTokenSlice::new(&tokens);
         let result = string_literal(&mut input);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "hello\nworld");
+        assert_eq!(result.unwrap().inner(), "hello\nworld");
 
         // Test failure cases
         let tokens = tokenize("identifier").expect("Failed to tokenize");

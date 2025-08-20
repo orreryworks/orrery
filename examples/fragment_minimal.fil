@@ -1,0 +1,10 @@
+diagram sequence;
+
+a: Rectangle;
+b: Rectangle;
+
+fragment "Minimal" {
+    section {
+        a -> b;
+    };
+};

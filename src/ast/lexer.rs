@@ -108,6 +108,8 @@ fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
             literal("as").context(StrContext::Label("as keyword")),
             literal("deactivate").context(StrContext::Label("deactivate keyword")),
             literal("activate").context(StrContext::Label("activate keyword")),
+            literal("fragment").context(StrContext::Label("fragment keyword")),
+            literal("section").context(StrContext::Label("section keyword")),
         )),
         // Ensure keyword is not followed by identifier character (word boundary)
         peek(not(one_of(|c: char| c.is_ascii_alphanumeric() || c == '_'))),
@@ -121,6 +123,8 @@ fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
         "as" => Token::As,
         "deactivate" => Token::Deactivate,
         "activate" => Token::Activate,
+        "fragment" => Token::Fragment,
+        "section" => Token::Section,
         _ => unreachable!(),
     })
     .context(StrContext::Label("keyword"))
@@ -257,6 +261,8 @@ mod tests {
         test_single_token("as", Token::As);
         test_single_token("deactivate", Token::Deactivate);
         test_single_token("activate", Token::Activate);
+        test_single_token("fragment", Token::Fragment);
+        test_single_token("section", Token::Section);
     }
 
     #[test]

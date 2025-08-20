@@ -14,6 +14,8 @@ pub enum Token<'src> {
     As,
     Activate,
     Deactivate,
+    Fragment,
+    Section,
 
     // Literals
     StringLiteral(String),
@@ -105,6 +107,8 @@ impl fmt::Display for Token<'_> {
             Token::As => write!(f, "as"),
             Token::Activate => write!(f, "activate"),
             Token::Deactivate => write!(f, "deactivate"),
+            Token::Fragment => write!(f, "fragment"),
+            Token::Section => write!(f, "section"),
 
             Token::StringLiteral(s) => write!(f, "\"{s}\""),
             Token::FloatLiteral(n) => write!(f, "{n}"),

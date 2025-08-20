@@ -168,6 +168,44 @@ impl Diagram<'_> {
 }
 
 #[derive(Debug)]
+pub struct FragmentSection<'a> {
+    pub title: Option<Spanned<String>>,
+    pub elements: Vec<Element<'a>>,
+}
+
+impl FragmentSection<'_> {
+    pub fn span(&self) -> Span {
+        let elements_span = self
+            .elements
+            .iter()
+            .map(|elem| elem.span())
+            .reduce(|acc, span| acc.union(span));
+
+        match (&self.title, elements_span) {
+            (Some(title), Some(es)) => title.span().union(es),
+            (Some(title), None) => title.span(),
+            (None, Some(es)) => es,
+            (None, None) => Span::default(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Fragment<'a> {
+    pub operation: Spanned<String>,
+    pub sections: Vec<FragmentSection<'a>>,
+}
+
+impl Fragment<'_> {
+    pub fn span(&self) -> Span {
+        self.sections
+            .iter()
+            .map(|section| section.span())
+            .fold(self.operation.span(), |acc, span| acc.union(span))
+    }
+}
+
+#[derive(Debug)]
 pub enum Element<'a> {
     Component {
         name: Spanned<&'a str>,
@@ -188,6 +226,7 @@ pub enum Element<'a> {
         label: Option<Spanned<String>>,
     },
     Diagram(Diagram<'a>),
+    Fragment(Fragment<'a>),
     ActivateBlock {
         component: Spanned<String>,
         elements: Vec<Element<'a>>,
@@ -253,6 +292,7 @@ impl Element<'_> {
                 span
             }
             Element::Diagram(diagram) => diagram.span(),
+            Element::Fragment(fragment) => fragment.span(),
             Element::ActivateBlock {
                 component,
                 elements,

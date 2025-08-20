@@ -9,7 +9,10 @@
 //! that consumes the node and produces a transformed version.
 
 use super::{
-    parser_types::{Attribute, AttributeValue, Diagram, Element, RelationTypeSpec, TypeDefinition},
+    parser_types::{
+        Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, RelationTypeSpec,
+        TypeDefinition,
+    },
     span::Spanned,
 };
 
@@ -137,6 +140,7 @@ trait Folder<'a> {
             } => self.fold_activate_block(component, elements),
             Element::Activate { component } => Element::Activate { component },
             Element::Deactivate { component } => Element::Deactivate { component },
+            Element::Fragment(fragment) => Element::Fragment(self.fold_fragment(fragment)),
         }
     }
 
@@ -235,6 +239,26 @@ trait Folder<'a> {
         Element::ActivateBlock {
             component: self.fold_activate_component(component),
             elements: self.fold_elements(elements),
+        }
+    }
+
+    /// Fold a fragment section
+    fn fold_fragment_section(&mut self, section: FragmentSection<'a>) -> FragmentSection<'a> {
+        FragmentSection {
+            title: section.title,
+            elements: self.fold_elements(section.elements),
+        }
+    }
+
+    /// Fold a fragment
+    fn fold_fragment(&mut self, fragment: Fragment<'a>) -> Fragment<'a> {
+        Fragment {
+            operation: fragment.operation,
+            sections: fragment
+                .sections
+                .into_iter()
+                .map(|s| self.fold_fragment_section(s))
+                .collect(),
         }
     }
 

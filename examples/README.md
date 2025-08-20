@@ -34,6 +34,10 @@ The generated SVG will be saved as `out.svg` in the current directory.
 - `activate_explicit.fil` - Activation using explicit statements (activate/deactivate)
 - `activate_mixed.fil` - Mixed block and explicit activation usage
 
+### Fragment Blocks
+- `fragment_minimal.fil` - Minimal fragment example
+- `fragment_authentication_flow.fil` - Authentication flow with multiple sections and nested fragments
+
 ### Layout and Styling
 - `arrow_styles.fil` - Different arrow and relation styles
 - `sugiyama_layout.fil` - Sugiyama layout algorithm demonstration

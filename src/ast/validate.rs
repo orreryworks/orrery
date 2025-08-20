@@ -8,7 +8,8 @@ use super::{
     span::Span,
     {
         parser_types::{
-            Attribute, AttributeValue, Diagram, Element, RelationTypeSpec, TypeDefinition,
+            Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection,
+            RelationTypeSpec, TypeDefinition,
         },
         span::Spanned,
     },
@@ -115,7 +116,24 @@ pub trait Visitor<'a> {
             } => self.visit_activate_block(component, elements),
             Element::Activate { component } => self.visit_activate(component),
             Element::Deactivate { component } => self.visit_deactivate(component),
+            Element::Fragment(fragment) => self.visit_fragment(fragment),
         }
+    }
+
+    /// Visit a fragment
+    fn visit_fragment(&mut self, fragment: &Fragment<'a>) {
+        for section in &fragment.sections {
+            self.visit_fragment_section(section);
+        }
+    }
+
+    /// Visit a fragment section
+    fn visit_fragment_section(&mut self, section: &FragmentSection<'a>) {
+        // Traverse section title as a string literal and its elements
+        if let Some(title) = &section.title {
+            self.visit_string_value(title);
+        }
+        self.visit_elements(&section.elements);
     }
 
     /// Visit a component element

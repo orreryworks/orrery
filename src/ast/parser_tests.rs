@@ -1045,6 +1045,122 @@ mod explicit_activation_tests {
     }
 }
 
+#[cfg(test)]
+mod fragment_block_tests {
+    use super::*;
+
+    #[test]
+    fn test_fragment_basic_with_sections() {
+        let source = r#"
+            diagram sequence;
+
+            user: Rectangle;
+            auth: Rectangle;
+            system: Rectangle;
+
+            fragment "Authentication Flow" {
+                section "successful login" {
+                    user -> auth: "Credentials";
+                    auth -> system;
+                    system -> auth: "Valid";
+                    auth -> user: "Access granted";
+                };
+                section "failed login" {
+                    user -> auth: "Credentials";
+                };
+            };
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_nested_fragment_inside_section() {
+        let source = r#"
+            diagram sequence;
+
+            user: Rectangle;
+            auth: Rectangle;
+
+            fragment "Outer" {
+                section "phase" {
+                    user -> auth;
+                    fragment "Inner" {
+                        section "step" {
+                            user -> auth;
+                        };
+                    };
+                };
+            };
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_fragment_missing_section_semicolon_fails() {
+        let source = r#"
+            diagram sequence;
+
+            user: Rectangle;
+            auth: Rectangle;
+
+            fragment "Flow" {
+                section "one" {
+                    user -> auth;
+                } // missing semicolon here
+            };
+        "#;
+        assert_parse_fails(source);
+    }
+
+    #[test]
+    fn test_fragment_missing_fragment_semicolon_fails() {
+        let source = r#"
+            diagram sequence;
+
+            user: Rectangle;
+            auth: Rectangle;
+
+            fragment "Flow" {
+                section "one" {
+                    user -> auth;
+                };
+            } // missing semicolon here
+        "#;
+        assert_parse_fails(source);
+    }
+
+    #[test]
+    fn test_fragment_missing_operation_string_fails() {
+        let source = r#"
+            diagram sequence;
+
+            user: Rectangle;
+            auth: Rectangle;
+
+            fragment { // missing operation string
+                section "one" {
+                    user -> auth;
+                };
+            };
+        "#;
+        assert_parse_fails(source);
+    }
+
+    #[test]
+    fn test_fragment_requires_at_least_one_section_fails() {
+        let source = r#"
+            diagram sequence;
+
+            user: Rectangle;
+            auth: Rectangle;
+
+            fragment "Flow" {
+            };
+        "#;
+        assert_parse_fails(source);
+    }
+}
+
 mod regression_tests {
     use super::*;
 

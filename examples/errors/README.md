@@ -31,6 +31,9 @@ This directory contains example files demonstrating Filament's error reporting s
 - [`deactivate_without_activate.fil`](deactivate_without_activate.fil) - Deactivate without a matching prior activate
 - [`unpaired_activate_end_of_scope.fil`](unpaired_activate_end_of_scope.fil) - Unpaired activate at end of scope
 
+### Fragment Errors
+- [`fragment_in_component_diagram.fil`](fragment_in_component_diagram.fil) - Fragment used in a component diagram (invalid). File also includes commented syntax-error variants (missing section semicolon, missing fragment operation string, missing closing brace).
+
 ### Complex Scenarios
 - [`complex_nested.fil`](complex_nested.fil) - Error in complex nested architecture
 

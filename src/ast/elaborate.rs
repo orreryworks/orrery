@@ -356,6 +356,9 @@ impl<'a> Builder<'a> {
                 parser_types::Element::Deactivate { component } => {
                     self.build_deactivate_element(component, parent_id, diagram_kind)?
                 }
+                parser_types::Element::Fragment(_fragment) => {
+                    todo!("Fragments are not yet supported in elaboration")
+                }
             };
             elements.push(element);
         }

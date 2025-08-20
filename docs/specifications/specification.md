@@ -322,6 +322,91 @@ Validation:
 - A syntax-level validation pass ensures activation pairs are balanced and correctly ordered
 - Semantic checks (diagram kind, component existence) occur during elaboration
 
+### 6.4 Fragment Blocks
+
+Fragments group related interactions in sequence diagrams into labeled sections. They help structure complex message flows, illustrate alternatives, and provide hierarchical organization.
+
+#### 6.4.1 Syntax
+
+```filament
+fragment "operation" {
+    section "title" {
+        // sequence elements...
+        // Valid: component definitions, relations, activate blocks, nested fragments
+    };
+    // one or more sections
+};
+```
+
+Requirements:
+- Fragment operation is required and must be a string literal
+- At least one section is required
+- Section titles are optional; if present, they must be string literals
+- Each section must end with a semicolon
+- The fragment block must end with a semicolon
+
+#### 6.4.2 Semantics
+
+- Sequence diagrams only: Using fragments in component diagrams is invalid
+- Grouping and alternatives: Multiple sections represent distinct phases or alternative paths
+- No namespace creation: Fragments do not create component namespaces; identifiers remain flat
+- Nested fragments: Fragments may be nested within sections
+- Ordering and elaboration: Sections’ contents are integrated into the surrounding sequence flow; later compilation phases operate on flattened elements
+
+Scoping behavior:
+- ✅ Correct: user -> server (flat naming within sections and across fragments)
+- ❌ Incorrect: user::server (no namespace scoping via fragments)
+
+Diagram type restriction:
+- Fragments are only supported in sequence diagrams. Using them in component diagrams produces an error.
+
+#### 6.4.3 Examples
+
+Basic fragment with a single section:
+```filament
+diagram sequence;
+
+a: Rectangle;
+b: Rectangle;
+
+fragment "Minimal" {
+    section {
+        a -> b;
+    };
+};
+```
+
+Multiple sections (alternatives) and nesting:
+```filament
+diagram sequence;
+
+user: Rectangle;
+auth: Rectangle;
+
+fragment "Authentication Flow" {
+    section "successful login" {
+        user -> auth: "Credentials";
+        activate auth {
+            auth -> user: "Access granted";
+        };
+    };
+    section "failed login" {
+        user -> auth: "Credentials";
+        auth -> user: "Access denied";
+    };
+    section "nested decision" {
+        fragment "Recovery" {
+            section "password reset" {
+                user -> auth: "Reset";
+            };
+            section "support" {
+                user -> auth: "Open ticket";
+            };
+        };
+    };
+};
+```
+
 ## 7. Attributes
 
 Attributes customize the appearance and behavior of elements:
