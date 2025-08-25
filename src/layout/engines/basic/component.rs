@@ -7,16 +7,13 @@ use crate::{
     ast,
     draw::{self, Drawable},
     geometry::{Insets, Point, Size},
-    graph::{ContainmentScope, Graph},
+    structure::{ComponentGraph, ContainmentScope},
+    identifier::Id,
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
         layer::{ContentStack, PositionedContent},
     },
-};
-use petgraph::{
-    Direction,
-    graph::{DiGraph, EdgeIndex, NodeIndex},
 };
 use std::{
     cmp::Ordering,
@@ -63,11 +60,11 @@ impl Engine {
     /// Calculate the layout for a component diagram
     pub fn calculate_layout<'a>(
         &self,
-        graph: &'a Graph<'a>,
+        graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts,
     ) -> ContentStack<Layout> {
         let mut content_stack = ContentStack::<Layout>::new();
-        let mut positioned_content_sizes = HashMap::<NodeIndex, Size>::new();
+        let mut positioned_content_sizes = HashMap::<Id, Size>::new();
 
         for containment_scope in graph.containment_scopes() {
             // Calculate component shapes - they contain all sizing information
@@ -83,10 +80,10 @@ impl Engine {
 
             // Build the final component list using the pre-configured shapes
             let components: Vec<Component> = graph
-                .containment_scope_nodes_with_indices(containment_scope)
-                .map(|(node_idx, node)| {
-                    let position = *positions.get(&node_idx).unwrap();
-                    let shape_with_text = component_shapes.remove(&node_idx).unwrap();
+                .scope_nodes(containment_scope)
+                .map(|node| {
+                    let position = *positions.get(&node.id()).unwrap();
+                    let shape_with_text = component_shapes.remove(&node.id()).unwrap();
 
                     Component::new(node, shape_with_text, position)
                 })
@@ -101,7 +98,7 @@ impl Engine {
 
             // Build the list of relations between components
             let relations: Vec<LayoutRelation> = graph
-                .containment_scope_relations(containment_scope)
+                .scope_relations(containment_scope)
                 .filter_map(|relation| {
                     // Only include relations between visible components
                     // (not including relations within inner blocks)
@@ -138,15 +135,15 @@ impl Engine {
     /// Calculate component shapes with proper content size and padding
     fn calculate_component_shapes<'a>(
         &self,
-        graph: &Graph<'a>,
+        graph: &ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
-        positioned_content_sizes: &HashMap<NodeIndex, Size>,
+        positioned_content_sizes: &HashMap<Id, Size>,
         embedded_layouts: &EmbeddedLayouts,
-    ) -> HashMap<NodeIndex, draw::ShapeWithText> {
-        let mut component_shapes: HashMap<NodeIndex, draw::ShapeWithText> = HashMap::new();
+    ) -> HashMap<Id, draw::ShapeWithText> {
+        let mut component_shapes: HashMap<Id, draw::ShapeWithText> = HashMap::new();
 
         // TODO: move it to the best place.
-        for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
+        for node in graph.scope_nodes(containment_scope) {
             let mut shape = draw::Shape::new(Rc::clone(
                 node.type_definition()
                     .shape_definition_rc()
@@ -174,7 +171,7 @@ impl Engine {
                 }
                 ast::Block::Scope(_) => {
                     let content_size = *positioned_content_sizes
-                        .get(&node_idx)
+                        .get(&node.id())
                         .expect("Scope size not found");
                     shape_with_text
                         .set_inner_content_size(content_size)
@@ -184,7 +181,7 @@ impl Engine {
                     // No content to size, so don't call set_inner_content_size
                 }
             };
-            component_shapes.insert(node_idx, shape_with_text);
+            component_shapes.insert(node.id(), shape_with_text);
         }
 
         component_shapes
@@ -193,30 +190,28 @@ impl Engine {
     /// Calculate positions for components in a containment scope
     fn positions<'a>(
         &self,
-        graph: &Graph<'a>,
+        graph: &ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
-        component_shapes: &HashMap<NodeIndex, draw::ShapeWithText>,
-    ) -> HashMap<NodeIndex, Point> {
-        // Step 1: Create a simplified graph
-        let containment_scope_graph = Self::containment_scope_to_graph(graph, containment_scope);
-        // Step 2: Assign layers for the top-level nodes
-        let layers = Self::assign_layers_for_containment_scope_graph(&containment_scope_graph);
-        // Step 3: Calculate layer metrics (widths and spacings)
+        component_shapes: &HashMap<Id, draw::ShapeWithText>,
+    ) -> HashMap<Id, Point> {
+        // Step 1: Assign layers for the top-level nodes
+        let layers = Self::assign_layers_for_containment_scope_graph(graph, containment_scope);
+        // Step 2: Calculate layer metrics (widths and spacings)
         let (layer_widths, layer_spacings) =
             self.calculate_layer_metrics(graph, containment_scope, &layers, component_shapes);
-        // Step 4: Calculate X positions for each layer
+        // Step 3: Calculate X positions for each layer
         let layer_x_positions = self.calculate_layer_x_positions(&layer_widths, &layer_spacings);
-        // Step 5: Position nodes within their layers
+        // Step 4: Position nodes within their layers
         self.position_nodes_in_layers(&layers, &layer_x_positions, component_shapes)
     }
 
     /// Calculate metrics for each layer: widths and spacings between layers
     fn calculate_layer_metrics(
         &self,
-        graph: &Graph,
+        graph: &ComponentGraph,
         containment_scope: &ContainmentScope,
-        layers: &[Vec<NodeIndex>],
-        component_shapes: &HashMap<NodeIndex, draw::ShapeWithText>,
+        layers: &[Vec<Id>],
+        component_shapes: &HashMap<Id, draw::ShapeWithText>,
     ) -> (Vec<f32>, Vec<f32>) {
         // Calculate max width for each layer
         let layer_widths: Vec<f32> = layers
@@ -235,7 +230,7 @@ impl Engine {
             vec![self.padding.horizontal_sum() / 2.0; layers.len().saturating_sub(1)];
 
         // Adjust spacings based on relation labels
-        for relation in graph.containment_scope_relations(containment_scope) {
+        for relation in graph.scope_relations(containment_scope) {
             if let Some(text) = relation.text() {
                 let label_width = text.calculate_size().width();
 
@@ -264,16 +259,16 @@ impl Engine {
     // PERF: Depricate this method in favor of a more efficient approach.
     fn find_node_layers(
         &self,
-        graph: &Graph,
+        graph: &ComponentGraph,
         relation: &ast::Relation,
-        layers: &[Vec<NodeIndex>],
+        layers: &[Vec<Id>],
     ) -> (Option<usize>, Option<usize>) {
         let mut source_layer = None;
         let mut target_layer = None;
 
         for (layer_idx, layer_nodes) in layers.iter().enumerate() {
-            for node_idx in layer_nodes {
-                let node = graph.node_from_idx(*node_idx);
+            for node_id in layer_nodes {
+                let node = graph.node_by_id(*node_id).expect("Node not found");
                 if node.id() == relation.source() {
                     source_layer = Some(layer_idx);
                 }
@@ -311,10 +306,10 @@ impl Engine {
     /// Position nodes within their layers
     fn position_nodes_in_layers(
         &self,
-        layers: &[Vec<NodeIndex>],
+        layers: &[Vec<Id>],
         layer_x_positions: &[f32],
-        component_shapes: &HashMap<NodeIndex, draw::ShapeWithText>,
-    ) -> HashMap<NodeIndex, Point> {
+        component_shapes: &HashMap<Id, draw::ShapeWithText>,
+    ) -> HashMap<Id, Point> {
         let mut positions = HashMap::new();
 
         for (layer_idx, layer_nodes) in layers.iter().enumerate() {
@@ -341,29 +336,17 @@ impl Engine {
 
     /// Helper method to assign layers for a specific graph
     fn assign_layers_for_containment_scope_graph(
-        containment_scope_graph: &DiGraph<NodeIndex, EdgeIndex>,
-    ) -> Vec<Vec<NodeIndex>> {
+        graph: &ComponentGraph,
+        containment_scope: &ContainmentScope,
+    ) -> Vec<Vec<Id>> {
         let mut layers = Vec::new();
         let mut visited = HashSet::new();
 
         // Find root nodes
-        let root_nodes: Vec<_> = containment_scope_graph
-            .node_indices()
-            .filter(|&idx| {
-                containment_scope_graph
-                    .neighbors_directed(idx, Direction::Incoming)
-                    .count()
-                    == 0
-            })
-            .map(|idx| (idx, containment_scope_graph.node_weight(idx).unwrap()))
-            .collect();
+        let root_nodes: Vec<_> = graph.scope_roots(containment_scope).collect();
 
         let start_nodes = if root_nodes.is_empty() {
-            containment_scope_graph
-                .node_indices()
-                .take(1)
-                .map(|idx| (idx, containment_scope_graph.node_weight(idx).unwrap()))
-                .collect()
+            graph.scope_nodes(containment_scope).take(1).collect()
         } else {
             root_nodes
         };
@@ -374,92 +357,66 @@ impl Engine {
             queue.push_back((node, 0));
         }
 
-        while let Some(((layer_idx, &original_idx), layer)) = queue.pop_front() {
-            if visited.contains(&layer_idx) {
+        while let Some((node, layer)) = queue.pop_front() {
+            if !visited.insert(node.id()) {
                 continue;
             }
-            visited.insert(layer_idx);
             while layers.len() <= layer {
                 layers.push(Vec::new());
             }
 
-            layers[layer].push(original_idx);
+            layers[layer].push(node.id());
 
-            for child in containment_scope_graph.neighbors(layer_idx) {
-                if !visited.contains(&child) {
-                    let child_original_idx = containment_scope_graph.node_weight(child).unwrap();
-                    queue.push_back(((child, child_original_idx), layer + 1));
-                }
+            for neighbor in graph
+                .scope_outgoing_neighbors(containment_scope, node.id())
+                .filter(|node| !visited.contains(&node.id()))
+            {
+                queue.push_back((neighbor, layer + 1));
             }
         }
 
         // Handle disconnected components by processing any remaining unvisited nodes
-        while visited.len() < containment_scope_graph.node_count() {
+        while visited.len() < containment_scope.nodes_count() {
             // Find an unvisited node to start a new component
-            let unvisited_node = containment_scope_graph
-                .node_indices()
-                .find(|&idx| !visited.contains(&idx))
+            // PERF: This can be an outer loop for a single iteration.
+            let unvisited_node_id = containment_scope
+                .node_ids()
+                .find(|id| !visited.contains(id))
                 .expect("Should have unvisited nodes");
 
-            let original_idx = containment_scope_graph.node_weight(unvisited_node).unwrap();
-            queue.push_back(((unvisited_node, original_idx), 0));
+            let unvisited_node = graph.node_by_id(unvisited_node_id).expect("Node not found");
+
+            queue.push_back((unvisited_node, 0));
 
             // Process this disconnected component using the same BFS logic
-            while let Some(((layer_idx, &original_idx), layer)) = queue.pop_front() {
-                if visited.contains(&layer_idx) {
+            // TODO: this is a duplicated code.
+            while let Some((node, layer)) = queue.pop_front() {
+                if !visited.insert(node.id()) {
                     continue;
                 }
-                visited.insert(layer_idx);
                 while layers.len() <= layer {
                     layers.push(Vec::new());
                 }
 
-                layers[layer].push(original_idx);
+                layers[layer].push(node.id());
 
-                for child in containment_scope_graph.neighbors(layer_idx) {
-                    if !visited.contains(&child) {
-                        let child_original_idx =
-                            containment_scope_graph.node_weight(child).unwrap();
-                        queue.push_back(((child, child_original_idx), layer + 1));
-                    }
+                for neighbor in graph
+                    .scope_outgoing_neighbors(containment_scope, node.id())
+                    .filter(|node| !visited.contains(&node.id()))
+                {
+                    queue.push_back((neighbor, layer + 1));
                 }
             }
         }
 
         layers
     }
-
-    fn containment_scope_to_graph(
-        graph: &Graph,
-        containment_scope: &ContainmentScope,
-    ) -> DiGraph<NodeIndex, EdgeIndex> {
-        let mut layer_graph = DiGraph::new();
-        let mut node_map = HashMap::new();
-
-        // Add nodes from the layer to the filtered graph
-        for node_idx in containment_scope.node_indices() {
-            let new_idx = layer_graph.add_node(node_idx);
-            node_map.insert(node_idx, new_idx);
-        }
-
-        // Add edges between nodes in the layer
-        for (edge_idx, source, target) in
-            graph.containment_scope_relation_endpoint_indices(containment_scope)
-        {
-            if let (Some(&src_idx), Some(&tgt_idx)) = (node_map.get(&source), node_map.get(&target))
-            {
-                layer_graph.add_edge(src_idx, tgt_idx, edge_idx);
-            }
-        }
-
-        layer_graph
-    }
 }
 
 impl ComponentEngine for Engine {
     fn calculate<'a>(
         &self,
-        graph: &'a Graph<'a>,
+        graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts,
     ) -> ContentStack<Layout> {
         self.calculate_layout(graph, embedded_layouts)

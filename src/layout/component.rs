@@ -1,9 +1,9 @@
 use crate::{
     ast, draw,
     geometry::{self, Size},
-    graph,
     identifier::Id,
     layout::{layer, positioning::LayoutSizing},
+    structure,
 };
 use log::{debug, error};
 use std::{collections::HashMap, rc::Rc};
@@ -195,20 +195,19 @@ impl LayoutSizing for Layout {
 // TODO: Once added enough abstractions, make this a method on ContentStack.
 pub fn adjust_positioned_contents_offset<'a>(
     content_stack: &mut layer::ContentStack<Layout>,
-    graph: &'a graph::Graph<'a>,
+    graph: &'a structure::ComponentGraph<'a, '_>,
 ) {
     let container_indices: HashMap<_, _> = graph
         .containment_scopes()
-        .iter()
         .enumerate()
         .filter_map(|(idx, scope)| scope.container().map(|container| (container, idx)))
         .collect();
 
-    for (source_idx, source_scope) in graph.containment_scopes().iter().enumerate().rev() {
-        for (node_idx, destination_idx) in source_scope.node_indices().filter_map(|node_idx| {
+    for (source_idx, source_scope) in graph.containment_scopes().enumerate().rev() {
+        for (node_id, destination_idx) in source_scope.node_ids().filter_map(|node_id| {
             container_indices
-                .get(&node_idx)
-                .map(|&destination_idx| (node_idx, destination_idx))
+                .get(&node_id)
+                .map(|&destination_idx| (node_id, destination_idx))
         }) {
             if source_idx == destination_idx {
                 // If the source and destination are the same, skip
@@ -216,7 +215,7 @@ pub fn adjust_positioned_contents_offset<'a>(
                 continue;
             }
             let source = content_stack.get_unchecked(source_idx);
-            let node = graph.node_from_idx(node_idx);
+            let node = graph.node_by_id(node_id).expect("Node must exist");
 
             // Find the component in the source layer that matches the node
             let source_component = source

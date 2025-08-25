@@ -5,9 +5,9 @@ pub mod draw;
 mod error;
 mod export;
 pub mod geometry;
-mod graph;
 pub mod identifier;
 mod layout;
+mod structure;
 
 use clap::Parser;
 use config::AppConfig;
@@ -57,9 +57,9 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
 
     // Process diagram based on its type
     // Build the diagram graph (common for all types)
-    info!(diagram_kind:? = elaborated_ast.kind(); "Building diagram graph");
-    let graphs = graph::Collection::from_diagram(&elaborated_ast)?;
-    debug!("Graph built successfully");
+    info!(diagram_kind:? = elaborated_ast.kind(); "Building diagram structure");
+    let diagram_hierarchy = structure::DiagramHierarchy::from_diagram(&elaborated_ast)?;
+    debug!("Structure built successfully");
 
     // Create SVG exporter builder with diagram properties
     let mut svg_exporter = export::svg::SvgBuilder::new(&cfg.output)
@@ -78,7 +78,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
     // Each embedded diagram uses its own layout engine as specified in its attributes
     info!("Processing diagrams in hierarchy");
 
-    let layered_layout = engine_builder.build(&graphs);
+    let layered_layout = engine_builder.build(&diagram_hierarchy);
 
     info!(layers_count = layered_layout.len(); "Layout calculated",);
 

@@ -14,16 +14,15 @@ mod force;
 mod sugiyama;
 
 use crate::{
-    ast::{DiagramKind, LayoutEngine},
-    draw,
-    geometry::{self, Insets},
-    graph::{Collection, Graph},
+    ast::LayoutEngine,
+    draw, geometry,
     identifier::Id,
     layout::{
         component,
         layer::{LayeredLayout, LayoutContent},
         sequence,
     },
+    structure,
 };
 use log::trace;
 use std::collections::HashMap;
@@ -64,7 +63,7 @@ pub trait ComponentEngine {
     ///   calculating it again.
     fn calculate<'a>(
         &self,
-        graph: &'a Graph<'a>,
+        graph: &'a structure::ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts,
     ) -> ContentStack<component::Layout>;
 }
@@ -80,7 +79,7 @@ pub trait SequenceEngine {
     ///   calculating it again.
     fn calculate<'a>(
         &self,
-        graph: &'a Graph<'a>,
+        graph: &'a structure::SequenceGraph<'a>,
         embedded_layouts: &EmbeddedLayouts,
     ) -> ContentStack<sequence::Layout>;
 }
@@ -94,7 +93,7 @@ pub struct EngineBuilder {
     sequence_engines: HashMap<LayoutEngine, Box<dyn SequenceEngine>>,
 
     // Configuration options
-    component_padding: Insets,
+    component_padding: geometry::Insets,
     min_component_spacing: f32,
     message_spacing: f32,
     force_simulation_iterations: usize,
@@ -107,7 +106,7 @@ impl EngineBuilder {
     }
 
     /// Set the padding around components
-    pub fn with_component_padding(mut self, padding: Insets) -> Self {
+    pub fn with_component_padding(mut self, padding: geometry::Insets) -> Self {
         self.component_padding = padding;
         self
     }
@@ -188,7 +187,10 @@ impl EngineBuilder {
     /// This is a two-phase process:
     /// 1. Calculate layouts for all diagrams in post-order (innermost to outermost)
     /// 2. Adjust positions of embedded diagrams relative to their containers
-    pub fn build<'a>(mut self, collection: &'a Collection<'a>) -> LayeredLayout {
+    pub fn build<'a>(
+        mut self,
+        collection: &'a structure::DiagramHierarchy<'a, '_>,
+    ) -> LayeredLayout {
         let mut layered_layout = LayeredLayout::new();
 
         let mut layout_info: HashMap<Id, LayoutResult> = HashMap::new();
@@ -205,17 +207,17 @@ impl EngineBuilder {
         )> = Vec::new();
 
         // First phase: calculate all layouts
-        for (type_id, graph) in collection.diagram_tree_in_post_order() {
+        for (container_id, graphed_diagram) in collection.iter_post_order() {
             // Calculate the layout for this diagram using the appropriate engine
-            let diagram = graph.diagram();
-            let layout_result = match diagram.kind() {
-                DiagramKind::Component => {
+            let diagram = graphed_diagram.ast_diagram();
+            let layout_result = match graphed_diagram.graph_kind() {
+                structure::GraphKind::ComponentGraph(graph) => {
                     let engine = self.component_engine(diagram.layout_engine());
 
                     let layout = engine.calculate(graph, &layout_info);
                     LayoutResult::Component(layout)
                 }
-                DiagramKind::Sequence => {
+                structure::GraphKind::SequenceGraph(graph) => {
                     let engine = self.sequence_engine(diagram.layout_engine());
 
                     let layout = engine.calculate(graph, &layout_info);
@@ -234,7 +236,7 @@ impl EngineBuilder {
             let layer_idx = layered_layout.add_layer(layer_content);
 
             // Record the mapping from container ID to its layer index
-            if let Some(id) = type_id {
+            if let Some(id) = container_id {
                 container_element_to_layer.insert(id, layer_idx);
             }
 
@@ -281,7 +283,7 @@ impl EngineBuilder {
             };
 
             // Store the layout for embedded diagram references
-            if let Some(id) = type_id {
+            if let Some(id) = container_id {
                 layout_info.insert(id, layout_result);
             }
         }

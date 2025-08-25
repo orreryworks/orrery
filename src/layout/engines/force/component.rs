@@ -3,11 +3,12 @@
 //! This module implements a force-directed graph layout algorithm
 //! for component diagrams.
 
+use crate::identifier::Id;
 use crate::{
     ast,
     draw::{self, Drawable},
     geometry::{Insets, Point, Size},
-    graph::{ContainmentScope, Graph},
+    structure::{ComponentGraph, ContainmentScope},
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
@@ -15,7 +16,6 @@ use crate::{
     },
 };
 use log::debug;
-use petgraph::graph::NodeIndex;
 use std::{collections::HashMap, rc::Rc};
 
 /// Force layout engine for component diagrams
@@ -100,15 +100,15 @@ impl Engine {
     /// Calculate component shapes with proper sizing and padding
     fn calculate_component_shapes<'a>(
         &self,
-        graph: &Graph<'a>,
+        graph: &ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
-        positioned_content_sizes: &HashMap<NodeIndex, Size>,
+        positioned_content_sizes: &HashMap<Id, Size>,
         embedded_layouts: &EmbeddedLayouts,
-    ) -> HashMap<NodeIndex, draw::ShapeWithText> {
-        let mut component_shapes: HashMap<NodeIndex, draw::ShapeWithText> = HashMap::new();
+    ) -> HashMap<Id, draw::ShapeWithText> {
+        let mut component_shapes: HashMap<Id, draw::ShapeWithText> = HashMap::new();
 
         // TODO: move it to the best place.
-        for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
+        for node in graph.scope_nodes(containment_scope) {
             let mut shape = draw::Shape::new(Rc::clone(
                 node.type_definition()
                     .shape_definition_rc()
@@ -136,7 +136,7 @@ impl Engine {
                 }
                 ast::Block::Scope(_) => {
                     let content_size = *positioned_content_sizes
-                        .get(&node_idx)
+                        .get(&node.id())
                         .expect("Scope size not found");
                     shape_with_text
                         .set_inner_content_size(content_size)
@@ -146,7 +146,7 @@ impl Engine {
                     // No content to size, so don't call set_inner_content_size
                 }
             };
-            component_shapes.insert(node_idx, shape_with_text);
+            component_shapes.insert(node.id(), shape_with_text);
         }
 
         component_shapes
@@ -155,25 +155,23 @@ impl Engine {
     /// Initialize random positions for components
     fn initialize_positions<'a>(
         &self,
-        graph: &Graph<'a>,
+        graph: &ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
-        _component_sizes: &HashMap<NodeIndex, Size>,
-    ) -> HashMap<NodeIndex, Point> {
+        _component_sizes: &HashMap<Id, Size>,
+    ) -> HashMap<Id, Point> {
         use rand::Rng;
         let mut rng = rand::rng();
 
         // Calculate approximate grid dimensions
-        let node_count = graph
-            .containment_scope_nodes_with_indices(containment_scope)
-            .count();
+        let node_count = containment_scope.nodes_count();
         let grid_size = (node_count as f32).sqrt().ceil() as usize;
         let cell_size = self.min_distance * 1.5;
 
         // Place nodes in a grid pattern with some randomness
         graph
-            .containment_scope_nodes_with_indices(containment_scope)
+            .scope_nodes(containment_scope)
             .enumerate()
-            .map(|(i, (node_idx, _node))| {
+            .map(|(i, node)| {
                 let row = i / grid_size;
                 let col = i % grid_size;
 
@@ -184,7 +182,7 @@ impl Engine {
                 let jitter =
                     Point::new(rng.random_range(-20.0..20.0), rng.random_range(-20.0..20.0));
 
-                (node_idx, base.add_point(jitter))
+                (node.id(), base.add_point(jitter))
             })
             .collect()
     }
@@ -192,13 +190,13 @@ impl Engine {
     /// Run force-directed layout algorithm
     fn run_force_simulation<'a>(
         &self,
-        graph: &Graph<'a>,
+        graph: &ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
-        component_sizes: &HashMap<NodeIndex, Size>,
-    ) -> HashMap<NodeIndex, Point> {
+        component_sizes: &HashMap<Id, Size>,
+    ) -> HashMap<Id, Point> {
         // Initialize positions in a grid pattern
         let mut positions = self.initialize_positions(graph, containment_scope, component_sizes);
-        let mut velocities: HashMap<NodeIndex, (f32, f32)> = HashMap::new();
+        let mut velocities: HashMap<Id, (f32, f32)> = HashMap::new();
 
         // Initialize velocities
         for &node_idx in positions.keys() {
@@ -208,7 +206,7 @@ impl Engine {
         // Run simulation for fixed number of iterations
         for _ in 0..self.iterations {
             // Calculate forces between all components
-            let mut forces: HashMap<NodeIndex, (f32, f32)> = HashMap::new();
+            let mut forces: HashMap<Id, (f32, f32)> = HashMap::new();
 
             // Initialize forces
             for &node_idx in positions.keys() {
@@ -216,7 +214,7 @@ impl Engine {
             }
 
             // Get all nodes for iteration
-            let nodes: Vec<NodeIndex> = positions.keys().copied().collect();
+            let nodes: Vec<Id> = positions.keys().copied().collect();
 
             // Add repulsive forces between all components
             for &node_i in &nodes {
@@ -264,20 +262,13 @@ impl Engine {
             }
 
             // Add attractive forces (spring forces) between connected components
-            for relation in graph.containment_scope_relations(containment_scope) {
-                // Get node indices for source and target
-                let source_node_idx = graph
-                    .containment_scope_nodes_with_indices(containment_scope)
-                    .find(|(_, node)| node.id() == relation.source())
-                    .map(|(idx, _)| idx);
-                let target_node_idx = graph
-                    .containment_scope_nodes_with_indices(containment_scope)
-                    .find(|(_, node)| node.id() == relation.target())
-                    .map(|(idx, _)| idx);
+            for relation in graph.scope_relations(containment_scope) {
+                // Get node identifiers for source and target
+                let source = relation.source();
+                let target = relation.target();
 
-                if let (Some(source), Some(target)) = (source_node_idx, target_node_idx)
-                    && let (Some(&pos_source), Some(&pos_target)) =
-                        (positions.get(&source), positions.get(&target))
+                if let (Some(&pos_source), Some(&pos_target)) =
+                    (positions.get(&source), positions.get(&target))
                 {
                     let dist = pos_source.sub_point(pos_target);
 
@@ -327,7 +318,7 @@ impl Engine {
     }
 
     /// Center the layout around the origin
-    fn center_layout(&self, positions: &mut HashMap<NodeIndex, Point>) {
+    fn center_layout(&self, positions: &mut HashMap<Id, Point>) {
         if positions.is_empty() {
             return;
         }
@@ -371,15 +362,15 @@ impl Engine {
 impl ComponentEngine for Engine {
     fn calculate<'a>(
         &self,
-        graph: &'a Graph<'a>,
+        graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts,
     ) -> ContentStack<Layout> {
         let mut content_stack = ContentStack::<Layout>::new();
-        let mut positioned_content_sizes = HashMap::<NodeIndex, Size>::new();
+        let mut positioned_content_sizes = HashMap::<Id, Size>::new();
 
         for containment_scope in graph.containment_scopes() {
             debug!(
-                scope_node_count = graph.containment_scope_nodes_with_indices(containment_scope).count();
+                scope_node_count = containment_scope.nodes_count();
                 "Processing containment scope with force layout"
             );
 
@@ -392,7 +383,7 @@ impl ComponentEngine for Engine {
             );
 
             // Extract sizes from shapes for position calculation
-            let component_sizes: HashMap<NodeIndex, Size> = component_shapes
+            let component_sizes: HashMap<Id, Size> = component_shapes
                 .iter()
                 .map(|(idx, shape_with_text)| (*idx, shape_with_text.size()))
                 .collect();
@@ -402,10 +393,10 @@ impl ComponentEngine for Engine {
 
             // Build the final component list using the pre-configured shapes
             let components: Vec<Component> = graph
-                .containment_scope_nodes_with_indices(containment_scope)
-                .map(|(node_idx, node)| {
-                    let position = *positions.get(&node_idx).unwrap();
-                    let shape_with_text = component_shapes.remove(&node_idx).unwrap();
+                .scope_nodes(containment_scope)
+                .map(|node| {
+                    let position = *positions.get(&node.id()).unwrap();
+                    let shape_with_text = component_shapes.remove(&node.id()).unwrap();
 
                     Component::new(node, shape_with_text, position)
                 })
@@ -420,7 +411,7 @@ impl ComponentEngine for Engine {
 
             // Build the list of relations between components
             let relations: Vec<LayoutRelation> = graph
-                .containment_scope_relations(containment_scope)
+                .scope_relations(containment_scope)
                 .filter_map(|relation| {
                     // Only include relations between visible components
                     // (not including relations within inner blocks)
@@ -441,15 +432,15 @@ impl ComponentEngine for Engine {
 
             let positioned_content = PositionedContent::new(Layout::new(components, relations));
 
-            if let Some(container) = containment_scope.container() {
+            if let Some(container_id) = containment_scope.container() {
                 // If this layer is a container, we need to adjust its size based on its contents
                 let size = positioned_content.layout_size();
                 debug!(
-                    container_id:? = graph.node_from_idx(container).id(),
+                    container_id:? = container_id,
                     size:? = size;
                     "Recording container size for force layout"
                 );
-                positioned_content_sizes.insert(container, size);
+                positioned_content_sizes.insert(container_id, size);
             }
             content_stack.push(positioned_content);
         }

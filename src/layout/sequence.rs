@@ -1,12 +1,10 @@
 use crate::{
-    ast,
-    draw::{self, Lifeline, PositionedDrawable},
+    ast, draw,
     geometry::{Bounds, Point, Size},
-    graph,
-    layout::{component, layer, positioning::LayoutSizing},
+    layout::{component, positioning::LayoutSizing},
 };
-use log::{debug, error, warn};
-use std::{collections::HashMap, rc::Rc};
+use log::warn;
+use std::rc::Rc;
 
 /// Sequence diagram participant that holds its drawable component and lifeline.
 #[derive(Debug, Clone)]
@@ -33,7 +31,7 @@ impl Participant {
     }
 
     /// Borrow the positioned lifeline drawable.
-    pub fn lifeline(&self) -> &PositionedDrawable<Lifeline> {
+    pub fn lifeline(&self) -> &draw::PositionedDrawable<draw::Lifeline> {
         &self.lifeline
     }
 }
@@ -138,9 +136,9 @@ pub struct ActivationBox {
 ///
 /// # Lifecycle
 ///
-/// 1. **Creation**: Created immediately when [`Event::Activate`] occurs with exact start position
+/// 1. **Creation**: Created immediately when [`SequenceEvent::Activate`] occurs with exact start position
 /// 2. **Stack Management**: Stored in participant-specific activation stacks
-/// 3. **Conversion**: Converted to [`ActivationBox`] when [`Event::Deactivate`] occurs
+/// 3. **Conversion**: Converted to [`ActivationBox`] when [`SequenceEvent::Deactivate`] occurs
 #[derive(Debug, Clone)]
 pub struct ActivationTiming {
     participant_index: usize,
@@ -394,73 +392,6 @@ impl LayoutSizing for Layout {
             bounds.width(),
             self.max_lifeline_end() - bounds.min_y(), // Height from top to bottom lifeline
         )
-    }
-}
-
-/// Adjusts the offset of positioned contents in a content stack based on containment relationships.
-///
-/// This method handles the proper positioning of nested elements within their containers.
-// TODO: Once added enough abstractions, make this a method on ContentStack.
-pub fn adjust_positioned_contents_offset<'a>(
-    content_stack: &mut layer::ContentStack<Layout>,
-    graph: &'a graph::Graph<'a>,
-) {
-    let container_indices: HashMap<_, _> = graph
-        .containment_scopes()
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, scope)| scope.container().map(|container| (container, idx)))
-        .collect();
-
-    for (source_idx, source_scope) in graph.containment_scopes().iter().enumerate().rev() {
-        for (node_idx, destination_idx) in source_scope.node_indices().filter_map(|node_idx| {
-            container_indices
-                .get(&node_idx)
-                .map(|&destination_idx| (node_idx, destination_idx))
-        }) {
-            if source_idx == destination_idx {
-                // If the source and destination are the same, skip
-                error!(index = source_idx; "Source and destination indices are the same");
-                continue;
-            }
-            let source = content_stack.get_unchecked(source_idx);
-            let node = graph.node_from_idx(node_idx);
-
-            // Find the participant in the source layer that matches the node
-            let source_participant = source
-                .content()
-                .participants()
-                .iter()
-                .find(|participant| participant.component().node_id() == node.id())
-                .expect("Participant must exist in source layer");
-
-            let target_offset = source
-                .offset()
-                .add_point(source_participant.component().bounds().min_point())
-                .add_point(
-                    source_participant
-                        .component()
-                        .drawable()
-                        .inner()
-                        .shape_to_inner_content_min_point(),
-                ); // TODO: This does not account for text.
-
-            debug!(
-                node_id:? = node.id(),
-                source_offset:? = source.offset();
-                "Adjusting positioned content offset [source]",
-            );
-
-            let target = content_stack.get_mut_unchecked(destination_idx);
-            debug!(
-                node_id:? = node.id(),
-                original_offset:? = target.offset(),
-                new_offset:? = target_offset;
-                "Adjusting positioned content offset [target]",
-            );
-
-            target.set_offset(target_offset);
-        }
     }
 }
 

@@ -1,8 +1,9 @@
+use crate::identifier::Id;
 use crate::{
     ast,
     draw::{self, Drawable},
     geometry::{Insets, Point, Size},
-    graph::{ContainmentScope, Graph},
+    structure::{ComponentGraph, ContainmentScope},
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
@@ -10,7 +11,6 @@ use crate::{
     },
 };
 use log::debug;
-use petgraph::graph::NodeIndex;
 use std::{collections::HashMap, rc::Rc};
 
 /// The Sugiyama layout engine for component diagrams
@@ -68,11 +68,11 @@ impl Engine {
 
     fn calculate_layout<'a>(
         &self,
-        graph: &'a Graph<'a>,
+        graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts,
     ) -> ContentStack<Layout> {
         let mut content_stack = ContentStack::<Layout>::new();
-        let mut positioned_content_sizes = HashMap::<NodeIndex, Size>::new();
+        let mut positioned_content_sizes = HashMap::<Id, Size>::new();
 
         for containment_scope in graph.containment_scopes() {
             // Calculate component shapes - they contain all sizing information
@@ -84,7 +84,7 @@ impl Engine {
             );
 
             // Extract sizes from shapes for position calculation
-            let component_sizes: HashMap<NodeIndex, Size> = component_shapes
+            let component_sizes: HashMap<Id, Size> = component_shapes
                 .iter()
                 .map(|(idx, shape_with_text)| (*idx, shape_with_text.size()))
                 .collect();
@@ -94,10 +94,10 @@ impl Engine {
 
             // Build the final component list using the pre-configured shapes
             let components: Vec<Component> = graph
-                .containment_scope_nodes_with_indices(containment_scope)
-                .map(|(node_idx, node)| {
-                    let position = *positions.get(&node_idx).unwrap();
-                    let shape_with_text = component_shapes.remove(&node_idx).unwrap();
+                .scope_nodes(containment_scope)
+                .map(|node| {
+                    let position = *positions.get(&node.id()).unwrap();
+                    let shape_with_text = component_shapes.remove(&node.id()).unwrap();
 
                     Component::new(node, shape_with_text, position)
                 })
@@ -112,7 +112,7 @@ impl Engine {
 
             // Build the list of relations between components
             let relations: Vec<LayoutRelation> = graph
-                .containment_scope_relations(containment_scope)
+                .scope_relations(containment_scope)
                 .filter_map(|relation| {
                     // Only include relations between visible components
                     // (not including relations within inner blocks)
@@ -149,15 +149,15 @@ impl Engine {
     /// Calculate component shapes with proper sizing and padding
     fn calculate_component_shapes<'a>(
         &self,
-        graph: &Graph<'a>,
+        graph: &ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
-        positioned_content_sizes: &HashMap<NodeIndex, Size>,
+        positioned_content_sizes: &HashMap<Id, Size>,
         embedded_layouts: &EmbeddedLayouts,
-    ) -> HashMap<NodeIndex, draw::ShapeWithText> {
-        let mut component_shapes: HashMap<NodeIndex, draw::ShapeWithText> = HashMap::new();
+    ) -> HashMap<Id, draw::ShapeWithText> {
+        let mut component_shapes: HashMap<Id, draw::ShapeWithText> = HashMap::new();
 
         // TODO: move it to the best place.
-        for (node_idx, node) in graph.containment_scope_nodes_with_indices(containment_scope) {
+        for node in graph.scope_nodes(containment_scope) {
             let mut shape = draw::Shape::new(Rc::clone(
                 node.type_definition()
                     .shape_definition_rc()
@@ -185,7 +185,7 @@ impl Engine {
                 }
                 ast::Block::Scope(_) => {
                     let content_size = *positioned_content_sizes
-                        .get(&node_idx)
+                        .get(&node.id())
                         .expect("Scope size not found");
                     shape_with_text
                         .set_inner_content_size(content_size)
@@ -195,7 +195,7 @@ impl Engine {
                     // No content to size, so don't call set_inner_content_size
                 }
             };
-            component_shapes.insert(node_idx, shape_with_text);
+            component_shapes.insert(node.id(), shape_with_text);
         }
 
         component_shapes
@@ -204,44 +204,32 @@ impl Engine {
     /// Calculate positions for components in a containment scope
     fn positions<'a>(
         &self,
-        graph: &Graph<'a>,
+        graph: &ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
-        _component_sizes: &HashMap<NodeIndex, Size>,
-    ) -> HashMap<NodeIndex, Point> {
+        _component_sizes: &HashMap<Id, Size>,
+    ) -> HashMap<Id, Point> {
         // Prepare layout
         let mut positions = HashMap::new();
 
         // Convert our graph to a format suitable for the Sugiyama algorithm
         let mut edges = Vec::new();
-        let mut node_ids = HashMap::new();
+        let mut node_ids: HashMap<Id, u32> = HashMap::new();
 
         // Get nodes for this containment scope
-        let scope_nodes: Vec<_> = graph
-            .containment_scope_nodes_with_indices(containment_scope)
-            .collect();
+        let scope_nodes: Vec<_> = graph.scope_nodes(containment_scope).collect();
 
-        // Map node indices to u32 IDs for rust-sugiyama
-        for (i, (node_idx, _)) in scope_nodes.iter().enumerate() {
+        // Map node IDs to u32 IDs for rust-sugiyama
+        for (i, node) in scope_nodes.iter().enumerate() {
             let id = i as u32;
-            node_ids.insert(*node_idx, id);
+            node_ids.insert(node.id(), id);
         }
 
         // Extract edges for this containment scope
-        for relation in graph.containment_scope_relations(containment_scope) {
-            // Find source and target node indices
-            let source_node_idx = scope_nodes
-                .iter()
-                .find(|(_, node)| node.id() == relation.source())
-                .map(|(idx, _)| *idx);
-            let target_node_idx = scope_nodes
-                .iter()
-                .find(|(_, node)| node.id() == relation.target())
-                .map(|(idx, _)| *idx);
-
-            if let (Some(source_idx), Some(target_idx)) = (source_node_idx, target_node_idx)
-                && let (Some(&source_id), Some(&target_id)) =
-                    (node_ids.get(&source_idx), node_ids.get(&target_idx))
-            {
+        for relation in graph.scope_relations(containment_scope) {
+            if let (Some(&source_id), Some(&target_id)) = (
+                node_ids.get(&relation.source()),
+                node_ids.get(&relation.target()),
+            ) {
                 // Skip self-loops
                 if source_id != target_id {
                     edges.push((source_id, target_id));
@@ -256,8 +244,8 @@ impl Engine {
                 edges.len()
             );
 
-            // Create a bidirectional mapping between our original node indices and sequential IDs
-            let id_to_node_idx: HashMap<u32, NodeIndex> =
+            // Create a bidirectional mapping between our original node IDs and sequential IDs
+            let id_to_node_id: HashMap<u32, Id> =
                 node_ids.iter().map(|(&node, &id)| (id, node)).collect();
 
             // Try the rust_sugiyama crate with our sequential IDs, catching any panics
@@ -284,14 +272,14 @@ impl Engine {
                             continue;
                         };
 
-                        // Map the ID back to our original node index
-                        if let Some(&node_idx) = id_to_node_idx.get(&node_id) {
+                        // Map the ID back to our original node Id
+                        if let Some(&node_id) = id_to_node_id.get(&node_id) {
                             // Scale coordinates for proper spacing
                             // Apply spacing that ensures adequate separation between nodes
                             // Use smaller scaling factors to reduce padding
                             let x_pos = (x as f32) * self.horizontal_spacing * 1.0;
                             let y_pos = (y as f32) * self.vertical_spacing * 1.0;
-                            positions.insert(node_idx, Point::new(x_pos, y_pos));
+                            positions.insert(node_id, Point::new(x_pos, y_pos));
                         }
                     }
 
@@ -333,18 +321,18 @@ impl Engine {
         } else if !scope_nodes.is_empty() {
             // No edges but we have nodes - arrange them horizontally with positive coordinates
             debug!("Graph has no edges. Arranging nodes horizontally with positive coordinates.");
-            for (i, (node_idx, _)) in scope_nodes.iter().enumerate() {
+            for (i, node) in scope_nodes.iter().enumerate() {
                 // For no-edge graphs, ensure adequate horizontal spacing and a margin from the top
                 let x =
                     self.horizontal_spacing * 0.8 + (i as f32) * (self.horizontal_spacing * 0.5);
-                positions.insert(*node_idx, Point::new(x, self.vertical_spacing * 0.8));
+                positions.insert(node.id(), Point::new(x, self.vertical_spacing * 0.8));
             }
         }
 
         positions
     }
 
-    fn center_layout(&self, positions: &mut HashMap<NodeIndex, Point>) {
+    fn center_layout(&self, positions: &mut HashMap<Id, Point>) {
         // Find min and max x, y coordinates
         let mut min_x = f32::MAX;
         let mut min_y = f32::MAX;
@@ -381,7 +369,7 @@ impl Engine {
 impl ComponentEngine for Engine {
     fn calculate<'a>(
         &self,
-        graph: &'a Graph<'a>,
+        graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts,
     ) -> ContentStack<Layout> {
         self.calculate_layout(graph, embedded_layouts)

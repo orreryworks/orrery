@@ -7,18 +7,15 @@ use crate::{
     ast,
     draw::{self, Drawable as _},
     geometry::{Insets, Point, Size},
-    graph::{Event, Graph},
+    structure::{SequenceEvent, SequenceGraph},
+    identifier::Id,
     layout::{
         component::Component,
         engines::{EmbeddedLayouts, SequenceEngine},
         layer::{ContentStack, PositionedContent},
-        sequence::{
-            ActivationBox, ActivationTiming, Layout, Message, Participant,
-            adjust_positioned_contents_offset,
-        },
+        sequence::{ActivationBox, ActivationTiming, Layout, Message, Participant},
     },
 };
-use petgraph::graph::NodeIndex;
 use std::{collections::HashMap, rc::Rc};
 
 /// Basic sequence layout engine implementation that implements the SequenceLayoutEngine trait
@@ -80,23 +77,21 @@ impl Engine {
         &self,
         source_idx: usize,
         target_idx: usize,
-        messages: &[(NodeIndex, NodeIndex, &ast::Relation)],
-        participant_indices: &HashMap<NodeIndex, usize>,
+        messages: &[&ast::Relation],
+        participant_indices: &HashMap<Id, usize>,
     ) -> f32 {
         // Filter messages to only those between the two participants
-        let relevant_messages = messages
-            .iter()
-            .filter_map(|(src_node, tgt_node, relation)| {
-                if let (Some(&src_idx), Some(&tgt_idx)) = (
-                    participant_indices.get(src_node),
-                    participant_indices.get(tgt_node),
-                ) && ((src_idx == source_idx && tgt_idx == target_idx)
-                    || (src_idx == target_idx && tgt_idx == source_idx))
-                {
-                    return Some(*relation);
-                }
-                None
-            });
+        let relevant_messages = messages.iter().filter_map(|relation| {
+            if let (Some(&src_idx), Some(&tgt_idx)) = (
+                participant_indices.get(&relation.source()),
+                participant_indices.get(&relation.target()),
+            ) && ((src_idx == source_idx && tgt_idx == target_idx)
+                || (src_idx == target_idx && tgt_idx == source_idx))
+            {
+                return Some(*relation);
+            }
+            None
+        });
 
         // Extract labels from relations and use shared function to calculate spacing
         let labels = relevant_messages.map(|relation| relation.text());
@@ -104,17 +99,17 @@ impl Engine {
     }
 
     /// Calculate layout for a sequence diagram
-    pub fn calculate_layout<'a>(
+    pub fn calculate_layout(
         &self,
-        graph: &'a Graph<'a>,
+        graph: &SequenceGraph,
         embedded_layouts: &EmbeddedLayouts,
     ) -> ContentStack<Layout> {
         let mut components_indices = HashMap::new();
 
         // Create shapes with text for participants
         let mut participant_shapes: HashMap<_, _> = graph
-            .nodes_with_indices()
-            .map(|(node_idx, node)| {
+            .nodes()
+            .map(|node| {
                 let mut shape = draw::Shape::new(Rc::clone(
                     node.type_definition()
                         .shape_definition_rc()
@@ -140,20 +135,18 @@ impl Engine {
                         .expect("Diagram blocks should always support content sizing");
                 }
                 // For non-Diagram blocks, don't call set_inner_content_size
-                (node_idx, shape_with_text)
+                (node.id(), shape_with_text)
             })
             .collect();
 
         // Collect all messages to consider their labels for spacing
         let mut messages_vec = Vec::new();
-        for edge_idx in graph.edge_indices() {
-            let (source_idx, target_idx) = graph.edge_endpoints(edge_idx).unwrap();
-            let relation = graph.edge_weight(edge_idx).unwrap();
-            messages_vec.push((source_idx, target_idx, relation));
+        for relation in graph.relations() {
+            messages_vec.push(relation);
         }
 
         // Calculate additional spacings based on message labels
-        let node_count = graph.node_indices().count();
+        let node_count = graph.nodes_count();
         let mut spacings = Vec::with_capacity(node_count.saturating_sub(1));
         for i in 1..node_count {
             let spacing =
@@ -163,9 +156,9 @@ impl Engine {
 
         // Get list of node indices and their sizes
         let sizes: Vec<_> = graph
-            .node_indices()
-            .map(|idx| {
-                let shape_with_text = participant_shapes.get(&idx).unwrap();
+            .node_ids()
+            .map(|id| {
+                let shape_with_text = participant_shapes.get(id).unwrap();
                 shape_with_text.size()
             })
             .collect();
@@ -179,15 +172,15 @@ impl Engine {
 
         let mut components = Vec::new();
         // Create participants and store their indices
-        for (i, (node_idx, node)) in graph.nodes_with_indices().enumerate() {
-            let shape_with_text = participant_shapes.remove(&node_idx).unwrap();
+        for (i, node) in graph.nodes().enumerate() {
+            let shape_with_text = participant_shapes.remove(&node.id()).unwrap();
             let position = Point::new(x_positions[i], self.top_margin);
 
             let component = Component::new(node, shape_with_text, position);
 
             components.push(component);
 
-            components_indices.insert(node_idx, i);
+            components_indices.insert(node.id(), i);
         }
 
         // Calculate message positions and update lifeline ends
@@ -200,11 +193,9 @@ impl Engine {
 
         let mut current_y = self.top_margin + participants_height + self.message_spacing;
 
-        for edge_idx in graph.ordered_relations() {
-            let (source_idx, target_idx, relation) = graph.relation_message_info(edge_idx).unwrap();
-
-            let source_index = *components_indices.get(&source_idx).unwrap();
-            let target_index = *components_indices.get(&target_idx).unwrap();
+        for relation in graph.relations() {
+            let source_index = *components_indices.get(&relation.source()).unwrap();
+            let target_index = *components_indices.get(&relation.target()).unwrap();
 
             messages.push(Message::from_ast(
                 relation,
@@ -245,8 +236,6 @@ impl Engine {
         let mut content_stack = ContentStack::new();
         content_stack.push(PositionedContent::new(layout));
 
-        adjust_positioned_contents_offset(&mut content_stack, graph);
-
         content_stack
     }
 
@@ -260,9 +249,9 @@ impl Engine {
     ///
     /// # Algorithm
     /// 1. Iterate through ordered events sequentially
-    /// 2. For `Event::Relation`: Add message Y position to all active activations, then advance current Y position
-    /// 3. For `Event::Activate`: Create ActivationTiming with activate Y position, push to participant's stack
-    /// 4. For `Event::Deactivate`: Pop activation, convert to ActivationBox using message-based bounds calculation
+    /// 2. For `SequenceEvent::Relation`: Add message Y position to all active activations, then advance current Y position
+    /// 3. For `SequenceEvent::Activate`: Create ActivationTiming with activate Y position, push to participant's stack
+    /// 4. For `SequenceEvent::Deactivate`: Pop activation, convert to ActivationBox using message-based bounds calculation
     ///
     /// # Parameters
     /// * `graph` - The sequence diagram graph containing ordered events
@@ -272,26 +261,26 @@ impl Engine {
     /// Vector of `ActivationBox` objects ready for rendering with precise positioning and nesting levels
     fn calculate_activation_boxes(
         &self,
-        graph: &crate::graph::Graph,
-        participant_indices: &HashMap<petgraph::graph::NodeIndex, usize>,
+        graph: &SequenceGraph,
+        participant_indices: &HashMap<Id, usize>,
         participants_height: f32,
     ) -> Vec<ActivationBox> {
         let mut activation_boxes: Vec<_> = Vec::new();
-        let mut activation_stack: HashMap<NodeIndex, Vec<ActivationTiming>> = HashMap::new();
+        let mut activation_stack: HashMap<Id, Vec<ActivationTiming>> = HashMap::new();
 
         // Calculate initial Y position using same calculation as messages
         let mut current_y = self.top_margin + participants_height + self.message_spacing;
 
-        for event in graph.ordered_events() {
+        for event in graph.events() {
             match event {
-                Event::Relation(..) => {
+                SequenceEvent::Relation(..) => {
                     current_y += self.message_spacing;
                 }
-                Event::Activate(node_idx) => {
-                    if let Some(&participant_index) = participant_indices.get(node_idx) {
+                SequenceEvent::Activate(node_id) => {
+                    if let Some(&participant_index) = participant_indices.get(node_id) {
                         // Calculate nesting level for this node
                         let nesting_level = activation_stack
-                            .get(node_idx)
+                            .get(node_id)
                             .map(|stack| stack.len() as u32)
                             .unwrap_or(0);
 
@@ -301,14 +290,14 @@ impl Engine {
 
                         // Add to the stack for this node
                         activation_stack
-                            .entry(*node_idx)
-                            .or_insert_with(Vec::new)
+                            .entry(*node_id)
+                            .or_default()
                             .push(new_timing);
                     }
                 }
-                Event::Deactivate(node_idx) => {
+                SequenceEvent::Deactivate(node_id) => {
                     // Pop the most recent activation for this node
-                    if let Some(node_stack) = activation_stack.get_mut(node_idx) {
+                    if let Some(node_stack) = activation_stack.get_mut(node_id) {
                         if let Some(completed_timing) = node_stack.pop() {
                             // Convert to ActivationBox using last message position as end
                             // Subtract message_spacing because current_y is at deactivate event position,
@@ -320,7 +309,7 @@ impl Engine {
 
                         // Clean up empty stacks to avoid memory bloat
                         if node_stack.is_empty() {
-                            activation_stack.remove(node_idx);
+                            activation_stack.remove(node_id);
                         }
                     }
                 }
@@ -334,7 +323,7 @@ impl Engine {
 impl SequenceEngine for Engine {
     fn calculate<'a>(
         &self,
-        graph: &'a Graph<'a>,
+        graph: &'a SequenceGraph<'a>,
         embedded_layouts: &EmbeddedLayouts,
     ) -> ContentStack<Layout> {
         self.calculate_layout(graph, embedded_layouts)
