@@ -162,7 +162,9 @@ impl<'a, 'idx> ContainmentScope<'a, 'idx> {
                     graph.add_relation(&mut containment_scope, relation);
                 }
                 ast::Element::Node(..) => {}
-                ast::Element::Activate(..) | ast::Element::Deactivate(..) => {
+                ast::Element::Activate(..)
+                | ast::Element::Deactivate(..)
+                | ast::Element::Fragment(..) => {
                     unreachable!("Unexpected element type")
                 }
             }

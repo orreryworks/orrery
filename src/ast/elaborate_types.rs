@@ -132,6 +132,68 @@ pub enum Element {
     Relation(Relation),
     Activate(Id),
     Deactivate(Id),
+    Fragment(Fragment),
+}
+
+/// Represents a fragment block in a sequence diagram.
+///
+/// Fragments group related interactions into labeled sections, helping structure
+/// complex message flows and illustrate alternatives or phases.
+#[derive(Debug, Clone)]
+pub struct Fragment {
+    /// The operation string (e.g., "alt", "opt", "loop", "par")
+    operation: String,
+    /// The sections within this fragment
+    sections: Vec<FragmentSection>,
+}
+
+impl Fragment {
+    /// Create a new Fragment with the given operation and sections.
+    pub fn new(operation: String, sections: Vec<FragmentSection>) -> Self {
+        Self {
+            operation,
+            sections,
+        }
+    }
+
+    /// Get the operation string for this fragment.
+    pub fn operation(&self) -> &str {
+        &self.operation
+    }
+
+    /// Get the sections in this fragment.
+    pub fn sections(&self) -> &[FragmentSection] {
+        &self.sections
+    }
+}
+
+/// Represents a section within a fragment.
+///
+/// Each section can have an optional title and contains a sequence of elements
+/// that represent one phase within the fragment.
+#[derive(Debug, Clone)]
+pub struct FragmentSection {
+    /// Optional title for this section (e.g., "successful login", "failed login")
+    title: Option<String>,
+    /// Elements contained in this section
+    elements: Vec<Element>,
+}
+
+impl FragmentSection {
+    /// Create a new FragmentSection with optional title and elements.
+    pub fn new(title: Option<String>, elements: Vec<Element>) -> Self {
+        Self { title, elements }
+    }
+
+    /// Get the optional title of this section.
+    pub fn title(&self) -> Option<&str> {
+        self.title.as_deref()
+    }
+
+    /// Get the elements in this section.
+    pub fn elements(&self) -> &[Element] {
+        &self.elements
+    }
 }
 
 /// A containment scope that groups a sequence of elements at the same nesting level.

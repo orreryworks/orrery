@@ -7,7 +7,6 @@ use crate::{
     ast,
     draw::{self, Drawable as _},
     geometry::{Insets, Point, Size},
-    structure::{SequenceEvent, SequenceGraph},
     identifier::Id,
     layout::{
         component::Component,
@@ -15,6 +14,7 @@ use crate::{
         layer::{ContentStack, PositionedContent},
         sequence::{ActivationBox, ActivationTiming, Layout, Message, Participant},
     },
+    structure::{SequenceEvent, SequenceGraph},
 };
 use std::{collections::HashMap, rc::Rc};
 
@@ -312,6 +312,18 @@ impl Engine {
                             activation_stack.remove(node_id);
                         }
                     }
+                }
+                SequenceEvent::FragmentStart { .. } => {
+                    // TODO: Track fragment start position for box rendering
+                }
+                SequenceEvent::FragmentSectionStart { .. } => {
+                    // TODO: Track section boundaries for rendering dividers
+                }
+                SequenceEvent::FragmentSectionEnd => {
+                    // TODO: Mark end of section for layout
+                }
+                SequenceEvent::FragmentEnd => {
+                    // TODO: Complete fragment box and add to layout
                 }
             }
         }

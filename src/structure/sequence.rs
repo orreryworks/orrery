@@ -30,6 +30,10 @@ use std::collections::HashMap;
 /// * [`SequenceEvent::Relation`] - A message or relation between two participants
 /// * [`SequenceEvent::Activate`] - Start of an activation period for a participant
 /// * [`SequenceEvent::Deactivate`] - End of an activation period for a participant
+/// * [`SequenceEvent::FragmentStart`] - Start of a fragment block
+/// * [`SequenceEvent::FragmentSectionStart`] - Start of a section within a fragment
+/// * [`SequenceEvent::FragmentSectionEnd`] - End of a section within a fragment
+/// * [`SequenceEvent::FragmentEnd`] - End of a fragment block
 #[derive(Debug)]
 pub enum SequenceEvent<'a> {
     /// A message or relation between two participants.
@@ -50,6 +54,34 @@ pub enum SequenceEvent<'a> {
     /// Marks the end of a focus of control period for a participant.
     /// Contains the [`Id`] of the participant that becomes inactive.
     Deactivate(Id),
+
+    /// Start of a fragment block.
+    ///
+    /// Fragments group related interactions with an operation type (e.g., "alt", "loop").
+    /// This event marks the beginning of a fragment's scope.
+    FragmentStart {
+        /// The operation type (e.g., "alt", "opt", "loop", "par")
+        operation: &'a str,
+    },
+
+    /// Start of a section within a fragment.
+    ///
+    /// Sections divide a fragment into parts (e.g., different cases in an "alt" fragment).
+    /// Each section may have an optional title describing its condition or purpose.
+    FragmentSectionStart {
+        /// Optional title for this section (e.g., "successful login")
+        title: Option<&'a str>,
+    },
+
+    /// End of a section within a fragment.
+    ///
+    /// Marks the boundary where one section ends before another begins or the fragment ends.
+    FragmentSectionEnd,
+
+    /// End of a fragment block.
+    ///
+    /// Marks the end of a fragment's scope, closing the grouping of interactions.
+    FragmentEnd,
 }
 
 /// Main graph structure for sequence diagrams.
@@ -119,8 +151,45 @@ impl<'a> SequenceGraph<'a> {
         elements: &'a [ast::Element],
     ) -> Result<(Self, Vec<super::HierarchyNode<'a, 'idx>>), FilamentError> {
         let mut graph = Self::new();
-        let mut child_diagrams = vec![];
 
+        let child_diagrams = Self::process_elements(elements, &mut graph)?;
+
+        Ok((graph, child_diagrams))
+    }
+
+    /// Creates a new empty sequence graph.
+    fn new() -> Self {
+        Self {
+            nodes: HashMap::new(),
+            events: Vec::new(),
+        }
+    }
+
+    /// Adds a participant node to the sequence graph.
+    ///
+    /// Registers the participant in the graph's node map, making it available
+    /// for use in relations and activation events.
+    fn add_node(&mut self, node: &'a ast::Node) {
+        self.nodes.insert(node.id(), node);
+    }
+
+    /// Adds an event to the sequence graph's timeline.
+    ///
+    /// Events are added in the order they appear in the AST, preserving the
+    /// temporal sequence of interactions in the diagram.
+    fn add_event(&mut self, event: SequenceEvent<'a>) {
+        self.events.push(event);
+    }
+
+    /// Process elements and add them to the graph.
+    ///
+    /// This helper method processes elements, adding events to the graph and returning
+    /// any child diagrams found.
+    fn process_elements<'idx>(
+        elements: &'a [ast::Element],
+        graph: &mut SequenceGraph<'a>,
+    ) -> Result<Vec<super::HierarchyNode<'a, 'idx>>, FilamentError> {
+        let mut child_diagrams = Vec::new();
         for element in elements {
             match element {
                 ast::Element::Node(node) => {
@@ -155,33 +224,34 @@ impl<'a> SequenceGraph<'a> {
                 ast::Element::Deactivate(id) => {
                     graph.add_event(SequenceEvent::Deactivate(*id));
                 }
+                ast::Element::Fragment(fragment) => {
+                    // Emit FragmentStart event
+                    graph.add_event(SequenceEvent::FragmentStart {
+                        operation: fragment.operation(),
+                    });
+
+                    // Process each section
+                    for section in fragment.sections() {
+                        // Emit SectionStart event
+                        graph.add_event(SequenceEvent::FragmentSectionStart {
+                            title: section.title(),
+                        });
+
+                        // Recursively process elements within the section
+                        let mut section_child_diagrams =
+                            Self::process_elements(section.elements(), graph)?;
+                        child_diagrams.append(&mut section_child_diagrams);
+
+                        // Emit SectionEnd event
+                        graph.add_event(SequenceEvent::FragmentSectionEnd);
+                    }
+
+                    // Emit FragmentEnd event
+                    graph.add_event(SequenceEvent::FragmentEnd);
+                }
             }
         }
 
-        Ok((graph, child_diagrams))
-    }
-
-    /// Creates a new empty sequence graph.
-    fn new() -> Self {
-        Self {
-            nodes: HashMap::new(),
-            events: Vec::new(),
-        }
-    }
-
-    /// Adds a participant node to the sequence graph.
-    ///
-    /// Registers the participant in the graph's node map, making it available
-    /// for use in relations and activation events.
-    fn add_node(&mut self, node: &'a ast::Node) {
-        self.nodes.insert(node.id(), node);
-    }
-
-    /// Adds an event to the sequence graph's timeline.
-    ///
-    /// Events are added in the order they appear in the AST, preserving the
-    /// temporal sequence of interactions in the diagram.
-    fn add_event(&mut self, event: SequenceEvent<'a>) {
-        self.events.push(event);
+        Ok(child_diagrams)
     }
 }

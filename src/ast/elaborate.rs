@@ -356,8 +356,8 @@ impl<'a> Builder<'a> {
                 parser_types::Element::Deactivate { component } => {
                     self.build_deactivate_element(component, parent_id, diagram_kind)?
                 }
-                parser_types::Element::Fragment(_fragment) => {
-                    todo!("Fragments are not yet supported in elaboration")
+                parser_types::Element::Fragment(fragment) => {
+                    self.build_fragment_element(fragment, parent_id, diagram_kind)?
                 }
             };
             elements.push(element);
@@ -513,6 +513,41 @@ impl<'a> Builder<'a> {
         let component_id = self.create_type_id(parent_id, component.inner());
 
         Ok(types::Element::Deactivate(component_id))
+    }
+
+    /// Builds a fragment element from parser data
+    fn build_fragment_element(
+        &mut self,
+        fragment: &parser_types::Fragment,
+        parent_id: Option<Id>,
+        diagram_kind: types::DiagramKind,
+    ) -> EResult<types::Element> {
+        // Only allow fragments in sequence diagrams
+        if diagram_kind != types::DiagramKind::Sequence {
+            return Err(ElaborationDiagnosticError::from_span(
+                "Fragment blocks are only supported in sequence diagrams".to_string(),
+                fragment.span(),
+                "fragment not allowed here",
+                Some("Fragment blocks are used for grouping in sequence diagrams".to_string()),
+            ));
+        }
+
+        let mut sections = Vec::new();
+        for parser_section in &fragment.sections {
+            let scope =
+                self.build_scope_from_elements(&parser_section.elements, parent_id, diagram_kind)?;
+            let elements_vec = scope.elements().to_vec();
+
+            sections.push(types::FragmentSection::new(
+                parser_section.title.as_ref().map(|t| t.inner().to_string()),
+                elements_vec,
+            ));
+        }
+
+        Ok(types::Element::Fragment(types::Fragment::new(
+            fragment.operation.inner().to_string(),
+            sections,
+        )))
     }
 
     /// Build a relation type definition from a relation type specification
