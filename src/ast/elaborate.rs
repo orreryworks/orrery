@@ -532,6 +532,26 @@ impl<'a> Builder<'a> {
             ));
         }
 
+        let type_name = "Fragment"; // TODO: Hardcoded for now.
+
+        // Build the type definition for this fragment
+        let type_def = self
+            .build_type_definition(
+                &Spanned::new(type_name, fragment.operation.span()),
+                &fragment.attributes,
+            )
+            .map_err(|_| {
+                ElaborationDiagnosticError::from_span(
+                    format!(
+                        "Unknown fragment type '{type_name}' for operation '{}'",
+                        fragment.operation.inner()
+                    ),
+                    fragment.operation.span(),
+                    "unknown fragment type",
+                    Some("Fragment types must be defined in the type system".to_string()),
+                )
+            })?;
+
         let mut sections = Vec::new();
         for parser_section in &fragment.sections {
             let scope =
@@ -547,6 +567,7 @@ impl<'a> Builder<'a> {
         Ok(types::Element::Fragment(types::Fragment::new(
             fragment.operation.inner().to_string(),
             sections,
+            type_def,
         )))
     }
 

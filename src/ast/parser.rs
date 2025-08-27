@@ -520,7 +520,7 @@ fn section_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Fragment
     })
 }
 
-/// Parse a fragment block: `fragment "operation" { section+ };`
+/// Parse a fragment block: `fragment [attributes] "operation" { section+ };`
 fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
     // Parse "fragment" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Fragment))
@@ -528,10 +528,14 @@ fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
         .parse_next(input)?;
 
     cut_err(input, |input| {
-        // Require at least one whitespace or comment after the keyword
-        ws_comments1
-            .context(StrContext::Label("whitespace after fragment"))
+        ws_comments0.parse_next(input)?;
+
+        // Parse optional attributes
+        let attributes = opt(wrapped_attributes)
+            .map(|attrs| attrs.unwrap_or_default())
             .parse_next(input)?;
+
+        ws_comments0.parse_next(input)?;
 
         // Parse the fragment operation (title) as a spanned string literal
         let operation = string_literal
@@ -569,6 +573,7 @@ fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
         Ok(types::Element::Fragment(types::Fragment {
             operation,
             sections,
+            attributes,
         }))
     })
 }

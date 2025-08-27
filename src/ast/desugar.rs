@@ -259,6 +259,7 @@ trait Folder<'a> {
                 .into_iter()
                 .map(|s| self.fold_fragment_section(s))
                 .collect(),
+            attributes: self.fold_attributes(fragment.attributes),
         }
     }
 

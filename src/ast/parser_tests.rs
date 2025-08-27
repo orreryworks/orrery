@@ -1065,7 +1065,7 @@ mod fragment_block_tests {
                     system -> auth: "Valid";
                     auth -> user: "Access granted";
                 };
-                section "failed login" {
+                section {
                     user -> auth: "Credentials";
                 };
             };

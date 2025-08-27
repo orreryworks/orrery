@@ -145,14 +145,21 @@ pub struct Fragment {
     operation: String,
     /// The sections within this fragment
     sections: Vec<FragmentSection>,
+    /// The type definition for this fragment's styling
+    type_definition: Rc<TypeDefinition>,
 }
 
 impl Fragment {
-    /// Create a new Fragment with the given operation and sections.
-    pub fn new(operation: String, sections: Vec<FragmentSection>) -> Self {
+    /// Create a new Fragment with the given operation, sections, and type definition.
+    pub fn new(
+        operation: String,
+        sections: Vec<FragmentSection>,
+        type_definition: Rc<TypeDefinition>,
+    ) -> Self {
         Self {
             operation,
             sections,
+            type_definition,
         }
     }
 
@@ -164,6 +171,11 @@ impl Fragment {
     /// Get the sections in this fragment.
     pub fn sections(&self) -> &[FragmentSection] {
         &self.sections
+    }
+
+    /// Get the type definition for this fragment.
+    pub fn type_definition(&self) -> &TypeDefinition {
+        &self.type_definition
     }
 }
 
@@ -226,6 +238,7 @@ pub enum DiagramKind {
 pub enum DrawDefinition {
     Shape(Rc<dyn draw::ShapeDefinition>),
     Arrow(Rc<draw::ArrowDefinition>),
+    Fragment(Rc<draw::FragmentDefinition>),
 }
 
 /// A concrete, elaborated type with text styling and drawing definition.
@@ -371,6 +384,19 @@ impl TypeDefinition {
         )
     }
 
+    /// Construct a concrete fragment type definition from a text definition and a fragment definition.
+    pub fn new_fragment(
+        id: Id,
+        text_definition: draw::TextDefinition,
+        fragment_definition: draw::FragmentDefinition,
+    ) -> Self {
+        Self::new(
+            id,
+            text_definition,
+            DrawDefinition::Fragment(Rc::from(fragment_definition)),
+        )
+    }
+
     /// Get the identifier for this type definition.
     pub fn id(&self) -> Id {
         self.id
@@ -389,10 +415,7 @@ impl TypeDefinition {
     pub fn shape_definition_rc(&self) -> Result<&Rc<dyn draw::ShapeDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Shape(shape) => Ok(shape),
-            DrawDefinition::Arrow(_) => Err(format!(
-                "Type '{}' is an arrow type, not a shape type",
-                self.id
-            )),
+            _ => Err(format!("Type '{}' is not a shape type", self.id)),
         }
     }
 
@@ -402,10 +425,17 @@ impl TypeDefinition {
     pub fn arrow_definition_rc(&self) -> Result<&Rc<draw::ArrowDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Arrow(arrow) => Ok(arrow),
-            DrawDefinition::Shape(_) => Err(format!(
-                "Type '{}' is a shape type, not an arrow type",
-                self.id
-            )),
+            _ => Err(format!("Type '{}' is not an arrow type", self.id)),
+        }
+    }
+
+    /// Borrow the Rc-backed fragment definition if this type is a fragment; otherwise returns an error.
+    ///
+    /// Returning &Rc<_> makes cloning explicit at the call site when needed.
+    pub fn fragment_definition_rc(&self) -> Result<&Rc<draw::FragmentDefinition>, String> {
+        match &self.draw_definition {
+            DrawDefinition::Fragment(fragment) => Ok(fragment),
+            _ => Err(format!("Type '{}' is not a fragment type", self.id)),
         }
     }
 }
@@ -762,6 +792,174 @@ impl TypeDefinition {
 
                 Ok(Self::new_arrow(id, text_def, new_arrow_def))
             }
+            DrawDefinition::Fragment(fragment_def) => {
+                let mut new_fragment_def = (**fragment_def).clone();
+
+                // Process fragment attributes
+                for attr in attributes {
+                    let name = attr.name.inner();
+                    let value = &attr.value;
+
+                    match *name {
+                        "border_color" => {
+                            let val = Color::new(value.as_str().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid color value",
+                                    Some("Color values must be strings".to_string()),
+                                )
+                            })?)
+                            .map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    format!("Invalid border_color '{value}': {err}"),
+                                    attr.span(),
+                                    "invalid color",
+                                    Some("Use a CSS color".to_string()),
+                                )
+                            })?;
+                            new_fragment_def.set_border_color(val);
+                        }
+                        "border_width" => {
+                            let val = value.as_float().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid border width",
+                                    Some("Border width must be a positive number".to_string()),
+                                )
+                            })?;
+                            new_fragment_def.set_border_width(val);
+                        }
+                        "border_style" => {
+                            let style_str = value.as_str().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid border style value",
+                                    Some("Border style must be a string".to_string()),
+                                )
+                            })?;
+                            let val = match style_str {
+                                "solid" => draw::BorderStyle::Solid,
+                                "dashed" => draw::BorderStyle::Dashed,
+                                _ => {
+                                    return Err(ElaborationDiagnosticError::from_span(
+                                        format!("Invalid border style '{style_str}'"),
+                                        attr.span(),
+                                        "invalid style",
+                                        Some(
+                                            "Border style must be 'solid' or 'dashed'".to_string(),
+                                        ),
+                                    ));
+                                }
+                            };
+                            new_fragment_def.set_border_style(val);
+                        }
+                        "background_color" => {
+                            let val = Color::new(value.as_str().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid color value",
+                                    Some("Color values must be strings".to_string()),
+                                )
+                            })?)
+                            .map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    format!("Invalid background_color '{value}': {err}"),
+                                    attr.span(),
+                                    "invalid color",
+                                    Some("Use a CSS color".to_string()),
+                                )
+                            })?;
+                            new_fragment_def.set_background_color(Some(val));
+                        }
+                        "separator_color" => {
+                            let val = Color::new(value.as_str().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid color value",
+                                    Some("Color values must be strings".to_string()),
+                                )
+                            })?)
+                            .map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    format!("Invalid separator_color '{value}': {err}"),
+                                    attr.span(),
+                                    "invalid color",
+                                    Some("Use a CSS color".to_string()),
+                                )
+                            })?;
+                            new_fragment_def.set_separator_color(val);
+                        }
+                        "separator_width" => {
+                            let val = value.as_float().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid separator width",
+                                    Some("Separator width must be a positive number".to_string()),
+                                )
+                            })?;
+                            new_fragment_def.set_separator_width(val);
+                        }
+                        "separator_dasharray" => {
+                            let val = value.as_str().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid dasharray value",
+                                    Some("Dasharray must be a string like '5,3'".to_string()),
+                                )
+                            })?;
+                            new_fragment_def.set_separator_dasharray(val.to_string());
+                        }
+                        "content_padding" => {
+                            let val = value.as_float().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid padding value",
+                                    Some("Content padding must be a positive number".to_string()),
+                                )
+                            })?;
+                            new_fragment_def.set_content_padding(Insets::uniform(val));
+                        }
+                        "text" => {
+                            // Handle nested text attributes for operation label
+                            let nested_attrs = value.as_attributes().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid text attribute value",
+                                    Some("Text attribute must contain nested attributes like [font_size=12, padding=6.5]".to_string()),
+                                )
+                            })?;
+
+                            // Process all nested text attributes
+                            TextAttributeExtractor::extract_text_attributes(
+                                &mut text_def,
+                                nested_attrs,
+                            )?;
+                        }
+                        name => {
+                            return Err(ElaborationDiagnosticError::from_span(
+                                format!("Unknown fragment attribute '{name}'"),
+                                attr.span(),
+                                "unknown attribute",
+                                Some(
+                                    "Valid fragment attributes are: border_color, border_width, border_style, background_color, separator_color, separator_width, separator_dasharray, content_padding, text=[...]"
+                                        .to_string(),
+                                ),
+                            ));
+                        }
+                    }
+                }
+
+                Ok(Self::new_fragment(id, text_def, new_fragment_def))
+            }
         }
     }
 
@@ -816,6 +1014,32 @@ impl TypeDefinition {
                 Box::new(draw::InterfaceDefinition::new()),
             )),
             Rc::clone(default_arrow_definition),
+            // Fragment type definitions for common operations
+            Rc::new(Self::new_fragment(
+                Id::new("FragmentAlt"),
+                draw::TextDefinition::new(),
+                draw::FragmentDefinition::new(),
+            )),
+            Rc::new(Self::new_fragment(
+                Id::new("FragmentOpt"),
+                draw::TextDefinition::new(),
+                draw::FragmentDefinition::new(),
+            )),
+            Rc::new(Self::new_fragment(
+                Id::new("FragmentLoop"),
+                draw::TextDefinition::new(),
+                draw::FragmentDefinition::new(),
+            )),
+            Rc::new(Self::new_fragment(
+                Id::new("FragmentPar"),
+                draw::TextDefinition::new(),
+                draw::FragmentDefinition::new(),
+            )),
+            Rc::new(Self::new_fragment(
+                Id::new("Fragment"),
+                draw::TextDefinition::new(),
+                draw::FragmentDefinition::new(),
+            )),
         ]
     }
 }

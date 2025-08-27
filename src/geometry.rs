@@ -285,7 +285,7 @@ impl Bounds {
 
 /// Represents spacing around an element (padding, margin, etc.)
 /// with potentially different values for each side
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Insets {
     top: f32,
     right: f32,

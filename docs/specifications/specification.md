@@ -329,7 +329,7 @@ Fragments group related interactions in sequence diagrams into labeled sections.
 #### 6.4.1 Syntax
 
 ```filament
-fragment "operation" {
+fragment [attribute1=value1, attribute2=value2, ...] "operation" {
     section "title" {
         // sequence elements...
         // Valid: component definitions, relations, activate blocks, nested fragments
@@ -340,6 +340,7 @@ fragment "operation" {
 
 Requirements:
 - Fragment operation is required and must be a string literal
+- Attributes are optional and, when present, must appear before the operation string in square brackets
 - At least one section is required
 - Section titles are optional; if present, they must be string literals
 - Each section must end with a semicolon
@@ -383,7 +384,7 @@ diagram sequence;
 user: Rectangle;
 auth: Rectangle;
 
-fragment "Authentication Flow" {
+fragment [border_style="dashed", background_color="#f8f8f8"] "Authentication Flow" {
     section "successful login" {
         user -> auth: "Credentials";
         activate auth {

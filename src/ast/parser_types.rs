@@ -194,6 +194,7 @@ impl FragmentSection<'_> {
 pub struct Fragment<'a> {
     pub operation: Spanned<String>,
     pub sections: Vec<FragmentSection<'a>>,
+    pub attributes: Vec<Attribute<'a>>,
 }
 
 impl Fragment<'_> {
