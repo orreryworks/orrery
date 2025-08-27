@@ -1,0 +1,91 @@
+// Test file for Fragment drawable functionality
+// This file tests the Fragment rendering in sequence diagrams
+
+diagram sequence;
+
+// Define participants
+client: Rectangle;
+server: Rectangle;
+database: Rectangle;
+
+// Simple fragment with single section
+fragment "opt" {
+    section {
+        client -> server: "Optional Request";
+        server -> database: "Query";
+        database -> server: "Result";
+        server -> client: "Response";
+    };
+};
+
+// Fragment with multiple sections (alt)
+fragment "alt" {
+    section "success case" {
+        client -> server: "Valid Request";
+        server -> client: "Success Response";
+    };
+    section "error case" {
+        client -> server: "Invalid Request";
+        server -> client: "Error Response";
+    };
+};
+
+// Fragment with loop
+fragment "loop" {
+    section "while data available" {
+        server -> database: "Fetch Batch";
+        database -> server: "Data Batch";
+        server -> client: "Send Data";
+    };
+};
+
+// Nested fragments
+fragment "alt" {
+    section "authenticated" {
+        client -> server: "Authenticated Request";
+
+        fragment "loop" {
+            section "retry up to 3 times" {
+                server -> database: "Query";
+                database -> server: "Result";
+            };
+        };
+
+        server -> client: "Final Response";
+    };
+    section "unauthenticated" {
+        client -> server: "Anonymous Request";
+        server -> client: "Limited Response";
+    };
+};
+
+// Fragment with activation blocks
+fragment "par" {
+    section "parallel execution" {
+        activate server {
+            server -> database: "Query 1";
+            server -> database: "Query 2";
+        };
+    };
+};
+
+// Complex nested example
+fragment "alt" {
+    section "normal flow" {
+        client -> server: "Request";
+        activate server {
+            fragment "opt" {
+                section {
+                    server -> database: "Cache Check";
+                };
+            };
+            server -> database: "Main Query";
+            database -> server: "Response";
+        };
+        server -> client: "Success";
+    };
+    section "error flow" {
+        client -> server: "Bad Request";
+        server -> client: "Error";
+    };
+};
