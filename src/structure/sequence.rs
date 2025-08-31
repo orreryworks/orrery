@@ -59,19 +59,13 @@ pub enum SequenceEvent<'a> {
     ///
     /// Fragments group related interactions with an operation type (e.g., "alt", "loop").
     /// This event marks the beginning of a fragment's scope.
-    FragmentStart {
-        /// The operation type (e.g., "alt", "opt", "loop", "par")
-        operation: &'a str,
-    },
+    FragmentStart(&'a ast::Fragment),
 
     /// Start of a section within a fragment.
     ///
     /// Sections divide a fragment into parts (e.g., different cases in an "alt" fragment).
     /// Each section may have an optional title describing its condition or purpose.
-    FragmentSectionStart {
-        /// Optional title for this section (e.g., "successful login")
-        title: Option<&'a str>,
-    },
+    FragmentSectionStart(&'a ast::FragmentSection),
 
     /// End of a section within a fragment.
     ///
@@ -226,16 +220,12 @@ impl<'a> SequenceGraph<'a> {
                 }
                 ast::Element::Fragment(fragment) => {
                     // Emit FragmentStart event
-                    graph.add_event(SequenceEvent::FragmentStart {
-                        operation: fragment.operation(),
-                    });
+                    graph.add_event(SequenceEvent::FragmentStart(fragment));
 
                     // Process each section
                     for section in fragment.sections() {
                         // Emit SectionStart event
-                        graph.add_event(SequenceEvent::FragmentSectionStart {
-                            title: section.title(),
-                        });
+                        graph.add_event(SequenceEvent::FragmentSectionStart(section));
 
                         // Recursively process elements within the section
                         let mut section_child_diagrams =
