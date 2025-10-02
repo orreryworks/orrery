@@ -173,9 +173,19 @@ impl Fragment {
         &self.sections
     }
 
-    /// Get the type definition for this fragment.
-    pub fn type_definition(&self) -> &TypeDefinition {
-        &self.type_definition
+    /// Clone and return the Rc<FragmentDefinition> for this fragment.
+    ///
+    /// This method retrieves the fragment definition from the type definition and
+    /// returns a cloned Rc reference, allowing shared ownership of the definition.
+    ///
+    /// # Panics
+    /// Panics if the type definition does not have a fragment definition.
+    pub fn clone_fragment_definition(&self) -> Rc<draw::FragmentDefinition> {
+        Rc::clone(
+            self.type_definition
+                .fragment_definition_rc()
+                .expect("Type definition must have a fragment definition"),
+        )
     }
 }
 

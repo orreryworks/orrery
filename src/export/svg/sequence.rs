@@ -25,15 +25,15 @@ impl Svg {
         message: &sequence::Message,
         layout: &sequence::Layout,
     ) -> Box<dyn svg::Node> {
-        let source = &layout.participants()[message.source_index()];
-        let target = &layout.participants()[message.target_index()];
+        let source = &layout.participants()[&message.source()];
+        let target = &layout.participants()[&message.target()];
         let message_y = message.y_position();
 
         // Calculate source X coordinate with activation box intersection if active
         let source_x = sequence::calculate_message_endpoint_x(
             layout.activations(),
             source.component(),
-            message.source_index(),
+            message.source(),
             message_y,
             target.component().position().x(), // Use target center X for direction detection
         );
@@ -42,7 +42,7 @@ impl Svg {
         let target_x = sequence::calculate_message_endpoint_x(
             layout.activations(),
             target.component(),
-            message.target_index(),
+            message.target(),
             message_y,
             source.component().position().x(), // Use source center X for direction detection
         );
@@ -59,13 +59,26 @@ impl Svg {
         )
     }
 
+    /// Render a fragment box in a sequence diagram.
+    ///
+    /// Converts a fragment into its SVG representation.
+    ///
+    /// # Arguments
+    /// * `fragment` - The fragment to render with its sections and bounds
+    ///
+    /// # Returns
+    /// A boxed SVG node representing the fragment
+    pub fn render_fragment(&self, fragment: &sequence::Fragment) -> Box<dyn svg::Node> {
+        fragment.drawable().render_to_svg(Point::default()) // TODO
+    }
+
     pub fn render_activation_box(
         &self,
         activation_box: &sequence::ActivationBox,
         layout: &sequence::Layout,
     ) -> Box<dyn svg::Node> {
         // Calculate the center position for the activation box
-        let participant = &layout.participants()[activation_box.participant_index()];
+        let participant = &layout.participants()[&activation_box.participant_id()];
         let participant_position = participant.component().position();
         let center_y = activation_box.center_y();
         let position = participant_position.with_y(center_y);
@@ -89,13 +102,10 @@ impl Svg {
 
                 let mut content_bounds = layout
                     .participants()
-                    .iter()
-                    .skip(1)
+                    .values()
                     .map(|p| p.component().bounds())
-                    .fold(
-                        layout.participants()[0].component().bounds(),
-                        |acc, bounds| acc.merge(&bounds),
-                    );
+                    .reduce(|acc, bounds| acc.merge(&bounds))
+                    .unwrap_or_default();
 
                 content_bounds.set_max_y(layout.max_lifeline_end());
 

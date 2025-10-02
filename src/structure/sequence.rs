@@ -127,11 +127,6 @@ impl<'a> SequenceGraph<'a> {
         self.nodes.keys()
     }
 
-    /// Returns the total number of participants in the sequence diagram.
-    pub fn nodes_count(&self) -> usize {
-        self.nodes.len()
-    }
-
     /// Creates a sequence graph from AST elements.
     ///
     /// Processes the elements to build the graph structure, adding participants as nodes

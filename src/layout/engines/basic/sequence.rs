@@ -12,7 +12,9 @@ use crate::{
         component::Component,
         engines::{EmbeddedLayouts, SequenceEngine},
         layer::{ContentStack, PositionedContent},
-        sequence::{ActivationBox, ActivationTiming, Layout, Message, Participant},
+        sequence::{
+            ActivationBox, ActivationTiming, Fragment, FragmentTiming, Layout, Message, Participant,
+        },
     },
     structure::{SequenceEvent, SequenceGraph},
 };
@@ -75,22 +77,14 @@ impl Engine {
     /// Calculate additional spacing needed between participants based on message label sizes
     fn calculate_message_label_spacing(
         &self,
-        source_idx: usize,
-        target_idx: usize,
+        source_id: Id,
+        target_id: Id,
         messages: &[&ast::Relation],
-        participant_indices: &HashMap<Id, usize>,
     ) -> f32 {
         // Filter messages to only those between the two participants
-        let relevant_messages = messages.iter().filter_map(|relation| {
-            if let (Some(&src_idx), Some(&tgt_idx)) = (
-                participant_indices.get(&relation.source()),
-                participant_indices.get(&relation.target()),
-            ) && ((src_idx == source_idx && tgt_idx == target_idx)
-                || (src_idx == target_idx && tgt_idx == source_idx))
-            {
-                return Some(*relation);
-            }
-            None
+        let relevant_messages = messages.iter().filter(|relation| {
+            (relation.source() == source_id && relation.target() == target_id)
+                || (relation.source() == target_id && relation.target() == source_id)
         });
 
         // Extract labels from relations and use shared function to calculate spacing
@@ -104,8 +98,6 @@ impl Engine {
         graph: &SequenceGraph,
         embedded_layouts: &EmbeddedLayouts,
     ) -> ContentStack<Layout> {
-        let mut components_indices = HashMap::new();
-
         // Create shapes with text for participants
         let mut participant_shapes: HashMap<_, _> = graph
             .nodes()
@@ -146,12 +138,15 @@ impl Engine {
         }
 
         // Calculate additional spacings based on message labels
-        let node_count = graph.nodes_count();
-        let mut spacings = Vec::with_capacity(node_count.saturating_sub(1));
-        for i in 1..node_count {
-            let spacing =
-                self.calculate_message_label_spacing(i - 1, i, &messages_vec, &components_indices);
-            spacings.push(spacing);
+        let mut spacings = Vec::<f32>::new();
+        let mut nodes_iter = graph.nodes();
+        if let Some(mut last_node) = nodes_iter.next() {
+            for node in nodes_iter {
+                let spacing =
+                    self.calculate_message_label_spacing(last_node.id(), node.id(), &messages_vec);
+                spacings.push(spacing);
+                last_node = node;
+            }
         }
 
         // Get list of node indices and their sizes
@@ -170,52 +165,34 @@ impl Engine {
             Some(&spacings),
         );
 
-        let mut components = Vec::new();
         // Create participants and store their indices
-        for (i, node) in graph.nodes().enumerate() {
-            let shape_with_text = participant_shapes.remove(&node.id()).unwrap();
-            let position = Point::new(x_positions[i], self.top_margin);
+        let components: HashMap<Id, Component> = graph
+            .nodes()
+            .enumerate()
+            .map(|(i, node)| {
+                let shape_with_text = participant_shapes.remove(&node.id()).unwrap();
+                let position = Point::new(x_positions[i], self.top_margin);
 
-            let component = Component::new(node, shape_with_text, position);
+                let component = Component::new(node, shape_with_text, position);
 
-            components.push(component);
-
-            components_indices.insert(node.id(), i);
-        }
+                (node.id(), component)
+            })
+            .collect();
 
         // Calculate message positions and update lifeline ends
-        let mut messages = Vec::new();
         let participants_height = components
-            .iter()
+            .values()
             .map(|component| component.drawable().size().height())
             .max_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap_or_default();
 
-        let mut current_y = self.top_margin + participants_height + self.message_spacing;
-
-        for relation in graph.relations() {
-            let source_index = *components_indices.get(&relation.source()).unwrap();
-            let target_index = *components_indices.get(&relation.target()).unwrap();
-
-            messages.push(Message::from_ast(
-                relation,
-                source_index,
-                target_index,
-                current_y,
-            ));
-
-            current_y += self.message_spacing;
-        }
-
-        let mut max_lifeline_end = 0.0f32;
+        let (messages, activations, fragments, lifeline_end) =
+            self.process_events(graph, participants_height);
 
         // Update lifeline ends to match diagram height and finalize lifelines
-        let participants: Vec<_> = components
+        let participants: HashMap<Id, Participant> = components
             .into_iter()
-            .map(|component| {
-                let lifeline_end = current_y + self.message_spacing;
-                max_lifeline_end = max_lifeline_end.max(lifeline_end);
-
+            .map(|(id, component)| {
                 // Rebuild the positioned lifeline with the final height
                 let position = component.position();
                 let lifeline_start_y = component.bounds().max_y();
@@ -224,14 +201,11 @@ impl Engine {
                     draw::PositionedDrawable::new(draw::Lifeline::with_default_style(height))
                         .with_position(Point::new(position.x(), lifeline_start_y));
 
-                Participant::new(component, lifeline)
+                (id, Participant::new(component, lifeline))
             })
             .collect();
 
-        let activations =
-            self.calculate_activation_boxes(graph, &components_indices, participants_height);
-
-        let layout = Layout::new(participants, messages, activations, max_lifeline_end);
+        let layout = Layout::new(participants, messages, activations, fragments, lifeline_end);
 
         let mut content_stack = ContentStack::new();
         content_stack.push(PositionedContent::new(layout));
@@ -239,61 +213,78 @@ impl Engine {
         content_stack
     }
 
-    /// Calculate activation boxes from ordered events using message-based positioning.
+    /// Process all sequence diagram events to create layout components.
     ///
-    /// This method processes ordered events sequentially to create activation boxes with
-    /// precise timing based on the Y positions of messages contained within each activation.
-    /// It uses a HashMap-based stack approach (NodeIndex -> Vec<ActivationTiming>) to track
-    /// activation periods per participant and converts them to ActivationBox objects when
-    /// deactivation occurs, calculating bounds from first and last message positions.
+    /// This method processes ordered events sequentially to create messages, activation boxes,
+    /// and fragments with precise timing and positioning. It uses a HashMap-based stack approach
+    /// (Id -> Vec<ActivationTiming>) to track activation periods per participant and converts
+    /// them to ActivationBox objects when deactivation occurs.
     ///
     /// # Algorithm
     /// 1. Iterate through ordered events sequentially
-    /// 2. For `SequenceEvent::Relation`: Add message Y position to all active activations, then advance current Y position
-    /// 3. For `SequenceEvent::Activate`: Create ActivationTiming with activate Y position, push to participant's stack
-    /// 4. For `SequenceEvent::Deactivate`: Pop activation, convert to ActivationBox using message-based bounds calculation
+    /// 2. For `SequenceEvent::Relation`: Create Message at current Y position, then advance Y
+    /// 3. For `SequenceEvent::Activate`: Create ActivationTiming with current Y position, push to participant's stack
+    /// 4. For `SequenceEvent::Deactivate`: Pop activation, convert to ActivationBox with precise bounds
+    /// 5. For `SequenceEvent::FragmentStart`: Create FragmentTiming and push to fragment stack
+    /// 6. For `SequenceEvent::FragmentSectionStart`: Start new section in current fragment
+    /// 7. For `SequenceEvent::FragmentSectionEnd`: End current section in current fragment
+    /// 8. For `SequenceEvent::FragmentEnd`: Pop fragment, convert to Fragment with final bounds
     ///
     /// # Parameters
     /// * `graph` - The sequence diagram graph containing ordered events
-    /// * `participant_indices` - Mapping from NodeIndex to participant index
+    /// * `participants_height` - Height of the participant boxes for calculating initial Y position
     ///
     /// # Returns
-    /// Vector of `ActivationBox` objects ready for rendering with precise positioning and nesting levels
-    fn calculate_activation_boxes(
+    /// A tuple containing:
+    /// * `Vec<Message>` - All messages with their positions and arrow information
+    /// * `Vec<ActivationBox>` - All activation boxes with precise positioning and nesting levels
+    /// * `Vec<Fragment>` - All fragments with their sections and bounds
+    /// * `f32` - The final Y coordinate (lifeline end position)
+    fn process_events(
         &self,
         graph: &SequenceGraph,
-        participant_indices: &HashMap<Id, usize>,
         participants_height: f32,
-    ) -> Vec<ActivationBox> {
-        let mut activation_boxes: Vec<_> = Vec::new();
+    ) -> (Vec<Message>, Vec<ActivationBox>, Vec<Fragment>, f32) {
+        let mut messages: Vec<Message> = Vec::new();
+        let mut activation_boxes: Vec<ActivationBox> = Vec::new();
+        let mut fragments: Vec<Fragment> = Vec::new();
+
         let mut activation_stack: HashMap<Id, Vec<ActivationTiming>> = HashMap::new();
+        let mut fragment_stack: Vec<_> = Vec::new();
 
         // Calculate initial Y position using same calculation as messages
         let mut current_y = self.top_margin + participants_height + self.message_spacing;
 
         for event in graph.events() {
             match event {
-                SequenceEvent::Relation(..) => {
+                SequenceEvent::Relation(relation) => {
+                    let message = Message::from_ast(
+                        relation,
+                        relation.source(),
+                        relation.target(),
+                        current_y,
+                    );
+
+                    messages.push(message);
+
                     current_y += self.message_spacing;
+                    // TODO: Update fragment x.
                 }
                 SequenceEvent::Activate(node_id) => {
-                    if let Some(&participant_index) = participant_indices.get(node_id) {
-                        // Calculate nesting level for this node
-                        let nesting_level = activation_stack
-                            .get(node_id)
-                            .map(|stack| stack.len() as u32)
-                            .unwrap_or(0);
+                    // Calculate nesting level for this node
+                    let nesting_level = activation_stack
+                        .get(node_id)
+                        .map(|stack| stack.len() as u32)
+                        .unwrap_or(0);
 
-                        // Create new ActivationTiming with current Y position
-                        let new_timing =
-                            ActivationTiming::new(participant_index, current_y, nesting_level);
+                    // Create new ActivationTiming with current Y position
+                    let new_timing = ActivationTiming::new(*node_id, current_y, nesting_level);
 
-                        // Add to the stack for this node
-                        activation_stack
-                            .entry(*node_id)
-                            .or_default()
-                            .push(new_timing);
-                    }
+                    // Add to the stack for this node
+                    activation_stack
+                        .entry(*node_id)
+                        .or_default()
+                        .push(new_timing);
                 }
                 SequenceEvent::Deactivate(node_id) => {
                     // Pop the most recent activation for this node
@@ -313,22 +304,33 @@ impl Engine {
                         }
                     }
                 }
-                SequenceEvent::FragmentStart { .. } => {
-                    // TODO: Track fragment start position for box rendering
+                SequenceEvent::FragmentStart(fragment) => {
+                    let fragment_timing = FragmentTiming::new(fragment, current_y);
+                    fragment_stack.push(fragment_timing);
                 }
-                SequenceEvent::FragmentSectionStart { .. } => {
-                    // TODO: Track section boundaries for rendering dividers
+                SequenceEvent::FragmentSectionStart(fragment_section) => {
+                    let fragment_timing = fragment_stack
+                        .last_mut()
+                        .expect("fragment_timing stack is empty");
+                    fragment_timing.start_section(fragment_section, current_y);
                 }
                 SequenceEvent::FragmentSectionEnd => {
-                    // TODO: Mark end of section for layout
+                    let fragment_timing = fragment_stack
+                        .last_mut()
+                        .expect("fragment_timing stack is empty");
+                    fragment_timing.end_section(current_y).unwrap();
                 }
                 SequenceEvent::FragmentEnd => {
-                    // TODO: Complete fragment box and add to layout
+                    let fragment_timing = fragment_stack
+                        .pop()
+                        .expect("fragment_timing stack is empty");
+                    let fragment = fragment_timing.into_fragment(current_y);
+                    fragments.push(fragment);
                 }
             }
         }
 
-        activation_boxes
+        (messages, activation_boxes, fragments, current_y)
     }
 }
 

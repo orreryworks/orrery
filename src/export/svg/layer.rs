@@ -249,12 +249,20 @@ impl Svg {
     /// Render sequence-specific content
     fn render_sequence_content(&mut self, content: &sequence::Layout) -> Vec<Box<dyn svg::Node>> {
         let mut groups = Vec::with_capacity(
-            content.participants().len() + content.messages().len() + content.activations().len(),
+            content.participants().len()
+                + content.messages().len()
+                + content.activations().len()
+                + content.activations().len(),
         );
 
         // Render all participants within this positioned content
-        for participant in content.participants() {
+        for participant in content.participants().values() {
             groups.push(self.render_participant(participant));
+        }
+
+        // Render all fragments within this positioned content
+        for fragment in content.fragments() {
+            groups.push(self.render_fragment(fragment));
         }
 
         // Render all activation boxes within this positioned content

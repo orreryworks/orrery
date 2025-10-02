@@ -225,7 +225,7 @@ impl Default for FragmentDefinition {
 #[derive(Debug, Clone)]
 pub struct FragmentSection {
     /// Optional title for this section (e.g., "successful login", "failed login")
-    title: Option<String>,
+    title: Option<String>, // PERF: This can be ref.
     /// Height of this section's content area in pixels
     height: f32,
 }

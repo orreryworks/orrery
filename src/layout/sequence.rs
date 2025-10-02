@@ -1,10 +1,11 @@
 use crate::{
     ast, draw,
     geometry::{Bounds, Point, Size},
+    identifier::Id,
     layout::{component, positioning::LayoutSizing},
 };
 use log::warn;
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
 /// Sequence diagram participant that holds its drawable component and lifeline.
 #[derive(Debug, Clone)]
@@ -39,14 +40,14 @@ impl Participant {
 #[derive(Debug, Clone)]
 /// A rendered message between two participants at a specific Y position.
 pub struct Message {
-    source_index: usize,
-    target_index: usize,
+    source: Id,
+    target: Id,
     y_position: f32,
     arrow_with_text: draw::ArrowWithText,
 }
 
 impl Message {
-    /// Creates a new Message from an AST relation and participant indices.
+    /// Creates a new Message from an AST relation and participant IDs.
     ///
     /// This method extracts the arrow definition and text from the AST relation
     /// and creates a self-contained Message that doesn't depend on the
@@ -54,18 +55,13 @@ impl Message {
     ///
     /// # Arguments
     /// * `relation` - Reference to the AST relation being laid out
-    /// * `source_index` - Index of the source participant in the layout
-    /// * `target_index` - Index of the target participant in the layout
+    /// * `source` - ID of the source participant in the layout
+    /// * `target` - ID of the target participant in the layout
     /// * `y_position` - The y-coordinate where this message appears
     ///
     /// # Returns
     /// A new Message containing all necessary rendering information
-    pub fn from_ast(
-        relation: &ast::Relation,
-        source_index: usize,
-        target_index: usize,
-        y_position: f32,
-    ) -> Self {
+    pub fn from_ast(relation: &ast::Relation, source: Id, target: Id, y_position: f32) -> Self {
         let arrow_def = relation.clone_arrow_definition();
         let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
         let mut arrow_with_text = draw::ArrowWithText::new(arrow);
@@ -73,8 +69,8 @@ impl Message {
             arrow_with_text.set_text(text);
         }
         Self {
-            source_index,
-            target_index,
+            source,
+            target,
             y_position,
             arrow_with_text,
         }
@@ -85,14 +81,14 @@ impl Message {
         &self.arrow_with_text
     }
 
-    /// Index of the source participant in the layout
-    pub fn source_index(&self) -> usize {
-        self.source_index
+    /// Id of the source participant in the layout
+    pub fn source(&self) -> Id {
+        self.source
     }
 
-    /// Index of the target participant in the layout
-    pub fn target_index(&self) -> usize {
-        self.target_index
+    /// Id of the target participant in the layout
+    pub fn target(&self) -> Id {
+        self.target
     }
 
     /// The y-coordinate where this message appears
@@ -122,7 +118,7 @@ impl Message {
 /// This conversion happens at the exact moment of deactivation with the precise end position.
 #[derive(Debug, Clone)]
 pub struct ActivationBox {
-    participant_index: usize,
+    participant_id: Id,
     center_y: f32,
     drawable: draw::ActivationBox,
 }
@@ -141,16 +137,16 @@ pub struct ActivationBox {
 /// 3. **Conversion**: Converted to [`ActivationBox`] when [`SequenceEvent::Deactivate`] occurs
 #[derive(Debug, Clone)]
 pub struct ActivationTiming {
-    participant_index: usize,
+    participant_id: Id,
     start_y: f32,
     nesting_level: u32,
 }
 
 impl ActivationTiming {
-    /// Creates a new ActivationTiming with the given participant index, start position, and nesting level
-    pub fn new(participant_index: usize, start_y: f32, nesting_level: u32) -> Self {
+    /// Creates a new ActivationTiming with the given participant ID, start position, and nesting level
+    pub fn new(participant_id: Id, start_y: f32, nesting_level: u32) -> Self {
         Self {
-            participant_index,
+            participant_id,
             start_y,
             nesting_level,
         }
@@ -172,15 +168,15 @@ impl ActivationTiming {
         let drawable = draw::ActivationBox::new(definition, height, self.nesting_level());
 
         ActivationBox {
-            participant_index: self.participant_index(),
+            participant_id: self.participant_id(),
             center_y,
             drawable,
         }
     }
 
-    /// Returns the participant index
-    fn participant_index(&self) -> usize {
-        self.participant_index
+    /// Returns the participant Id
+    fn participant_id(&self) -> Id {
+        self.participant_id
     }
 
     /// Returns the start Y coordinate
@@ -195,9 +191,9 @@ impl ActivationTiming {
 }
 
 impl ActivationBox {
-    /// Returns the participant index for this activation box
-    pub fn participant_index(&self) -> usize {
-        self.participant_index
+    /// Returns the participant Id for this activation box
+    pub fn participant_id(&self) -> Id {
+        self.participant_id
     }
 
     /// Returns the center Y coordinate for this activation box
@@ -243,6 +239,123 @@ impl ActivationBox {
     }
 }
 
+/// Tracks the timing and layout information for a fragment during sequence diagram layout.
+///
+/// This struct accumulates information about a fragment as it's being processed during
+/// layout calculation, including its vertical position, horizontal bounds, and sections.
+/// It's converted to a [`Fragment`] once processing is complete.
+///
+/// # Fields
+/// - `start_y`: The Y coordinate where this fragment begins
+/// - `min_x`: The minimum X coordinate covered by this fragment (updated as messages are added)
+/// - `max_x`: The maximum X coordinate covered by this fragment (updated as messages are added)
+/// - `fragment`: Reference to the AST fragment being processed
+/// - `active_section`: Currently open section being processed (if any)
+/// - `sections`: Completed sections within this fragment
+pub struct FragmentTiming<'a> {
+    start_y: f32,
+    min_x: f32,
+    max_x: f32,
+    fragment: &'a ast::Fragment,
+    active_section: Option<(&'a ast::FragmentSection, f32)>,
+    sections: Vec<draw::FragmentSection>,
+}
+
+impl<'a> FragmentTiming<'a> {
+    /// Creates a new `FragmentTiming` for the given fragment starting at the specified Y position.
+    pub fn new(fragment: &'a ast::Fragment, start_y: f32) -> Self {
+        Self {
+            start_y,
+            min_x: f32::MAX,
+            max_x: f32::MIN,
+            fragment,
+            active_section: None,
+            sections: Vec::new(),
+        }
+    }
+
+    /// Begins tracking a new section within this fragment.
+    ///
+    /// # Panics
+    /// Panics in debug builds if there's already an active section.
+    pub fn start_section(&mut self, section: &'a ast::FragmentSection, start_y: f32) {
+        #[cfg(debug_assertions)]
+        assert!(self.active_section.is_none());
+
+        self.active_section = Some((section, start_y));
+    }
+
+    /// Ends the currently active section and adds it to the completed sections list.
+    ///
+    /// # Returns
+    /// - `Ok(())` if a section was successfully ended
+    /// - `Err` if there's no active section to end
+    pub fn end_section(&mut self, end_y: f32) -> Result<(), &'static str> {
+        let (ast_section, start_y) = self
+            .active_section
+            .take()
+            .ok_or("There is no active fragment section")?;
+        let section = draw::FragmentSection::new(
+            ast_section.title().map(|title| title.to_string()),
+            end_y - start_y,
+        );
+        self.sections.push(section);
+        Ok(())
+    }
+
+    /// Updates the horizontal bounds of this fragment as messages are processed.
+    ///
+    /// This method expands the fragment's X-axis coverage to include new min/max coordinates,
+    /// ensuring the fragment encompasses all relevant messages.
+    ///
+    /// # Arguments
+    /// * `min_x` - New minimum X coordinate to consider
+    /// * `max_x` - New maximum X coordinate to consider
+    pub fn update_x(&mut self, min_x: f32, max_x: f32) {
+        self.min_x = self.min_x.min(min_x);
+        self.max_x = self.max_x.max(max_x);
+    }
+
+    /// Converts this timing information into a final positioned Fragment.
+    ///
+    /// This consumes the `FragmentTiming` and creates a `Fragment` with complete bounds
+    /// calculated from the accumulated start/end Y positions and min/max X coordinates.
+    ///
+    /// # Arguments
+    /// * `end_y` - The final Y coordinate where this fragment ends
+    ///
+    /// # Panics
+    /// Panics in debug builds if there's still an active section (all sections must be ended before conversion).
+    ///
+    /// # Returns
+    /// A positioned `Fragment` ready for rendering
+    pub fn into_fragment(self, end_y: f32) -> Fragment {
+        #[cfg(debug_assertions)]
+        assert!(self.active_section.is_none());
+
+        let drawable = draw::Fragment::new(
+            self.fragment.clone_fragment_definition(),
+            self.fragment.operation().to_string(),
+            self.sections,
+            Size::new(end_y - self.start_y, self.max_x - self.min_x),
+        );
+        Fragment { drawable }
+    }
+}
+
+/// A positioned fragment in a sequence diagram layout.
+#[derive(Debug, Clone)]
+pub struct Fragment {
+    drawable: draw::Fragment,
+}
+
+impl Fragment {
+    /// Returns a reference to the drawable fragment
+    pub fn drawable(&self) -> &draw::Fragment {
+        &self.drawable
+    }
+}
+
 /// Find the active activation box for a given participant at a specific Y coordinate.
 ///
 /// This function searches through all activation boxes to find ones that:
@@ -265,7 +378,7 @@ impl ActivationBox {
 /// * `None` - If no activation boxes are active for this participant at this Y coordinate
 pub fn find_active_activation_box_for_participant(
     activation_boxes: &[ActivationBox],
-    participant_index: usize,
+    participant_id: Id,
     message_y: f32,
 ) -> Option<&ActivationBox> {
     if activation_boxes.is_empty() {
@@ -279,7 +392,7 @@ pub fn find_active_activation_box_for_participant(
 
     let mut active_boxes: Vec<&ActivationBox> = activation_boxes
         .iter()
-        .filter(|activation_box| activation_box.participant_index() == participant_index)
+        .filter(|activation_box| activation_box.participant_id() == participant_id)
         .filter(|activation_box| activation_box.is_active_at_y(message_y))
         .collect();
 
@@ -312,12 +425,12 @@ pub fn find_active_activation_box_for_participant(
 pub fn calculate_message_endpoint_x(
     activation_boxes: &[ActivationBox],
     participant: &component::Component,
-    participant_index: usize,
+    participant_id: Id,
     message_y: f32,
     target_x: f32,
 ) -> f32 {
     if let Some(activation_box) =
-        find_active_activation_box_for_participant(activation_boxes, participant_index, message_y)
+        find_active_activation_box_for_participant(activation_boxes, participant_id, message_y)
     {
         activation_box.intersection_x(participant.position(), target_x)
     } else {
@@ -328,30 +441,33 @@ pub fn calculate_message_endpoint_x(
 /// Sequence layout containing participants, messages, activation boxes and metrics.
 #[derive(Debug, Clone)]
 pub struct Layout {
-    participants: Vec<Participant>,
+    participants: HashMap<Id, Participant>,
     messages: Vec<Message>,
     activations: Vec<ActivationBox>,
+    fragments: Vec<Fragment>,
     max_lifeline_end: f32, // TODO: Consider calculating on the fly.
 }
 
 impl Layout {
     /// Construct a new sequence layout.
     pub fn new(
-        participants: Vec<Participant>,
+        participants: HashMap<Id, Participant>,
         messages: Vec<Message>,
         activations: Vec<ActivationBox>,
+        fragments: Vec<Fragment>,
         max_lifeline_end: f32,
     ) -> Self {
         Self {
             participants,
             messages,
             activations,
+            fragments,
             max_lifeline_end,
         }
     }
 
     /// Borrow all participants in this sequence layout.
-    pub fn participants(&self) -> &[Participant] {
+    pub fn participants(&self) -> &HashMap<Id, Participant> {
         &self.participants
     }
 
@@ -363,6 +479,11 @@ impl Layout {
     /// Borrow all activation boxes in this sequence layout.
     pub fn activations(&self) -> &[ActivationBox] {
         &self.activations
+    }
+
+    /// Borrow all fragments in this sequence layout.
+    pub fn fragments(&self) -> &[Fragment] {
+        &self.fragments
     }
 
     /// The maximum Y coordinate (bottom) reached by any lifeline.
@@ -382,11 +503,10 @@ impl LayoutSizing for Layout {
         // Find bounds for width
         let bounds = self
             .participants()
-            .iter()
-            .skip(1)
-            .fold(self.participants()[0].component().bounds(), |acc, p| {
-                acc.merge(&p.component().bounds())
-            });
+            .values()
+            .map(|participant| participant.component().bounds())
+            .reduce(|acc, bounds| acc.merge(&bounds))
+            .expect("Participants is empty");
 
         Size::new(
             bounds.width(),
@@ -405,7 +525,7 @@ mod tests {
         let definition = Rc::new(draw::ActivationBoxDefinition::default());
         let drawable = draw::ActivationBox::new(definition, 20.0, 0);
         let activation_box = ActivationBox {
-            participant_index: 0,
+            participant_id: Id::new("test"),
             center_y: 100.0,
             drawable,
         };
@@ -426,7 +546,7 @@ mod tests {
         let definition = Rc::new(draw::ActivationBoxDefinition::default());
         let drawable = draw::ActivationBox::new(definition, 20.0, 0);
         let activation_box = ActivationBox {
-            participant_index: 0,
+            participant_id: Id::new("test"),
             center_y: 100.0,
             drawable,
         };
@@ -448,7 +568,7 @@ mod tests {
         let definition = Rc::new(draw::ActivationBoxDefinition::default());
         let drawable = draw::ActivationBox::new(definition, 20.0, 2);
         let activation_box = ActivationBox {
-            participant_index: 0,
+            participant_id: Id::new("test"),
             center_y: 100.0,
             drawable,
         };
@@ -470,7 +590,7 @@ mod tests {
         // Activation box 1: participant 0, Y range [90-110], nesting level 0
         let drawable1 = draw::ActivationBox::new(definition.clone(), 20.0, 0);
         let activation_box1 = ActivationBox {
-            participant_index: 0,
+            participant_id: Id::new("test"),
             center_y: 100.0,
             drawable: drawable1,
         };
@@ -478,7 +598,7 @@ mod tests {
         // Activation box 2: participant 0, Y range [95-105], nesting level 1 (nested)
         let drawable2 = draw::ActivationBox::new(definition.clone(), 10.0, 1);
         let activation_box2 = ActivationBox {
-            participant_index: 0,
+            participant_id: Id::new("test"),
             center_y: 100.0,
             drawable: drawable2,
         };
@@ -486,7 +606,7 @@ mod tests {
         // Activation box 3: participant 1, Y range [120-140], nesting level 0
         let drawable3 = draw::ActivationBox::new(definition, 20.0, 0);
         let activation_box3 = ActivationBox {
-            participant_index: 1,
+            participant_id: Id::new("test"),
             center_y: 130.0,
             drawable: drawable3,
         };
@@ -494,33 +614,41 @@ mod tests {
         let activation_boxes = vec![activation_box1, activation_box2, activation_box3];
 
         // Test finding activation box for participant 0 at Y=100 (both boxes active, should return nested one)
-        let result = find_active_activation_box_for_participant(&activation_boxes, 0, 100.0);
+        let result =
+            find_active_activation_box_for_participant(&activation_boxes, Id::new("test"), 100.0);
         assert!(result.is_some());
         assert_eq!(result.unwrap().drawable().nesting_level(), 1); // Should return the more nested box
 
         // Test finding activation box for participant 0 at Y=92 (only first box active)
-        let result = find_active_activation_box_for_participant(&activation_boxes, 0, 92.0);
+        let result =
+            find_active_activation_box_for_participant(&activation_boxes, Id::new("test"), 92.0);
         assert!(result.is_some());
         assert_eq!(result.unwrap().drawable().nesting_level(), 0);
 
         // Test finding activation box for participant 0 at Y=80 (no boxes active)
-        let result = find_active_activation_box_for_participant(&activation_boxes, 0, 80.0);
+        let result =
+            find_active_activation_box_for_participant(&activation_boxes, Id::new("test"), 80.0);
         assert!(result.is_none());
 
         // Test finding activation box for participant 1 at Y=130 (different participant)
-        let result = find_active_activation_box_for_participant(&activation_boxes, 1, 130.0);
+        let result =
+            find_active_activation_box_for_participant(&activation_boxes, Id::new("test"), 130.0);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().participant_index(), 1);
+        assert_eq!(result.unwrap().participant_id(), Id::new("test"));
 
         // Test finding activation box for non-existent participant
-        let result = find_active_activation_box_for_participant(&activation_boxes, 2, 100.0);
+        let result = find_active_activation_box_for_participant(
+            &activation_boxes,
+            Id::new("invalid"),
+            100.0,
+        );
         assert!(result.is_none());
     }
 
     #[test]
     fn test_find_active_activation_box_edge_cases() {
         // Test with empty activation boxes list
-        let result = find_active_activation_box_for_participant(&[], 0, 100.0);
+        let result = find_active_activation_box_for_participant(&[], Id::new("test"), 100.0);
         assert!(result.is_none());
 
         // Test with multiple boxes at different nesting levels
@@ -530,7 +658,7 @@ mod tests {
             .map(|i| {
                 let drawable = draw::ActivationBox::new(definition.clone(), 20.0, i);
                 ActivationBox {
-                    participant_index: 0,
+                    participant_id: Id::new("test"),
                     center_y: 100.0,
                     drawable,
                 }
@@ -538,7 +666,7 @@ mod tests {
             .collect();
 
         // Should return the highest nesting level (4)
-        let result = find_active_activation_box_for_participant(&boxes, 0, 100.0);
+        let result = find_active_activation_box_for_participant(&boxes, Id::new("test"), 100.0);
         assert!(result.is_some());
         assert_eq!(result.unwrap().drawable().nesting_level(), 4);
     }
@@ -549,28 +677,39 @@ mod tests {
         let definition = Rc::new(draw::ActivationBoxDefinition::default());
         let drawable = draw::ActivationBox::new(definition, 20.0, 0);
         let activation_box = ActivationBox {
-            participant_index: 0,
+            participant_id: Id::new("test"),
             center_y: 100.0,
             drawable,
         };
         let activation_boxes = vec![activation_box];
 
         // Test with NaN Y coordinate
-        let result = find_active_activation_box_for_participant(&activation_boxes, 0, f32::NAN);
+        let result = find_active_activation_box_for_participant(
+            &activation_boxes,
+            Id::new("test"),
+            f32::NAN,
+        );
         assert!(result.is_none());
 
         // Test with infinite Y coordinate
-        let result =
-            find_active_activation_box_for_participant(&activation_boxes, 0, f32::INFINITY);
+        let result = find_active_activation_box_for_participant(
+            &activation_boxes,
+            Id::new("test"),
+            f32::INFINITY,
+        );
         assert!(result.is_none());
 
         // Test with negative infinite Y coordinate
-        let result =
-            find_active_activation_box_for_participant(&activation_boxes, 0, f32::NEG_INFINITY);
+        let result = find_active_activation_box_for_participant(
+            &activation_boxes,
+            Id::new("test"),
+            f32::NEG_INFINITY,
+        );
         assert!(result.is_none());
 
         // Test with valid Y coordinate (should work normally)
-        let result = find_active_activation_box_for_participant(&activation_boxes, 0, 100.0);
+        let result =
+            find_active_activation_box_for_participant(&activation_boxes, Id::new("test"), 100.0);
         assert!(result.is_some());
     }
 
@@ -578,24 +717,111 @@ mod tests {
     fn test_message_endpoint_fallback_behavior() {
         // Test with empty activation boxes (should fallback)
         let empty_boxes: Vec<ActivationBox> = vec![];
-        let result = find_active_activation_box_for_participant(&empty_boxes, 0, 100.0);
+        let result =
+            find_active_activation_box_for_participant(&empty_boxes, Id::new("test_0"), 100.0);
         assert!(result.is_none());
 
         // Test with activation boxes for different participant (should fallback)
         let definition = Rc::new(draw::ActivationBoxDefinition::default());
         let drawable = draw::ActivationBox::new(definition, 20.0, 0);
         let activation_box = ActivationBox {
-            participant_index: 1, // Different participant
+            participant_id: Id::new("test_1"), // Different participant
             center_y: 100.0,
             drawable,
         };
         let activation_boxes = vec![activation_box];
 
-        let result = find_active_activation_box_for_participant(&activation_boxes, 0, 100.0);
+        let result =
+            find_active_activation_box_for_participant(&activation_boxes, Id::new("test_0"), 100.0);
         assert!(result.is_none());
 
         // Test with activation box not active at Y coordinate (should fallback)
-        let result = find_active_activation_box_for_participant(&activation_boxes, 1, 200.0);
+        let result =
+            find_active_activation_box_for_participant(&activation_boxes, Id::new("test_1"), 200.0);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_fragment_timing_lifecycle() {
+        // Create a mock ast::Fragment for testing
+        let fragment_def = draw::FragmentDefinition::default();
+        let type_def = Rc::new(ast::TypeDefinition::new_fragment(
+            Id::new("test_fragment"),
+            draw::TextDefinition::new(),
+            fragment_def,
+        ));
+
+        let section1 = ast::FragmentSection::new(Some("section 1".to_string()), vec![]);
+        let section2 = ast::FragmentSection::new(Some("section 2".to_string()), vec![]);
+
+        let fragment = ast::Fragment::new("alt".to_string(), vec![section1, section2], type_def);
+
+        // Create FragmentTiming
+        let start_y = 100.0;
+        let mut fragment_timing = FragmentTiming::new(&fragment, start_y);
+
+        // Start first section
+        fragment_timing.start_section(&fragment.sections()[0], 120.0);
+
+        // End first section
+        let result = fragment_timing.end_section(180.0);
+        assert!(result.is_ok());
+
+        // Start second section
+        fragment_timing.start_section(&fragment.sections()[1], 180.0);
+
+        // End second section
+        let result = fragment_timing.end_section(240.0);
+        assert!(result.is_ok());
+
+        // Update bounds
+        fragment_timing.update_x(50.0, 200.0);
+
+        // Convert to final Fragment
+        let end_y = 250.0;
+        let final_fragment = fragment_timing.into_fragment(end_y);
+
+        // Verify the final fragment has a drawable
+        assert!(final_fragment.drawable().size().height() > 0.0);
+        assert!(final_fragment.drawable().size().width() > 0.0);
+    }
+
+    #[test]
+    fn test_fragment_timing_bounds_tracking() {
+        // Create a mock ast::Fragment
+        let fragment_def = draw::FragmentDefinition::default();
+        let type_def = Rc::new(ast::TypeDefinition::new_fragment(
+            Id::new("test_fragment"),
+            draw::TextDefinition::new(),
+            fragment_def,
+        ));
+
+        let fragment = ast::Fragment::new("opt".to_string(), vec![], type_def);
+
+        let mut fragment_timing = FragmentTiming::new(&fragment, 100.0);
+
+        // Initially, bounds should be at extremes
+        assert_eq!(fragment_timing.min_x, f32::MAX);
+        assert_eq!(fragment_timing.max_x, f32::MIN);
+
+        // Update with first set of bounds
+        fragment_timing.update_x(50.0, 150.0);
+        assert_eq!(fragment_timing.min_x, 50.0);
+        assert_eq!(fragment_timing.max_x, 150.0);
+
+        // Update with smaller min (should update min)
+        fragment_timing.update_x(30.0, 100.0);
+        assert_eq!(fragment_timing.min_x, 30.0);
+        assert_eq!(fragment_timing.max_x, 150.0); // max unchanged
+
+        // Update with larger max (should update max)
+        fragment_timing.update_x(60.0, 200.0);
+        assert_eq!(fragment_timing.min_x, 30.0); // min unchanged
+        assert_eq!(fragment_timing.max_x, 200.0);
+
+        // Update with values within current bounds (no change)
+        fragment_timing.update_x(40.0, 180.0);
+        assert_eq!(fragment_timing.min_x, 30.0);
+        assert_eq!(fragment_timing.max_x, 200.0);
     }
 }
