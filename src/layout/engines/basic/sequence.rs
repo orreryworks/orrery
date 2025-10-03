@@ -187,7 +187,7 @@ impl Engine {
             .unwrap_or_default();
 
         let (messages, activations, fragments, lifeline_end) =
-            self.process_events(graph, participants_height);
+            self.process_events(graph, participants_height, &components);
 
         // Update lifeline ends to match diagram height and finalize lifelines
         let participants: HashMap<Id, Participant> = components
@@ -222,7 +222,7 @@ impl Engine {
     ///
     /// # Algorithm
     /// 1. Iterate through ordered events sequentially
-    /// 2. For `SequenceEvent::Relation`: Create Message at current Y position, then advance Y
+    /// 2. For `SequenceEvent::Relation`: Create Message at current Y position, update fragment bounds if inside a fragment, then advance Y
     /// 3. For `SequenceEvent::Activate`: Create ActivationTiming with current Y position, push to participant's stack
     /// 4. For `SequenceEvent::Deactivate`: Pop activation, convert to ActivationBox with precise bounds
     /// 5. For `SequenceEvent::FragmentStart`: Create FragmentTiming and push to fragment stack
@@ -233,6 +233,7 @@ impl Engine {
     /// # Parameters
     /// * `graph` - The sequence diagram graph containing ordered events
     /// * `participants_height` - Height of the participant boxes for calculating initial Y position
+    /// * `components` - Map of participant IDs to their positioned components, used for fragment bounds tracking
     ///
     /// # Returns
     /// A tuple containing:
@@ -244,13 +245,14 @@ impl Engine {
         &self,
         graph: &SequenceGraph,
         participants_height: f32,
+        components: &HashMap<Id, Component>,
     ) -> (Vec<Message>, Vec<ActivationBox>, Vec<Fragment>, f32) {
         let mut messages: Vec<Message> = Vec::new();
         let mut activation_boxes: Vec<ActivationBox> = Vec::new();
         let mut fragments: Vec<Fragment> = Vec::new();
 
         let mut activation_stack: HashMap<Id, Vec<ActivationTiming>> = HashMap::new();
-        let mut fragment_stack: Vec<_> = Vec::new();
+        let mut fragment_stack: Vec<FragmentTiming> = Vec::new();
 
         // Calculate initial Y position using same calculation as messages
         let mut current_y = self.top_margin + participants_height + self.message_spacing;
@@ -267,8 +269,17 @@ impl Engine {
 
                     messages.push(message);
 
+                    // Update fragment bounds if we're inside a fragment
+                    // NOTE: For perfectly accurate bounds, this should use calculate_message_endpoint_x()
+                    // to account for activation box offsets. Currently using participant center positions
+                    // as a simpler approximation that is adequate for most cases.
+                    if let Some(fragment_timing) = fragment_stack.last_mut() {
+                        let source_x = components[&relation.source()].position().x();
+                        let target_x = components[&relation.target()].position().x();
+                        fragment_timing.update_x(source_x, target_x);
+                    }
+
                     current_y += self.message_spacing;
-                    // TODO: Update fragment x.
                 }
                 SequenceEvent::Activate(node_id) => {
                     // Calculate nesting level for this node

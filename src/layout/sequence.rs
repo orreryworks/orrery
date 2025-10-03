@@ -309,11 +309,11 @@ impl<'a> FragmentTiming<'a> {
     /// ensuring the fragment encompasses all relevant messages.
     ///
     /// # Arguments
-    /// * `min_x` - New minimum X coordinate to consider
-    /// * `max_x` - New maximum X coordinate to consider
-    pub fn update_x(&mut self, min_x: f32, max_x: f32) {
-        self.min_x = self.min_x.min(min_x);
-        self.max_x = self.max_x.max(max_x);
+    /// * `source_x` - X coordinate of the message source participant
+    /// * `target_x` - X coordinate of the message target participant
+    pub fn update_x(&mut self, source_x: f32, target_x: f32) {
+        self.min_x = self.min_x.min(source_x.min(target_x));
+        self.max_x = self.max_x.max(source_x.max(target_x));
     }
 
     /// Converts this timing information into a final positioned Fragment.
@@ -804,22 +804,22 @@ mod tests {
         assert_eq!(fragment_timing.min_x, f32::MAX);
         assert_eq!(fragment_timing.max_x, f32::MIN);
 
-        // Update with first set of bounds
+        // Update with first message (source at 50.0, target at 150.0)
         fragment_timing.update_x(50.0, 150.0);
         assert_eq!(fragment_timing.min_x, 50.0);
         assert_eq!(fragment_timing.max_x, 150.0);
 
-        // Update with smaller min (should update min)
+        // Update with message extending left (source at 30.0, target at 100.0)
         fragment_timing.update_x(30.0, 100.0);
         assert_eq!(fragment_timing.min_x, 30.0);
         assert_eq!(fragment_timing.max_x, 150.0); // max unchanged
 
-        // Update with larger max (should update max)
+        // Update with message extending right (source at 60.0, target at 200.0)
         fragment_timing.update_x(60.0, 200.0);
         assert_eq!(fragment_timing.min_x, 30.0); // min unchanged
         assert_eq!(fragment_timing.max_x, 200.0);
 
-        // Update with values within current bounds (no change)
+        // Update with message within current bounds (source at 40.0, target at 180.0)
         fragment_timing.update_x(40.0, 180.0);
         assert_eq!(fragment_timing.min_x, 30.0);
         assert_eq!(fragment_timing.max_x, 200.0);
