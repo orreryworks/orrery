@@ -1,6 +1,6 @@
 use super::Svg;
 use crate::{
-    draw::Drawable,
+    draw::{self, Drawable as _},
     geometry::{Bounds, Point},
     layout::{layer::ContentStack, sequence},
 };
@@ -68,8 +68,11 @@ impl Svg {
     ///
     /// # Returns
     /// A boxed SVG node representing the fragment
-    pub fn render_fragment(&self, fragment: &sequence::Fragment) -> Box<dyn svg::Node> {
-        fragment.drawable().render_to_svg(Point::default()) // TODO
+    pub fn render_fragment(
+        &self,
+        fragment: &draw::PositionedDrawable<draw::Fragment>,
+    ) -> Box<dyn svg::Node> {
+        fragment.render_to_svg()
     }
 
     pub fn render_activation_box(

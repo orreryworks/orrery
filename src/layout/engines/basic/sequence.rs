@@ -12,9 +12,7 @@ use crate::{
         component::Component,
         engines::{EmbeddedLayouts, SequenceEngine},
         layer::{ContentStack, PositionedContent},
-        sequence::{
-            ActivationBox, ActivationTiming, Fragment, FragmentTiming, Layout, Message, Participant,
-        },
+        sequence::{ActivationBox, ActivationTiming, FragmentTiming, Layout, Message, Participant},
     },
     structure::{SequenceEvent, SequenceGraph},
 };
@@ -239,17 +237,22 @@ impl Engine {
     /// A tuple containing:
     /// * `Vec<Message>` - All messages with their positions and arrow information
     /// * `Vec<ActivationBox>` - All activation boxes with precise positioning and nesting levels
-    /// * `Vec<Fragment>` - All fragments with their sections and bounds
+    /// * `Vec<draw::PositionedDrawable<draw::Fragment>>` - All fragments with their sections and bounds
     /// * `f32` - The final Y coordinate (lifeline end position)
     fn process_events(
         &self,
         graph: &SequenceGraph,
         participants_height: f32,
         components: &HashMap<Id, Component>,
-    ) -> (Vec<Message>, Vec<ActivationBox>, Vec<Fragment>, f32) {
+    ) -> (
+        Vec<Message>,
+        Vec<ActivationBox>,
+        Vec<draw::PositionedDrawable<draw::Fragment>>,
+        f32,
+    ) {
         let mut messages: Vec<Message> = Vec::new();
         let mut activation_boxes: Vec<ActivationBox> = Vec::new();
-        let mut fragments: Vec<Fragment> = Vec::new();
+        let mut fragments: Vec<draw::PositionedDrawable<draw::Fragment>> = Vec::new();
 
         let mut activation_stack: HashMap<Id, Vec<ActivationTiming>> = HashMap::new();
         let mut fragment_stack: Vec<FragmentTiming> = Vec::new();

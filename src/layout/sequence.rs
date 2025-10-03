@@ -329,7 +329,7 @@ impl<'a> FragmentTiming<'a> {
     ///
     /// # Returns
     /// A positioned `Fragment` ready for rendering
-    pub fn into_fragment(self, end_y: f32) -> Fragment {
+    pub fn into_fragment(self, end_y: f32) -> draw::PositionedDrawable<draw::Fragment> {
         #[cfg(debug_assertions)]
         assert!(self.active_section.is_none());
 
@@ -337,22 +337,15 @@ impl<'a> FragmentTiming<'a> {
             self.fragment.clone_fragment_definition(),
             self.fragment.operation().to_string(),
             self.sections,
-            Size::new(end_y - self.start_y, self.max_x - self.min_x),
+            Size::new(self.max_x - self.min_x, end_y - self.start_y),
         );
-        Fragment { drawable }
-    }
-}
 
-/// A positioned fragment in a sequence diagram layout.
-#[derive(Debug, Clone)]
-pub struct Fragment {
-    drawable: draw::Fragment,
-}
+        // Calculate the center position of the fragment
+        let center_x = (self.min_x + self.max_x) / 2.0;
+        let center_y = (self.start_y + end_y) / 2.0;
+        let position = Point::new(center_x, center_y);
 
-impl Fragment {
-    /// Returns a reference to the drawable fragment
-    pub fn drawable(&self) -> &draw::Fragment {
-        &self.drawable
+        draw::PositionedDrawable::new(drawable).with_position(position)
     }
 }
 
@@ -444,7 +437,7 @@ pub struct Layout {
     participants: HashMap<Id, Participant>,
     messages: Vec<Message>,
     activations: Vec<ActivationBox>,
-    fragments: Vec<Fragment>,
+    fragments: Vec<draw::PositionedDrawable<draw::Fragment>>,
     max_lifeline_end: f32, // TODO: Consider calculating on the fly.
 }
 
@@ -454,7 +447,7 @@ impl Layout {
         participants: HashMap<Id, Participant>,
         messages: Vec<Message>,
         activations: Vec<ActivationBox>,
-        fragments: Vec<Fragment>,
+        fragments: Vec<draw::PositionedDrawable<draw::Fragment>>,
         max_lifeline_end: f32,
     ) -> Self {
         Self {
@@ -482,7 +475,7 @@ impl Layout {
     }
 
     /// Borrow all fragments in this sequence layout.
-    pub fn fragments(&self) -> &[Fragment] {
+    pub fn fragments(&self) -> &[draw::PositionedDrawable<draw::Fragment>] {
         &self.fragments
     }
 
@@ -782,8 +775,8 @@ mod tests {
         let final_fragment = fragment_timing.into_fragment(end_y);
 
         // Verify the final fragment has a drawable
-        assert!(final_fragment.drawable().size().height() > 0.0);
-        assert!(final_fragment.drawable().size().width() > 0.0);
+        assert!(final_fragment.inner().size().height() > 0.0);
+        assert!(final_fragment.inner().size().width() > 0.0);
     }
 
     #[test]

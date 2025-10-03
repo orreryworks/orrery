@@ -72,6 +72,8 @@ pub struct FragmentDefinition {
 
     /// Padding around the fragment content
     content_padding: Insets,
+    /// Padding added to fragment bounds for visual separation from lifelines and messages
+    bounds_padding: Insets,
 }
 
 impl FragmentDefinition {
@@ -130,54 +132,54 @@ impl FragmentDefinition {
         self.content_padding = padding;
     }
 
+    /// Sets the bounds padding
+    pub fn set_bounds_padding(&mut self, padding: Insets) {
+        self.bounds_padding = padding;
+    }
+
     /// Gets the border color
-    pub fn border_color(&self) -> &Color {
+    fn border_color(&self) -> &Color {
         &self.border_color
     }
 
     /// Gets the border width
-    pub fn border_width(&self) -> f32 {
+    fn border_width(&self) -> f32 {
         self.border_width
     }
 
     /// Gets the border style
-    pub fn border_style(&self) -> BorderStyle {
+    fn border_style(&self) -> BorderStyle {
         self.border_style
     }
 
     /// Gets the background color
-    pub fn background_color(&self) -> Option<&Color> {
+    fn background_color(&self) -> Option<&Color> {
         self.background_color.as_ref()
     }
 
-    /// Gets the operation label text definition
-    pub fn operation_label_text_definition(&self) -> &TextDefinition {
-        &self.operation_label_text_definition
-    }
-
-    /// Gets the section title text definition
-    pub fn section_title_text_definition(&self) -> &TextDefinition {
-        &self.section_title_text_definition
-    }
-
     /// Gets the separator color
-    pub fn separator_color(&self) -> &Color {
+    fn separator_color(&self) -> &Color {
         &self.separator_color
     }
 
     /// Gets the separator width
-    pub fn separator_width(&self) -> f32 {
+    fn separator_width(&self) -> f32 {
         self.separator_width
     }
 
     /// Gets the separator dash array
-    pub fn separator_dasharray(&self) -> &str {
+    fn separator_dasharray(&self) -> &str {
         &self.separator_dasharray
     }
 
     /// Gets the content padding
-    pub fn content_padding(&self) -> Insets {
+    fn content_padding(&self) -> Insets {
         self.content_padding
+    }
+
+    /// Gets the bounds padding
+    fn bounds_padding(&self) -> Insets {
+        self.bounds_padding
     }
 }
 
@@ -213,6 +215,7 @@ impl Default for FragmentDefinition {
             separator_dasharray: "5,3".to_string(),
 
             content_padding: Insets::new(8.0, 8.0, 8.0, 8.0),
+            bounds_padding: Insets::new(20.0, 20.0, 20.0, 20.0),
         }
     }
 }
@@ -315,8 +318,11 @@ impl Drawable for Fragment {
     fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
         let mut group = svg_element::Group::new();
         let padding = self.definition.content_padding();
+        let bounds_padding = self.definition.bounds_padding();
 
-        let bounds = position.to_bounds(self.size());
+        // Apply bounds padding to expand the fragment beyond its content
+        let expanded_size = self.size.add_padding(bounds_padding);
+        let bounds = position.to_bounds(expanded_size);
         let top_left = bounds.min_point();
 
         // 1. Render background if specified
