@@ -1,7 +1,7 @@
 use super::ShapeDefinition;
 use crate::{
     color::Color,
-    draw::text_positioning::TextPositioningStrategy,
+    draw::{StrokeDefinition, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
 use std::rc::Rc;
@@ -11,8 +11,7 @@ use svg::{self, node::element as svg_element};
 #[derive(Debug, Clone)]
 pub struct OvalDefinition {
     fill_color: Option<Color>,
-    line_color: Color,
-    line_width: usize,
+    stroke: Rc<StrokeDefinition>,
 }
 
 impl OvalDefinition {
@@ -26,8 +25,7 @@ impl Default for OvalDefinition {
     fn default() -> Self {
         Self {
             fill_color: None,
-            line_color: Color::default(),
-            line_width: 2,
+            stroke: Rc::new(StrokeDefinition::solid(Color::default(), 2.0)),
         }
     }
 }
@@ -99,12 +97,8 @@ impl ShapeDefinition for OvalDefinition {
         self.fill_color
     }
 
-    fn line_color(&self) -> Color {
-        self.line_color
-    }
-
-    fn line_width(&self) -> usize {
-        self.line_width
+    fn stroke(&self) -> &StrokeDefinition {
+        &self.stroke
     }
 
     fn set_fill_color(&mut self, color: Option<Color>) -> Result<(), &'static str> {
@@ -112,13 +106,8 @@ impl ShapeDefinition for OvalDefinition {
         Ok(())
     }
 
-    fn set_line_color(&mut self, color: Color) -> Result<(), &'static str> {
-        self.line_color = color;
-        Ok(())
-    }
-
-    fn set_line_width(&mut self, width: usize) -> Result<(), &'static str> {
-        self.line_width = width;
+    fn set_stroke(&mut self, stroke: StrokeDefinition) -> Result<(), &'static str> {
+        self.stroke = Rc::new(stroke);
         Ok(())
     }
 
@@ -131,15 +120,12 @@ impl ShapeDefinition for OvalDefinition {
         Ok(Rc::new(cloned))
     }
 
-    fn with_line_color(&self, color: Color) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+    fn with_stroke(
+        &self,
+        stroke: StrokeDefinition,
+    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
         let mut cloned = self.clone();
-        cloned.set_line_color(color)?;
-        Ok(Rc::new(cloned))
-    }
-
-    fn with_line_width(&self, width: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
-        let mut cloned = self.clone();
-        cloned.set_line_width(width)?;
+        cloned.set_stroke(stroke)?;
         Ok(Rc::new(cloned))
     }
 
@@ -152,15 +138,14 @@ impl ShapeDefinition for OvalDefinition {
         let rx = size.width() / 2.0;
         let ry = size.height() / 2.0;
 
-        let mut ellipse = svg_element::Ellipse::new()
+        let ellipse = svg_element::Ellipse::new()
             .set("cx", position.x())
             .set("cy", position.y())
             .set("rx", rx)
             .set("ry", ry)
-            .set("stroke", self.line_color().to_string())
-            .set("stroke-opacity", self.line_color().alpha())
-            .set("stroke-width", self.line_width())
             .set("fill", "white");
+
+        let mut ellipse = crate::apply_stroke!(ellipse, &self.stroke);
 
         if let Some(fill_color) = self.fill_color() {
             ellipse = ellipse

@@ -1,7 +1,7 @@
 use super::{RectangleDefinition, ShapeDefinition, rectangle};
 use crate::{
     color::Color,
-    draw::text_positioning::TextPositioningStrategy,
+    draw::{StrokeDefinition, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
 use std::{fmt, rc::Rc};
@@ -25,16 +25,10 @@ impl ComponentDefinition {
 
 impl Default for ComponentDefinition {
     fn default() -> Self {
-        let mut rectangle_definition = RectangleDefinition::new();
+        let mut rectangle_definition = RectangleDefinition::default();
         rectangle_definition
             .set_fill_color(Some(Color::new("#FEFECE").unwrap()))
             .expect("Failed to set fill color");
-        rectangle_definition
-            .set_line_color(Color::new("#A80036").unwrap())
-            .expect("Failed to set line color");
-        rectangle_definition
-            .set_line_width(1)
-            .expect("Failed to set line width");
         rectangle_definition
             .set_rounded(10)
             .expect("Failed to set rounded");
@@ -47,7 +41,11 @@ impl Default for ComponentDefinition {
 }
 
 pub trait Icon {
-    fn render_to_svg(&self, line_color: Color, fill_color: Option<Color>) -> Box<dyn svg::Node>;
+    fn render_to_svg(
+        &self,
+        stroke: &StrokeDefinition,
+        fill_color: Option<Color>,
+    ) -> Box<dyn svg::Node>;
     fn size(&self) -> Size;
 }
 
@@ -55,17 +53,20 @@ pub trait Icon {
 pub struct ComponentIcon;
 
 impl Icon for ComponentIcon {
-    fn render_to_svg(&self, line_color: Color, fill_color: Option<Color>) -> Box<dyn svg::Node> {
+    fn render_to_svg(
+        &self,
+        stroke: &StrokeDefinition,
+        fill_color: Option<Color>,
+    ) -> Box<dyn svg::Node> {
         let path_data = "M 8 0 L 40 0 L 40 30 L 8 30 L 8 24 L 12 24 L 12 18 L 8 18 L 8 12 L 12 12
             L 12 6 L 8 6 L 8 0 Z M 0 6 L 0 12 L 12 12 L 12 6 L 0 6 Z M 0 18 L 0 24 L 12 24 L 12 18 L 0 18 Z";
 
-        let mut component_icon = svg_element::Path::new()
+        let component_icon = svg_element::Path::new()
             .set("d", path_data)
             .set("fill", "white")
-            .set("stroke", line_color.to_string())
-            .set("stroke-opacity", line_color.alpha())
-            .set("stroke-width", 1)
             .set("fill-rule", "evenodd");
+
+        let mut component_icon = crate::apply_stroke!(component_icon, stroke);
 
         if let Some(fill_color) = fill_color {
             component_icon = component_icon
@@ -122,12 +123,8 @@ where
         self.rectangle_definition.fill_color()
     }
 
-    fn line_color(&self) -> Color {
-        self.rectangle_definition.line_color()
-    }
-
-    fn line_width(&self) -> usize {
-        self.rectangle_definition.line_width()
+    fn stroke(&self) -> &StrokeDefinition {
+        self.rectangle_definition.stroke()
     }
 
     fn rounded(&self) -> usize {
@@ -138,16 +135,12 @@ where
         self.rectangle_definition.set_fill_color(color)
     }
 
-    fn set_line_color(&mut self, color: Color) -> Result<(), &'static str> {
-        self.rectangle_definition.set_line_color(color)
-    }
-
-    fn set_line_width(&mut self, width: usize) -> Result<(), &'static str> {
-        self.rectangle_definition.set_line_width(width)
-    }
-
     fn set_rounded(&mut self, radius: usize) -> Result<(), &'static str> {
         self.rectangle_definition.set_rounded(radius)
+    }
+
+    fn set_stroke(&mut self, stroke: StrokeDefinition) -> Result<(), &'static str> {
+        self.rectangle_definition.set_stroke(stroke)
     }
 
     fn with_fill_color(
@@ -159,21 +152,18 @@ where
         Ok(Rc::new(cloned))
     }
 
-    fn with_line_color(&self, color: Color) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
-        let mut cloned = self.clone();
-        cloned.set_line_color(color)?;
-        Ok(Rc::new(cloned))
-    }
-
-    fn with_line_width(&self, width: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
-        let mut cloned = self.clone();
-        cloned.set_line_width(width)?;
-        Ok(Rc::new(cloned))
-    }
-
     fn with_rounded(&self, radius: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
         let mut cloned = self.clone();
         cloned.set_rounded(radius)?;
+        Ok(Rc::new(cloned))
+    }
+
+    fn with_stroke(
+        &self,
+        stroke: StrokeDefinition,
+    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        let mut cloned = self.clone();
+        cloned.set_stroke(stroke)?;
         Ok(Rc::new(cloned))
     }
 
@@ -199,16 +189,15 @@ where
         let mut group = svg_element::Group::new().set("id", "component-group");
 
         // Main rectangle
-        let mut rect = svg_element::Rectangle::new()
+        let rect = svg_element::Rectangle::new()
             .set("x", bounds.min_x())
             .set("y", bounds.min_y())
             .set("width", size.width())
             .set("height", size.height())
-            .set("stroke", self.line_color().to_string())
-            .set("stroke-opacity", self.line_color().alpha())
-            .set("stroke-width", self.line_width())
             .set("fill", "white")
             .set("rx", self.rounded());
+
+        let mut rect = crate::apply_stroke!(rect, self.stroke());
 
         if let Some(fill_color) = self.fill_color() {
             rect = rect
@@ -218,9 +207,7 @@ where
 
         group = group.add(rect);
 
-        let component_icon = self
-            .icon
-            .render_to_svg(self.line_color(), self.fill_color());
+        let component_icon = self.icon.render_to_svg(self.stroke(), self.fill_color());
 
         // Create a group for the icon with transform to position it
         let icon_group = svg_element::Group::new()

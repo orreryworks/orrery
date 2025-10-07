@@ -20,7 +20,7 @@
 
 use crate::{
     color::Color,
-    draw::Drawable,
+    draw::{Drawable, StrokeDefinition},
     geometry::{Bounds, Point, Size},
 };
 use std::rc::Rc;
@@ -29,8 +29,7 @@ use svg::{self, node::element as svg_element};
 /// Styling configuration for activation boxes in sequence diagrams.
 ///
 /// This struct contains all visual properties needed to render activation boxes,
-/// including dimensions, colors, and nesting behavior. It follows the same pattern
-/// as other definition structs in the codebase (e.g., `TextDefinition`, `ArrowDefinition`).
+/// including dimensions, colors, and nesting behavior using stroke styling.
 ///
 /// # Default Values
 ///
@@ -38,15 +37,13 @@ use svg::{self, node::element as svg_element};
 /// - `width`: 8.0px - Fixed width for all activation boxes
 /// - `nesting_offset`: 4.0px - Horizontal spacing per nesting level
 /// - `fill_color`: white - Background color of the activation box
-/// - `stroke_color`: black - Border color
-/// - `stroke_width`: 1px - Border thickness
+/// - `stroke`: black color, 1.0 width, solid style - Border styling
 #[derive(Debug, Clone)]
 pub struct ActivationBoxDefinition {
     width: f32,
     nesting_offset: f32,
     fill_color: Color,
-    stroke_color: Color,
-    stroke_width: usize,
+    stroke: Rc<StrokeDefinition>,
 }
 
 impl ActivationBoxDefinition {
@@ -70,16 +67,6 @@ impl ActivationBoxDefinition {
         self.fill_color = color;
     }
 
-    /// Sets the stroke color
-    pub fn set_stroke_color(&mut self, color: Color) {
-        self.stroke_color = color;
-    }
-
-    /// Sets the stroke width
-    pub fn set_stroke_width(&mut self, width: usize) {
-        self.stroke_width = width;
-    }
-
     /// Gets the activation box width
     fn width(&self) -> f32 {
         self.width
@@ -95,14 +82,9 @@ impl ActivationBoxDefinition {
         self.fill_color
     }
 
-    /// Gets the stroke color
-    fn stroke_color(&self) -> Color {
-        self.stroke_color
-    }
-
-    /// Gets the stroke width
-    fn stroke_width(&self) -> usize {
-        self.stroke_width
+    /// Returns the stroke definition
+    pub fn stroke(&self) -> &StrokeDefinition {
+        &self.stroke
     }
 }
 
@@ -112,8 +94,7 @@ impl Default for ActivationBoxDefinition {
             width: 8.0,
             nesting_offset: 4.0,
             fill_color: Color::new("white").expect("Invalid default fill color"),
-            stroke_color: Color::new("black").expect("Invalid default stroke color"),
-            stroke_width: 1,
+            stroke: Rc::new(StrokeDefinition::default()),
         }
     }
 }
@@ -197,10 +178,10 @@ impl Drawable for ActivationBox {
             .set("width", bounds.width())
             .set("height", bounds.height())
             .set("fill", def.fill_color().to_string())
-            .set("fill-opacity", def.fill_color().alpha())
-            .set("stroke", def.stroke_color().to_string())
-            .set("stroke-opacity", def.stroke_color().alpha())
-            .set("stroke-width", def.stroke_width());
+            .set("fill-opacity", def.fill_color().alpha());
+
+        // Apply all stroke attributes (color, opacity, width, cap, join, dasharray)
+        let activation_rect = crate::apply_stroke!(activation_rect, def.stroke());
 
         activation_rect.into()
     }
@@ -223,14 +204,12 @@ mod tests {
         definition.set_width(12.0);
         definition.set_nesting_offset(6.0);
         definition.set_fill_color(Color::new("red").unwrap());
-        definition.set_stroke_color(Color::new("blue").unwrap());
-        definition.set_stroke_width(3);
 
         assert_eq!(definition.width(), 12.0);
         assert_eq!(definition.nesting_offset(), 6.0);
         assert_eq!(definition.fill_color().to_string(), "red");
-        assert_eq!(definition.stroke_color().to_string(), "blue");
-        assert_eq!(definition.stroke_width(), 3);
+        assert_eq!(definition.stroke().color().to_string(), "black");
+        assert_eq!(definition.stroke().width(), 1.0);
     }
 
     #[test]

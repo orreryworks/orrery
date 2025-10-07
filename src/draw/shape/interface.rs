@@ -1,6 +1,7 @@
 use super::ShapeDefinition;
 use crate::{
     color::Color,
+    draw::StrokeDefinition,
     geometry::{Insets, Point, Size},
 };
 use std::rc::Rc;
@@ -11,8 +12,7 @@ use svg::{self, node::element as svg_element};
 #[derive(Debug, Clone)]
 pub struct InterfaceDefinition {
     fill_color: Option<Color>,
-    line_color: Color,
-    line_width: usize,
+    stroke: Rc<StrokeDefinition>,
 }
 
 impl InterfaceDefinition {
@@ -26,8 +26,7 @@ impl Default for InterfaceDefinition {
     fn default() -> Self {
         Self {
             fill_color: Some(Color::new("white").unwrap()),
-            line_color: Color::default(),
-            line_width: 2,
+            stroke: Rc::new(StrokeDefinition::solid(Color::default(), 2.0)),
         }
     }
 }
@@ -45,12 +44,8 @@ impl ShapeDefinition for InterfaceDefinition {
         self.fill_color
     }
 
-    fn line_color(&self) -> Color {
-        self.line_color
-    }
-
-    fn line_width(&self) -> usize {
-        self.line_width
+    fn stroke(&self) -> &StrokeDefinition {
+        &self.stroke
     }
 
     fn set_fill_color(&mut self, color: Option<Color>) -> Result<(), &'static str> {
@@ -58,13 +53,8 @@ impl ShapeDefinition for InterfaceDefinition {
         Ok(())
     }
 
-    fn set_line_color(&mut self, color: Color) -> Result<(), &'static str> {
-        self.line_color = color;
-        Ok(())
-    }
-
-    fn set_line_width(&mut self, width: usize) -> Result<(), &'static str> {
-        self.line_width = width;
+    fn set_stroke(&mut self, stroke: StrokeDefinition) -> Result<(), &'static str> {
+        self.stroke = Rc::new(stroke);
         Ok(())
     }
 
@@ -77,15 +67,12 @@ impl ShapeDefinition for InterfaceDefinition {
         Ok(Rc::new(cloned))
     }
 
-    fn with_line_color(&self, color: Color) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+    fn with_stroke(
+        &self,
+        stroke: StrokeDefinition,
+    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
         let mut cloned = self.clone();
-        cloned.set_line_color(color)?;
-        Ok(Rc::new(cloned))
-    }
-
-    fn with_line_width(&self, width: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
-        let mut cloned = self.clone();
-        cloned.set_line_width(width)?;
+        cloned.set_stroke(stroke)?;
         Ok(Rc::new(cloned))
     }
 
@@ -93,14 +80,13 @@ impl ShapeDefinition for InterfaceDefinition {
         let radius = 15.0;
 
         // Main circle
-        let mut circle = svg_element::Circle::new()
+        let circle = svg_element::Circle::new()
             .set("cx", position.x())
             .set("cy", position.y())
             .set("r", radius)
-            .set("stroke", self.line_color().to_string())
-            .set("stroke-opacity", self.line_color().alpha())
-            .set("stroke-width", self.line_width())
             .set("fill", "white");
+
+        let mut circle = crate::apply_stroke!(circle, &self.stroke);
 
         if let Some(fill_color) = self.fill_color() {
             circle = circle

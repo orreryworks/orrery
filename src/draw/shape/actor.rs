@@ -1,6 +1,7 @@
 use super::ShapeDefinition;
 use crate::{
     color::Color,
+    draw::StrokeDefinition,
     geometry::{Insets, Point, Size},
 };
 use std::rc::Rc;
@@ -11,8 +12,7 @@ use svg::{self, node::element as svg_element};
 #[derive(Debug, Clone)]
 pub struct ActorDefinition {
     fill_color: Option<Color>,
-    line_color: Color,
-    line_width: usize,
+    stroke: Rc<StrokeDefinition>,
 }
 
 impl ActorDefinition {
@@ -26,8 +26,7 @@ impl Default for ActorDefinition {
     fn default() -> Self {
         Self {
             fill_color: Some(Color::new("white").unwrap()),
-            line_color: Color::default(),
-            line_width: 2,
+            stroke: Rc::new(StrokeDefinition::solid(Color::default(), 2.0)),
         }
     }
 }
@@ -45,12 +44,8 @@ impl ShapeDefinition for ActorDefinition {
         self.fill_color
     }
 
-    fn line_color(&self) -> Color {
-        self.line_color
-    }
-
-    fn line_width(&self) -> usize {
-        self.line_width
+    fn stroke(&self) -> &StrokeDefinition {
+        &self.stroke
     }
 
     fn set_fill_color(&mut self, color: Option<Color>) -> Result<(), &'static str> {
@@ -58,13 +53,8 @@ impl ShapeDefinition for ActorDefinition {
         Ok(())
     }
 
-    fn set_line_color(&mut self, color: Color) -> Result<(), &'static str> {
-        self.line_color = color;
-        Ok(())
-    }
-
-    fn set_line_width(&mut self, width: usize) -> Result<(), &'static str> {
-        self.line_width = width;
+    fn set_stroke(&mut self, stroke: StrokeDefinition) -> Result<(), &'static str> {
+        self.stroke = Rc::new(stroke);
         Ok(())
     }
 
@@ -77,15 +67,12 @@ impl ShapeDefinition for ActorDefinition {
         Ok(Rc::new(cloned))
     }
 
-    fn with_line_color(&self, color: Color) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+    fn with_stroke(
+        &self,
+        stroke: StrokeDefinition,
+    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
         let mut cloned = self.clone();
-        cloned.set_line_color(color)?;
-        Ok(Rc::new(cloned))
-    }
-
-    fn with_line_width(&self, width: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
-        let mut cloned = self.clone();
-        cloned.set_line_width(width)?;
+        cloned.set_stroke(stroke)?;
         Ok(Rc::new(cloned))
     }
 
@@ -100,14 +87,13 @@ impl ShapeDefinition for ActorDefinition {
 
         // Head (circle at the top)
         let head_center = position.with_y(position.y() - 22.0);
-        let mut head = svg_element::Circle::new()
+        let head = svg_element::Circle::new()
             .set("cx", head_center.x())
             .set("cy", head_center.y())
             .set("r", head_radius)
-            .set("stroke", self.line_color().to_string())
-            .set("stroke-opacity", self.line_color().alpha())
-            .set("stroke-width", self.line_width())
             .set("fill", "white");
+
+        let mut head = crate::apply_stroke!(head, &self.stroke);
 
         if let Some(fill_color) = self.fill_color() {
             head = head
@@ -121,15 +107,14 @@ impl ShapeDefinition for ActorDefinition {
         let body_top = position.with_y(head_center.y() + head_radius);
         let body_bottom = position.with_y(body_top.y() + body_length);
 
-        let body = svg_element::Line::new()
-            .set("x1", body_top.x())
-            .set("y1", body_top.y())
-            .set("x2", body_bottom.x())
-            .set("y2", body_bottom.y())
-            .set("stroke", self.line_color().to_string())
-            .set("stroke-opacity", self.line_color().alpha())
-            .set("stroke-width", self.line_width())
-            .set("stroke-linecap", "round");
+        let body = crate::apply_stroke!(
+            svg_element::Line::new()
+                .set("x1", body_top.x())
+                .set("y1", body_top.y())
+                .set("x2", body_bottom.x())
+                .set("y2", body_bottom.y()),
+            &self.stroke
+        );
 
         group = group.add(body);
 
@@ -137,55 +122,51 @@ impl ShapeDefinition for ActorDefinition {
         let arm_center = position.with_y(body_top.y() + 6.0);
 
         // Left arm
-        let left_arm = svg_element::Line::new()
-            .set("x1", arm_center.x())
-            .set("y1", arm_center.y())
-            .set("x2", arm_center.x() - arm_length)
-            .set("y2", arm_center.y() + 8.0)
-            .set("stroke", self.line_color().to_string())
-            .set("stroke-opacity", self.line_color().alpha())
-            .set("stroke-width", self.line_width())
-            .set("stroke-linecap", "round");
+        let left_arm = crate::apply_stroke!(
+            svg_element::Line::new()
+                .set("x1", arm_center.x())
+                .set("y1", arm_center.y())
+                .set("x2", arm_center.x() - arm_length)
+                .set("y2", arm_center.y() + 8.0),
+            &self.stroke
+        );
 
         group = group.add(left_arm);
 
         // Right arm
-        let right_arm = svg_element::Line::new()
-            .set("x1", arm_center.x())
-            .set("y1", arm_center.y())
-            .set("x2", arm_center.x() + arm_length)
-            .set("y2", arm_center.y() + 8.0)
-            .set("stroke", self.line_color().to_string())
-            .set("stroke-opacity", self.line_color().alpha())
-            .set("stroke-width", self.line_width())
-            .set("stroke-linecap", "round");
+        let right_arm = crate::apply_stroke!(
+            svg_element::Line::new()
+                .set("x1", arm_center.x())
+                .set("y1", arm_center.y())
+                .set("x2", arm_center.x() + arm_length)
+                .set("y2", arm_center.y() + 8.0),
+            &self.stroke
+        );
 
         group = group.add(right_arm);
 
         // Legs (two diagonal lines from bottom of body)
         // Left leg
-        let left_leg = svg_element::Line::new()
-            .set("x1", body_bottom.x())
-            .set("y1", body_bottom.y())
-            .set("x2", body_bottom.x() - 10.0)
-            .set("y2", body_bottom.y() + leg_length)
-            .set("stroke", self.line_color().to_string())
-            .set("stroke-opacity", self.line_color().alpha())
-            .set("stroke-width", self.line_width())
-            .set("stroke-linecap", "round");
+        let left_leg = crate::apply_stroke!(
+            svg_element::Line::new()
+                .set("x1", body_bottom.x())
+                .set("y1", body_bottom.y())
+                .set("x2", body_bottom.x() - 10.0)
+                .set("y2", body_bottom.y() + leg_length),
+            &self.stroke
+        );
 
         group = group.add(left_leg);
 
         // Right leg
-        let right_leg = svg_element::Line::new()
-            .set("x1", body_bottom.x())
-            .set("y1", body_bottom.y())
-            .set("x2", body_bottom.x() + 10.0)
-            .set("y2", body_bottom.y() + leg_length)
-            .set("stroke", self.line_color().to_string())
-            .set("stroke-opacity", self.line_color().alpha())
-            .set("stroke-width", self.line_width())
-            .set("stroke-linecap", "round");
+        let right_leg = crate::apply_stroke!(
+            svg_element::Line::new()
+                .set("x1", body_bottom.x())
+                .set("y1", body_bottom.y())
+                .set("x2", body_bottom.x() + 10.0)
+                .set("y2", body_bottom.y() + leg_length),
+            &self.stroke
+        );
 
         group = group.add(right_leg);
 

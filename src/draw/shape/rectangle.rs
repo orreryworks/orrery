@@ -1,7 +1,7 @@
 use super::ShapeDefinition;
 use crate::{
     color::Color,
-    draw::text_positioning::TextPositioningStrategy,
+    draw::{StrokeDefinition, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
 use std::rc::Rc;
@@ -11,8 +11,7 @@ use svg::{self, node::element as svg_element};
 #[derive(Debug, Clone)]
 pub struct RectangleDefinition {
     fill_color: Option<Color>,
-    line_color: Color,
-    line_width: usize,
+    stroke: Rc<StrokeDefinition>,
     rounded: usize,
 }
 
@@ -27,8 +26,7 @@ impl Default for RectangleDefinition {
     fn default() -> Self {
         Self {
             fill_color: None,
-            line_color: Color::default(),
-            line_width: 2,
+            stroke: Rc::new(StrokeDefinition::solid(Color::default(), 2.0)),
             rounded: 0,
         }
     }
@@ -52,12 +50,8 @@ impl ShapeDefinition for RectangleDefinition {
         self.fill_color
     }
 
-    fn line_color(&self) -> Color {
-        self.line_color
-    }
-
-    fn line_width(&self) -> usize {
-        self.line_width
+    fn stroke(&self) -> &StrokeDefinition {
+        &self.stroke
     }
 
     fn rounded(&self) -> usize {
@@ -69,18 +63,13 @@ impl ShapeDefinition for RectangleDefinition {
         Ok(())
     }
 
-    fn set_line_color(&mut self, color: Color) -> Result<(), &'static str> {
-        self.line_color = color;
-        Ok(())
-    }
-
-    fn set_line_width(&mut self, width: usize) -> Result<(), &'static str> {
-        self.line_width = width;
-        Ok(())
-    }
-
     fn set_rounded(&mut self, radius: usize) -> Result<(), &'static str> {
         self.rounded = radius;
+        Ok(())
+    }
+
+    fn set_stroke(&mut self, stroke: StrokeDefinition) -> Result<(), &'static str> {
+        self.stroke = Rc::new(stroke);
         Ok(())
     }
 
@@ -93,21 +82,18 @@ impl ShapeDefinition for RectangleDefinition {
         Ok(Rc::new(cloned))
     }
 
-    fn with_line_color(&self, color: Color) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
-        let mut cloned = self.clone();
-        cloned.set_line_color(color)?;
-        Ok(Rc::new(cloned))
-    }
-
-    fn with_line_width(&self, width: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
-        let mut cloned = self.clone();
-        cloned.set_line_width(width)?;
-        Ok(Rc::new(cloned))
-    }
-
     fn with_rounded(&self, radius: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
         let mut cloned = self.clone();
         cloned.set_rounded(radius)?;
+        Ok(Rc::new(cloned))
+    }
+
+    fn with_stroke(
+        &self,
+        stroke: StrokeDefinition,
+    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        let mut cloned = self.clone();
+        cloned.set_stroke(stroke)?;
         Ok(Rc::new(cloned))
     }
 
@@ -121,16 +107,15 @@ impl ShapeDefinition for RectangleDefinition {
         let bounds = position.to_bounds(size);
 
         // Main rectangle
-        let mut rect = svg_element::Rectangle::new()
+        let rect = svg_element::Rectangle::new()
             .set("x", bounds.min_x())
             .set("y", bounds.min_y())
             .set("width", size.width())
             .set("height", size.height())
-            .set("stroke", self.line_color().to_string())
-            .set("stroke-opacity", self.line_color().alpha())
-            .set("stroke-width", self.line_width())
             .set("fill", "white")
             .set("rx", self.rounded());
+
+        let mut rect = crate::apply_stroke!(rect, &self.stroke);
 
         if let Some(fill_color) = self.fill_color() {
             rect = rect

@@ -629,7 +629,9 @@ impl TypeDefinition {
                                     Some("Use a CSS color".to_string()),
                                 )
                             })?;
-                            new_shape_def.set_line_color(val).map_err(|err| {
+                            let mut new_stroke = (*new_shape_def.stroke()).clone();
+                            new_stroke.set_color(val);
+                            new_shape_def.set_stroke(new_stroke).map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
@@ -647,7 +649,9 @@ impl TypeDefinition {
                                     Some("Width must be a positive number".to_string()),
                                 )
                             })?;
-                            new_shape_def.set_line_width(val).map_err(|err| {
+                            let mut new_stroke = (*new_shape_def.stroke()).clone();
+                            new_stroke.set_width(val as f32);
+                            new_shape_def.set_stroke(new_stroke).map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
@@ -708,7 +712,8 @@ impl TypeDefinition {
                 Ok(Self::new_shape(id, text_def, new_shape_def))
             }
             DrawDefinition::Arrow(arrow_def) => {
-                let mut new_arrow_def = (**arrow_def).clone();
+                let mut new_stroke = arrow_def.stroke().clone();
+                let mut new_style = *arrow_def.style();
 
                 // Process arrow attributes
                 for attr in attributes {
@@ -733,10 +738,10 @@ impl TypeDefinition {
                                     Some("Use a CSS color".to_string()),
                                 )
                             })?;
-                            new_arrow_def.set_color(val);
+                            new_stroke.set_color(val);
                         }
                         "width" => {
-                            let val = value.as_usize().map_err(|err| {
+                            let val = value.as_float().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
                                     format!("Invalid width value: {err}"),
                                     attr.span(),
@@ -744,7 +749,7 @@ impl TypeDefinition {
                                     Some("Width must be a positive number".to_string()),
                                 )
                             })?;
-                            new_arrow_def.set_width(val);
+                            new_stroke.set_width(val);
                         }
                         "style" => {
                             let val =
@@ -767,7 +772,7 @@ impl TypeDefinition {
                                     ),
                                 )
                                 })?;
-                            new_arrow_def.set_style(val);
+                            new_style = val;
                         }
                         "text" => {
                             // Handle nested text attributes
@@ -800,9 +805,13 @@ impl TypeDefinition {
                     }
                 }
 
+                let mut new_arrow_def = draw::ArrowDefinition::new(Rc::new(new_stroke));
+                new_arrow_def.set_style(new_style);
                 Ok(Self::new_arrow(id, text_def, new_arrow_def))
             }
             DrawDefinition::Fragment(fragment_def) => {
+                let mut new_border_stroke = fragment_def.border_stroke().clone();
+                let mut new_separator_stroke = fragment_def.separator_stroke().clone();
                 let mut new_fragment_def = (**fragment_def).clone();
 
                 // Process fragment attributes
@@ -828,7 +837,7 @@ impl TypeDefinition {
                                     Some("Use a CSS color".to_string()),
                                 )
                             })?;
-                            new_fragment_def.set_border_color(val);
+                            new_border_stroke.set_color(val);
                         }
                         "border_width" => {
                             let val = value.as_float().map_err(|err| {
@@ -839,7 +848,7 @@ impl TypeDefinition {
                                     Some("Border width must be a positive number".to_string()),
                                 )
                             })?;
-                            new_fragment_def.set_border_width(val);
+                            new_border_stroke.set_width(val);
                         }
                         "border_style" => {
                             let style_str = value.as_str().map_err(|err| {
@@ -850,21 +859,15 @@ impl TypeDefinition {
                                     Some("Border style must be a string".to_string()),
                                 )
                             })?;
-                            let val = match style_str {
-                                "solid" => draw::BorderStyle::Solid,
-                                "dashed" => draw::BorderStyle::Dashed,
-                                _ => {
-                                    return Err(ElaborationDiagnosticError::from_span(
-                                        format!("Invalid border style '{style_str}'"),
-                                        attr.span(),
-                                        "invalid style",
-                                        Some(
-                                            "Border style must be 'solid' or 'dashed'".to_string(),
-                                        ),
-                                    ));
-                                }
-                            };
-                            new_fragment_def.set_border_style(val);
+                            let style = draw::StrokeStyle::from_str(style_str).map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err,
+                                    attr.span(),
+                                    "invalid border style",
+                                    None,
+                                )
+                            })?;
+                            new_border_stroke.set_style(style);
                         }
                         "background_color" => {
                             let val = Color::new(value.as_str().map_err(|err| {
@@ -902,7 +905,7 @@ impl TypeDefinition {
                                     Some("Use a CSS color".to_string()),
                                 )
                             })?;
-                            new_fragment_def.set_separator_color(val);
+                            new_separator_stroke.set_color(val);
                         }
                         "separator_width" => {
                             let val = value.as_float().map_err(|err| {
@@ -913,18 +916,26 @@ impl TypeDefinition {
                                     Some("Separator width must be a positive number".to_string()),
                                 )
                             })?;
-                            new_fragment_def.set_separator_width(val);
+                            new_separator_stroke.set_width(val);
                         }
                         "separator_dasharray" => {
-                            let val = value.as_str().map_err(|err| {
+                            let style_str = value.as_str().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
-                                    "invalid dasharray value",
-                                    Some("Dasharray must be a string like '5,3'".to_string()),
+                                    "invalid separator style value",
+                                    Some("Separator style must be a string".to_string()),
                                 )
                             })?;
-                            new_fragment_def.set_separator_dasharray(val.to_string());
+                            let style = draw::StrokeStyle::from_str(style_str).map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err,
+                                    attr.span(),
+                                    "invalid separator style",
+                                    None,
+                                )
+                            })?;
+                            new_separator_stroke.set_style(style);
                         }
                         "content_padding" => {
                             let val = value.as_float().map_err(|err| {
@@ -968,6 +979,9 @@ impl TypeDefinition {
                     }
                 }
 
+                new_fragment_def.set_border_stroke(Rc::new(new_border_stroke));
+                new_fragment_def.set_separator_stroke(Rc::new(new_separator_stroke));
+
                 Ok(Self::new_fragment(id, text_def, new_fragment_def))
             }
         }
@@ -977,7 +991,7 @@ impl TypeDefinition {
         Rc::from(Self::new_arrow(
             Id::new("Arrow"),
             draw::TextDefinition::new(),
-            draw::ArrowDefinition::new(),
+            draw::ArrowDefinition::default(),
         ))
     }
 

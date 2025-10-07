@@ -1,6 +1,7 @@
 use super::ShapeDefinition;
 use crate::{
     color::Color,
+    draw::StrokeDefinition,
     geometry::{Insets, Point, Size},
 };
 use std::rc::Rc;
@@ -11,8 +12,7 @@ use svg::{self, node::element as svg_element};
 #[derive(Debug, Clone)]
 pub struct BoundaryDefinition {
     fill_color: Option<Color>,
-    line_color: Color,
-    line_width: usize,
+    stroke: Rc<StrokeDefinition>,
 }
 
 impl BoundaryDefinition {
@@ -26,8 +26,7 @@ impl Default for BoundaryDefinition {
     fn default() -> Self {
         Self {
             fill_color: Some(Color::new("white").unwrap()),
-            line_color: Color::default(),
-            line_width: 2,
+            stroke: Rc::new(StrokeDefinition::solid(Color::default(), 2.0)),
         }
     }
 }
@@ -45,12 +44,8 @@ impl ShapeDefinition for BoundaryDefinition {
         self.fill_color
     }
 
-    fn line_color(&self) -> Color {
-        self.line_color
-    }
-
-    fn line_width(&self) -> usize {
-        self.line_width
+    fn stroke(&self) -> &StrokeDefinition {
+        &self.stroke
     }
 
     fn set_fill_color(&mut self, color: Option<Color>) -> Result<(), &'static str> {
@@ -58,13 +53,8 @@ impl ShapeDefinition for BoundaryDefinition {
         Ok(())
     }
 
-    fn set_line_color(&mut self, color: Color) -> Result<(), &'static str> {
-        self.line_color = color;
-        Ok(())
-    }
-
-    fn set_line_width(&mut self, width: usize) -> Result<(), &'static str> {
-        self.line_width = width;
+    fn set_stroke(&mut self, stroke: StrokeDefinition) -> Result<(), &'static str> {
+        self.stroke = Rc::new(stroke);
         Ok(())
     }
 
@@ -77,15 +67,12 @@ impl ShapeDefinition for BoundaryDefinition {
         Ok(Rc::new(cloned))
     }
 
-    fn with_line_color(&self, color: Color) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+    fn with_stroke(
+        &self,
+        stroke: StrokeDefinition,
+    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
         let mut cloned = self.clone();
-        cloned.set_line_color(color)?;
-        Ok(Rc::new(cloned))
-    }
-
-    fn with_line_width(&self, width: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
-        let mut cloned = self.clone();
-        cloned.set_line_width(width)?;
+        cloned.set_stroke(stroke)?;
         Ok(Rc::new(cloned))
     }
 
@@ -99,14 +86,13 @@ impl ShapeDefinition for BoundaryDefinition {
         let mut group = svg_element::Group::new().set("id", "boundary-group");
 
         // Main circle
-        let mut circle = svg_element::Circle::new()
+        let circle = svg_element::Circle::new()
             .set("cx", circle_position.x())
             .set("cy", circle_position.y())
             .set("r", circle_radius)
-            .set("stroke", self.line_color().to_string())
-            .set("stroke-opacity", self.line_color().alpha())
-            .set("stroke-width", self.line_width())
             .set("fill", "white");
+
+        let mut circle = crate::apply_stroke!(circle, &self.stroke);
 
         if let Some(fill_color) = self.fill_color() {
             circle = circle
@@ -120,15 +106,14 @@ impl ShapeDefinition for BoundaryDefinition {
         let line_x1 = position.add_point(Point::new(-size_half_x, -circle_radius));
         let line_x2 = position.add_point(Point::new(-size_half_x, circle_radius));
 
-        let boundary_line = svg_element::Line::new()
-            .set("x1", line_x1.x())
-            .set("y1", line_x1.y())
-            .set("x2", line_x2.x())
-            .set("y2", line_x2.y())
-            .set("stroke", self.line_color().to_string())
-            .set("stroke-opacity", self.line_color().alpha())
-            .set("stroke-width", self.line_width())
-            .set("stroke-linecap", "round");
+        let boundary_line = crate::apply_stroke!(
+            svg_element::Line::new()
+                .set("x1", line_x1.x())
+                .set("y1", line_x1.y())
+                .set("x2", line_x2.x())
+                .set("y2", line_x2.y()),
+            &self.stroke
+        );
 
         group = group.add(boundary_line);
 
@@ -136,15 +121,14 @@ impl ShapeDefinition for BoundaryDefinition {
         let line_x1 = position.add_point(Point::new(-size_half_x, 0.0));
         let line_x2 = position.add_point(Point::new(-8.5, 0.0));
 
-        let connector_line = svg_element::Line::new()
-            .set("x1", line_x1.x())
-            .set("y1", line_x1.y())
-            .set("x2", line_x2.x())
-            .set("y2", line_x2.y())
-            .set("stroke", self.line_color().to_string())
-            .set("stroke-opacity", self.line_color().alpha())
-            .set("stroke-width", self.line_width())
-            .set("stroke-linecap", "round");
+        let connector_line = crate::apply_stroke!(
+            svg_element::Line::new()
+                .set("x1", line_x1.x())
+                .set("y1", line_x1.y())
+                .set("x2", line_x2.x())
+                .set("y2", line_x2.y()),
+            &self.stroke
+        );
 
         group = group.add(connector_line);
 

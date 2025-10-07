@@ -20,26 +20,14 @@
 
 use crate::{
     color::Color,
-    draw::{Drawable, Text, TextDefinition},
+    draw::{Drawable, StrokeDefinition, Text, TextDefinition},
     geometry::{Insets, Point, Size},
 };
+
+#[cfg(test)]
+use crate::draw::StrokeStyle;
 use std::rc::Rc;
 use svg::{self, node::element as svg_element};
-
-/// Defines the visual style of fragment borders.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BorderStyle {
-    /// Solid line border
-    Solid,
-    /// Dashed line border
-    Dashed,
-}
-
-impl Default for BorderStyle {
-    fn default() -> Self {
-        Self::Solid
-    }
-}
 
 /// Styling configuration for fragment blocks in sequence diagrams.
 ///
@@ -49,12 +37,8 @@ impl Default for BorderStyle {
 /// structs in the codebase (e.g., `ActivationBoxDefinition`, `LifelineDefinition`).
 #[derive(Debug, Clone)]
 pub struct FragmentDefinition {
-    /// The color of the fragment border
-    border_color: Color,
-    /// The width of the fragment border in pixels
-    border_width: f32,
-    /// The style of the fragment border (solid or dashed)
-    border_style: BorderStyle,
+    /// The stroke styling for the fragment border
+    border_stroke: Rc<StrokeDefinition>,
     /// Optional background color for the entire fragment
     background_color: Option<Color>,
 
@@ -63,12 +47,8 @@ pub struct FragmentDefinition {
     /// Text definition for section titles
     section_title_text_definition: Rc<TextDefinition>,
 
-    /// The color of section separator lines
-    separator_color: Color,
-    /// The width of section separator lines in pixels
-    separator_width: f32,
-    /// Dash pattern for section separators (e.g., "5,3" for 5px dash, 3px gap)
-    separator_dasharray: String,
+    /// The stroke styling for section separator lines
+    separator_stroke: Rc<StrokeDefinition>,
 
     /// Padding around the fragment content
     content_padding: Insets,
@@ -80,21 +60,6 @@ impl FragmentDefinition {
     /// Creates a new FragmentDefinition with default values
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Sets the border color
-    pub fn set_border_color(&mut self, color: Color) {
-        self.border_color = color;
-    }
-
-    /// Sets the border width
-    pub fn set_border_width(&mut self, width: f32) {
-        self.border_width = width;
-    }
-
-    /// Sets the border style
-    pub fn set_border_style(&mut self, style: BorderStyle) {
-        self.border_style = style;
     }
 
     /// Sets the background color
@@ -112,21 +77,6 @@ impl FragmentDefinition {
         self.section_title_text_definition = text_def;
     }
 
-    /// Sets the separator color
-    pub fn set_separator_color(&mut self, color: Color) {
-        self.separator_color = color;
-    }
-
-    /// Sets the separator width
-    pub fn set_separator_width(&mut self, width: f32) {
-        self.separator_width = width;
-    }
-
-    /// Sets the separator dash array pattern
-    pub fn set_separator_dasharray(&mut self, dasharray: String) {
-        self.separator_dasharray = dasharray;
-    }
-
     /// Sets the content padding
     pub fn set_content_padding(&mut self, padding: Insets) {
         self.content_padding = padding;
@@ -137,19 +87,19 @@ impl FragmentDefinition {
         self.bounds_padding = padding;
     }
 
-    /// Gets the border color
-    fn border_color(&self) -> &Color {
-        &self.border_color
+    /// Sets the border stroke definition
+    pub fn set_border_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
+        self.border_stroke = stroke;
     }
 
-    /// Gets the border width
-    fn border_width(&self) -> f32 {
-        self.border_width
+    /// Sets the separator stroke definition
+    pub fn set_separator_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
+        self.separator_stroke = stroke;
     }
 
-    /// Gets the border style
-    fn border_style(&self) -> BorderStyle {
-        self.border_style
+    /// Returns the border stroke definition
+    pub fn border_stroke(&self) -> &StrokeDefinition {
+        &self.border_stroke
     }
 
     /// Gets the background color
@@ -157,19 +107,9 @@ impl FragmentDefinition {
         self.background_color.as_ref()
     }
 
-    /// Gets the separator color
-    fn separator_color(&self) -> &Color {
-        &self.separator_color
-    }
-
-    /// Gets the separator width
-    fn separator_width(&self) -> f32 {
-        self.separator_width
-    }
-
-    /// Gets the separator dash array
-    fn separator_dasharray(&self) -> &str {
-        &self.separator_dasharray
+    /// Returns the separator stroke definition
+    pub fn separator_stroke(&self) -> &StrokeDefinition {
+        &self.separator_stroke
     }
 
     /// Gets the content padding
@@ -190,8 +130,7 @@ impl Default for FragmentDefinition {
         operation_label_text_definition.set_font_size(12);
         operation_label_text_definition
             .set_background_color(Some(Color::new("white").expect("Invalid color")));
-        operation_label_text_definition
-            .set_color(Some(Color::new("black").expect("Invalid color")));
+        operation_label_text_definition.set_color(Some(Color::default()));
         operation_label_text_definition.set_padding(Insets::new(4.0, 8.0, 4.0, 8.0));
 
         // Create default text definition for section titles
@@ -202,17 +141,13 @@ impl Default for FragmentDefinition {
         section_title_text_definition.set_padding(Insets::new(2.0, 4.0, 2.0, 4.0));
 
         Self {
-            border_color: Color::new("black").expect("Invalid color"),
-            border_width: 1.0,
-            border_style: BorderStyle::Solid,
+            border_stroke: Rc::new(StrokeDefinition::default()),
             background_color: None,
 
             operation_label_text_definition: Rc::new(operation_label_text_definition),
             section_title_text_definition: Rc::new(section_title_text_definition),
 
-            separator_color: Color::new("black").expect("Invalid color"),
-            separator_width: 1.0,
-            separator_dasharray: "5,3".to_string(),
+            separator_stroke: Rc::new(StrokeDefinition::dashed(Color::default(), 1.0)),
 
             content_padding: Insets::new(8.0, 8.0, 8.0, 8.0),
             bounds_padding: Insets::new(20.0, 20.0, 20.0, 20.0),
@@ -338,19 +273,14 @@ impl Drawable for Fragment {
         }
 
         // 2. Render border
-        let mut border = svg_element::Rectangle::new()
+        let border = svg_element::Rectangle::new()
             .set("x", top_left.x())
             .set("y", top_left.y())
             .set("width", bounds.width())
             .set("height", bounds.height())
-            .set("fill", "none")
-            .set("stroke", self.definition.border_color().to_string())
-            .set("stroke-opacity", self.definition.border_color().alpha())
-            .set("stroke-width", self.definition.border_width());
+            .set("fill", "none");
 
-        if self.definition.border_style() == BorderStyle::Dashed {
-            border = border.set("stroke-dasharray", "5,3");
-        }
+        let border = crate::apply_stroke!(border, self.definition.border_stroke());
         group = group.add(border);
 
         // 3. Render operation label in upper-left corner
@@ -378,11 +308,9 @@ impl Drawable for Fragment {
                     .set("x1", top_left.x() + padding.left())
                     .set("y1", current_y)
                     .set("x2", top_left.x() + self.size.width() - padding.right())
-                    .set("y2", current_y)
-                    .set("stroke", self.definition.separator_color().to_string())
-                    .set("stroke-opacity", self.definition.separator_color().alpha())
-                    .set("stroke-width", self.definition.separator_width())
-                    .set("stroke-dasharray", self.definition.separator_dasharray());
+                    .set("y2", current_y);
+
+                let separator = crate::apply_stroke!(separator, self.definition.separator_stroke());
                 group = group.add(separator);
             }
 
@@ -420,21 +348,10 @@ mod tests {
     fn test_fragment_definition_custom_values() {
         let mut definition = FragmentDefinition::new();
 
-        definition.set_border_color(Color::new("blue").unwrap());
-        definition.set_border_width(2.0);
-        definition.set_border_style(BorderStyle::Dashed);
         definition.set_background_color(Some(Color::new("#f0f0f0").unwrap()));
-
-        definition.set_separator_color(Color::new("gray").unwrap());
-        definition.set_separator_width(0.5);
-        definition.set_separator_dasharray("10,5".to_string());
-
         definition.set_content_padding(Insets::new(10.0, 12.0, 10.0, 12.0));
 
-        assert_eq!(definition.border_color().to_string(), "blue");
-        assert_eq!(definition.border_width(), 2.0);
-        assert_eq!(definition.border_style(), BorderStyle::Dashed);
-        // Color gets converted to RGB format internally
+        // Verify background color
         assert!(definition.background_color().is_some());
         let bg_color = definition.background_color().unwrap().to_string();
         assert!(
@@ -442,15 +359,22 @@ mod tests {
             "Background color should contain value 240"
         );
 
-        assert_eq!(definition.separator_color().to_string(), "gray");
-        assert_eq!(definition.separator_width(), 0.5);
-        assert_eq!(definition.separator_dasharray(), "10,5");
-
+        // Verify content padding
         let padding = definition.content_padding();
         assert_eq!(padding.top(), 10.0);
         assert_eq!(padding.right(), 12.0);
         assert_eq!(padding.bottom(), 10.0);
         assert_eq!(padding.left(), 12.0);
+
+        // Verify default border stroke properties (solid black, 1.0 width)
+        assert_eq!(definition.border_stroke().color().to_string(), "black");
+        assert_eq!(definition.border_stroke().width(), 1.0);
+        assert_eq!(*definition.border_stroke().style(), StrokeStyle::Solid);
+
+        // Verify default separator stroke properties (dashed black, 1.0 width)
+        assert_eq!(definition.separator_stroke().color().to_string(), "black");
+        assert_eq!(definition.separator_stroke().width(), 1.0);
+        assert_eq!(*definition.separator_stroke().style(), StrokeStyle::Dashed);
     }
 
     #[test]

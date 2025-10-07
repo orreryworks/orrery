@@ -1,4 +1,4 @@
-use crate::{color::Color, geometry::Point};
+use crate::{color::Color, draw::StrokeDefinition, geometry::Point};
 use std::{collections::HashMap, fmt, rc::Rc, str};
 use svg::{self, node::element as svg_element};
 
@@ -38,44 +38,31 @@ impl str::FromStr for ArrowStyle {
 /// Defines the visual properties of an arrow.
 ///
 /// This struct encapsulates all the styling information needed to render
-/// an arrow, including color, line width, and path style.
+/// an arrow, including stroke properties and path style.
 #[derive(Debug, Clone)]
 pub struct ArrowDefinition {
-    color: Color,
-    width: usize,
+    stroke: Rc<StrokeDefinition>,
     style: ArrowStyle,
 }
 
 impl ArrowDefinition {
-    /// Creates a new ArrowDefinition with default values
-    /// Use setter methods to configure the arrow properties
-    pub fn new() -> Self {
-        Self::default()
+    /// Creates a new ArrowDefinition with the given stroke
+    /// Style defaults to Straight and can be changed with set_style()
+    pub fn new(stroke: Rc<StrokeDefinition>) -> Self {
+        Self {
+            stroke,
+            style: ArrowStyle::default(),
+        }
     }
 
-    /// Gets the arrow color
-    pub fn color(&self) -> Color {
-        self.color
-    }
-
-    /// Gets the arrow line width
-    pub fn width(&self) -> usize {
-        self.width
+    /// Gets the arrow stroke definition
+    pub fn stroke(&self) -> &StrokeDefinition {
+        &self.stroke
     }
 
     /// Gets the arrow style
     pub fn style(&self) -> &ArrowStyle {
         &self.style
-    }
-
-    /// Sets the arrow color
-    pub fn set_color(&mut self, color: Color) {
-        self.color = color;
-    }
-
-    /// Sets the arrow line width
-    pub fn set_width(&mut self, width: usize) {
-        self.width = width;
     }
 
     /// Sets the arrow style
@@ -86,11 +73,7 @@ impl ArrowDefinition {
 
 impl Default for ArrowDefinition {
     fn default() -> Self {
-        Self {
-            color: Color::default(),
-            width: 1,
-            style: ArrowStyle::default(),
-        }
+        Self::new(Rc::new(StrokeDefinition::default()))
     }
 }
 
@@ -191,7 +174,7 @@ impl ArrowDrawer {
     }
 
     fn register_arrow_markers(&mut self, arrow: &Arrow) {
-        let color = arrow.definition.color();
+        let color = arrow.definition.stroke().color();
         let (head, tail) = Arrow::get_markers(arrow.direction, color);
         if let Some(head) = head {
             self.heads.insert(head, color);
@@ -216,16 +199,17 @@ impl Arrow {
         let path_data =
             Self::create_path_data_for_style(source, destination, self.definition.style);
 
+        let color = self.definition.stroke().color();
+
         // Create the base path
-        let mut path = svg_element::Path::new()
+        let path = svg_element::Path::new()
             .set("d", path_data)
-            .set("fill", "none")
-            .set("stroke", self.definition.color.to_string())
-            .set("stroke-opacity", self.definition.color.alpha())
-            .set("stroke-width", self.definition.width);
+            .set("fill", "none");
+
+        let mut path = crate::apply_stroke!(path, self.definition.stroke());
 
         // Get marker references for this specific color and direction
-        let (start_marker, end_marker) = Self::get_markers(self.direction, self.definition.color);
+        let (start_marker, end_marker) = Self::get_markers(self.direction, color);
 
         // Add markers if they exist
         if let Some(marker) = start_marker {

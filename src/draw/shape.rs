@@ -1,6 +1,6 @@
 use crate::{
     color::Color,
-    draw::{Drawable, text_positioning::TextPositioningStrategy},
+    draw::{Drawable, StrokeDefinition, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
 use std::rc::Rc;
@@ -53,18 +53,6 @@ pub trait ShapeDefinition: std::fmt::Debug {
         Err("with_fill_color is not supported for this shape")
     }
 
-    /// Create a new shape definition with the line color changed
-    /// Default implementation returns error - override in concrete implementations
-    fn with_line_color(&self, _color: Color) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
-        Err("with_line_color is not supported for this shape")
-    }
-
-    /// Create a new shape definition with the line width changed
-    /// Default implementation returns error - override in concrete implementations
-    fn with_line_width(&self, _width: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
-        Err("with_line_width is not supported for this shape")
-    }
-
     /// Create a new shape definition with the corner rounding changed
     /// Default implementation returns error - override in concrete implementations
     fn with_rounded(&self, _radius: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
@@ -76,19 +64,23 @@ pub trait ShapeDefinition: std::fmt::Debug {
         Err("fill_color is not supported for this shape")
     }
 
-    /// Set the line color for the rectangle
-    fn set_line_color(&mut self, _color: Color) -> Result<(), &'static str> {
-        Err("line_color is not supported for this shape")
-    }
-
-    /// Set the line width for the rectangle
-    fn set_line_width(&mut self, _width: usize) -> Result<(), &'static str> {
-        Err("line_width is not supported for this shape")
-    }
-
     /// Set the corner rounding for the rectangle
     fn set_rounded(&mut self, _radius: usize) -> Result<(), &'static str> {
         Err("rounded corners are not supported for this shape")
+    }
+
+    /// Set the stroke definition for the shape
+    fn set_stroke(&mut self, _stroke: StrokeDefinition) -> Result<(), &'static str> {
+        Err("set_stroke is not supported for this shape")
+    }
+
+    /// Create a new shape definition with the stroke changed
+    /// Default implementation returns error - override in concrete implementations
+    fn with_stroke(
+        &self,
+        _stroke: StrokeDefinition,
+    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        Err("with_stroke is not supported for this shape")
     }
 
     /// Get the fill color of the rectangle
@@ -96,14 +88,9 @@ pub trait ShapeDefinition: std::fmt::Debug {
         unimplemented!("fill_color is not supported for this shape")
     }
 
-    /// Get the line color of the rectangle
-    fn line_color(&self) -> Color {
-        unimplemented!("line_color is not supported for this shape")
-    }
-
-    /// Get the line width of the rectangle
-    fn line_width(&self) -> usize {
-        unimplemented!("line_width is not supported for this shape")
+    /// Get the stroke definition for the shape
+    fn stroke(&self) -> &StrokeDefinition {
+        unimplemented!("stroke is not supported for this shape")
     }
 
     /// Get the corner rounding of the rectangle

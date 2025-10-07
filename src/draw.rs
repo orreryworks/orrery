@@ -12,13 +12,14 @@ mod lifeline;
 mod positioned;
 mod shape;
 mod shape_with_text;
+mod stroke;
 mod text;
 mod text_positioning;
 
 pub use activation_box::{ActivationBox, ActivationBoxDefinition};
 pub use arrow::{Arrow, ArrowDefinition, ArrowDirection, ArrowDrawer, ArrowStyle};
 pub use arrow_with_text::{ArrowWithText, ArrowWithTextDrawer};
-pub use fragment::{BorderStyle, Fragment, FragmentDefinition, FragmentSection};
+pub use fragment::{Fragment, FragmentDefinition, FragmentSection};
 pub use lifeline::{Lifeline, LifelineDefinition};
 pub use positioned::PositionedDrawable;
 pub use shape::{
@@ -26,6 +27,7 @@ pub use shape::{
     InterfaceDefinition, OvalDefinition, RectangleDefinition, Shape, ShapeDefinition,
 };
 pub use shape_with_text::ShapeWithText;
+pub use stroke::{StrokeCap, StrokeDefinition, StrokeJoin, StrokeStyle};
 pub use text::{Text, TextDefinition};
 
 use crate::geometry::{Point, Size};
