@@ -3,14 +3,15 @@ use crate::{
     ast,
     draw::{self, Drawable},
     geometry::{Insets, Point, Size},
-    structure::{ComponentGraph, ContainmentScope},
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
         layer::{ContentStack, PositionedContent},
     },
+    structure::{ComponentGraph, ContainmentScope},
 };
 use log::debug;
+use rust_sugiyama::configure::Config;
 use std::{collections::HashMap, rc::Rc};
 
 /// The Sugiyama layout engine for component diagrams
@@ -250,10 +251,12 @@ impl Engine {
 
             // Try the rust_sugiyama crate with our sequential IDs, catching any panics
             let layouts = std::panic::catch_unwind(move || {
-                rust_sugiyama::from_edges(&edges)
-                    .minimum_length(1) // Use smaller minimum length to avoid overflow issues
-                    .vertex_spacing(3) // Ensure adequate spacing between vertices
-                    .build()
+                let config = Config {
+                    minimum_length: 1,
+                    vertex_spacing: 3.0,
+                    ..Default::default()
+                };
+                rust_sugiyama::from_edges(&edges, &config)
             });
 
             // Process the layout results
