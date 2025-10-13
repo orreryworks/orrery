@@ -282,7 +282,7 @@ mod type_definition_tests {
     fn test_type_definition_with_multiple_attributes() {
         let source = r#"
             diagram component;
-            type Database = Rectangle [fill_color="lightblue", rounded="10", line_width="2"];
+            type Database = Rectangle [fill_color="lightblue", rounded="10", stroke=[width=2]];
             db: Database;
         "#;
         assert_parses_successfully(source);
@@ -309,8 +309,7 @@ mod type_definition_tests {
             diagram component;
             type StyledBox = Rectangle [
                 fill_color=\"#e6f3ff\",
-                line_color=\"#0066cc\",
-                line_width=\"3\",
+                stroke=[color=\"#0066cc\", width=3],
                 rounded=\"15\"
             ];
             box: StyledBox;
@@ -480,7 +479,7 @@ mod relation_specification_tests {
     fn test_relation_with_type_reference() {
         let source = r#"
             diagram component;
-            type RedArrow = Arrow [color="red"];
+            type RedArrow = Arrow [stroke=[color="red"]];
             a: Rectangle;
             b: Rectangle;
             a -> [RedArrow] b;
@@ -492,10 +491,10 @@ mod relation_specification_tests {
     fn test_relation_with_type_and_additional_attributes() {
         let source = r#"
             diagram component;
-            type BlueArrow = Arrow [color="blue"];
+            type BlueArrow = Arrow [stroke=[color="blue"]];
             source: Rectangle;
             target: Rectangle;
-            source -> [BlueArrow; width="5", style="curved"] target: "Enhanced";
+            source -> [BlueArrow; stroke=[width=5], style="curved"] target: "Enhanced";
         "#;
         assert_parses_successfully(source);
     }
@@ -723,8 +722,8 @@ mod complex_integration_tests {
             type Client = Oval [fill_color=\"#ffe6e6\"];
 
             // Define relation types
-            type RedArrow = Arrow [color=\"red\"];
-            type BlueArrow = Arrow [color=\"blue\", width=\"2\"];
+            type RedArrow = Arrow [stroke=[color=\"red\"]];
+            type BlueArrow = Arrow [stroke=[color=\"blue\", width=2]];
 
             // Define components
             end_user as \"End User\": Client;
@@ -1170,7 +1169,7 @@ mod regression_tests {
         // This was the specific case that was failing before the fix
         let source = r#"
             diagram component;
-            type Database = Rectangle [fill_color="lightblue", rounded="10", line_width="2"];
+            type Database = Rectangle [fill_color="lightblue", rounded="10", stroke=[width=2]];
             db: Database;
         "#;
         assert_parses_successfully(source);
@@ -1213,5 +1212,91 @@ mod regression_tests {
         "#;
         // Trailing commas should not be allowed
         assert_parse_fails(source);
+    }
+
+    #[test]
+    fn test_shape_stroke_all_properties() {
+        let source = r#"
+            diagram component;
+            type StyledBox = Rectangle [
+                stroke=[color="blue", width=2.5, style="dashed", cap="round", join="bevel"]
+            ];
+            box: StyledBox;
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_arrow_stroke_all_properties() {
+        let source = r#"
+            diagram component;
+            type CustomArrow = Arrow [
+                stroke=[color="red", width=3.0, style="dotted", cap="square", join="round"]
+            ];
+            a: Rectangle;
+            b: Rectangle;
+            a -> [CustomArrow] b;
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_fragment_stroke_syntax() {
+        let source = r#"
+            diagram sequence;
+            user: Rectangle;
+            server: Rectangle;
+            fragment [
+                border_stroke=[color="black", width=1.5, style="solid"],
+                separator_stroke=[color="gray", width=1.0, style="dashed"]
+            ] "Authentication" {
+                section "login" {
+                    user -> server;
+                };
+            };
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_lifeline_configuration() {
+        let source = r#"
+            diagram sequence [
+                lifeline=[stroke=[color="gray", width=1.5, style="dashed"]]
+            ];
+            user: Rectangle;
+            server: Rectangle;
+            user -> server;
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_activation_box_configuration() {
+        let source = r#"
+            diagram sequence [
+                activation_box=[stroke=[color="orange", width=2.0], fill_color="lightyellow"]
+            ];
+            user: Rectangle;
+            server: Rectangle;
+            user -> server;
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_combined_diagram_attributes() {
+        let source = "
+            diagram sequence [
+                layout_engine=\"basic\",
+                background_color=\"#f0f0f0\",
+                lifeline=[stroke=[color=\"gray\"]],
+                activation_box=[fill_color=\"yellow\"]
+            ];
+            user: Rectangle;
+            server: Rectangle;
+            user -> server;
+        ";
+        assert_parses_successfully(source);
     }
 }

@@ -72,7 +72,9 @@ Whitespace immediately following a backslash at the end of a line is consumed, a
 String literals are used for:
 - **Color values**: `"red"`, `"#ff0000"`, `"rgb(255,0,0)"`
 - **Font families**: `"Arial"`, `"Helvetica"`, `"Courier New"`
-- **Style values**: `"curved"`, `"orthogonal"`, `"straight"`
+- **Style values**: `"solid"`, `"dashed"`, `"dotted"`, `"5,3"` (custom dash patterns)
+- **Routing styles**: `"straight"`, `"curved"`, `"orthogonal"`
+- **Line cap/join values**: `"butt"`, `"round"`, `"square"`, `"miter"`, `"bevel"`
 - **Display names and labels**: Component and relation labels
 - **Background colors**: Diagram and component background colors
 
@@ -154,17 +156,17 @@ Float literals are stored as IEEE 754 single-precision floating-point numbers:
 ### 3.5 Float Usage in Filament
 
 Float literals are used for:
-- **Dimensions**: `line_width=2.5`, `rounded=10`
+- **Stroke dimensions**: `stroke=[width=2.5]`
+- **Shape dimensions**: `rounded=10`
 - **Text sizing**: `text=[font_size=16, padding=8.0]`
 - **Positioning**: Coordinate and measurement values
-- **Relation widths**: `width=2`
 
 #### Examples by Attribute Type
 ```filament
 // Shape attributes
 component: Rectangle [
-    line_width=2.5,     // Line thickness
-    rounded=10,         // Corner radius (whole number)
+    stroke=[width=2.5],     // Stroke width
+    rounded=10,             // Corner radius (whole number)
 ];
 
 // Text attributes
@@ -172,28 +174,131 @@ label: Rectangle [
     text=[font_size=16, padding=8.5]  // Nested text attributes
 ];
 
+// Stroke attributes
+component: Rectangle [
+    stroke=[color="blue", width=2.0, style="dashed"]  // Nested stroke attributes
+];
+
 // Relation attributes
-source -> [width=2] target;  // Relation line width (whole number)
+source -> [stroke=[width=2]] target;  // Relation stroke width (whole number)
 ```
 
-## 4. Type Safety and Usage Rules
+
+
+
+
+## 4. Text Attribute Usage and Examples
+
+Text attributes control text appearance. Use nested syntax: `text=[attribute=value, ...]`
+
+**Examples:**
+
+```filament
+// Basic styling
+type Styled = Rectangle [text=[font_size=16, color="white"]];
+
+// With font family
+type Custom = Rectangle [text=[font_family="Arial", font_size=14, color="black"]];
+
+// With background and padding
+type Highlighted = Rectangle [text=[color="red", background_color="yellow", padding=5.0]];
+
+// Color formats: named, hex, RGB, RGBA
+type ColorExamples = Rectangle [text=[color="rgba(255, 0, 0, 0.5)"]];
+
+// Full configuration
+type Full = Rectangle [
+    text=[font_size=18, font_family="Helvetica", color="navy", background_color="lightblue", padding=8.0]
+];
+
+// In relations
+source -> [text=[color="red", font_size=14]] target: "Label";
+```
+
+## 5. Stroke Attribute Usage and Examples
+
+Stroke attributes control borders, lines, and outlines. Use nested syntax: `stroke=[attribute=value, ...]`
+
+**Basic Styles:**
+
+```filament
+// Solid, dashed, dotted
+type Solid = Rectangle [stroke=[color="navy", width=2.0, style="solid"]];
+type Dashed = Rectangle [stroke=[color="red", width=1.5, style="dashed"]];
+type Dotted = Rectangle [stroke=[color="black", width=1.0, style="dotted"]];
+```
+
+**Custom Dash Patterns:**
+
+```filament
+// Pattern: "dash,gap" or "dash,gap,dash,gap" (repeating)
+type Pattern1 = Rectangle [stroke=[color="purple", width=2.0, style="5,3"]];
+type Pattern2 = Rectangle [stroke=[color="green", style="10,5,2,5", line_cap="round"]];
+```
+
+**Arrows and Relations:**
+
+```filament
+type RedArrow = Arrow [stroke=[color="red", width=2.0]];
+type DashedArrow = Arrow [stroke=[style="dashed", color="blue"]];
+
+source -> [stroke=[color="orange", width=3.0]] target;
+source -> [stroke=[color="purple", style="dashed"], style="curved"] target;
+```
+
+**Fragments:**
+
+```filament
+fragment alt "Condition" {
+    [border_stroke=[color="blue", width=2.0], separator_stroke=[color="gray", style="dashed"]]
+};
+```
+
+**Line Caps and Joins:**
+
+```filament
+// Caps: "butt" (default), "round", "square"
+type RoundCap = Rectangle [stroke=[width=3.0, line_cap="round"]];
+
+// Joins: "miter" (default), "round", "bevel"
+type RoundJoin = Rectangle [stroke=[width=2.0, line_join="round"]];
+```
+
+**Full Configuration:**
+
+```filament
+type Complete = Rectangle [
+    stroke=[color="darkblue", width=2.5, style="8,3,2,3", line_cap="round", line_join="round"]
+];
+```
+
+**Sequence Diagrams (Lifelines/Activation Boxes):**
+
+```filament
+diagram sequence [
+    lifeline=[color="black", width=1.0, style="dashed"],
+    activation_box=[color="blue", width=2.0, style="solid"]
+];
+```
+
+## 6. Type Safety and Usage Rules
 
 Filament enforces strict type safety for attribute values to prevent runtime errors and improve performance.
 
-### 4.1 Strict Typing Rules
+### 6.1 Strict Typing Rules
 
 - **Numeric attributes** only accept float literals
 - **Text attributes** only accept string literals
 - **No automatic conversion** between string and numeric values
 - **Compile-time validation** ensures type correctness
 
-### 4.2 Correct Usage Examples
+### 6.2 Correct Usage Examples
 
 ```filament
 // ✅ Correct: String for colors, floats for dimensions
 component: Rectangle [
     fill_color="blue",      // String literal
-    line_width=2.5,         // Float literal
+    stroke=[width=2.5],     // Nested stroke attributes
     rounded=10,             // Float literal
     text=[font_family="Arial", color="white"]  // Nested text attributes with color
 ];
@@ -202,7 +307,7 @@ component: Rectangle [
 type Database = Rectangle [
     fill_color="lightblue", // String
     rounded=10,             // Float
-    line_width=2,           // Float
+    stroke=[width=2],       // Nested stroke attributes
     text=[color="darkblue", font_size=14]  // Text with color
 ];
 
@@ -224,12 +329,12 @@ type TransparentText = Rectangle [
 ];
 ```
 
-### 4.3 Incorrect Usage Examples
+### 6.3 Incorrect Usage Examples
 
 ```filament
-// ❌ Incorrect: Using string for numeric attribute
+// ❌ Incorrect: Using string for numeric stroke width
 component: Rectangle [
-    line_width="2.5"        // Error: Expected float, found string
+    stroke=[width="2.5"]    // Error: Expected float, found string
 ];
 
 // ❌ Incorrect: Using float for string attribute
@@ -248,15 +353,36 @@ component: Rectangle [
 ];
 ```
 
-### 4.4 Attribute Type Reference
+### 6.4 Attribute Type Reference
 
-| Attribute | Type | Example Values |
-|-----------|------|----------------|
+**General Attributes:**
+
+| Attribute | Type | Example |
+|-----------|------|---------|
 | `fill_color` | String | `"red"`, `"#ff0000"` |
-| `line_color` | String | `"blue"`, `"rgb(0,0,255)"` |
-| `line_width` | Float | `2.0`, `1.5`, `.5`, `2` |
-| `rounded` | Float | `10.0`, `5.`, `1e1`, `10` |
-| `text` (group) | Nested | `[color="red", font_size=16, padding=8.0]` |
-| `width` | Float | `2.0`, `3.5`, `2` (relations) |
-| `color` | String | `"red"`, `"green"` (relations) |
-| `style` | String | `"curved"`, `"orthogonal"` |
+| `rounded` | Float | `10.0`, `5.`, `10` |
+| `style` | String | `"straight"`, `"curved"`, `"orthogonal"` |
+| `stroke` | Stroke Attributes | See Stroke table below |
+| `border_stroke` | Stroke Attributes | See Stroke table below (fragments only) |
+| `separator_stroke` | Stroke Attributes | See Stroke table below (fragments only) |
+| `text` | Text Attributes | See Text table below |
+
+**Stroke Attributes** (used in `stroke`, `border_stroke`, `separator_stroke`):
+
+| Attribute | Type | Example |
+|-----------|------|---------|
+| `color` | String | `"red"`, `"#ff0000"` |
+| `width` | Float | `2.0`, `1.5`, `2` |
+| `style` | String | `"solid"`, `"dashed"`, `"dotted"`, `"5,3"` |
+| `line_cap` | String | `"butt"`, `"round"`, `"square"` |
+| `line_join` | String | `"miter"`, `"round"`, `"bevel"` |
+
+**Text Attributes** (used in `text`):
+
+| Attribute | Type | Example |
+|-----------|------|---------|
+| `font_size` | Float | `16`, `12.5` |
+| `font_family` | String | `"Arial"`, `"Helvetica"` |
+| `color` | String | `"red"`, `"#ff0000"` |
+| `background_color` | String | `"white"`, `"rgba(255,255,255,0.8)"` |
+| `padding` | Float | `5.0`, `8.5` |

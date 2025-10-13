@@ -18,47 +18,47 @@ db as "Database": Rectangle;
 fragment "Authentication Flow" {
     // Successful login path
     section {
-        user -> [color="blue"] auth: "Submit credentials";
+        user -> [stroke=[color="blue"]] auth: "Submit credentials";
 
         // Auth service validates with the system
         activate auth {
-            auth -> [color="green"] system: "Validate";
-            system -> [color="green"] auth: "Valid";
+            auth -> [stroke=[color="green"]] system: "Validate";
+            system -> [stroke=[color="green"]] auth: "Valid";
         };
 
         // Optional data fetch after successful auth
-        auth -> [color="purple"] db: "Load profile";
-        auth -> [color="blue"] user: "Access granted";
+        auth -> [stroke=[color="purple"]] db: "Load profile";
+        auth -> [stroke=[color="blue"]] user: "Access granted";
     };
 
     // Failed login path
     section "failed login" {
-        user -> [color="blue"] auth: "Submit credentials";
+        user -> [stroke=[color="blue"]] auth: "Submit credentials";
         activate auth {
-            auth -> [color="red"] system: "Validate";
-            system -> [color="red"] auth: "Invalid";
+            auth -> [stroke=[color="red"]] system: "Validate";
+            system -> [stroke=[color="red"]] auth: "Invalid";
         };
-        auth -> [color="red"] user: "Access denied";
+        auth -> [stroke=[color="red"]] user: "Access denied";
     };
 
     // Account locked path with nested decision fragment
     section "account locked" {
-        user -> [color="blue"] auth: "Submit credentials";
+        user -> [stroke=[color="blue"]] auth: "Submit credentials";
         activate auth {
-            auth -> [color="orange"] system: "Validate";
-            system -> [color="orange"] auth: "Account locked";
+            auth -> [stroke=[color="orange"]] system: "Validate";
+            system -> [stroke=[color="orange"]] auth: "Account locked";
         };
-        auth -> [color="orange"] user: "Account locked";
+        auth -> [stroke=[color="orange"]] user: "Account locked";
 
         // Nested fragment: recovery options
         fragment "Recovery Options" {
             section "password reset" {
-                user -> [color="teal"] auth: "Request reset";
-                auth -> [color="teal"] user: "Reset link sent";
+                user -> [stroke=[color="teal"]] auth: "Request reset";
+                auth -> [stroke=[color="teal"]] user: "Reset link sent";
             };
             section "contact support" {
-                user -> [color="gray"] auth: "Open support ticket";
-                auth -> [color="gray"] user: "Ticket created";
+                user -> [stroke=[color="gray"]] auth: "Open support ticket";
+                auth -> [stroke=[color="gray"]] user: "Ticket created";
             };
         };
     };

@@ -589,6 +589,47 @@ Improve the scoping and type handling within the graph::Graph structure to provi
 
 ---
 
+#### Stroke Style Validation
+
+**Description**:
+Add validation for custom stroke style patterns to ensure they follow the correct dasharray format.
+
+**Current Behavior**:
+Custom stroke patterns (e.g., `style="5,3"` or `style="10,5,2,5"`) are currently accepted without validation. Invalid patterns are passed directly to SVG, which may result in rendering issues.
+
+**Proposed Implementation**:
+- Validate custom dash patterns during elaboration
+- Accept formats: `"solid"`, `"dashed"`, `"dotted"`, or comma-separated numbers
+- Reject invalid patterns with clear error messages
+- Ensure at least 2 numbers in custom patterns (dash, gap)
+- Verify all values are positive numbers
+
+**Example Validation**:
+```filament
+// Valid patterns
+type Valid1 = Rectangle [stroke=[style="5,3"]];           // ✓ Simple pattern
+type Valid2 = Rectangle [stroke=[style="10,5,2,5"]];      // ✓ Complex pattern
+type Valid3 = Rectangle [stroke=[style="solid"]];         // ✓ Named style
+
+// Invalid patterns (should error)
+type Invalid1 = Rectangle [stroke=[style="5"]];           // ✗ Need at least 2 values
+type Invalid2 = Rectangle [stroke=[style="abc,xyz"]];     // ✗ Non-numeric values
+type Invalid3 = Rectangle [stroke=[style="-5,3"]];        // ✗ Negative values
+```
+
+**Benefits**:
+- Earlier error detection
+- Better error messages for users
+- Prevents invalid SVG output
+- Consistent behavior across all stroke contexts
+
+**Implementation Considerations**:
+- Add validation in stroke attribute extraction
+- Maintain backward compatibility with existing valid patterns
+- Clear documentation of supported formats
+
+---
+
 ### Rendering
 
 #### Adding More UML Shapes

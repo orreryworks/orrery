@@ -66,9 +66,9 @@ type <TypeName> = <BaseType> [attribute1="value1", attribute2="value2", ...];
 
 Example:
 ```
-type Database = Rectangle [fill_color="lightblue", rounded=10, line_width=2.0];
-type RedArrow = Arrow [color="red"];
-type ThickRedArrow = RedArrow [width=3.0];
+type Database = Rectangle [fill_color="lightblue", rounded=10, stroke=[width=2.0]];
+type RedArrow = Arrow [stroke=[color="red"]];
+type ThickRedArrow = RedArrow [stroke=[width=3.0]];
 ```
 ```
 
@@ -421,12 +421,59 @@ Filament supports two types of attribute values: string literals and float liter
 ### 7.2 Shape-specific Attributes
 
 - `fill_color`: The background color of a shape (string, e.g., `"#ff0000"`, `"red"`, `"rgb(255,0,0)"`)
-- `line_color`: The border color of a shape (string)
-- `line_width`: The thickness of lines/borders (float, e.g., `2.0`, `1.5`)
 - `rounded`: Rounding radius for rectangle corners (float, e.g., `10.0`, `5.5`)
 - `background_color`: When used in a diagram declaration, sets the background color of the entire diagram (string)
+- `stroke`: Border/outline styling for shapes (see section 7.3 for details)
 
-### 7.3 Text Attributes
+### 7.3 Stroke Attributes
+
+Stroke attributes control the appearance of borders, lines, and outlines. They must be grouped under the `stroke` attribute using nested attribute syntax.
+
+```filament
+stroke=[attribute1=value1, attribute2=value2, ...]
+```
+
+Available stroke attributes within the `stroke` group:
+
+- `color`: The stroke color (string, e.g., `"red"`, `"#ff0000"`, `"rgb(255,0,0)"`)
+- `width`: The thickness of the stroke (float, e.g., `2.0`, `1.5`)
+- `style`: The stroke style (string: `"solid"`, `"dashed"`, `"dotted"`, or a custom pattern like `"5,3"`)
+- `line_cap`: The line cap style (string: `"butt"`, `"round"`, `"square"`)
+- `line_join`: The line join style (string: `"miter"`, `"round"`, `"bevel"`)
+
+**Custom Dash Patterns:**
+
+The `style` attribute supports custom dash patterns specified as comma-separated numbers representing dash and gap lengths:
+- `"5,3"` - 5 units dash, 3 units gap
+- `"10,5,2,5"` - 10 units dash, 5 units gap, 2 units dash, 5 units gap (repeating)
+
+Example usage for shapes:
+```filament
+type StyledBox = Rectangle [
+    fill_color="lightblue",
+    stroke=[color="navy", width=2.5, style="solid"]
+];
+
+type DashedBox = Rectangle [
+    fill_color="white",
+    stroke=[color="red", width=1.5, style="dashed"]
+];
+
+type CustomDashBox = Rectangle [
+    fill_color="yellow",
+    stroke=[color="black", width=2, style="10,5,2,5", line_cap="round"]
+];
+```
+
+**Stroke Usage in Different Contexts:**
+
+- **Shapes**: Use `stroke=[...]` for border styling
+- **Arrows/Relations**: Use `stroke=[...]` for line styling
+- **Fragments**: Use `border_stroke=[...]` for border and `separator_stroke=[...]` for internal lines
+- **Lifelines**: Configured globally in diagram declaration or configuration file
+- **Activation Boxes**: Configured globally in diagram declaration or configuration file
+
+### 7.4 Text Attributes
 
 Text attributes must be grouped under the `text` attribute using nested attribute syntax.
 
@@ -461,15 +508,26 @@ type SemiTransparentText = Rectangle [
 ];
 ```
 
-### 7.4 Relation-specific Attributes
+### 7.5 Relation-specific Attributes
 
-- `color`: The line color of the relation (string)
-- `width`: The thickness of the relation line (float, e.g., `2.0`, `1.5`)
-- `style`: The style of the arrow line (string: `"straight"`, `"curved"`, or `"orthogonal"`, default is `"straight"`)
+- `style`: The routing style of the arrow line (string: `"straight"`, `"curved"`, or `"orthogonal"`, default is `"straight"`)
+- `stroke`: Line styling for relations (see section 7.3 for details)
 
-Relations also support all text attributes listed in section 7.3 for styling their labels, including text color.
+Example usage for relations:
+```filament
+// Basic relation with stroke styling
+source -> [stroke=[color="red", width=2.5]] target;
 
-### 7.5 Relation Labels
+// Relation with dashed stroke
+source -> [stroke=[style="dashed", width=1.5], style="curved"] target;
+
+// Relation with custom dash pattern
+source -> [stroke=[style="5,3", color="blue"]] target;
+```
+
+Relations also support all text attributes listed in section 7.4 for styling their labels, including text color.
+
+### 7.6 Relation Labels
 
 Relations can optionally include text labels to describe their purpose or meaning:
 
@@ -606,11 +664,11 @@ type Service = Component [fill_color="#e6f3ff"];
 type Client = Oval [fill_color="#ffe6e6"];
 
 // Define relation types
-type RedArrow = Arrow [color="red"];
-type BlueArrow = Arrow [color="blue", width=2.0];
+type RedArrow = Arrow [stroke=[color="red"]];
+type BlueArrow = Arrow [stroke=[color="blue", width=2.0]];
 
 // Define relation types extending other custom types
-type ThickRedArrow = RedArrow [width=3.0, text=[font_size=16]];
+type ThickRedArrow = RedArrow [stroke=[width=3.0], text=[font_size=16]];
 type OrthogonalBlueArrow = BlueArrow [style="orthogonal"];
 
 end_user as "End User": Client;
@@ -637,10 +695,10 @@ user_agent: Rectangle;
 api_service: Rectangle;
 data_store: Rectangle;
 
-user_agent -> [color="blue"] api_service: "Request";
-api_service -> [color="green"] data_store;
-data_store -> [color="green"] api_service;
-api_service -> [color="blue"] user_agent;
+user_agent -> [stroke=[color="blue"]] api_service: "Request";
+api_service -> [stroke=[color="green"]] data_store;
+data_store -> [stroke=[color="green"]] api_service;
+api_service -> [stroke=[color="blue"]] user_agent;
 ```
 
 ### 12.3 Embedded Diagram Example
@@ -650,7 +708,7 @@ diagram component [background_color="#f8f8f8"];
 
 type Service = Rectangle [fill_color="#e6f3ff"];
 type Database = Rectangle [fill_color="lightblue", rounded=10];
-type SecureArrow = Arrow [color="orange", width=2.0];
+type SecureArrow = Arrow [stroke=[color="orange", width=2.0]];
 
 user_interface: Oval [fill_color="#ffe6e6"];
 auth_service: Service embed diagram sequence {
@@ -707,6 +765,22 @@ sequence = "basic"
 [style]
 # Default background color for diagrams
 background_color = "#f5f5f5"
+
+# Lifeline stroke configuration for sequence diagrams
+[lifeline]
+color = "black"
+width = 1.0
+style = "dashed"
+line_cap = "butt"
+line_join = "miter"
+
+# Activation box stroke configuration for sequence diagrams
+[activation_box]
+color = "blue"
+width = 2.0
+style = "solid"
+line_cap = "butt"
+line_join = "miter"
 ```
 
 Layout engine values are case-sensitive and must match the supported enum values exactly.
@@ -730,7 +804,29 @@ The style configuration section controls the visual appearance of diagrams:
   - Accepts any valid CSS color string (e.g., `"#f5f5f5"`, `"white"`, `"rgb(240,240,240)"`)
   - Can be overridden by the `background_color` attribute in individual diagram declarations
 
-### 14.5 Configuration Priority
+### 14.5 Sequence Diagram Stroke Configuration
+
+**Lifeline Stroke Configuration:**
+
+The `[lifeline]` section configures the appearance of lifelines in sequence diagrams:
+
+- `color`: Lifeline stroke color (string, e.g., `"black"`, `"#000000"`)
+- `width`: Lifeline stroke width (float, e.g., `1.0`, `1.5`)
+- `style`: Lifeline stroke style (string: `"solid"`, `"dashed"`, `"dotted"`, or custom pattern like `"5,3"`)
+- `line_cap`: Line cap style (string: `"butt"`, `"round"`, `"square"`)
+- `line_join`: Line join style (string: `"miter"`, `"round"`, `"bevel"`)
+
+**Activation Box Stroke Configuration:**
+
+The `[activation_box]` section configures the appearance of activation boxes in sequence diagrams:
+
+- `color`: Activation box stroke color (string, e.g., `"blue"`, `"#0000ff"`)
+- `width`: Activation box stroke width (float, e.g., `2.0`, `1.5`)
+- `style`: Activation box stroke style (string: `"solid"`, `"dashed"`, `"dotted"`, or custom pattern)
+- `line_cap`: Line cap style (string: `"butt"`, `"round"`, `"square"`)
+- `line_join`: Line join style (string: `"miter"`, `"round"`, `"bevel"`)
+
+### 14.6 Configuration Priority
 
 When determining which styles or layout engines to use, Filament follows this priority order:
 

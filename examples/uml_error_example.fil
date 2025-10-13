@@ -9,11 +9,11 @@ diagram component [background_color="#fff5f5"];
 // ========================================
 
 // UML shapes used correctly (no nested content)
-customer as "Customer": Actor [line_color="blue"];
-user_data as "User Profile": Entity [line_color="green"];
-auth_logic as "Authentication": Control [line_color="red"];
-system_boundary as "System Interface": Boundary [line_color="purple"];
-api_interface as "API Interface": Interface [line_color="orange"];
+customer as "Customer": Actor [stroke=[color="blue"]];
+user_data as "User Profile": Entity [stroke=[color="green"]];
+auth_logic as "Authentication": Control [stroke=[color="red"]];
+system_boundary as "System Interface": Boundary [stroke=[color="purple"]];
+api_interface as "API Interface": Interface [stroke=[color="orange"]];
 
 // Regular shapes that CAN contain content
 web_service as "Web Service": Rectangle [fill_color="#e6f3ff"] {

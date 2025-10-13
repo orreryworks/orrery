@@ -54,10 +54,10 @@ admin -> order_controller: "Manage Orders";
 // ========================================
 
 // You can style UML shapes just like other shapes
-styled_user as "VIP Customer": Actor [line_color="gold", fill_color="#fff8dc"];
-styled_entity as "Premium Account": Entity [line_color="purple", fill_color="#f8f0ff"];
-styled_control as "Security Controller": Control [line_color="red", fill_color="#ffe6e6"];
-styled_interface as "Premium API": Interface [line_color="blue", fill_color="#e6f3ff"];
+styled_user as "VIP Customer": Actor [stroke=[color="gold"], fill_color="#fff8dc"];
+styled_entity as "Premium Account": Entity [stroke=[color="purple"], fill_color="#f8f0ff"];
+styled_control as "Security Controller": Control [stroke=[color="red"], fill_color="#ffe6e6"];
+styled_interface as "Premium API": Interface [stroke=[color="blue"], fill_color="#e6f3ff"];
 
 styled_user -> styled_control: "Secure Access";
 styled_control -> styled_entity: "Premium Features";

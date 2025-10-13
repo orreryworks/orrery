@@ -312,6 +312,8 @@ pub struct Diagram {
     scope: Scope,
     layout_engine: LayoutEngine,
     background_color: Option<Color>,
+    lifeline_definition: Option<Rc<draw::LifelineDefinition>>,
+    activation_box_definition: Option<Rc<draw::ActivationBoxDefinition>>,
 }
 
 impl Diagram {
@@ -321,12 +323,16 @@ impl Diagram {
         scope: Scope,
         layout_engine: LayoutEngine,
         background_color: Option<Color>,
+        lifeline_definition: Option<Rc<draw::LifelineDefinition>>,
+        activation_box_definition: Option<Rc<draw::ActivationBoxDefinition>>,
     ) -> Self {
         Self {
             kind,
             scope,
             layout_engine,
             background_color,
+            lifeline_definition,
+            activation_box_definition,
         }
     }
 
@@ -348,6 +354,16 @@ impl Diagram {
     /// Get the diagram's background color if specified.
     pub fn background_color(&self) -> Option<Color> {
         self.background_color
+    }
+
+    /// Get the lifeline definition if specified (for sequence diagrams).
+    pub fn lifeline_definition(&self) -> Option<&Rc<draw::LifelineDefinition>> {
+        self.lifeline_definition.as_ref()
+    }
+
+    /// Get the activation box definition if specified (for sequence diagrams).
+    pub fn activation_box_definition(&self) -> Option<&Rc<draw::ActivationBoxDefinition>> {
+        self.activation_box_definition.as_ref()
     }
 }
 
@@ -568,6 +584,136 @@ impl TextAttributeExtractor {
     }
 }
 
+/// Helper for extracting stroke attributes from nested attribute lists.
+pub struct StrokeAttributeExtractor;
+
+impl StrokeAttributeExtractor {
+    /// Extract and apply stroke-related attributes to a StrokeDefinition from a group of nested attributes.
+    pub fn extract_stroke_attributes(
+        stroke_def: &mut draw::StrokeDefinition,
+        attrs: &[parser_types::Attribute],
+    ) -> Result<(), ElaborationDiagnosticError> {
+        for attr in attrs {
+            Self::extract_single_attribute(stroke_def, attr)?;
+        }
+        Ok(())
+    }
+
+    /// Extract and apply a single stroke-related attribute to a StrokeDefinition.
+    fn extract_single_attribute(
+        stroke_def: &mut draw::StrokeDefinition,
+        attr: &parser_types::Attribute,
+    ) -> Result<(), ElaborationDiagnosticError> {
+        let name = *attr.name.inner();
+        let value = &attr.value;
+
+        match name {
+            "color" => {
+                let color_str = value.as_str().map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        err.to_string(),
+                        attr.span(),
+                        "invalid color value",
+                        Some("Color values must be strings".to_string()),
+                    )
+                })?;
+                let val = Color::new(color_str).map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        format!("Invalid stroke color: {err}"),
+                        attr.span(),
+                        "invalid color",
+                        Some("Use a CSS color".to_string()),
+                    )
+                })?;
+                stroke_def.set_color(val);
+                Ok(())
+            }
+            "width" => {
+                let val = value.as_float().map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        format!("Invalid stroke width value: {err}"),
+                        attr.span(),
+                        "invalid number",
+                        Some("Width must be a positive number".to_string()),
+                    )
+                })?;
+                stroke_def.set_width(val);
+                Ok(())
+            }
+            "style" => {
+                let style_str = value.as_str().map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        err.to_string(),
+                        attr.span(),
+                        "invalid stroke style value",
+                        Some("Stroke style must be a string".to_string()),
+                    )
+                })?;
+
+                // Parse as predefined style or custom pattern
+                // Note: Currently never fails, but may fail in the future when custom pattern validation is added
+                let style = draw::StrokeStyle::from_str(style_str).map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        err,
+                        attr.span(),
+                        "invalid stroke style",
+                        Some("Use a valid style name or dasharray pattern".to_string()),
+                    )
+                })?;
+
+                stroke_def.set_style(style);
+                Ok(())
+            }
+            "cap" => {
+                let cap_str = value.as_str().map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        err.to_string(),
+                        attr.span(),
+                        "invalid stroke cap value",
+                        Some("Stroke cap must be a string".to_string()),
+                    )
+                })?;
+                let cap = draw::StrokeCap::from_str(cap_str).map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        err,
+                        attr.span(),
+                        "invalid stroke cap",
+                        Some("Valid values are: butt, round, square".to_string()),
+                    )
+                })?;
+                stroke_def.set_cap(cap);
+                Ok(())
+            }
+            "join" => {
+                let join_str = value.as_str().map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        err.to_string(),
+                        attr.span(),
+                        "invalid stroke join value",
+                        Some("Stroke join must be a string".to_string()),
+                    )
+                })?;
+                let join = draw::StrokeJoin::from_str(join_str).map_err(|err| {
+                    ElaborationDiagnosticError::from_span(
+                        err,
+                        attr.span(),
+                        "invalid stroke join",
+                        Some("Valid values are: miter, round, bevel".to_string()),
+                    )
+                })?;
+                stroke_def.set_join(join);
+                Ok(())
+            }
+            name => Err(ElaborationDiagnosticError::from_span(
+                format!("Unknown stroke attribute '{name}'"),
+                attr.span(),
+                "unknown stroke attribute",
+                Some("Valid stroke attributes are: color, width, style, cap, join".to_string()),
+            )),
+        }
+    }
+}
+
 impl TypeDefinition {
     pub fn from_base(
         id: Id,
@@ -580,7 +726,6 @@ impl TypeDefinition {
             DrawDefinition::Shape(shape_def) => {
                 let mut new_shape_def = shape_def.clone_box();
 
-                // Process shape attributes
                 for attr in attributes {
                     let name = attr.name.inner();
                     let value = &attr.value;
@@ -612,45 +757,21 @@ impl TypeDefinition {
                                 )
                             })?;
                         }
-                        "line_color" => {
-                            let val = Color::new(value.as_str().map_err(|err| {
+                        "stroke" => {
+                            let nested_attrs = value.as_attributes().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
-                                    "invalid color value",
-                                    Some("Color values must be strings".to_string()),
-                                )
-                            })?)
-                            .map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
-                                    format!("Invalid line_color: {err}"),
-                                    attr.span(),
-                                    "invalid color",
-                                    Some("Use a CSS color".to_string()),
+                                    "invalid stroke attribute value",
+                                    Some("Stroke attribute must contain nested attributes like [color=\"blue\", width=2.0]".to_string()),
                                 )
                             })?;
+
                             let mut new_stroke = (*new_shape_def.stroke()).clone();
-                            new_stroke.set_color(val);
-                            new_shape_def.set_stroke(new_stroke).map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "unsupported attribute",
-                                    None,
-                                )
-                            })?;
-                        }
-                        "line_width" => {
-                            let val = value.as_usize().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
-                                    format!("Invalid line_width value: {err}"),
-                                    attr.span(),
-                                    "invalid number",
-                                    Some("Width must be a positive number".to_string()),
-                                )
-                            })?;
-                            let mut new_stroke = (*new_shape_def.stroke()).clone();
-                            new_stroke.set_width(val as f32);
+                            StrokeAttributeExtractor::extract_stroke_attributes(
+                                &mut new_stroke,
+                                nested_attrs,
+                            )?;
                             new_shape_def.set_stroke(new_stroke).map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
                                     err.to_string(),
@@ -689,7 +810,6 @@ impl TypeDefinition {
                                 )
                             })?;
 
-                            // Process all nested text attributes
                             TextAttributeExtractor::extract_text_attributes(
                                 &mut text_def,
                                 nested_attrs,
@@ -701,7 +821,7 @@ impl TypeDefinition {
                                 attr.span(),
                                 "unknown attribute",
                                 Some(
-                                    "Valid shape attributes are: fill_color, line_color, line_width, rounded, text=[...]"
+                                    "Valid shape attributes are: fill_color, stroke=[...], rounded, text=[...]"
                                         .to_string(),
                                 ),
                             ));
@@ -715,41 +835,25 @@ impl TypeDefinition {
                 let mut new_stroke = arrow_def.stroke().clone();
                 let mut new_style = *arrow_def.style();
 
-                // Process arrow attributes
                 for attr in attributes {
                     let name = attr.name.inner();
                     let value = &attr.value;
 
                     match *name {
-                        "color" => {
-                            let val = Color::new(value.as_str().map_err(|err| {
+                        "stroke" => {
+                            let nested_attrs = value.as_attributes().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
-                                    "invalid color value",
-                                    Some("Color values must be strings".to_string()),
-                                )
-                            })?)
-                            .map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
-                                    format!("Invalid color: {err}"),
-                                    attr.span(),
-                                    "invalid color",
-                                    Some("Use a CSS color".to_string()),
+                                    "invalid stroke attribute value",
+                                    Some("Stroke attribute must contain nested attributes like [color=\"blue\", width=2.0]".to_string()),
                                 )
                             })?;
-                            new_stroke.set_color(val);
-                        }
-                        "width" => {
-                            let val = value.as_float().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
-                                    format!("Invalid width value: {err}"),
-                                    attr.span(),
-                                    "invalid number",
-                                    Some("Width must be a positive number".to_string()),
-                                )
-                            })?;
-                            new_stroke.set_width(val);
+
+                            StrokeAttributeExtractor::extract_stroke_attributes(
+                                &mut new_stroke,
+                                nested_attrs,
+                            )?;
                         }
                         "style" => {
                             let val =
@@ -775,7 +879,6 @@ impl TypeDefinition {
                             new_style = val;
                         }
                         "text" => {
-                            // Handle nested text attributes
                             let nested_attrs = value.as_attributes().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
                                     err.to_string(),
@@ -785,7 +888,6 @@ impl TypeDefinition {
                                 )
                             })?;
 
-                            // Process all nested text attributes
                             TextAttributeExtractor::extract_text_attributes(
                                 &mut text_def,
                                 nested_attrs,
@@ -797,7 +899,7 @@ impl TypeDefinition {
                                 attr.span(),
                                 "unknown attribute",
                                 Some(
-                                    "Valid arrow attributes are: color, width, style, text=[...]"
+                                    "Valid arrow attributes are: stroke=[...], style, text=[...]"
                                         .to_string(),
                                 ),
                             ));
@@ -814,60 +916,25 @@ impl TypeDefinition {
                 let mut new_separator_stroke = fragment_def.separator_stroke().clone();
                 let mut new_fragment_def = (**fragment_def).clone();
 
-                // Process fragment attributes
                 for attr in attributes {
                     let name = attr.name.inner();
                     let value = &attr.value;
 
                     match *name {
-                        "border_color" => {
-                            let val = Color::new(value.as_str().map_err(|err| {
+                        "border_stroke" => {
+                            let nested_attrs = value.as_attributes().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
-                                    "invalid color value",
-                                    Some("Color values must be strings".to_string()),
-                                )
-                            })?)
-                            .map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
-                                    format!("Invalid border_color '{value}': {err}"),
-                                    attr.span(),
-                                    "invalid color",
-                                    Some("Use a CSS color".to_string()),
+                                    "invalid border_stroke attribute value",
+                                    Some("Border stroke attribute must contain nested attributes like [color=\"black\", width=1.5]".to_string()),
                                 )
                             })?;
-                            new_border_stroke.set_color(val);
-                        }
-                        "border_width" => {
-                            let val = value.as_float().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid border width",
-                                    Some("Border width must be a positive number".to_string()),
-                                )
-                            })?;
-                            new_border_stroke.set_width(val);
-                        }
-                        "border_style" => {
-                            let style_str = value.as_str().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid border style value",
-                                    Some("Border style must be a string".to_string()),
-                                )
-                            })?;
-                            let style = draw::StrokeStyle::from_str(style_str).map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
-                                    err,
-                                    attr.span(),
-                                    "invalid border style",
-                                    None,
-                                )
-                            })?;
-                            new_border_stroke.set_style(style);
+
+                            StrokeAttributeExtractor::extract_stroke_attributes(
+                                &mut new_border_stroke,
+                                nested_attrs,
+                            )?;
                         }
                         "background_color" => {
                             let val = Color::new(value.as_str().map_err(|err| {
@@ -888,54 +955,20 @@ impl TypeDefinition {
                             })?;
                             new_fragment_def.set_background_color(Some(val));
                         }
-                        "separator_color" => {
-                            let val = Color::new(value.as_str().map_err(|err| {
+                        "separator_stroke" => {
+                            let nested_attrs = value.as_attributes().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
-                                    "invalid color value",
-                                    Some("Color values must be strings".to_string()),
-                                )
-                            })?)
-                            .map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
-                                    format!("Invalid separator_color '{value}': {err}"),
-                                    attr.span(),
-                                    "invalid color",
-                                    Some("Use a CSS color".to_string()),
+                                    "invalid separator_stroke attribute value",
+                                    Some("Separator stroke attribute must contain nested attributes like [color=\"gray\", width=1.0, style=\"dashed\"]".to_string()),
                                 )
                             })?;
-                            new_separator_stroke.set_color(val);
-                        }
-                        "separator_width" => {
-                            let val = value.as_float().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid separator width",
-                                    Some("Separator width must be a positive number".to_string()),
-                                )
-                            })?;
-                            new_separator_stroke.set_width(val);
-                        }
-                        "separator_dasharray" => {
-                            let style_str = value.as_str().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid separator style value",
-                                    Some("Separator style must be a string".to_string()),
-                                )
-                            })?;
-                            let style = draw::StrokeStyle::from_str(style_str).map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
-                                    err,
-                                    attr.span(),
-                                    "invalid separator style",
-                                    None,
-                                )
-                            })?;
-                            new_separator_stroke.set_style(style);
+
+                            StrokeAttributeExtractor::extract_stroke_attributes(
+                                &mut new_separator_stroke,
+                                nested_attrs,
+                            )?;
                         }
                         "content_padding" => {
                             let val = value.as_float().map_err(|err| {
@@ -949,7 +982,6 @@ impl TypeDefinition {
                             new_fragment_def.set_content_padding(Insets::uniform(val));
                         }
                         "text" => {
-                            // Handle nested text attributes for operation label
                             let nested_attrs = value.as_attributes().map_err(|err| {
                                 ElaborationDiagnosticError::from_span(
                                     err.to_string(),
@@ -959,7 +991,6 @@ impl TypeDefinition {
                                 )
                             })?;
 
-                            // Process all nested text attributes
                             TextAttributeExtractor::extract_text_attributes(
                                 &mut text_def,
                                 nested_attrs,
@@ -971,7 +1002,7 @@ impl TypeDefinition {
                                 attr.span(),
                                 "unknown attribute",
                                 Some(
-                                    "Valid fragment attributes are: border_color, border_width, border_style, background_color, separator_color, separator_width, separator_dasharray, content_padding, text=[...]"
+                                    "Valid fragment attributes are: border_stroke=[...], separator_stroke=[...], background_color, content_padding, text=[...]"
                                         .to_string(),
                                 ),
                             ));
@@ -1217,6 +1248,128 @@ mod elaborate_tests {
         if let Err(error) = result {
             let error_message = format!("{}", error);
             assert!(error_message.contains("Expected nested attributes"));
+        }
+    }
+
+    #[test]
+    fn test_stroke_attribute_extractor_all_attributes() {
+        let attrs = vec![
+            create_test_attribute("color", create_string_value("blue")),
+            create_test_attribute("width", create_float_value(2.5)),
+            create_test_attribute("style", create_string_value("dashed")),
+            create_test_attribute("cap", create_string_value("round")),
+            create_test_attribute("join", create_string_value("bevel")),
+        ];
+
+        let mut stroke_def = draw::StrokeDefinition::default();
+        let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
+
+        assert!(result.is_ok());
+        assert_eq!(stroke_def.color().to_string(), "blue");
+        assert_eq!(stroke_def.width(), 2.5);
+        assert_eq!(*stroke_def.style(), draw::StrokeStyle::Dashed);
+        assert_eq!(stroke_def.cap(), draw::StrokeCap::Round);
+        assert_eq!(stroke_def.join(), draw::StrokeJoin::Bevel);
+    }
+
+    #[test]
+    fn test_stroke_attribute_extractor_color_only() {
+        let attrs = vec![create_test_attribute("color", create_string_value("red"))];
+
+        let mut stroke_def = draw::StrokeDefinition::default();
+        let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
+
+        assert!(result.is_ok());
+        assert_eq!(stroke_def.color().to_string(), "red");
+    }
+
+    #[test]
+    fn test_stroke_attribute_extractor_invalid_attribute_name() {
+        let attrs = vec![create_test_attribute(
+            "invalid_attr",
+            create_string_value("value"),
+        )];
+
+        let mut stroke_def = draw::StrokeDefinition::default();
+        let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
+
+        assert!(result.is_err());
+        if let Err(error) = result {
+            let error_message = format!("{}", error);
+            assert!(error_message.contains("Unknown stroke attribute"));
+            assert!(error_message.contains("invalid_attr"));
+        }
+    }
+
+    #[test]
+    fn test_stroke_attribute_extractor_invalid_color() {
+        let attrs = vec![create_test_attribute(
+            "color",
+            create_string_value("not-a-valid-color-12345"),
+        )];
+
+        let mut stroke_def = draw::StrokeDefinition::default();
+        let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
+
+        assert!(result.is_err());
+        if let Err(error) = result {
+            let error_message = format!("{}", error);
+            assert!(error_message.contains("Invalid stroke color"));
+        }
+    }
+
+    #[test]
+    fn test_stroke_attribute_extractor_invalid_cap() {
+        let attrs = vec![create_test_attribute("cap", create_string_value("invalid"))];
+
+        let mut stroke_def = draw::StrokeDefinition::default();
+        let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
+
+        assert!(result.is_err());
+        if let Err(error) = result {
+            let error_message = format!("{}", error);
+            assert!(error_message.contains("Invalid stroke cap"));
+        }
+    }
+
+    #[test]
+    fn test_stroke_attribute_extractor_invalid_join() {
+        let attrs = vec![create_test_attribute(
+            "join",
+            create_string_value("invalid"),
+        )];
+
+        let mut stroke_def = draw::StrokeDefinition::default();
+        let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
+
+        assert!(result.is_err());
+        if let Err(error) = result {
+            let error_message = format!("{}", error);
+            assert!(error_message.contains("Invalid stroke join"));
+        }
+    }
+
+    #[test]
+    fn test_stroke_attribute_extractor_all_predefined_styles() {
+        let styles = vec![
+            ("solid", draw::StrokeStyle::Solid),
+            ("dashed", draw::StrokeStyle::Dashed),
+            ("dotted", draw::StrokeStyle::Dotted),
+            ("dash-dot", draw::StrokeStyle::DashDot),
+            ("dash-dot-dot", draw::StrokeStyle::DashDotDot),
+        ];
+
+        for (style_str, expected_style) in styles {
+            let attrs = vec![create_test_attribute(
+                "style",
+                create_string_value(style_str),
+            )];
+            let mut stroke_def = draw::StrokeDefinition::default();
+            let result =
+                StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
+
+            assert!(result.is_ok());
+            assert_eq!(*stroke_def.style(), expected_style);
         }
     }
 }

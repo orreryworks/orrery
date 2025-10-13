@@ -10,7 +10,7 @@ type Database = Rectangle [fill_color="lightblue", rounded=10.0];
 type ApiService = rectangle [fill_color="green"];
 
 // Error: Undefined base type
-type BadService = UndefinedType [line_color="red"];
+type BadService = UndefinedType [stroke=[color="red"]];
 
 // Valid component
 db: Database;
@@ -28,14 +28,14 @@ cache: Cache;
 auth_service: Rectangle [fill_color="not-a-color"];
 
 // Error: Invalid line width (should be a number)
-storage: Rectangle [line_width="wide"];
+storage: Rectangle [stroke=[width="wide"]];
 
 // Valid component and relation
 user_service: Rectangle;
 user_service -> db;
 
 // Error: Invalid relation attribute
-api -> [color="too-bright"] db;
+api -> [stroke=[color="too-bright"]] db;
 
 // Error: Nested diagram not allowed
 // system: Rectangle {

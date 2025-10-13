@@ -11,21 +11,18 @@ component_default as "Default Component": Component;
 // Shapes with custom colors
 rectangle_styled as "Styled Rectangle": Rectangle [
     fill_color="#e3f2fd",
-    line_color="#1976d2",
-    line_width=2.0,
+    stroke=[color="#1976d2", width=2.0],
     rounded=5.0
 ];
 
 oval_styled as "Styled Oval": Oval [
     fill_color="#f3e5f5",
-    line_color="#7b1fa2",
-    line_width=2.0
+    stroke=[color="#7b1fa2", width=2.0]
 ];
 
 component_styled as "Styled Component": Component [
     fill_color="#e8f5e8",
-    line_color="#388e3c",
-    line_width=2.0
+    stroke=[color="#388e3c", width=2.0]
 ];
 
 // Show relationships between same shape types

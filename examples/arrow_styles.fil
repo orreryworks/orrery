@@ -5,7 +5,7 @@ diagram component;
 type Database = Rectangle [
     fill_color="lightblue",
     rounded=10.0,
-    line_width=2.0,
+    stroke=[width=2.0],
     text=[color="darkblue", font_size=14, font_family="Courier New"]
 ];
 type Service = Rectangle [
@@ -19,7 +19,7 @@ type Client = Oval [
 ];
 type ExternalSystem = Rectangle [
     fill_color="#f0f0f0",
-    line_color="#666666",
+    stroke=[color="#666666"],
     text=[color="#333333", font_size=15]
 ];
 
@@ -47,15 +47,15 @@ client -> [text=[color="black"]] services::api_gateway: "Straight (default)";
 services::user_service -> [text=[color="darkblue", background_color="lightblue", padding=3.0]] storage::user_db: "Straight";
 
 // Curved arrows with matching text colors
-services::api_gateway -> [style="curved", color="blue", width=2.0, text=[color="blue", font_size=14]] services::auth_service: "Curved";
-services::payment_service -> [style="curved", color="green", text=[color="darkgreen", background_color="lightgreen"]] external_api: "Curved";
+services::api_gateway -> [style="curved", stroke=[color="blue", width=2.0], text=[color="blue", font_size=14]] services::auth_service: "Curved";
+services::payment_service -> [style="curved", stroke=[color="green"], text=[color="darkgreen", background_color="lightgreen"]] external_api: "Curved";
 
 // Orthogonal arrows with contrasting text colors
-services::api_gateway -> [style="orthogonal", color="purple", width=2.0, text=[color="purple", font_family="Arial", font_size=16]] services::user_service: "Orthogonal";
-services::auth_service -> [style="orthogonal", color="red", text=[color="red", background_color="white", padding=4.0]] services::payment_service: "Orthogonal";
-storage::payment_db -> [style="orthogonal", color="orange", text=[color="darkorange", font_size=13]] services::payment_service: "Orthogonal";
+services::api_gateway -> [style="orthogonal", stroke=[color="purple", width=2.0], text=[color="purple", font_family="Arial", font_size=16]] services::user_service: "Orthogonal";
+services::auth_service -> [style="orthogonal", stroke=[color="red"], text=[color="red", background_color="white", padding=4.0]] services::payment_service: "Orthogonal";
+storage::payment_db -> [style="orthogonal", stroke=[color="orange"], text=[color="darkorange", font_size=13]] services::payment_service: "Orthogonal";
 
 // Mix of styles with different relation types and text styling
-client <- [style="curved", color="#666666", text=[color="#666666", font_family="Helvetica"]] external_api: "Response";
-services::user_service <-> [style="orthogonal", color="#333333", text=[color="white", background_color="#333333", padding=5.0]] storage::payment_db: "Read/Write";
-services::payment_service - [style="straight", color="#999999", text=[color="#666666", font_size=12]] storage::user_db: "Simple connection";
+client <- [style="curved", stroke=[color="#666666"], text=[color="#666666", font_family="Helvetica"]] external_api: "Response";
+services::user_service <-> [style="orthogonal", stroke=[color="#333333"], text=[color="white", background_color="#333333", padding=5.0]] storage::payment_db: "Read/Write";
+services::payment_service - [style="straight", stroke=[color="#999999"], text=[color="#666666", font_size=12]] storage::user_db: "Simple connection";

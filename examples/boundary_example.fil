@@ -1,9 +1,9 @@
 diagram component [background_color="#f8f8f8"];
 
 // Define custom boundary types with different colors
-type UserBoundary = Boundary [fill_color="#e6f3ff", line_color="blue"];
-type SystemBoundary = Boundary [fill_color="#ffe6e6", line_color="red"];
-type ExternalBoundary = Boundary [fill_color="#e6ffe6", line_color="green"];
+type UserBoundary = Boundary [fill_color="#e6f3ff", stroke=[color="blue"]];
+type SystemBoundary = Boundary [fill_color="#ffe6e6", stroke=[color="red"]];
+type ExternalBoundary = Boundary [fill_color="#e6ffe6", stroke=[color="green"]];
 
 // Define Boundary shapes - text will appear BELOW each shape
 user_actor as "Customer": UserBoundary;

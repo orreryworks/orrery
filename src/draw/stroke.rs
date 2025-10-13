@@ -118,9 +118,8 @@ impl FromStr for StrokeStyle {
             "dotted" => Ok(Self::Dotted),
             "dash-dot" | "dashdot" => Ok(Self::DashDot),
             "dash-dot-dot" | "dashdotdot" => Ok(Self::DashDotDot),
-            _ => Err(format!(
-                "Invalid stroke style: '{s}'. Valid values are: solid, dashed, dotted, dash-dot, dash-dot-dot",
-            )),
+            // Any other value is treated as a custom dasharray pattern
+            _ => Ok(Self::Custom(s.to_string())),
         }
     }
 }
@@ -602,13 +601,18 @@ mod tests {
             StrokeStyle::DashDotDot
         );
 
-        // Test invalid string
-        let result = StrokeStyle::from_str("invalid");
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .contains("Invalid stroke style: 'invalid'")
+        // Test custom patterns (any unrecognized string becomes Custom)
+        assert_eq!(
+            StrokeStyle::from_str("10,5,2,5").unwrap(),
+            StrokeStyle::Custom("10,5,2,5".to_string())
+        );
+        assert_eq!(
+            StrokeStyle::from_str("5,5").unwrap(),
+            StrokeStyle::Custom("5,5".to_string())
+        );
+        assert_eq!(
+            StrokeStyle::from_str("arbitrary-pattern").unwrap(),
+            StrokeStyle::Custom("arbitrary-pattern".to_string())
         );
     }
 }
