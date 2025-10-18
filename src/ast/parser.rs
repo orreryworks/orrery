@@ -520,6 +520,150 @@ fn section_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Fragment
     })
 }
 
+/// Parse a section's content: "title"? { elements }
+/// This is the common structure shared by all fragment sugar syntax blocks
+fn parse_section_content<'src>(
+    input: &mut Input<'src>,
+    title_context: &'static str,
+) -> IResult<'src, types::FragmentSection<'src>> {
+    ws_comments0.parse_next(input)?;
+
+    let title = opt(string_literal.context(StrContext::Label(title_context))).parse_next(input)?;
+
+    ws_comments0.parse_next(input)?;
+
+    any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace))
+        .context(StrContext::Label("opening brace '{'"))
+        .parse_next(input)?;
+
+    ws_comments0.parse_next(input)?;
+
+    let elems = elements.parse_next(input)?;
+
+    ws_comments0.parse_next(input)?;
+
+    any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace))
+        .context(StrContext::Label("closing brace '}'"))
+        .parse_next(input)?;
+
+    Ok(types::FragmentSection {
+        title,
+        elements: elems,
+    })
+}
+
+/// Macro for generating single-section fragment keyword parsers
+macro_rules! single_section_parser {
+    ($fn_name:ident, $token:ident, $title_ctx:expr, $element_variant:ident) => {
+        fn $fn_name<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+            let keyword_token = any
+                .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::$token))
+                .context(StrContext::Label(concat!(stringify!($token), " keyword")))
+                .parse_next(input)?;
+            let keyword_span = keyword_token.span;
+
+            cut_err(input, |input| {
+                ws_comments0.parse_next(input)?;
+
+                let attributes = opt(wrapped_attributes)
+                    .map(|attrs| attrs.unwrap_or_default())
+                    .parse_next(input)?;
+
+                let section = parse_section_content(input, $title_ctx)?;
+
+                ws_comments0.parse_next(input)?;
+                semicolon
+                    .context(StrContext::Label(concat!(
+                        "semicolon after ",
+                        stringify!($token),
+                        " block"
+                    )))
+                    .parse_next(input)?;
+
+                Ok(types::Element::$element_variant {
+                    keyword_span,
+                    section,
+                    attributes,
+                })
+            })
+        }
+    };
+}
+
+/// Macro for generating multi-section fragment keyword parsers
+macro_rules! multi_section_parser {
+    ($fn_name:ident, $first_token:ident, $cont_token:ident, $first_ctx:expr, $cont_ctx:expr, $element_variant:ident) => {
+        fn $fn_name<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+            let keyword_token = any
+                .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::$first_token))
+                .context(StrContext::Label(concat!(
+                    stringify!($first_token),
+                    " keyword"
+                )))
+                .parse_next(input)?;
+            let keyword_span = keyword_token.span;
+
+            cut_err(input, |input| {
+                ws_comments0.parse_next(input)?;
+
+                let attributes = opt(wrapped_attributes)
+                    .map(|attrs| attrs.unwrap_or_default())
+                    .parse_next(input)?;
+
+                let first_section = parse_section_content(input, $first_ctx)?;
+                let mut sections = vec![first_section];
+
+                loop {
+                    ws_comments0.parse_next(input)?;
+
+                    let has_continuation = opt(any.verify(|token: &PositionedToken<'_>| {
+                        matches!(token.token, Token::$cont_token)
+                    }))
+                    .parse_next(input)?;
+
+                    if has_continuation.is_none() {
+                        break;
+                    }
+
+                    sections.push(parse_section_content(input, $cont_ctx)?);
+                }
+
+                ws_comments0.parse_next(input)?;
+                semicolon
+                    .context(StrContext::Label(concat!(
+                        "semicolon after ",
+                        stringify!($first_token),
+                        " block"
+                    )))
+                    .parse_next(input)?;
+
+                Ok(types::Element::$element_variant {
+                    keyword_span,
+                    sections,
+                    attributes,
+                })
+            })
+        }
+    };
+}
+
+// Generate single-section parsers
+single_section_parser!(opt_block, Opt, "opt title", OptBlock);
+single_section_parser!(loop_block, Loop, "loop title", LoopBlock);
+single_section_parser!(break_block, Break, "break title", BreakBlock);
+single_section_parser!(critical_block, Critical, "critical title", CriticalBlock);
+
+// Generate multi-section parsers
+multi_section_parser!(
+    alt_else_block,
+    Alt,
+    Else,
+    "alt title",
+    "else title",
+    AltElseBlock
+);
+multi_section_parser!(par_block, Par, Par, "par title", "par title", ParBlock);
+
 /// Parse a fragment block: `fragment [attributes] "operation" { section+ };`
 fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
     // Parse "fragment" keyword
@@ -662,6 +806,12 @@ fn elements<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types::Element<'
             alt((
                 activate_element,
                 deactivate_statement,
+                alt_else_block,
+                par_block,
+                opt_block,
+                loop_block,
+                break_block,
+                critical_block,
                 fragment_block,
                 relation,
                 component_with_elements,
@@ -1756,6 +1906,312 @@ mod tests {
             assert_eq!(elements.len(), 2); // component + relation
         } else {
             panic!("Expected ActivateBlock element");
+        }
+    }
+
+    // Fragment keyword sugar syntax tests
+
+    #[test]
+    fn test_opt_block_parsing() {
+        let input = r#"opt "user authenticated" {
+            user -> profile: "Load";
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = opt_block(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse opt block: {:?}", result);
+
+        let element = result.unwrap();
+        if let types::Element::OptBlock {
+            keyword_span,
+            section,
+            attributes,
+        } = element
+        {
+            assert!(keyword_span.start() < keyword_span.end());
+            assert_eq!(
+                section.title.as_ref().unwrap().inner(),
+                "user authenticated"
+            );
+            assert_eq!(section.elements.len(), 1);
+            assert!(attributes.is_empty());
+        } else {
+            panic!("Expected OptBlock element, got {:?}", element);
+        }
+    }
+
+    #[test]
+    fn test_opt_block_with_attributes() {
+        let input = r##"opt [background_color="#f0f0f0", border_style="dashed"] "condition" {
+            a -> b;
+        };"##;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = opt_block(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse opt block with attributes");
+
+        let element = result.unwrap();
+        if let types::Element::OptBlock { attributes, .. } = element {
+            assert_eq!(attributes.len(), 2);
+        } else {
+            panic!("Expected OptBlock element");
+        }
+    }
+
+    #[test]
+    fn test_opt_block_no_title() {
+        let input = r#"opt {
+            a -> b;
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = opt_block(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse opt block without title");
+
+        let element = result.unwrap();
+        if let types::Element::OptBlock { section, .. } = element {
+            assert!(section.title.is_none());
+        } else {
+            panic!("Expected OptBlock element");
+        }
+    }
+
+    #[test]
+    fn test_loop_block_parsing() {
+        let input = r#"loop "for each item" {
+            client -> server: "Process";
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = loop_block(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse loop block: {:?}", result);
+
+        let element = result.unwrap();
+        if let types::Element::LoopBlock {
+            keyword_span,
+            section,
+            ..
+        } = element
+        {
+            assert!(keyword_span.start() < keyword_span.end());
+            assert_eq!(section.title.as_ref().unwrap().inner(), "for each item");
+            assert_eq!(section.elements.len(), 1);
+        } else {
+            panic!("Expected LoopBlock element");
+        }
+    }
+
+    #[test]
+    fn test_break_block_parsing() {
+        let input = r#"break "timeout" {
+            client -> server: "Cancel";
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = break_block(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse break block: {:?}", result);
+
+        let element = result.unwrap();
+        if let types::Element::BreakBlock {
+            keyword_span,
+            section,
+            ..
+        } = element
+        {
+            assert!(keyword_span.start() < keyword_span.end());
+            assert_eq!(section.title.as_ref().unwrap().inner(), "timeout");
+        } else {
+            panic!("Expected BreakBlock element");
+        }
+    }
+
+    #[test]
+    fn test_critical_block_parsing() {
+        let input = r#"critical "database lock" {
+            app -> db: "UPDATE";
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = critical_block(&mut token_slice);
+        assert!(
+            result.is_ok(),
+            "Failed to parse critical block: {:?}",
+            result
+        );
+
+        let element = result.unwrap();
+        if let types::Element::CriticalBlock {
+            keyword_span,
+            section,
+            ..
+        } = element
+        {
+            assert!(keyword_span.start() < keyword_span.end());
+            assert_eq!(section.title.as_ref().unwrap().inner(), "database lock");
+        } else {
+            panic!("Expected CriticalBlock element");
+        }
+    }
+
+    #[test]
+    fn test_alt_else_block_parsing() {
+        let input = r#"alt "x > 0" {
+            a -> b;
+        } else "x < 0" {
+            b -> a;
+        } else {
+            a -> a;
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = alt_else_block(&mut token_slice);
+        assert!(
+            result.is_ok(),
+            "Failed to parse alt/else block: {:?}",
+            result
+        );
+
+        let element = result.unwrap();
+        if let types::Element::AltElseBlock {
+            keyword_span,
+            sections,
+            ..
+        } = element
+        {
+            assert!(keyword_span.start() < keyword_span.end());
+            assert_eq!(sections.len(), 3);
+            assert_eq!(sections[0].title.as_ref().unwrap().inner(), "x > 0");
+            assert_eq!(sections[1].title.as_ref().unwrap().inner(), "x < 0");
+            assert!(sections[2].title.is_none());
+        } else {
+            panic!("Expected AltElseBlock element");
+        }
+    }
+
+    #[test]
+    fn test_alt_block_single_branch() {
+        let input = r#"alt "condition" {
+            a -> b;
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = alt_else_block(&mut token_slice);
+        assert!(
+            result.is_ok(),
+            "Failed to parse alt block with single branch"
+        );
+
+        let element = result.unwrap();
+        if let types::Element::AltElseBlock { sections, .. } = element {
+            assert_eq!(sections.len(), 1);
+        } else {
+            panic!("Expected AltElseBlock element");
+        }
+    }
+
+    #[test]
+    fn test_par_block_parsing() {
+        let input = r#"par "thread 1" {
+            a -> b;
+        } par "thread 2" {
+            c -> d;
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = par_block(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse par block: {:?}", result);
+
+        let element = result.unwrap();
+        if let types::Element::ParBlock {
+            keyword_span,
+            sections,
+            ..
+        } = element
+        {
+            assert!(keyword_span.start() < keyword_span.end());
+            assert_eq!(sections.len(), 2);
+            assert_eq!(sections[0].title.as_ref().unwrap().inner(), "thread 1");
+            assert_eq!(sections[1].title.as_ref().unwrap().inner(), "thread 2");
+        } else {
+            panic!("Expected ParBlock element");
+        }
+    }
+
+    #[test]
+    fn test_par_block_single_branch() {
+        let input = r#"par "single thread" {
+            a -> b;
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = par_block(&mut token_slice);
+        assert!(
+            result.is_ok(),
+            "Failed to parse par block with single branch"
+        );
+
+        let element = result.unwrap();
+        if let types::Element::ParBlock { sections, .. } = element {
+            assert_eq!(sections.len(), 1);
+        } else {
+            panic!("Expected ParBlock element");
+        }
+    }
+
+    #[test]
+    fn test_nested_fragment_keywords() {
+        let input = r#"opt "outer" {
+            alt "inner condition" {
+                a -> b;
+            } else {
+                b -> a;
+            };
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = opt_block(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse nested fragment keywords");
+
+        let element = result.unwrap();
+        if let types::Element::OptBlock { section, .. } = element {
+            assert_eq!(section.elements.len(), 1);
+            // Inner element should be an AltElseBlock
+            if let types::Element::AltElseBlock { .. } = &section.elements[0] {
+                // Success
+            } else {
+                panic!("Expected nested AltElseBlock");
+            }
+        } else {
+            panic!("Expected OptBlock element");
+        }
+    }
+
+    #[test]
+    fn test_fragment_keyword_with_empty_body() {
+        let input = r#"opt "empty" {
+        };"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = opt_block(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse opt block with empty body");
+
+        let element = result.unwrap();
+        if let types::Element::OptBlock { section, .. } = element {
+            assert_eq!(section.elements.len(), 0);
+        } else {
+            panic!("Expected OptBlock element");
         }
     }
 }

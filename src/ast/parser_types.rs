@@ -240,6 +240,42 @@ pub enum Element<'a> {
     Deactivate {
         component: Spanned<String>,
     },
+    /// Alt/else block (sugar syntax for fragment with "alt" operation)
+    AltElseBlock {
+        keyword_span: Span,
+        sections: Vec<FragmentSection<'a>>,
+        attributes: Vec<Attribute<'a>>,
+    },
+    /// Opt block (sugar syntax for fragment with "opt" operation)
+    OptBlock {
+        keyword_span: Span,
+        section: FragmentSection<'a>,
+        attributes: Vec<Attribute<'a>>,
+    },
+    /// Loop block (sugar syntax for fragment with "loop" operation)
+    LoopBlock {
+        keyword_span: Span,
+        section: FragmentSection<'a>,
+        attributes: Vec<Attribute<'a>>,
+    },
+    /// Par block (sugar syntax for fragment with "par" operation)
+    ParBlock {
+        keyword_span: Span,
+        sections: Vec<FragmentSection<'a>>,
+        attributes: Vec<Attribute<'a>>,
+    },
+    /// Break block (sugar syntax for fragment with "break" operation)
+    BreakBlock {
+        keyword_span: Span,
+        section: FragmentSection<'a>,
+        attributes: Vec<Attribute<'a>>,
+    },
+    /// Critical block (sugar syntax for fragment with "critical" operation)
+    CriticalBlock {
+        keyword_span: Span,
+        section: FragmentSection<'a>,
+        attributes: Vec<Attribute<'a>>,
+    },
 }
 
 impl Element<'_> {
@@ -303,6 +339,54 @@ impl Element<'_> {
                 .fold(component.span(), |acc, span| acc.union(span)),
             Element::Activate { component } => component.span(),
             Element::Deactivate { component } => component.span(),
+
+            // Fragment sugar syntax: multiple sections
+            Element::AltElseBlock {
+                keyword_span,
+                sections,
+                attributes,
+            }
+            | Element::ParBlock {
+                keyword_span,
+                sections,
+                attributes,
+            } => {
+                let mut span = *keyword_span;
+                for section in sections {
+                    span = span.union(section.span());
+                }
+                for attr in attributes {
+                    span = span.union(attr.span());
+                }
+                span
+            }
+
+            // Fragment sugar syntax: single section
+            Element::OptBlock {
+                keyword_span,
+                section,
+                attributes,
+            }
+            | Element::LoopBlock {
+                keyword_span,
+                section,
+                attributes,
+            }
+            | Element::BreakBlock {
+                keyword_span,
+                section,
+                attributes,
+            }
+            | Element::CriticalBlock {
+                keyword_span,
+                section,
+                attributes,
+            } => attributes
+                .iter()
+                .map(|attr| attr.span())
+                .fold((*keyword_span).union(section.span()), |acc, span| {
+                    acc.union(span)
+                }),
         }
     }
 }

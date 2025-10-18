@@ -361,7 +361,190 @@ Scoping behavior:
 Diagram type restriction:
 - Fragments are only supported in sequence diagrams. Using them in component diagrams produces an error.
 
-#### 6.4.3 Examples
+#### 6.4.3 Sugar Syntax
+
+To improve ergonomics and readability, Filament provides dedicated keywords for common UML 2.5 interaction operators. These keywords are syntactic sugar that desugar to the base `fragment` syntax during compilation.
+
+**Available Keywords:**
+- `alt`/`else` - Alternatives (conditional branching)
+- `opt` - Optional (single conditional path)
+- `loop` - Iteration (repeated execution)
+- `par` - Parallel (concurrent execution)
+- `break` - Interruption (breaking from enclosing fragment)
+- `critical` - Critical region (atomic execution)
+
+**Benefits of Sugar Syntax:**
+- More concise and readable code
+- Clear intent through dedicated keywords
+- Reduced boilerplate for common patterns
+- Consistent with UML terminology
+
+**General Pattern:**
+```filament
+keyword [attributes] "title" {
+    // elements
+};
+```
+
+The generic `fragment` syntax remains fully supported for custom operations or when explicit control is needed.
+
+##### 6.4.3.1 alt/else - Alternatives
+
+Represents conditional branching with mutually exclusive paths.
+
+**Syntax:**
+```filament
+alt [attributes] "condition1" {
+    // first alternative
+} else "condition2" {
+    // second alternative
+} else "condition3" {
+    // third alternative
+};
+```
+
+**Requirements:**
+- At least one `alt` block required
+- Zero or more `else` clauses
+- Title strings are optional for each branch
+- Attributes apply to entire fragment (optional, placed after `alt`)
+- Each block ends with `}`, final clause ends with `};`
+
+**Desugars to:**
+```filament
+fragment "alt" {
+    section "condition1" { /* ... */ };
+    section "condition2" { /* ... */ };
+    section "condition3" { /* ... */ };
+};
+```
+
+##### 6.4.3.2 opt - Optional
+
+Represents a single conditional execution path.
+
+**Syntax:**
+```filament
+opt [attributes] "condition" {
+    // optional elements
+};
+```
+
+**Requirements:**
+- Single block only
+- Title string is optional
+- Attributes apply to the fragment (optional)
+
+**Desugars to:**
+```filament
+fragment "opt" {
+    section "condition" { /* ... */ };
+};
+```
+
+##### 6.4.3.3 loop - Iteration
+
+Represents repeated execution with a loop guard condition.
+
+**Syntax:**
+```filament
+loop [attributes] "guard_condition" {
+    // repeated elements
+};
+```
+
+**Requirements:**
+- Single block only
+- Title string is optional but recommended (describes loop condition)
+- Attributes apply to the fragment (optional)
+- Common titles: "for eacem", "while x > 0", "until complete"
+
+**Desugars to:**
+```filament
+fragment "loop" {
+    section "guard_condition" { /* ... */ };
+};
+```
+
+##### 6.4.3.4 par - Parallel
+
+Represents concurrent execution of multiple paths.
+
+**Syntax:**
+```filament
+par [attributes] "label1" {
+    // first parallel path
+} par "label2" {
+    // second parallel path
+};
+```
+
+**Requirements:**
+- At least one `par` block required
+- Multiple `par` blocks represent concurrent paths
+- Title strings are optional for each path
+- Attributes apply to entire fragment (optional, placed after first `par`)
+- Each block ends with `}`, final block ends with `};`
+
+**Desugars to:**
+```filament
+fragment "par" {
+    section "label1" { /* ... */ };
+    section "label2" { /* ... */ };
+};
+```
+
+##### 6.4.3.5 break - Interruption
+
+Represents breaking out of an enclosing fragment, typically used for exceptions or interrupts.
+
+**Syntax:**
+```filament
+break [attributes] "condition" {
+    // interruption handling
+};
+```
+
+**Requirements:**
+- Single block only
+- Title string is optional but recommended
+- Attributes apply to the fragment (optional)
+- Semantically breaks out of enclosing loop/alt/opt fragment
+
+**Desugars to:**
+```filament
+fragment "break" {
+    section "condition" { /* ... */ };
+};
+```
+
+##### 6.4.3.6 critical - Critical Region
+
+Represents an atomic execution region that must not be interleaved.
+
+**Syntax:**
+```filament
+critical [attributes] "label" {
+    // atomic operations
+};
+```
+
+**Requirements:**
+- Single block only
+- Title string is optional
+- Attributes apply to the fragment (optional)
+- Indicates mutual exclusion semantics
+
+**Desugars to:**
+```filament
+fragment "critical" {
+    section "label" { /* ... */ };
+};
+```
+
+#### 6.4.4 Examples
+
+##### Base Fragment Examples
 
 Basic fragment with a single section:
 ```filament
@@ -405,6 +588,97 @@ fragment [border_style="dashed", background_color="#f8f8f8"] "Authentication Flo
             };
         };
     };
+};
+```
+
+##### Sugar Syntax Examples
+
+Using all fragment keywords together:
+
+```filament
+diagram sequence;
+
+client: Rectangle;
+server: Rectangle;
+database: Rectangle;
+cache: Rectangle;
+
+// Authentication with alternatives
+alt "valid credentials" {
+    client -> server: "Login";
+    activate server {
+        server -> database: "Verify";
+        database -> server: "OK";
+        server -> client: "Success";
+    };
+} else "invalid credentials" {
+    client -> server: "Login";
+    server -> client: "Access denied";
+};
+
+// Optional caching
+opt "cache enabled" {
+    server -> cache: "Store session";
+};
+
+// Data processing loop
+loop "for each item in batch" {
+    client -> server: "Process item";
+
+    critical "database transaction" {
+        server -> database: "BEGIN";
+        server -> database: "INSERT";
+        server -> database: "COMMIT";
+    };
+
+    break "error occurred" {
+        server -> client: "Error notification";
+    };
+};
+
+// Parallel operations
+par "fetch user data" {
+    server -> database: "SELECT users";
+} par "fetch settings" {
+    server -> database: "SELECT settings";
+};
+```
+
+Individual keyword examples:
+
+```filament
+// alt/else - alternatives
+alt "valid token" {
+    client -> server: "Proceed";
+} else {
+    client -> server: "Reject";
+};
+
+// opt - optional
+opt "cache hit" {
+    server -> cache: "Load";
+};
+
+// loop - iteration
+loop "for each record" {
+    client -> database: "Process";
+};
+
+// par - parallel
+par "thread 1" {
+    server -> db1: "Query";
+} par "thread 2" {
+    server -> db2: "Query";
+};
+
+// break - interruption
+break "timeout" {
+    client -> server: "Cancel";
+};
+
+// critical - critical region
+critical "transaction" {
+    server -> database: "COMMIT";
 };
 ```
 
@@ -688,17 +962,117 @@ end_user -> [BlueArrow] auth_service: "Auth requests";
 
 ### 12.2 Sequence Diagram Example
 
-```
+Basic sequence diagram with fragment keyword sugar syntax:
+
+```filament
 diagram sequence;
 
-user_agent: Rectangle;
-api_service: Rectangle;
-data_store: Rectangle;
+client: Rectangle;
+server: Rectangle;
+database: Rectangle;
+cache: Rectangle;
 
-user_agent -> [stroke=[color="blue"]] api_service: "Request";
-api_service -> [stroke=[color="green"]] data_store;
-data_store -> [stroke=[color="green"]] api_service;
-api_service -> [stroke=[color="blue"]] user_agent;
+// Authentication flow with alternatives
+alt "valid token" {
+    client -> server: "Request with token";
+    activate server {
+        server -> database: "Verify token";
+        database -> server: "Valid";
+        server -> client: "Success";
+    };
+} else "invalid token" {
+    client -> server: "Request";
+    server -> client: "401 Unauthorized";
+};
+
+// Optional caching
+opt "cache hit" {
+    server -> cache: "Check cache";
+    cache -> server: "Cached data";
+};
+
+// Data processing loop
+loop "for each page" {
+    client -> server: "Fetch page";
+    server -> database: "Query";
+    database -> server: "Results";
+    server -> client: "Page data";
+};
+
+// Parallel database operations
+par "update user table" {
+    server -> database: "UPDATE users";
+} par "update activity log" {
+    server -> database: "INSERT INTO logs";
+};
+
+// Critical section for transaction
+critical "payment transaction" {
+    server -> database: "BEGIN TRANSACTION";
+    server -> database: "UPDATE balance";
+    server -> database: "INSERT payment_log";
+    server -> database: "COMMIT";
+};
+```
+
+The same diagram using base `fragment` syntax:
+
+```filament
+diagram sequence;
+
+client: Rectangle;
+server: Rectangle;
+database: Rectangle;
+cache: Rectangle;
+
+fragment "alt" {
+    section "valid token" {
+        client -> server: "Request with token";
+        activate server {
+            server -> database: "Verify token";
+            database -> server: "Valid";
+            server -> client: "Success";
+        };
+    };
+    section "invalid token" {
+        client -> server: "Request";
+        server -> client: "401 Unauthorized";
+    };
+};
+
+fragment "opt" {
+    section "cache hit" {
+        server -> cache: "Check cache";
+        cache -> server: "Cached data";
+    };
+};
+
+fragment "loop" {
+    section "for each page" {
+        client -> server: "Fetch page";
+        server -> database: "Query";
+        database -> server: "Results";
+        server -> client: "Page data";
+    };
+};
+
+fragment "par" {
+    section "update user table" {
+        server -> database: "UPDATE users";
+    };
+    section "update activity log" {
+        server -> database: "INSERT INTO logs";
+    };
+};
+
+fragment "critical" {
+    section "payment transaction" {
+        server -> database: "BEGIN TRANSACTION";
+        server -> database: "UPDATE balance";
+        server -> database: "INSERT payment_log";
+        server -> database: "COMMIT";
+    };
+};
 ```
 
 ### 12.3 Embedded Diagram Example

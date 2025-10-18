@@ -373,6 +373,16 @@ impl<'a> Builder<'a> {
                 parser_types::Element::Fragment(fragment) => {
                     self.build_fragment_element(fragment, parent_id, diagram_kind)?
                 }
+                parser_types::Element::AltElseBlock { .. }
+                | parser_types::Element::OptBlock { .. }
+                | parser_types::Element::LoopBlock { .. }
+                | parser_types::Element::ParBlock { .. }
+                | parser_types::Element::BreakBlock { .. }
+                | parser_types::Element::CriticalBlock { .. } => {
+                    unreachable!(
+                        "Fragment sugar syntax should have been desugared into Fragment elements before elaboration"
+                    );
+                }
             };
             elements.push(element);
         }

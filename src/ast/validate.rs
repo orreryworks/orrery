@@ -117,6 +117,58 @@ pub trait Visitor<'a> {
             Element::Activate { component } => self.visit_activate(component),
             Element::Deactivate { component } => self.visit_deactivate(component),
             Element::Fragment(fragment) => self.visit_fragment(fragment),
+            Element::AltElseBlock {
+                keyword_span: _,
+                sections,
+                attributes,
+            } => {
+                self.visit_attributes(attributes);
+                for section in sections {
+                    self.visit_elements(&section.elements);
+                }
+            }
+            Element::OptBlock {
+                keyword_span: _,
+                section,
+                attributes,
+            } => {
+                self.visit_attributes(attributes);
+                self.visit_elements(&section.elements);
+            }
+            Element::LoopBlock {
+                keyword_span: _,
+                section,
+                attributes,
+            } => {
+                self.visit_attributes(attributes);
+                self.visit_elements(&section.elements);
+            }
+            Element::ParBlock {
+                keyword_span: _,
+                sections,
+                attributes,
+            } => {
+                self.visit_attributes(attributes);
+                for section in sections {
+                    self.visit_elements(&section.elements);
+                }
+            }
+            Element::BreakBlock {
+                keyword_span: _,
+                section,
+                attributes,
+            } => {
+                self.visit_attributes(attributes);
+                self.visit_elements(&section.elements);
+            }
+            Element::CriticalBlock {
+                keyword_span: _,
+                section,
+                attributes,
+            } => {
+                self.visit_attributes(attributes);
+                self.visit_elements(&section.elements);
+            }
         }
     }
 

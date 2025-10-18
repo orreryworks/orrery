@@ -16,6 +16,13 @@ pub enum Token<'src> {
     Deactivate,
     Fragment,
     Section,
+    Alt,
+    Else,
+    Opt,
+    Loop,
+    Par,
+    Break,
+    Critical,
 
     // Literals
     StringLiteral(String),
@@ -109,6 +116,13 @@ impl fmt::Display for Token<'_> {
             Token::Deactivate => write!(f, "deactivate"),
             Token::Fragment => write!(f, "fragment"),
             Token::Section => write!(f, "section"),
+            Token::Alt => write!(f, "alt"),
+            Token::Else => write!(f, "else"),
+            Token::Opt => write!(f, "opt"),
+            Token::Loop => write!(f, "loop"),
+            Token::Par => write!(f, "par"),
+            Token::Break => write!(f, "break"),
+            Token::Critical => write!(f, "critical"),
 
             Token::StringLiteral(s) => write!(f, "\"{s}\""),
             Token::FloatLiteral(n) => write!(f, "{n}"),

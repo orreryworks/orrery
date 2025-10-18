@@ -110,6 +110,13 @@ fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
             literal("activate").context(StrContext::Label("activate keyword")),
             literal("fragment").context(StrContext::Label("fragment keyword")),
             literal("section").context(StrContext::Label("section keyword")),
+            literal("critical").context(StrContext::Label("critical keyword")),
+            literal("break").context(StrContext::Label("break keyword")),
+            literal("else").context(StrContext::Label("else keyword")),
+            literal("loop").context(StrContext::Label("loop keyword")),
+            literal("alt").context(StrContext::Label("alt keyword")),
+            literal("opt").context(StrContext::Label("opt keyword")),
+            literal("par").context(StrContext::Label("par keyword")),
         )),
         // Ensure keyword is not followed by identifier character (word boundary)
         peek(not(one_of(|c: char| c.is_ascii_alphanumeric() || c == '_'))),
@@ -125,6 +132,13 @@ fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
         "activate" => Token::Activate,
         "fragment" => Token::Fragment,
         "section" => Token::Section,
+        "alt" => Token::Alt,
+        "else" => Token::Else,
+        "opt" => Token::Opt,
+        "loop" => Token::Loop,
+        "par" => Token::Par,
+        "break" => Token::Break,
+        "critical" => Token::Critical,
         _ => unreachable!(),
     })
     .context(StrContext::Label("keyword"))
@@ -263,6 +277,13 @@ mod tests {
         test_single_token("activate", Token::Activate);
         test_single_token("fragment", Token::Fragment);
         test_single_token("section", Token::Section);
+        test_single_token("alt", Token::Alt);
+        test_single_token("else", Token::Else);
+        test_single_token("opt", Token::Opt);
+        test_single_token("loop", Token::Loop);
+        test_single_token("par", Token::Par);
+        test_single_token("break", Token::Break);
+        test_single_token("critical", Token::Critical);
     }
 
     #[test]

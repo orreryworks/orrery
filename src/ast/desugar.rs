@@ -141,6 +141,67 @@ trait Folder<'a> {
             Element::Activate { component } => Element::Activate { component },
             Element::Deactivate { component } => Element::Deactivate { component },
             Element::Fragment(fragment) => Element::Fragment(self.fold_fragment(fragment)),
+            // Fragment sugar syntax - default behavior is to fold sections recursively
+            Element::AltElseBlock {
+                keyword_span,
+                sections,
+                attributes,
+            } => Element::AltElseBlock {
+                keyword_span,
+                sections: sections
+                    .into_iter()
+                    .map(|s| self.fold_fragment_section(s))
+                    .collect(),
+                attributes: self.fold_attributes(attributes),
+            },
+            Element::OptBlock {
+                keyword_span,
+                section,
+                attributes,
+            } => Element::OptBlock {
+                keyword_span,
+                section: self.fold_fragment_section(section),
+                attributes: self.fold_attributes(attributes),
+            },
+            Element::LoopBlock {
+                keyword_span,
+                section,
+                attributes,
+            } => Element::LoopBlock {
+                keyword_span,
+                section: self.fold_fragment_section(section),
+                attributes: self.fold_attributes(attributes),
+            },
+            Element::ParBlock {
+                keyword_span,
+                sections,
+                attributes,
+            } => Element::ParBlock {
+                keyword_span,
+                sections: sections
+                    .into_iter()
+                    .map(|s| self.fold_fragment_section(s))
+                    .collect(),
+                attributes: self.fold_attributes(attributes),
+            },
+            Element::BreakBlock {
+                keyword_span,
+                section,
+                attributes,
+            } => Element::BreakBlock {
+                keyword_span,
+                section: self.fold_fragment_section(section),
+                attributes: self.fold_attributes(attributes),
+            },
+            Element::CriticalBlock {
+                keyword_span,
+                section,
+                attributes,
+            } => Element::CriticalBlock {
+                keyword_span,
+                section: self.fold_fragment_section(section),
+                attributes: self.fold_attributes(attributes),
+            },
         }
     }
 
@@ -269,9 +330,20 @@ trait Folder<'a> {
     }
 }
 
-pub struct DesugarActivateBlocks;
+/// Desugaring pass for the Filament AST
+///
+/// This folder performs desugaring transformations:
+/// 1. `ActivateBlock` → explicit `activate`/`deactivate` statements
+/// 2. Fragment keyword sugar syntax → base `Fragment` elements
+///    - `alt`/`else` → `fragment "alt" { ... }`
+///    - `opt` → `fragment "opt" { ... }`
+///    - `loop` → `fragment "loop" { ... }`
+///    - `par` → `fragment "par" { ... }`
+///    - `break` → `fragment "break" { ... }`
+///    - `critical` → `fragment "critical" { ... }`
+pub struct Desugar;
 
-impl<'a> Folder<'a> for DesugarActivateBlocks {
+impl<'a> Folder<'a> for Desugar {
     fn fold_elements(&mut self, elements: Vec<Element<'a>>) -> Vec<Element<'a>> {
         let mut out = Vec::with_capacity(elements.len());
         for elem in elements {
@@ -293,6 +365,125 @@ impl<'a> Folder<'a> for DesugarActivateBlocks {
         }
         out
     }
+
+    fn fold_element(&mut self, element: Element<'a>) -> Element<'a> {
+        match element {
+            // ========================================================================
+            // NO DESUGARING - Just recursive folding to process nested elements
+            // ========================================================================
+            Element::Component {
+                name,
+                display_name,
+                type_name,
+                attributes,
+                nested_elements,
+            } => self.fold_component(name, display_name, type_name, attributes, nested_elements),
+            Element::Relation {
+                source,
+                target,
+                relation_type,
+                type_spec,
+                label,
+            } => self.fold_relation(source, target, relation_type, type_spec, label),
+            Element::Diagram(diagram) => Element::Diagram(self.fold_diagram(diagram)),
+            Element::ActivateBlock {
+                component,
+                elements,
+            } => self.fold_activate_block(component, elements),
+            Element::Fragment(fragment) => Element::Fragment(self.fold_fragment(fragment)),
+            Element::Activate { component } => Element::Activate { component },
+            Element::Deactivate { component } => Element::Deactivate { component },
+
+            // ========================================================================
+            // DESUGARING TRANSFORMATIONS - Sugar syntax → Base syntax
+            // ========================================================================
+
+            // Transform alt/else to fragment "alt"
+            Element::AltElseBlock {
+                keyword_span,
+                sections,
+                attributes,
+            } => {
+                let operation = Spanned::new("alt".to_string(), keyword_span);
+                Element::Fragment(Fragment {
+                    operation,
+                    sections: sections
+                        .into_iter()
+                        .map(|s| self.fold_fragment_section(s))
+                        .collect(),
+                    attributes: self.fold_attributes(attributes),
+                })
+            }
+            // Transform opt to fragment "opt"
+            Element::OptBlock {
+                keyword_span,
+                section,
+                attributes,
+            } => {
+                let operation = Spanned::new("opt".to_string(), keyword_span);
+                Element::Fragment(Fragment {
+                    operation,
+                    sections: vec![self.fold_fragment_section(section)],
+                    attributes: self.fold_attributes(attributes),
+                })
+            }
+            // Transform loop to fragment "loop"
+            Element::LoopBlock {
+                keyword_span,
+                section,
+                attributes,
+            } => {
+                let operation = Spanned::new("loop".to_string(), keyword_span);
+                Element::Fragment(Fragment {
+                    operation,
+                    sections: vec![self.fold_fragment_section(section)],
+                    attributes: self.fold_attributes(attributes),
+                })
+            }
+            // Transform par to fragment "par"
+            Element::ParBlock {
+                keyword_span,
+                sections,
+                attributes,
+            } => {
+                let operation = Spanned::new("par".to_string(), keyword_span);
+                Element::Fragment(Fragment {
+                    operation,
+                    sections: sections
+                        .into_iter()
+                        .map(|s| self.fold_fragment_section(s))
+                        .collect(),
+                    attributes: self.fold_attributes(attributes),
+                })
+            }
+            // Transform break to fragment "break"
+            Element::BreakBlock {
+                keyword_span,
+                section,
+                attributes,
+            } => {
+                let operation = Spanned::new("break".to_string(), keyword_span);
+                Element::Fragment(Fragment {
+                    operation,
+                    sections: vec![self.fold_fragment_section(section)],
+                    attributes: self.fold_attributes(attributes),
+                })
+            }
+            // Transform critical to fragment "critical"
+            Element::CriticalBlock {
+                keyword_span,
+                section,
+                attributes,
+            } => {
+                let operation = Spanned::new("critical".to_string(), keyword_span);
+                Element::Fragment(Fragment {
+                    operation,
+                    sections: vec![self.fold_fragment_section(section)],
+                    attributes: self.fold_attributes(attributes),
+                })
+            }
+        }
+    }
 }
 
 /// Main entry point for the desugaring pass.
@@ -300,11 +491,12 @@ impl<'a> Folder<'a> for DesugarActivateBlocks {
 /// This function applies desugaring transformations to the parsed AST
 /// before it's passed to the elaboration phase.
 ///
-/// It rewrites [`ActivateBlock`] elements into explicit
-/// `activate`/`deactivate` statements while preserving order and spans.
+/// All desugaring happens in a single pass using the `Desugar` folder:
+/// 1. `ActivateBlock` elements → explicit `activate`/`deactivate` statements
+/// 2. Fragment keyword sugar syntax → base `Fragment` elements
 pub fn desugar<'a>(diagram: Spanned<Element<'a>>) -> Spanned<Element<'a>> {
-    let mut folder = DesugarActivateBlocks;
     let span = diagram.span();
+    let mut folder = Desugar;
     let desugared = folder.fold_element(diagram.into_inner());
     Spanned::new(desugared, span)
 }
@@ -595,8 +787,8 @@ mod tests {
         });
         let wrapped = spanned(diagram);
 
-        // Apply DesugarActivateBlocks folder directly
-        let mut folder = DesugarActivateBlocks;
+        // Apply Desugar folder directly
+        let mut folder = Desugar;
         let result_elem = folder.fold_element(wrapped.into_inner());
 
         // Verify activate block was rewritten into explicit statements
@@ -623,6 +815,378 @@ mod tests {
                 }
             }
             _ => panic!("Expected diagram element"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_opt_block() {
+        let opt_block = Element::OptBlock {
+            keyword_span: Span::new(0..3),
+            section: FragmentSection {
+                title: Some(spanned("user authenticated".to_string())),
+                elements: vec![Element::Relation {
+                    source: spanned("user".to_string()),
+                    target: spanned("profile".to_string()),
+                    relation_type: spanned("->"),
+                    type_spec: None,
+                    label: Some(spanned("Load".to_string())),
+                }],
+            },
+            attributes: vec![],
+        };
+
+        let mut folder = Desugar;
+        let result = folder.fold_element(opt_block);
+
+        match result {
+            Element::Fragment(fragment) => {
+                assert_eq!(*fragment.operation.inner(), "opt");
+                assert_eq!(fragment.sections.len(), 1);
+                assert_eq!(
+                    fragment.sections[0].title.as_ref().unwrap().inner(),
+                    "user authenticated"
+                );
+                assert_eq!(fragment.sections[0].elements.len(), 1);
+            }
+            _ => panic!("Expected Fragment element"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_loop_block() {
+        let loop_block = Element::LoopBlock {
+            keyword_span: Span::new(0..4),
+            section: FragmentSection {
+                title: Some(spanned("for each item".to_string())),
+                elements: vec![Element::Relation {
+                    source: spanned("client".to_string()),
+                    target: spanned("server".to_string()),
+                    relation_type: spanned("->"),
+                    type_spec: None,
+                    label: Some(spanned("Process".to_string())),
+                }],
+            },
+            attributes: vec![],
+        };
+
+        let mut folder = Desugar;
+        let result = folder.fold_element(loop_block);
+
+        match result {
+            Element::Fragment(fragment) => {
+                assert_eq!(*fragment.operation.inner(), "loop");
+                assert_eq!(fragment.sections.len(), 1);
+                assert_eq!(
+                    fragment.sections[0].title.as_ref().unwrap().inner(),
+                    "for each item"
+                );
+            }
+            _ => panic!("Expected Fragment element"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_break_block() {
+        let break_block = Element::BreakBlock {
+            keyword_span: Span::new(0..5),
+            section: FragmentSection {
+                title: Some(spanned("timeout".to_string())),
+                elements: vec![Element::Relation {
+                    source: spanned("client".to_string()),
+                    target: spanned("server".to_string()),
+                    relation_type: spanned("->"),
+                    type_spec: None,
+                    label: Some(spanned("Cancel".to_string())),
+                }],
+            },
+            attributes: vec![],
+        };
+
+        let mut folder = Desugar;
+        let result = folder.fold_element(break_block);
+
+        match result {
+            Element::Fragment(fragment) => {
+                assert_eq!(*fragment.operation.inner(), "break");
+                assert_eq!(fragment.sections.len(), 1);
+                assert_eq!(
+                    fragment.sections[0].title.as_ref().unwrap().inner(),
+                    "timeout"
+                );
+            }
+            _ => panic!("Expected Fragment element"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_critical_block() {
+        let critical_block = Element::CriticalBlock {
+            keyword_span: Span::new(0..8),
+            section: FragmentSection {
+                title: Some(spanned("database lock".to_string())),
+                elements: vec![Element::Relation {
+                    source: spanned("app".to_string()),
+                    target: spanned("db".to_string()),
+                    relation_type: spanned("->"),
+                    type_spec: None,
+                    label: Some(spanned("UPDATE".to_string())),
+                }],
+            },
+            attributes: vec![],
+        };
+
+        let mut folder = Desugar;
+        let result = folder.fold_element(critical_block);
+
+        match result {
+            Element::Fragment(fragment) => {
+                assert_eq!(*fragment.operation.inner(), "critical");
+                assert_eq!(fragment.sections.len(), 1);
+                assert_eq!(
+                    fragment.sections[0].title.as_ref().unwrap().inner(),
+                    "database lock"
+                );
+            }
+            _ => panic!("Expected Fragment element"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_alt_else_block() {
+        let alt_else_block = Element::AltElseBlock {
+            keyword_span: Span::new(0..3),
+            sections: vec![
+                FragmentSection {
+                    title: Some(spanned("x > 0".to_string())),
+                    elements: vec![Element::Relation {
+                        source: spanned("a".to_string()),
+                        target: spanned("b".to_string()),
+                        relation_type: spanned("->"),
+                        type_spec: None,
+                        label: None,
+                    }],
+                },
+                FragmentSection {
+                    title: Some(spanned("x < 0".to_string())),
+                    elements: vec![Element::Relation {
+                        source: spanned("b".to_string()),
+                        target: spanned("a".to_string()),
+                        relation_type: spanned("->"),
+                        type_spec: None,
+                        label: None,
+                    }],
+                },
+                FragmentSection {
+                    title: None,
+                    elements: vec![Element::Relation {
+                        source: spanned("a".to_string()),
+                        target: spanned("a".to_string()),
+                        relation_type: spanned("->"),
+                        type_spec: None,
+                        label: None,
+                    }],
+                },
+            ],
+            attributes: vec![],
+        };
+
+        let mut folder = Desugar;
+        let result = folder.fold_element(alt_else_block);
+
+        match result {
+            Element::Fragment(fragment) => {
+                assert_eq!(*fragment.operation.inner(), "alt");
+                assert_eq!(fragment.sections.len(), 3);
+                assert_eq!(
+                    fragment.sections[0].title.as_ref().unwrap().inner(),
+                    "x > 0"
+                );
+                assert_eq!(
+                    fragment.sections[1].title.as_ref().unwrap().inner(),
+                    "x < 0"
+                );
+                assert!(fragment.sections[2].title.is_none());
+            }
+            _ => panic!("Expected Fragment element"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_par_block() {
+        let par_block = Element::ParBlock {
+            keyword_span: Span::new(0..3),
+            sections: vec![
+                FragmentSection {
+                    title: Some(spanned("thread 1".to_string())),
+                    elements: vec![Element::Relation {
+                        source: spanned("a".to_string()),
+                        target: spanned("b".to_string()),
+                        relation_type: spanned("->"),
+                        type_spec: None,
+                        label: None,
+                    }],
+                },
+                FragmentSection {
+                    title: Some(spanned("thread 2".to_string())),
+                    elements: vec![Element::Relation {
+                        source: spanned("c".to_string()),
+                        target: spanned("d".to_string()),
+                        relation_type: spanned("->"),
+                        type_spec: None,
+                        label: None,
+                    }],
+                },
+            ],
+            attributes: vec![],
+        };
+
+        let mut folder = Desugar;
+        let result = folder.fold_element(par_block);
+
+        match result {
+            Element::Fragment(fragment) => {
+                assert_eq!(*fragment.operation.inner(), "par");
+                assert_eq!(fragment.sections.len(), 2);
+                assert_eq!(
+                    fragment.sections[0].title.as_ref().unwrap().inner(),
+                    "thread 1"
+                );
+                assert_eq!(
+                    fragment.sections[1].title.as_ref().unwrap().inner(),
+                    "thread 2"
+                );
+            }
+            _ => panic!("Expected Fragment element"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_preserves_attributes() {
+        let opt_block = Element::OptBlock {
+            keyword_span: Span::new(0..3),
+            section: FragmentSection {
+                title: Some(spanned("condition".to_string())),
+                elements: vec![],
+            },
+            attributes: vec![
+                Attribute {
+                    name: spanned("background_color"),
+                    value: AttributeValue::String(spanned("#f0f0f0".to_string())),
+                },
+                Attribute {
+                    name: spanned("border_style"),
+                    value: AttributeValue::String(spanned("dashed".to_string())),
+                },
+            ],
+        };
+
+        let mut folder = Desugar;
+        let result = folder.fold_element(opt_block);
+
+        match result {
+            Element::Fragment(fragment) => {
+                assert_eq!(fragment.attributes.len(), 2);
+                assert_eq!(*fragment.attributes[0].name.inner(), "background_color");
+                assert_eq!(*fragment.attributes[1].name.inner(), "border_style");
+            }
+            _ => panic!("Expected Fragment element"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_nested_fragments() {
+        // Create an opt block containing a nested alt/else structure
+        let nested_alt = Element::AltElseBlock {
+            keyword_span: Span::new(5..8),
+            sections: vec![
+                FragmentSection {
+                    title: Some(spanned("case 1".to_string())),
+                    elements: vec![],
+                },
+                FragmentSection {
+                    title: Some(spanned("case 2".to_string())),
+                    elements: vec![],
+                },
+            ],
+            attributes: vec![],
+        };
+
+        let opt_block = Element::OptBlock {
+            keyword_span: Span::new(0..3),
+            section: FragmentSection {
+                title: Some(spanned("outer condition".to_string())),
+                elements: vec![nested_alt],
+            },
+            attributes: vec![],
+        };
+
+        let mut folder = Desugar;
+        let result = folder.fold_element(opt_block);
+
+        match result {
+            Element::Fragment(outer_fragment) => {
+                assert_eq!(*outer_fragment.operation.inner(), "opt");
+                assert_eq!(outer_fragment.sections.len(), 1);
+
+                // Check that nested alt was also desugared
+                match &outer_fragment.sections[0].elements[0] {
+                    Element::Fragment(inner_fragment) => {
+                        assert_eq!(*inner_fragment.operation.inner(), "alt");
+                        assert_eq!(inner_fragment.sections.len(), 2);
+                    }
+                    _ => panic!("Expected nested Fragment element"),
+                }
+            }
+            _ => panic!("Expected Fragment element"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_keyword_span_preserved() {
+        let keyword_span = Span::new(10..13);
+        let opt_block = Element::OptBlock {
+            keyword_span,
+            section: FragmentSection {
+                title: None,
+                elements: vec![],
+            },
+            attributes: vec![],
+        };
+
+        let mut folder = Desugar;
+        let result = folder.fold_element(opt_block);
+
+        match result {
+            Element::Fragment(fragment) => {
+                // The operation string should have the same span as the original keyword
+                assert_eq!(fragment.operation.span(), keyword_span);
+            }
+            _ => panic!("Expected Fragment element"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_empty_sections() {
+        // Test that empty sections are handled correctly
+        let opt_block = Element::OptBlock {
+            keyword_span: Span::new(0..3),
+            section: FragmentSection {
+                title: None,
+                elements: vec![],
+            },
+            attributes: vec![],
+        };
+
+        let mut folder = Desugar;
+        let result = folder.fold_element(opt_block);
+
+        match result {
+            Element::Fragment(fragment) => {
+                assert_eq!(fragment.sections.len(), 1);
+                assert!(fragment.sections[0].title.is_none());
+                assert!(fragment.sections[0].elements.is_empty());
+            }
+            _ => panic!("Expected Fragment element"),
         }
     }
 }
