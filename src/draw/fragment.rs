@@ -21,7 +21,7 @@
 use crate::{
     color::Color,
     draw::{Drawable, StrokeDefinition, Text, TextDefinition},
-    geometry::{Insets, Point, Size},
+    geometry::{Bounds, Insets, Point, Size},
 };
 
 #[cfg(test)]
@@ -49,6 +49,9 @@ pub struct FragmentDefinition {
 
     /// The stroke styling for section separator lines
     separator_stroke: Rc<StrokeDefinition>,
+
+    /// Fill color for the pentagonal operation label tab
+    pentagon_fill_color: Color,
 
     /// Padding around the fragment content
     content_padding: Insets,
@@ -121,6 +124,68 @@ impl FragmentDefinition {
     fn bounds_padding(&self) -> Insets {
         self.bounds_padding
     }
+
+    /// Sets the pentagon fill color
+    pub fn set_pentagon_fill_color(&mut self, color: Color) {
+        self.pentagon_fill_color = color;
+    }
+
+    /// Gets the pentagon fill color
+    pub fn pentagon_fill_color(&self) -> &Color {
+        &self.pentagon_fill_color
+    }
+
+    /// Creates an SVG path element for a pentagonal tab (rectangle with triangular point on right).
+    ///
+    /// The triangle width is calculated as half the height to maintain proper proportions.
+    ///
+    /// # Arguments
+    ///
+    /// * `content_bounds` - Bounds of the rectangular content area (determines pentagon position and size)
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the SVG path element and the complete pentagon bounds (including triangle)
+    fn create_pentagon_path(&self, content_bounds: Bounds) -> (svg_element::Path, Bounds) {
+        let top_left = content_bounds.min_point();
+
+        // Calculate triangle width as half the height for proper proportions
+        let triangle_width = 10.0f32
+            .min(content_bounds.height() / 2.0)
+            .max(content_bounds.height() / 4.0);
+
+        // Create path: rectangle + triangle point
+        // L x+w+t,y - start top-right with triangle
+        // L x+w+t,y+h/2 - triangle point (middle-right)
+        // L x+w,y+h - bottom-right of rectangle
+        // L x,y+h - bottom-left
+        // Z - close path
+        let path_data = format!(
+            "M {} {} L {} {} L {} {} L {} {}",
+            content_bounds.max_x() + triangle_width,
+            content_bounds.min_y(),
+            content_bounds.max_x() + triangle_width,
+            content_bounds.max_y() - triangle_width,
+            content_bounds.max_x(),
+            content_bounds.max_y(),
+            content_bounds.min_x(),
+            content_bounds.max_y()
+        );
+
+        let path = svg_element::Path::new()
+            .set("d", path_data)
+            .set("fill", self.pentagon_fill_color.to_string())
+            .set("fill-opacity", self.pentagon_fill_color.alpha());
+
+        let path = crate::apply_stroke!(path, &self.border_stroke);
+
+        let pentagon_size = Size::new(
+            content_bounds.width() + triangle_width,
+            content_bounds.height(),
+        );
+        let pentagon_bounds = Bounds::new_from_top_left(top_left, pentagon_size);
+        (path, pentagon_bounds)
+    }
 }
 
 impl Default for FragmentDefinition {
@@ -128,8 +193,6 @@ impl Default for FragmentDefinition {
         // Create default text definition for operation label
         let mut operation_label_text_definition = TextDefinition::new();
         operation_label_text_definition.set_font_size(12);
-        operation_label_text_definition
-            .set_background_color(Some(Color::new("white").expect("Invalid color")));
         operation_label_text_definition.set_color(Some(Color::default()));
         operation_label_text_definition.set_padding(Insets::new(4.0, 8.0, 4.0, 8.0));
 
@@ -148,6 +211,8 @@ impl Default for FragmentDefinition {
             section_title_text_definition: Rc::new(section_title_text_definition),
 
             separator_stroke: Rc::new(StrokeDefinition::dashed(Color::default(), 1.0)),
+
+            pentagon_fill_color: Color::new("white").expect("Invalid color"),
 
             content_padding: Insets::new(8.0, 8.0, 8.0, 8.0),
             bounds_padding: Insets::new(20.0, 20.0, 20.0, 20.0),
@@ -283,22 +348,25 @@ impl Drawable for Fragment {
         let border = crate::apply_stroke!(border, self.definition.border_stroke());
         group = group.add(border);
 
-        // 3. Render operation label in upper-left corner
+        // 3. Render operation label in upper-left corner as pentagonal tab
+        // First, measure the text to determine pentagon size
         let operation_text = Text::new(
             self.definition.operation_label_text_definition.clone(),
             self.operation.clone(),
         );
+        let pentagon_content_size = operation_text.size();
+        let pentagon_content_bounds = Bounds::new_from_top_left(top_left, pentagon_content_size);
 
-        let operation_size = operation_text.size();
-        let operation_size_with_padding = operation_size.add_padding(padding);
-        let operation_position = Point::new(
-            top_left.x() + operation_size_with_padding.width() / 2.0,
-            top_left.y() + operation_size_with_padding.height() / 2.0,
-        );
-        group = group.add(operation_text.render_to_svg(operation_position));
+        // Render pentagon path (returns complete pentagon bounds including triangle)
+        let (pentagon, pentagon_bounds) = self
+            .definition
+            .create_pentagon_path(pentagon_content_bounds);
+
+        group = group.add(pentagon);
+        group = group.add(operation_text.render_to_svg(pentagon_content_bounds.center()));
 
         // 4. Render section separators and titles
-        let mut current_y = top_left.y() + operation_size_with_padding.height();
+        let mut current_y = pentagon_bounds.max_y();
 
         for (i, section) in self.sections.iter().enumerate() {
             // Skip separator for the first section
@@ -314,17 +382,28 @@ impl Drawable for Fragment {
                 group = group.add(separator);
             }
 
-            // Render section title if present
+            // Render section title if present (wrapped in square brackets per UML 2.5)
             if let Some(title) = section.title() {
                 let title_text = Text::new(
                     self.definition.section_title_text_definition.clone(),
-                    title.to_string(),
+                    format!("[{}]", title),
                 );
                 let title_size = title_text.size();
-                let title_position = Point::new(
-                    top_left.x() + padding.left() + title_size.width() / 2.0 + 10.0, // Slight offset from left
-                    current_y + title_size.height() / 2.0 + 5.0, // Just below separator or top
-                );
+
+                let title_position = if i == 0 {
+                    // First section: position to the right of the pentagon
+                    Point::new(
+                        pentagon_bounds.max_x() + padding.left() + title_size.width() / 2.0,
+                        pentagon_bounds.center().y(),
+                    )
+                } else {
+                    // Other sections: position below the separator
+                    Point::new(
+                        top_left.x() + padding.left() + title_size.width() / 2.0 + 10.0,
+                        current_y + title_size.height() / 2.0 + 5.0,
+                    )
+                };
+
                 group = group.add(title_text.render_to_svg(title_position));
             }
 

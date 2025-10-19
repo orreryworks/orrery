@@ -87,15 +87,7 @@ impl Point {
     /// The point is treated as the center of the bounds, and the size
     /// is distributed equally in all directions around that center.
     pub fn to_bounds(self, size: Size) -> Bounds {
-        let half_width = size.width / 2.0;
-        let half_height = size.height / 2.0;
-
-        Bounds {
-            min_x: self.x - half_width,
-            min_y: self.y - half_height,
-            max_x: self.x + half_width,
-            max_y: self.y + half_height,
-        }
+        Bounds::new_from_center(self, size)
     }
 }
 
@@ -179,6 +171,28 @@ pub struct Bounds {
 }
 
 impl Bounds {
+    /// Creates a new bounds from a center point and a size
+    pub fn new_from_center(center: Point, size: Size) -> Self {
+        let half_width = size.width / 2.0;
+        let half_height = size.height / 2.0;
+        Self {
+            min_x: center.x - half_width,
+            min_y: center.y - half_height,
+            max_x: center.x + half_width,
+            max_y: center.y + half_height,
+        }
+    }
+
+    /// Creates a new bounds from a top-left point and a size
+    pub fn new_from_top_left(top_left: Point, size: Size) -> Self {
+        Self {
+            min_x: top_left.x,
+            min_y: top_left.y,
+            max_x: top_left.x + size.width,
+            max_y: top_left.y + size.height,
+        }
+    }
+
     /// Returns the minimum x-coordinate of the bounds
     pub fn min_x(self) -> f32 {
         self.min_x
@@ -198,6 +212,14 @@ impl Bounds {
     /// Returns the maximum y-coordinate of the bounds
     pub fn max_y(self) -> f32 {
         self.max_y
+    }
+
+    /// Returns the center point of the bounds
+    pub fn center(self) -> Point {
+        Point::new(
+            (self.min_x + self.max_x) / 2.0,
+            (self.min_y + self.max_y) / 2.0,
+        )
     }
 
     /// Sets the maximum y-coordinate of the bounds
@@ -445,6 +467,70 @@ mod tests {
         assert_eq!(bounds.min_y(), 16.0); // 20 - 4
         assert_eq!(bounds.max_x(), 13.0); // 10 + 3
         assert_eq!(bounds.max_y(), 24.0); // 20 + 4
+    }
+
+    #[test]
+    fn test_bounds_new_from_center() {
+        let center = Point::new(50.0, 60.0);
+        let size = Size::new(20.0, 30.0);
+        let bounds = Bounds::new_from_center(center, size);
+
+        // Center at (50, 60), size (20, 30)
+        // min_x = 50 - 10 = 40, max_x = 50 + 10 = 60
+        // min_y = 60 - 15 = 45, max_y = 60 + 15 = 75
+        assert_eq!(bounds.min_x(), 40.0);
+        assert_eq!(bounds.min_y(), 45.0);
+        assert_eq!(bounds.max_x(), 60.0);
+        assert_eq!(bounds.max_y(), 75.0);
+        assert_eq!(bounds.width(), 20.0);
+        assert_eq!(bounds.height(), 30.0);
+        assert_eq!(bounds.center(), center);
+    }
+
+    #[test]
+    fn test_bounds_new_from_center_zero_size() {
+        let center = Point::new(10.0, 20.0);
+        let size = Size::new(0.0, 0.0);
+        let bounds = Bounds::new_from_center(center, size);
+
+        assert_eq!(bounds.min_x(), 10.0);
+        assert_eq!(bounds.min_y(), 20.0);
+        assert_eq!(bounds.max_x(), 10.0);
+        assert_eq!(bounds.max_y(), 20.0);
+        assert_eq!(bounds.width(), 0.0);
+        assert_eq!(bounds.height(), 0.0);
+    }
+
+    #[test]
+    fn test_bounds_new_from_top_left() {
+        let top_left = Point::new(10.0, 20.0);
+        let size = Size::new(30.0, 40.0);
+        let bounds = Bounds::new_from_top_left(top_left, size);
+
+        // Top-left at (10, 20), size (30, 40)
+        // min_x = 10, max_x = 10 + 30 = 40
+        // min_y = 20, max_y = 20 + 40 = 60
+        assert_eq!(bounds.min_x(), 10.0);
+        assert_eq!(bounds.min_y(), 20.0);
+        assert_eq!(bounds.max_x(), 40.0);
+        assert_eq!(bounds.max_y(), 60.0);
+        assert_eq!(bounds.width(), 30.0);
+        assert_eq!(bounds.height(), 40.0);
+        assert_eq!(bounds.min_point(), top_left);
+    }
+
+    #[test]
+    fn test_bounds_new_from_top_left_zero_size() {
+        let top_left = Point::new(5.0, 15.0);
+        let size = Size::new(0.0, 0.0);
+        let bounds = Bounds::new_from_top_left(top_left, size);
+
+        assert_eq!(bounds.min_x(), 5.0);
+        assert_eq!(bounds.min_y(), 15.0);
+        assert_eq!(bounds.max_x(), 5.0);
+        assert_eq!(bounds.max_y(), 15.0);
+        assert_eq!(bounds.width(), 0.0);
+        assert_eq!(bounds.height(), 0.0);
     }
 
     #[test]
