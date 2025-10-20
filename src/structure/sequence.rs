@@ -16,8 +16,8 @@
 //! that represents the timeline of interactions.
 
 use crate::{FilamentError, ast, identifier::Id};
+use indexmap::IndexMap;
 use log::debug;
-use std::collections::HashMap;
 
 /// Represents ordered events in a sequence diagram.
 ///
@@ -86,7 +86,7 @@ pub enum SequenceEvent<'a> {
 /// which is critical for correct temporal visualization in sequence diagrams.
 #[derive(Debug)]
 pub struct SequenceGraph<'a> {
-    nodes: HashMap<Id, &'a ast::Node>,
+    nodes: IndexMap<Id, &'a ast::Node>,
     events: Vec<SequenceEvent<'a>>,
 }
 
@@ -149,7 +149,7 @@ impl<'a> SequenceGraph<'a> {
     /// Creates a new empty sequence graph.
     fn new() -> Self {
         Self {
-            nodes: HashMap::new(),
+            nodes: IndexMap::new(),
             events: Vec::new(),
         }
     }
@@ -238,5 +238,124 @@ impl<'a> SequenceGraph<'a> {
         }
 
         Ok(child_diagrams)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        ast::{Block, Node, TypeDefinition},
+        draw,
+        identifier::Id,
+    };
+    use std::rc::Rc;
+
+    /// Helper function to create a minimal mock node for testing
+    fn create_test_node(id_str: &str) -> Node {
+        let id = Id::new(id_str);
+        let text_def = draw::TextDefinition::new();
+        let shape_def = Box::new(draw::RectangleDefinition::new());
+        let type_def = TypeDefinition::new_shape(id, text_def, shape_def);
+
+        Node::new(id, id_str.to_string(), None, Block::None, Rc::new(type_def))
+    }
+
+    #[test]
+    fn test_participant_ordering_preserved() {
+        // Create nodes in a specific NON-ALPHABETICAL order to catch sorting bugs
+        // Expected order: Zara, Alice, Mike, Bob, Eve
+        let zara = create_test_node("Zara");
+        let alice = create_test_node("Alice");
+        let mike = create_test_node("Mike");
+        let bob = create_test_node("Bob");
+        let eve = create_test_node("Eve");
+
+        // Create a sequence graph and add nodes in order
+        let mut graph = SequenceGraph::new();
+        graph.add_node(&zara);
+        graph.add_node(&alice);
+        graph.add_node(&mike);
+        graph.add_node(&bob);
+        graph.add_node(&eve);
+
+        // Collect node IDs from the graph
+        let node_ids: Vec<Id> = graph.node_ids().copied().collect();
+
+        // Verify that the order is preserved
+        assert_eq!(node_ids.len(), 5, "Should have 5 participants");
+        assert_eq!(
+            node_ids[0],
+            Id::new("Zara"),
+            "First participant should be Zara"
+        );
+        assert_eq!(
+            node_ids[1],
+            Id::new("Alice"),
+            "Second participant should be Alice"
+        );
+        assert_eq!(
+            node_ids[2],
+            Id::new("Mike"),
+            "Third participant should be Mike"
+        );
+        assert_eq!(
+            node_ids[3],
+            Id::new("Bob"),
+            "Fourth participant should be Bob"
+        );
+        assert_eq!(
+            node_ids[4],
+            Id::new("Eve"),
+            "Fifth participant should be Eve"
+        );
+
+        // Also verify nodes() iterator preserves order
+        let node_labels: Vec<String> = graph.nodes().map(|n| n.id().to_string()).collect();
+
+        assert_eq!(
+            node_labels[0], "Zara",
+            "nodes() iterator: first should be Zara"
+        );
+        assert_eq!(
+            node_labels[1], "Alice",
+            "nodes() iterator: second should be Alice"
+        );
+        assert_eq!(
+            node_labels[2], "Mike",
+            "nodes() iterator: third should be Mike"
+        );
+        assert_eq!(
+            node_labels[3], "Bob",
+            "nodes() iterator: fourth should be Bob"
+        );
+        assert_eq!(
+            node_labels[4], "Eve",
+            "nodes() iterator: fifth should be Eve"
+        );
+    }
+
+    #[test]
+    fn test_participant_ordering_with_duplicates() {
+        // Test that re-adding a node doesn't change its position
+        // Use non-alphabetical order: Zara, Bob, Alice
+        let zara = create_test_node("Zara");
+        let bob = create_test_node("Bob");
+        let alice = create_test_node("Alice");
+
+        let mut graph = SequenceGraph::new();
+        graph.add_node(&zara);
+        graph.add_node(&bob);
+        graph.add_node(&alice);
+
+        // Re-add Bob (should update, not move)
+        graph.add_node(&bob);
+
+        let node_ids: Vec<Id> = graph.node_ids().copied().collect();
+
+        assert_eq!(node_ids.len(), 3, "Should still have 3 participants");
+        assert_eq!(node_ids[0], Id::new("Zara"), "Zara should remain first");
+        assert_eq!(node_ids[1], Id::new("Bob"), "Bob should remain second");
+        assert_eq!(node_ids[2], Id::new("Alice"), "Alice should remain third");
     }
 }
