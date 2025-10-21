@@ -77,6 +77,8 @@ String literals are used for:
 - **Line cap/join values**: `"butt"`, `"round"`, `"square"`, `"miter"`, `"bevel"`
 - **Display names and labels**: Component and relation labels
 - **Background colors**: Diagram and component background colors
+- **Note content**: Text content for annotations (see [Note Syntax Specification](note_syntax.md))
+- **Note alignment**: `"left"`, `"right"`, `"top"`, `"bottom"`, `"over"`
 
 ## 3. Float Literals
 
@@ -191,6 +193,8 @@ source -> [stroke=[width=2]] target;  // Relation stroke width (whole number)
 
 Text attributes control text appearance. Use nested syntax: `text=[attribute=value, ...]`
 
+Text attributes are used in components, relations, and notes. For note-specific usage, see [Note Syntax Specification](note_syntax.md).
+
 **Examples:**
 
 ```filament
@@ -218,6 +222,8 @@ source -> [text=[color="red", font_size=14]] target: "Label";
 ## 5. Stroke Attribute Usage and Examples
 
 Stroke attributes control borders, lines, and outlines. Use nested syntax: `stroke=[attribute=value, ...]`
+
+Stroke attributes are used in shapes, relations, fragments, and notes. For note-specific usage, see [Note Syntax Specification](note_syntax.md).
 
 **Basic Styles:**
 
@@ -366,6 +372,7 @@ component: Rectangle [
 | `border_stroke` | Stroke Attributes | See Stroke table below (fragments only) |
 | `separator_stroke` | Stroke Attributes | See Stroke table below (fragments only) |
 | `text` | Text Attributes | See Text table below |
+| `background_color` | String | `"white"`, `"#ffffff"` (notes, see [Note Syntax](note_syntax.md)) |
 
 **Stroke Attributes** (used in `stroke`, `border_stroke`, `separator_stroke`):
 
