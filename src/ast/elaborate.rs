@@ -383,6 +383,10 @@ impl<'a> Builder<'a> {
                         "Fragment sugar syntax should have been desugared into Fragment elements before elaboration"
                     );
                 }
+                parser_types::Element::Note(_) => {
+                    // TODO: Implement note elaboration
+                    unreachable!("Note elaboration not yet implemented");
+                }
             };
             elements.push(element);
         }

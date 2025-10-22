@@ -10,8 +10,8 @@
 
 use super::{
     parser_types::{
-        Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, RelationTypeSpec,
-        TypeDefinition,
+        Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, NoteElement,
+        RelationTypeSpec, TypeDefinition,
     },
     span::Spanned,
 };
@@ -65,6 +65,10 @@ trait Folder<'a> {
             AttributeValue::Attributes(attrs) => {
                 AttributeValue::Attributes(self.fold_attributes(attrs))
             }
+            AttributeValue::Identifiers(ids) => {
+                AttributeValue::Identifiers(self.fold_identifiers(ids))
+            }
+            AttributeValue::Empty => AttributeValue::Empty,
         }
     }
 
@@ -76,6 +80,11 @@ trait Folder<'a> {
     /// Fold a float attribute value
     fn fold_float_value(&mut self, value: Spanned<f32>) -> Spanned<f32> {
         value
+    }
+
+    /// Fold an identifiers attribute value (list of identifiers)
+    fn fold_identifiers(&mut self, identifiers: Vec<Spanned<String>>) -> Vec<Spanned<String>> {
+        identifiers
     }
 
     /// Fold a list of type definitions
@@ -140,6 +149,7 @@ trait Folder<'a> {
             } => self.fold_activate_block(component, elements),
             Element::Activate { component } => Element::Activate { component },
             Element::Deactivate { component } => Element::Deactivate { component },
+            Element::Note(note) => Element::Note(self.fold_note(note)),
             Element::Fragment(fragment) => Element::Fragment(self.fold_fragment(fragment)),
             // Fragment sugar syntax - default behavior is to fold sections recursively
             Element::AltElseBlock {
@@ -324,6 +334,18 @@ trait Folder<'a> {
         }
     }
 
+    /// Fold a note element
+    fn fold_note(&mut self, note: NoteElement<'a>) -> NoteElement<'a> {
+        NoteElement {
+            attributes: self.fold_attributes(note.attributes),
+            content: self.fold_note_content(note.content),
+        }
+    }
+
+    /// Fold note content
+    fn fold_note_content(&mut self, content: Spanned<String>) -> Spanned<String> {
+        content
+    }
     /// Fold an activate component identifier into an owned `String`
     fn fold_activate_component(&mut self, component: Spanned<String>) -> Spanned<String> {
         component
@@ -393,6 +415,7 @@ impl<'a> Folder<'a> for Desugar {
             Element::Fragment(fragment) => Element::Fragment(self.fold_fragment(fragment)),
             Element::Activate { component } => Element::Activate { component },
             Element::Deactivate { component } => Element::Deactivate { component },
+            Element::Note(note) => Element::Note(self.fold_note(note)),
 
             // ========================================================================
             // DESUGARING TRANSFORMATIONS - Sugar syntax → Base syntax
@@ -1187,6 +1210,55 @@ mod tests {
                 assert!(fragment.sections[0].elements.is_empty());
             }
             _ => panic!("Expected Fragment element"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_preserves_note() {
+        let note = Element::Note(NoteElement {
+            attributes: vec![],
+            content: spanned("Simple note".to_string()),
+        });
+
+        let mut folder = Desugar;
+        let result = folder.fold_element(note);
+
+        match result {
+            Element::Note(note_result) => {
+                assert_eq!(note_result.attributes.len(), 0);
+                assert_eq!(note_result.content.inner(), "Simple note");
+            }
+            _ => panic!("Expected Note element"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_preserves_note_attributes() {
+        let note = Element::Note(NoteElement {
+            attributes: vec![
+                Attribute {
+                    name: spanned("align"),
+                    value: AttributeValue::String(spanned("left".to_string())),
+                },
+                Attribute {
+                    name: spanned("on"),
+                    value: AttributeValue::Identifiers(vec![spanned("component".to_string())]),
+                },
+            ],
+            content: spanned("Note with attributes".to_string()),
+        });
+
+        let mut folder = Desugar;
+        let result = folder.fold_element(note);
+
+        match result {
+            Element::Note(note_result) => {
+                assert_eq!(note_result.attributes.len(), 2);
+                assert_eq!(*note_result.attributes[0].name.inner(), "align");
+                assert_eq!(*note_result.attributes[1].name.inner(), "on");
+                assert_eq!(note_result.content.inner(), "Note with attributes");
+            }
+            _ => panic!("Expected Note element"),
         }
     }
 }

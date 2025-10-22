@@ -23,12 +23,28 @@ impl TypeDefinition<'_> {
     }
 }
 
-/// Attribute values can be either strings, float numbers, or nested attributes
+/// Attribute values can be strings, floats, nested attributes, identifier lists, or empty
+///
+/// **Variants:**
+/// - `String` - Text values for colors, names, alignment, etc.
+/// - `Float` - Numeric values for dimensions, widths, sizes, etc.
+/// - `Attributes` - Nested key-value pairs for complex attributes (stroke, text)
+/// - `Identifiers` - Lists of element identifiers (used in note `on` attribute)
+/// - `Empty` - Ambiguous empty brackets `[]` that can be interpreted as either
+///   empty identifiers or empty nested attributes depending on context
+///
+/// **Empty Variant Design:**
+/// The `Empty` variant elegantly solves the `[]` ambiguity problem:
+/// - Both `as_identifiers()` and `as_attributes()` return success with empty slice
+/// - Allows `on=[]` (margin note) and `text=[]` (empty attributes) to parse correctly
+/// - Parser doesn't need to know the semantic context during parsing
 #[derive(Debug, Clone)]
 pub enum AttributeValue<'a> {
     String(Spanned<String>),
     Float(Spanned<f32>),
     Attributes(Vec<Attribute<'a>>),
+    Identifiers(Vec<Spanned<String>>),
+    Empty,
 }
 
 impl<'a> PartialEq for AttributeValue<'a> {
@@ -37,6 +53,11 @@ impl<'a> PartialEq for AttributeValue<'a> {
             (AttributeValue::String(s1), AttributeValue::String(s2)) => s1.inner() == s2.inner(),
             (AttributeValue::Float(f1), AttributeValue::Float(f2)) => f1.inner() == f2.inner(),
             (AttributeValue::Attributes(a1), AttributeValue::Attributes(a2)) => a1 == a2,
+            (AttributeValue::Identifiers(l1), AttributeValue::Identifiers(l2)) => l1
+                .iter()
+                .map(|s| s.inner())
+                .eq(l2.iter().map(|s| s.inner())),
+            (AttributeValue::Empty, AttributeValue::Empty) => true,
             _ => false,
         }
     }
@@ -57,6 +78,17 @@ impl<'a> fmt::Display for AttributeValue<'a> {
                 }
                 write!(f, "]")
             }
+            AttributeValue::Identifiers(ids) => {
+                write!(f, "[")?;
+                for (i, id) in ids.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", id.inner())?;
+                }
+                write!(f, "]")
+            }
+            AttributeValue::Empty => write!(f, "[]"),
         }
     }
 }
@@ -78,6 +110,17 @@ impl<'a> AttributeValue<'a> {
                         .unwrap_or_default()
                 }
             }
+            AttributeValue::Identifiers(ids) => {
+                if ids.is_empty() {
+                    Span::default()
+                } else {
+                    ids.iter()
+                        .map(|id| id.span())
+                        .reduce(|acc, span| acc.union(span))
+                        .unwrap_or_default()
+                }
+            }
+            AttributeValue::Empty => Span::default(),
         }
     }
 
@@ -128,10 +171,19 @@ impl<'a> AttributeValue<'a> {
 
     /// Extract nested attributes, returning an error if this is an attributes value
     pub fn as_attributes(&self) -> Result<&[Attribute<'a>], &'static str> {
-        if let AttributeValue::Attributes(attrs) = self {
-            Ok(attrs)
-        } else {
-            Err("Expected nested attributes")
+        match self {
+            AttributeValue::Attributes(attrs) => Ok(attrs),
+            AttributeValue::Empty => Ok(&[]),
+            _ => Err("Expected nested attributes"),
+        }
+    }
+
+    /// Extract an identifier list, returning an error if this is not an identifiers value
+    pub fn as_identifiers(&self) -> Result<&[Spanned<String>], &'static str> {
+        match self {
+            AttributeValue::Identifiers(ids) => Ok(ids),
+            AttributeValue::Empty => Ok(&[]),
+            _ => Err("Expected identifiers"),
         }
     }
 }
@@ -206,6 +258,31 @@ impl Fragment<'_> {
     }
 }
 
+/// AST node representing a note element
+///
+/// **Syntax:**
+/// ```text
+/// note [attributes]: "content";
+/// ```
+///
+/// **Fields:**
+/// - `attributes` - Optional configuration for positioning, styling, and attachment
+/// - `content` - The note text as a string literal (supports escape sequences)
+#[derive(Debug)]
+pub struct NoteElement<'a> {
+    pub attributes: Vec<Attribute<'a>>,
+    pub content: Spanned<String>,
+}
+
+impl NoteElement<'_> {
+    pub fn span(&self) -> Span {
+        self.attributes
+            .iter()
+            .map(|attr| attr.span())
+            .fold(self.content.span(), |acc, span| acc.union(span))
+    }
+}
+
 #[derive(Debug)]
 pub enum Element<'a> {
     Component {
@@ -276,6 +353,8 @@ pub enum Element<'a> {
         section: FragmentSection<'a>,
         attributes: Vec<Attribute<'a>>,
     },
+    /// Note element with optional attributes and text content
+    Note(NoteElement<'a>),
 }
 
 impl Element<'_> {
@@ -387,6 +466,7 @@ impl Element<'_> {
                 .fold((*keyword_span).union(section.span()), |acc, span| {
                     acc.union(span)
                 }),
+            Element::Note(note) => note.span(),
         }
     }
 }

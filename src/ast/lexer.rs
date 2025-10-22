@@ -117,6 +117,7 @@ fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
             literal("alt").context(StrContext::Label("alt keyword")),
             literal("opt").context(StrContext::Label("opt keyword")),
             literal("par").context(StrContext::Label("par keyword")),
+            literal("note").context(StrContext::Label("note keyword")),
         )),
         // Ensure keyword is not followed by identifier character (word boundary)
         peek(not(one_of(|c: char| c.is_ascii_alphanumeric() || c == '_'))),
@@ -139,6 +140,7 @@ fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
         "par" => Token::Par,
         "break" => Token::Break,
         "critical" => Token::Critical,
+        "note" => Token::Note,
         _ => unreachable!(),
     })
     .context(StrContext::Label("keyword"))
@@ -284,6 +286,7 @@ mod tests {
         test_single_token("par", Token::Par);
         test_single_token("break", Token::Break);
         test_single_token("critical", Token::Critical);
+        test_single_token("note", Token::Note);
     }
 
     #[test]

@@ -135,9 +135,112 @@ fn string_literal<'src>(input: &mut Input<'src>) -> IResult<'src, Spanned<String
     .parse_next(input)
 }
 
-/// Parse an attribute value (string, float, or nested attributes)
+/// Parse identifiers: `[id1, id2, id3]`
+///
+/// Fails if it encounters `=` after an identifier (which would indicate nested attributes).
+///
+/// Examples:
+/// - `[component]` - single identifier
+/// - `[client, server]` - multiple identifiers
+/// - `[frontend::app]` - nested identifier with namespace separator
+/// - `[client, server::api, database]` - mixed simple and nested identifiers
+///
+/// Note: Empty `[]` is handled by `empty_brackets` parser
+fn identifiers<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<Spanned<String>>> {
+    delimited(
+        // Opening bracket with optional whitespace
+        (
+            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBracket)),
+            ws_comments0,
+        ),
+        {
+            // Closure to parse identifier list content with disambiguation logic
+            // We need to check if the first identifier is followed by '=' to distinguish
+            // from nested attributes [attr=val]
+            move |input: &mut Input<'src>| {
+                // Parse the first identifier (required - empty case handled elsewhere)
+                let (id_str, id_span) = nested_identifier.parse_next(input)?;
+                ws_comments0.parse_next(input)?;
+
+                // Disambiguation: Check if next token is '='
+                // If so, this is nested attributes [name=value], not identifiers
+                let checkpoint = input.checkpoint();
+                let result: Result<_, ErrMode<ContextError>> = any
+                    .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Equals))
+                    .parse_next(input);
+                if result.is_ok() {
+                    // Found '=' - this is nested attributes, backtrack
+                    return Err(ErrMode::Backtrack(ContextError::new()));
+                }
+                input.reset(&checkpoint);
+
+                // Build identifier list starting with first identifier
+                let mut ids = vec![Spanned::new(id_str, id_span)];
+                
+                // Parse remaining identifiers separated by commas
+                // Uses `repeat` combinator for clean separation of concerns
+                let rest: Vec<Spanned<String>> = repeat(
+                    0..,
+                    preceded(
+                        // Comma separator with optional whitespace
+                        (
+                            ws_comments0,
+                            any.verify(|token: &PositionedToken<'_>| {
+                                matches!(token.token, Token::Comma)
+                            }),
+                            ws_comments0,
+                        ),
+                        // Parse identifier and convert tuple to Spanned
+                        nested_identifier.map(|(s, span)| Spanned::new(s, span)),
+                    ),
+                )
+                .parse_next(input)?;
+                ids.extend(rest);
+
+                Ok(ids)
+            }
+        },
+        // Closing bracket with optional whitespace
+        (
+            ws_comments0,
+            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBracket)),
+        ),
+    )
+    .context(StrContext::Label("identifiers"))
+    .parse_next(input)
+}
+
+/// Parse empty brackets: `[]`
+///
+/// Returns an Empty attribute value that can be interpreted as either
+/// empty identifiers or empty nested attributes depending on context.
+fn empty_brackets<'src>(input: &mut Input<'src>) -> IResult<'src, ()> {
+    delimited(
+        any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBracket)),
+        ws_comments0,
+        any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBracket)),
+    )
+    .context(StrContext::Label("empty brackets"))
+    .parse_next(input)
+}
+
+/// Parse an attribute value (string, float, identifier list, or nested attributes)
+///
+/// Attributes in Filament can have different value types depending on their purpose:
+///
+/// **Value Types:**
+/// 1. **Empty** - `[]` - Ambiguous empty brackets (can be identifiers or attributes)
+/// 2. **Identifiers** - `[id1, id2, ...]` - List of element identifiers (used in `on` attribute)
+/// 3. **Attributes** - `[attr=val, ...]` - Nested attribute key-value pairs (stroke, text)
+/// 4. **String** - `"value"` - Text values (colors, names, alignment)
+/// 5. **Float** - `2.5` or `10` - Numeric values (widths, sizes, dimensions)
 fn attribute_value<'src>(input: &mut Input<'src>) -> IResult<'src, types::AttributeValue<'src>> {
     alt((
+        // Parse empty brackets [] first - can be interpreted as either empty identifiers or empty attributes
+        empty_brackets.map(|_| types::AttributeValue::Empty),
+        // Try identifiers: [id1, id2, ...]
+        // This needs to be before wrapped_attributes since both start with '['
+        identifiers.map(types::AttributeValue::Identifiers),
         // Parse nested attributes [attr1=val1, attr2=val2]
         wrapped_attributes.map(types::AttributeValue::Attributes),
         // Parse string or float literals
@@ -795,6 +898,54 @@ fn activate_element<'src>(input: &mut Input<'src>) -> IResult<'src, types::Eleme
     }
 }
 
+/// Parse a note element: `note [attributes]: "content";`
+///
+/// Syntax:
+/// - `note` keyword
+/// - Optional `[attributes]` block
+/// - `:` separator
+/// - String literal content
+/// - `;` terminator
+///
+/// Examples:
+/// - `note: "Simple note";`
+/// - `note [on=[component]]: "Note attached to component";`
+/// - `note [on=[a, b], align="left"]: "Note spanning multiple elements";`
+fn note_element<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+    // Parse 'note' keyword
+    let _ = any
+        .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Note))
+        .context(StrContext::Label("note keyword"))
+        .parse_next(input)?;
+
+    ws_comments0.parse_next(input)?;
+
+    // Parse optional attributes
+    let attributes = opt(wrapped_attributes)
+        .map(|attrs| attrs.unwrap_or_default())
+        .parse_next(input)?;
+
+    ws_comments0.parse_next(input)?;
+
+    // Parse colon separator
+    let _ = any
+        .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Colon))
+        .context(StrContext::Label("colon"))
+        .parse_next(input)?;
+
+    ws_comments0.parse_next(input)?;
+
+    // Parse string literal content
+    let content = string_literal.parse_next(input)?;
+
+    // Parse semicolon
+    semicolon.parse_next(input)?;
+
+    Ok(types::Element::Note(types::NoteElement {
+        attributes,
+        content,
+    }))
+}
 /// Parse any element (component or relation)
 fn elements<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types::Element<'src>>> {
     repeat(
@@ -806,6 +957,7 @@ fn elements<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types::Element<'
             alt((
                 activate_element,
                 deactivate_statement,
+                note_element,
                 alt_else_block,
                 par_block,
                 opt_block,
@@ -1432,10 +1584,12 @@ mod tests {
         assert!(result.is_ok());
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "text");
-        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
-            assert_eq!(nested_attrs.len(), 0);
+        // Empty brackets [] are parsed as Empty variant
+        if let types::AttributeValue::Empty = &attr.value {
+            // Verify it can be interpreted as empty attributes
+            assert_eq!(attr.value.as_attributes().unwrap().len(), 0);
         } else {
-            panic!("Expected nested attributes");
+            panic!("Expected Empty attribute value for text=[]");
         }
 
         // Test single nested attribute
@@ -1586,16 +1740,19 @@ mod tests {
     #[test]
     fn test_text_attribute_minimal_cases() {
         // Test empty text attributes
+        // Empty text attributes: text=[]
         let tokens = tokenize("text=[]").expect("Failed to tokenize");
         let mut input = FilamentTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "text");
-        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
-            assert_eq!(nested_attrs.len(), 0);
+        // Empty brackets [] are parsed as Empty variant
+        if let types::AttributeValue::Empty = &attr.value {
+            // Verify it can be interpreted as empty attributes
+            assert_eq!(attr.value.as_attributes().unwrap().len(), 0);
         } else {
-            panic!("Expected empty text attributes");
+            panic!("Expected Empty attribute value for text=[]");
         }
 
         // Test single text attribute
@@ -2213,5 +2370,240 @@ mod tests {
         } else {
             panic!("Expected OptBlock element");
         }
+    }
+
+    #[test]
+    fn test_note_element_simple() {
+        let input = r#"note: "This is a simple note";"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = note_element(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse simple note element");
+
+        let element = result.unwrap();
+        if let types::Element::Note(note) = element {
+            assert_eq!(note.attributes.len(), 0);
+            assert_eq!(note.content.inner(), "This is a simple note");
+        } else {
+            panic!("Expected Note element");
+        }
+    }
+
+    #[test]
+    fn test_note_element_with_attributes() {
+        let input = r#"note [align="left"]: "Note with attributes";"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = note_element(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse note with attributes");
+
+        let element = result.unwrap();
+        if let types::Element::Note(note) = element {
+            assert_eq!(note.attributes.len(), 1);
+            assert_eq!(*note.attributes[0].name.inner(), "align");
+            assert_eq!(note.content.inner(), "Note with attributes");
+        } else {
+            panic!("Expected Note element");
+        }
+    }
+
+    #[test]
+    fn test_note_element_missing_semicolon() {
+        let input = r#"note: "Missing semicolon""#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = note_element(&mut token_slice);
+        assert!(result.is_err(), "Should fail without semicolon");
+    }
+
+    #[test]
+    fn test_note_element_missing_content() {
+        let input = r#"note [align="left"]: ;"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = note_element(&mut token_slice);
+        assert!(result.is_err(), "Should fail without content");
+    }
+
+    #[test]
+    fn test_note_element_with_whitespace_and_comments() {
+        let input = r#"note  // comment
+        [align="right"]  // another comment
+        :  // more comments
+        "Content with spacing"  ;  // final comment
+        "#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = note_element(&mut token_slice);
+        assert!(
+            result.is_ok(),
+            "Failed to parse note with whitespace and comments"
+        );
+
+        let element = result.unwrap();
+        if let types::Element::Note(note) = element {
+            assert_eq!(note.attributes.len(), 1);
+            assert_eq!(note.content.inner(), "Content with spacing");
+        } else {
+            panic!("Expected Note element");
+        }
+    }
+
+    #[test]
+    fn test_note_in_complete_diagram() {
+        let input = r#"diagram sequence;
+
+        client: Rectangle;
+        server: Rectangle;
+        database: Rectangle;
+
+        note: "This is a margin note";
+        note [on=[client]]: "Note on client";
+
+        client -> server: "Request";
+
+        note [on=[server], align="right"]: "Processing request";
+
+        server -> database: "Query";
+        note [on=[server, database]]: "Note spanning multiple elements";
+
+        database -> server: "Result";
+        server -> client: "Response";
+        "#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = diagram(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse diagram with notes");
+
+        let element = result.unwrap();
+
+        if let types::Element::Diagram(diagram) = element {
+            // Count note elements
+            let note_count = diagram
+                .elements
+                .iter()
+                .filter(|e| matches!(e, types::Element::Note(_)))
+                .count();
+            assert_eq!(note_count, 4, "Expected 4 notes in diagram");
+
+            // Verify first note is a margin note with no attributes
+            if let Some(types::Element::Note(note)) = diagram
+                .elements
+                .iter()
+                .find(|e| matches!(e, types::Element::Note(_)))
+            {
+                assert_eq!(note.content.inner(), "This is a margin note");
+                assert_eq!(
+                    note.attributes.len(),
+                    0,
+                    "Margin note should have no attributes"
+                );
+            } else {
+                panic!("Expected to find note element");
+            }
+
+            // Verify we have notes with 'on' attribute
+            let notes_with_on: Vec<_> = diagram
+                .elements
+                .iter()
+                .filter_map(|e| match e {
+                    types::Element::Note(note) => Some(note),
+                    _ => None,
+                })
+                .filter(|note| {
+                    note.attributes
+                        .iter()
+                        .any(|attr| *attr.name.inner() == "on")
+                })
+                .collect();
+            assert_eq!(
+                notes_with_on.len(),
+                3,
+                "Expected 3 notes with 'on' attribute"
+            );
+        } else {
+            panic!("Expected Diagram element");
+        }
+    }
+
+    #[test]
+    fn test_identifiers_empty() {
+        let input = r#"[]"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        // Empty lists are now handled by empty_brackets parser, not identifier_list
+        let result = attribute_value(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse empty brackets");
+
+        if let types::AttributeValue::Empty = result.unwrap() {
+            // Success
+        } else {
+            panic!("Expected Empty attribute value");
+        }
+    }
+
+    #[test]
+    fn test_identifiers_single() {
+        let input = r#"[component]"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = identifiers(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse single identifier");
+
+        let ids = result.unwrap();
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids[0].inner(), "Component");
+    }
+
+    #[test]
+    fn test_identifiers_multiple() {
+        let input = r#"[client, server, database]"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = identifiers(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse multiple identifiers");
+
+        let ids = result.unwrap();
+        assert_eq!(ids.len(), 3);
+        assert_eq!(ids[0].inner(), "client");
+        assert_eq!(ids[1].inner(), "server");
+        assert_eq!(ids[2].inner(), "database");
+    }
+
+    #[test]
+    fn test_identifiers_nested() {
+        let input = r#"[frontend::app, backend::api]"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = identifiers(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse nested identifiers");
+
+        let ids = result.unwrap();
+        assert_eq!(ids.len(), 2);
+        assert_eq!(ids[0].inner(), "frontend::app");
+        assert_eq!(ids[1].inner(), "backend::api");
+    }
+
+    #[test]
+    fn test_identifiers_with_whitespace() {
+        let input = r#"[ client , server ]"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = identifiers(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse with whitespace");
+
+        let ids = result.unwrap();
+        assert_eq!(ids.len(), 2);
     }
 }

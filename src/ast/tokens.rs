@@ -23,6 +23,7 @@ pub enum Token<'src> {
     Par,
     Break,
     Critical,
+    Note,
 
     // Literals
     StringLiteral(String),
@@ -123,6 +124,7 @@ impl fmt::Display for Token<'_> {
             Token::Par => write!(f, "par"),
             Token::Break => write!(f, "break"),
             Token::Critical => write!(f, "critical"),
+            Token::Note => write!(f, "note"),
 
             Token::StringLiteral(s) => write!(f, "\"{s}\""),
             Token::FloatLiteral(n) => write!(f, "{n}"),

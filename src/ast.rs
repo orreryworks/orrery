@@ -97,9 +97,9 @@ pub fn build_ast(cfg: &AppConfig, source: &str) -> Result<elaborate_types::Diagr
     // Step 3: Apply desugaring transformations
     let desugared_ast = desugar::desugar(parsed_ast);
 
-    // Step 4: Validate activation pairs at syntax level before elaboration
+    // Step 4: Validate diagram semantics at syntax level before elaboration
     if let parser_types::Element::Diagram(diagram) = desugared_ast.inner() {
-        validate::validate_activation_pairs(diagram)
+        validate::validate_diagram(diagram)
             .map_err(|e| FilamentError::new_elaboration_error(e, source))?;
     }
 
