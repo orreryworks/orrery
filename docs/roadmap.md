@@ -20,6 +20,9 @@ The roadmap is organized into major feature categories, each containing specific
 - **[AST](#ast)** - Parser improvements and error handling
   - [Multi Error Reporting](#multi-error-reporting)
   - [Improve Error Messages](#improve-error-messages)
+  - [Empty/Unavailable Span](#emptyunavailable-span)
+  - [Desugar Identifiers to Full Path](#desugar-identifiers-to-full-path)
+  - [Validate Relations and Notes Identifiers](#validate-relations-and-notes-identifiers)
 - **[Engines](#engines)** - Diagram generation and processing engines
   - [Fix Cross Level Relations in Component Diagram](#fix-cross-level-relations-in-component-diagram)
   - [Pre-compute Activation Box Associations for Messages](#pre-compute-activation-box-associations-for-messages)
@@ -444,6 +447,126 @@ Improved: "Parse error: expected ';' after component definition
 - Reduced debugging time
 - Better learning experience for new users
 - More actionable error guidance
+
+---
+
+#### Empty/Unavailable Span
+
+**Description**:
+Implement a proper representation for empty or unavailable spans to fix incorrect behavior when combining spans with `Span::default()`.
+
+**Current Problem**:
+Currently, `Span::default()` creates a span at position 0 with zero length. When performing a union operation with another span, this incorrectly expands the result to include position 0, even though there is no actual content at that position. This leads to inaccurate span information in error reporting and diagnostics.
+
+**Proposed Solution**:
+Add an `Empty` or `Unavailable` variant to the `Span` type to explicitly represent the absence of a valid span. Update the `union` operation to handle this case correctly:
+- Union of an empty span with any other span should return the non-empty span
+- Union of two empty spans should return an empty span
+- Update all usage sites that currently rely on `Span::default()` to use the new empty span representation
+
+**Benefits**:
+- Accurate span information in error messages
+- Correct source location tracking throughout the compilation pipeline
+- More predictable behavior when combining span information
+- Clearer intent when a span is truly unavailable vs. a zero-length span at a specific position
+
+**Implementation Considerations**:
+- Audit all current uses of `Span::default()` in the codebase
+- Update `Span::union()` logic to handle empty spans correctly
+- Consider whether `Option<Span>` is a better alternative to an empty variant
+- Ensure backward compatibility with existing span operations
+- Update tests to cover empty span behavior
+
+**References**:
+- `src/ast/span.rs` - Current span implementation
+
+---
+
+#### Desugar Identifiers to Full Path
+
+**Description**:
+Move the resolution of nested component identifiers from relative paths to fully qualified paths from the elaboration phase to the desugaring phase.
+
+**Current Problem**:
+Filament supports nested components with namespaces and allows relative referencing. Currently, the `elaborate` phase converts these relative identifiers to full path identifiers. This means:
+- Full path identifiers are not available during the validation phase
+- Cross-reference checking cannot be performed during validation
+- Errors related to identifier resolution are detected late in the compilation process
+- Validation logic cannot verify that referenced components actually exist
+
+**Proposed Solution**:
+Move identifier path resolution from `elaborate.rs` to `desugar.rs`:
+1. During desugaring, resolve all relative component references to their fully qualified paths
+2. Build a namespace context to track available identifiers at each scope level
+3. Resolve references based on the current namespace context and search paths
+4. Pass fully resolved identifiers to the validation phase
+
+**Benefits**:
+- Earlier error detection for invalid component references
+- Enables comprehensive cross-reference validation during the validation phase
+- Better separation of concerns between compilation phases
+- More accurate error messages with full context
+- Enables validation of relations and notes that reference components
+
+**Implementation Considerations**:
+- Build a symbol table or namespace resolution system in the desugaring phase
+- Handle scope tracking for nested components correctly
+- Preserve span information during identifier resolution for error reporting
+- Update the validation phase to expect fully qualified identifiers
+- Refactor elaborate phase to remove now-redundant identifier resolution
+- Ensure proper handling of ambiguous references and shadowing
+
+**Dependencies**:
+- Should be implemented before "Validate Relations and Notes Identifiers"
+
+**References**:
+- `src/ast/desugar.rs` - Target location for implementation
+- `src/ast/elaborate.rs` - Current location of identifier resolution
+- `src/ast/validate.rs` - Will benefit from fully qualified identifiers
+
+---
+
+#### Validate Relations and Notes Identifiers
+
+**Description**:
+Add validation during the validation phase to ensure that component identifiers referenced in relations and notes actually exist and are properly defined.
+
+**Current Problem**:
+Relations and notes can reference component identifiers that may not exist or may be defined later. Currently, these references are not validated early in the compilation process, leading to:
+- Late error detection during elaboration or rendering
+- Poor error messages without proper source location context
+- Inability to catch typos or missing component definitions early
+
+**Proposed Solution**:
+Extend the validator in `validate.rs` to:
+1. Maintain a registry of all defined component identifiers during validation traversal
+2. Check that source and target identifiers in relations reference valid components
+3. Verify that note alignment references (`on: component_name`) point to existing components
+4. Report clear validation errors with source locations when references are invalid
+5. Provide suggestions for similar component names when typos are detected
+
+**Benefits**:
+- Early detection of undefined component references
+- Better error messages with precise source locations
+- Fail-fast behavior reduces wasted compilation time
+- Improved developer experience with clear, actionable error messages
+- Prevents invalid diagrams from progressing through later compilation phases
+
+**Implementation Considerations**:
+- Build component identifier registry during validation traversal
+- Handle scoping correctly for nested components
+- Provide helpful error messages with suggestions for misspelled names
+- Consider forward references and declaration order
+- Validate both relation endpoints and note component references
+- Ensure validation works with the fully qualified identifiers from desugaring
+
+**Dependencies**:
+- **Requires**: "Desugar Identifiers to Full Path" to be implemented first
+- Depends on having fully qualified identifiers available during validation
+
+**References**:
+- `src/ast/validate.rs` - Primary implementation location
+- `src/ast/desugar.rs` - Provides fully qualified identifiers
 
 ---
 
