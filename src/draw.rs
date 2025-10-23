@@ -9,6 +9,7 @@ mod arrow_with_text;
 mod fragment;
 mod group;
 mod lifeline;
+mod note;
 mod positioned;
 mod shape;
 mod shape_with_text;
@@ -21,6 +22,7 @@ pub use arrow::{Arrow, ArrowDefinition, ArrowDirection, ArrowDrawer, ArrowStyle}
 pub use arrow_with_text::{ArrowWithText, ArrowWithTextDrawer};
 pub use fragment::{Fragment, FragmentDefinition, FragmentSection};
 pub use lifeline::{Lifeline, LifelineDefinition};
+pub use note::{Note, NoteDefinition};
 pub use positioned::PositionedDrawable;
 pub use shape::{
     ActorDefinition, BoundaryDefinition, ComponentDefinition, ControlDefinition, EntityDefinition,
