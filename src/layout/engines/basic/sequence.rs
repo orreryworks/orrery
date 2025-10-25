@@ -341,6 +341,10 @@ impl Engine {
                     let fragment = fragment_timing.into_fragment(current_y);
                     fragments.push(fragment);
                 }
+                SequenceEvent::Note(_note) => {
+                    // TODO: Implement note layout
+                    // Notes don't affect the vertical position or timing for now
+                }
             }
         }
 

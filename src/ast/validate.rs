@@ -8,7 +8,7 @@ use super::{
     span::Span,
     {
         parser_types::{
-            Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, NoteElement,
+            Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
             RelationTypeSpec, TypeDefinition,
         },
         span::Spanned,
@@ -282,7 +282,7 @@ pub trait Visitor<'a> {
     fn visit_deactivate(&mut self, _component: &Spanned<String>) {}
 
     /// Visit a note element
-    fn visit_note(&mut self, note: &NoteElement<'a>) {
+    fn visit_note(&mut self, note: &Note<'a>) {
         self.visit_attributes(&note.attributes);
         self.visit_note_content(&note.content);
     }
@@ -451,7 +451,7 @@ impl<'a> Visitor<'a> for Validator<'a> {
         }
     }
 
-    fn visit_note(&mut self, note: &NoteElement<'a>) {
+    fn visit_note(&mut self, note: &Note<'a>) {
         // Validate note attributes
         for attr in &note.attributes {
             if *attr.name.inner() == "align"

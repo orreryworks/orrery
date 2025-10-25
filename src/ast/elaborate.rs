@@ -383,9 +383,8 @@ impl<'a> Builder<'a> {
                         "Fragment sugar syntax should have been desugared into Fragment elements before elaboration"
                     );
                 }
-                parser_types::Element::Note(_) => {
-                    // TODO: Implement note elaboration
-                    unreachable!("Note elaboration not yet implemented");
+                parser_types::Element::Note(note) => {
+                    self.build_note_element(note, parent_id, diagram_kind)?
                 }
             };
             elements.push(element);
@@ -935,6 +934,135 @@ impl<'a> Builder<'a> {
             )
         })
     }
+
+    /// Build a note element from parser types.
+    ///
+    /// Converts a parsed note element into an elaborated note with:
+    /// - Type definition for styling
+    /// - Element IDs for attachment (from 'on' attribute)
+    /// - Alignment with diagram-specific defaults (from 'align' attribute)
+    /// - Text content
+    ///
+    /// # Arguments
+    ///
+    /// * `note` - Parsed note element from the parser
+    /// * `parent_id` - Parent element ID for resolving element names in 'on' attribute
+    /// * `diagram_kind` - Diagram type (determines default alignment)
+    ///
+    /// # Returns
+    ///
+    /// Returns an `Element::Note`
+    fn build_note_element(
+        &mut self,
+        note: &parser_types::Note,
+        parent_id: Option<Id>,
+        diagram_kind: types::DiagramKind,
+    ) -> EResult<types::Element> {
+        let type_name = "Note";
+
+        let type_def = self
+            .build_type_definition(
+                &Spanned::new(type_name, note.content.span()),
+                &note.attributes,
+            )
+            .map_err(|_| {
+                ElaborationDiagnosticError::from_span(
+                    format!("Unknown type '{type_name}' for note"),
+                    note.content.span(),
+                    "unknown note type",
+                    Some("Note types must be defined in the type system".to_string()),
+                )
+            })?;
+
+        // Extract 'on' and 'align' attributes
+        let (on, align) =
+            self.extract_note_attributes(&note.attributes, parent_id, diagram_kind)?;
+
+        let content = note.content.inner().to_string();
+
+        Ok(types::Element::Note(types::Note::new(
+            on, align, content, type_def,
+        )))
+    }
+
+    /// Extract 'on' and 'align' attributes from note attributes.
+    ///
+    /// This method extracts:
+    /// - `on`: List of element identifiers converted to IDs
+    /// - `align`: Alignment string parsed to NoteAlign enum
+    ///
+    /// # Arguments
+    ///
+    /// * `attributes` - Note attributes from the parser
+    /// * `parent_id` - Parent element ID for scoping element name resolution
+    /// * `diagram_kind` - Diagram type (determines default alignment if not specified)
+    ///
+    /// # Returns
+    ///
+    /// Returns `(Vec<Id>, NoteAlign)` tuple with:
+    /// - Element IDs (empty vec for margin notes)
+    /// - Alignment
+    fn extract_note_attributes(
+        &mut self,
+        attributes: &[parser_types::Attribute],
+        parent_id: Option<Id>,
+        diagram_kind: types::DiagramKind,
+    ) -> EResult<(Vec<Id>, types::NoteAlign)> {
+        let mut on: Option<Vec<Id>> = None;
+        let mut align: Option<types::NoteAlign> = None;
+
+        for attr in attributes {
+            match *attr.name.inner() {
+                "on" => {
+                    let ids = attr.value.as_identifiers().map_err(|_| {
+                        ElaborationDiagnosticError::from_span(
+                            "'on' attribute must be a list of element identifiers".to_string(),
+                            attr.value.span(),
+                            "invalid on value",
+                            Some("Use syntax: on=[element1, element2]".to_string()),
+                        )
+                    })?;
+
+                    on = Some(
+                        ids.iter()
+                            .map(|id_str| self.create_type_id(parent_id, id_str.inner()))
+                            .collect(),
+                    );
+                }
+                "align" => {
+                    let align_str = attr.value.as_str().map_err(|_| {
+                        ElaborationDiagnosticError::from_span(
+                            "'align' attribute must be a string".to_string(),
+                            attr.value.span(),
+                            "invalid align value",
+                            Some("Use one of: over, left, right, top, bottom".to_string()),
+                        )
+                    })?;
+
+                    let alignment = align_str.parse::<types::NoteAlign>().map_err(|_| {
+                        ElaborationDiagnosticError::from_span(
+                            format!("Invalid alignment value: '{}'", align_str),
+                            attr.value.span(),
+                            "invalid alignment",
+                            Some("Valid values: over, left, right, top, bottom".to_string()),
+                        )
+                    })?;
+
+                    align = Some(alignment);
+                }
+                _ => {} // Ignore other attributes (handled by build_type_definition)
+            }
+        }
+
+        // Apply defaults if not specified
+        let on = on.unwrap_or_default();
+        let align = align.unwrap_or(match diagram_kind {
+            types::DiagramKind::Sequence => types::NoteAlign::Over,
+            types::DiagramKind::Component => types::NoteAlign::Bottom,
+        });
+
+        Ok((on, align))
+    }
 }
 
 #[cfg(test)]
@@ -1422,5 +1550,117 @@ mod tests {
             "Should have at least 3 deactivates after desugaring, found {}",
             deactivates
         );
+    }
+
+    #[test]
+    fn test_note_with_default_alignment_sequence() {
+        let cfg = AppConfig::default();
+        let mut builder = Builder::new(&cfg, "");
+
+        let note = parser_types::Note {
+            attributes: vec![],
+            content: Spanned::new("Test note".to_string(), Span::new(0..9)),
+        };
+
+        let diagram_kind = types::DiagramKind::Sequence;
+        let result = builder.build_note_element(&note, None, diagram_kind);
+
+        assert!(result.is_ok());
+        let element = result.unwrap();
+        if let types::Element::Note(note_elem) = element {
+            assert_eq!(note_elem.on().len(), 0); // Margin note
+            assert_eq!(note_elem.align(), types::NoteAlign::Over); // Sequence default
+            assert_eq!(note_elem.content(), "Test note");
+        } else {
+            panic!("Expected Note element");
+        }
+    }
+
+    #[test]
+    fn test_note_with_default_alignment_component() {
+        let cfg = AppConfig::default();
+        let mut builder = Builder::new(&cfg, "");
+
+        let note = parser_types::Note {
+            attributes: vec![],
+            content: Spanned::new("Test note".to_string(), Span::new(0..9)),
+        };
+
+        let diagram_kind = types::DiagramKind::Component;
+        let result = builder.build_note_element(&note, None, diagram_kind);
+
+        assert!(result.is_ok());
+        let element = result.unwrap();
+        if let types::Element::Note(note_elem) = element {
+            assert_eq!(note_elem.on().len(), 0); // Margin note
+            assert_eq!(note_elem.align(), types::NoteAlign::Bottom); // Component default
+            assert_eq!(note_elem.content(), "Test note");
+        } else {
+            panic!("Expected Note element");
+        }
+    }
+
+    #[test]
+    fn test_note_with_styling_attributes() {
+        let cfg = AppConfig::default();
+        let mut builder = Builder::new(&cfg, "");
+
+        let attributes = vec![
+            parser_types::Attribute {
+                name: Spanned::new("background_color", Span::new(0..16)),
+                value: parser_types::AttributeValue::String(Spanned::new(
+                    "lightyellow".to_string(),
+                    Span::new(0..11),
+                )),
+            },
+            parser_types::Attribute {
+                name: Spanned::new("stroke", Span::new(0..6)),
+                value: parser_types::AttributeValue::Attributes(vec![
+                    parser_types::Attribute {
+                        name: Spanned::new("color", Span::new(0..5)),
+                        value: parser_types::AttributeValue::String(Spanned::new(
+                            "blue".to_string(),
+                            Span::new(0..4),
+                        )),
+                    },
+                    parser_types::Attribute {
+                        name: Spanned::new("width", Span::new(0..5)),
+                        value: parser_types::AttributeValue::Float(Spanned::new(
+                            2.0,
+                            Span::new(0..3),
+                        )),
+                    },
+                ]),
+            },
+            parser_types::Attribute {
+                name: Spanned::new("text", Span::new(0..4)),
+                value: parser_types::AttributeValue::Attributes(vec![parser_types::Attribute {
+                    name: Spanned::new("font_size", Span::new(0..9)),
+                    value: parser_types::AttributeValue::Float(Spanned::new(14.0, Span::new(0..2))),
+                }]),
+            },
+        ];
+
+        let note = parser_types::Note {
+            attributes,
+            content: Spanned::new("Styled note".to_string(), Span::new(0..11)),
+        };
+
+        let diagram_kind = types::DiagramKind::Sequence;
+        let result = builder.build_note_element(&note, None, diagram_kind);
+
+        assert!(result.is_ok());
+        let element = result.unwrap();
+        if let types::Element::Note(note_elem) = element {
+            assert_eq!(note_elem.content(), "Styled note");
+            assert_eq!(note_elem.align(), types::NoteAlign::Over); // Default for sequence
+            assert_eq!(note_elem.on().len(), 0); // Margin note
+
+            // Verify type definition was created (styling was processed)
+            let def = note_elem.definition();
+            assert!(def.note_definition_rc().is_ok());
+        } else {
+            panic!("Expected Note element");
+        }
     }
 }

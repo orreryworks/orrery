@@ -197,7 +197,7 @@ impl NoteDefinition {
     }
 
     /// Returns a reference to the stroke definition.
-    fn stroke(&self) -> &StrokeDefinition {
+    pub fn stroke(&self) -> &StrokeDefinition {
         &self.stroke
     }
 }

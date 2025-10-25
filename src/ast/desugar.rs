@@ -10,7 +10,7 @@
 
 use super::{
     parser_types::{
-        Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, NoteElement,
+        Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
         RelationTypeSpec, TypeDefinition,
     },
     span::Spanned,
@@ -335,8 +335,8 @@ trait Folder<'a> {
     }
 
     /// Fold a note element
-    fn fold_note(&mut self, note: NoteElement<'a>) -> NoteElement<'a> {
-        NoteElement {
+    fn fold_note(&mut self, note: Note<'a>) -> Note<'a> {
+        Note {
             attributes: self.fold_attributes(note.attributes),
             content: self.fold_note_content(note.content),
         }
@@ -1215,7 +1215,7 @@ mod tests {
 
     #[test]
     fn test_desugar_preserves_note() {
-        let note = Element::Note(NoteElement {
+        let note = Element::Note(Note {
             attributes: vec![],
             content: spanned("Simple note".to_string()),
         });
@@ -1234,7 +1234,7 @@ mod tests {
 
     #[test]
     fn test_desugar_preserves_note_attributes() {
-        let note = Element::Note(NoteElement {
+        let note = Element::Note(Note {
             attributes: vec![
                 Attribute {
                     name: spanned("align"),

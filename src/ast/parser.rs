@@ -941,7 +941,7 @@ fn note_element<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'
     // Parse semicolon
     semicolon.parse_next(input)?;
 
-    Ok(types::Element::Note(types::NoteElement {
+    Ok(types::Element::Note(types::Note {
         attributes,
         content,
     }))

@@ -8,6 +8,9 @@ The roadmap is organized into major feature categories, each containing specific
 
 ## Table of Contents
 
+Is DrawDefinition really useful for Fragment or Note at the moment?
+Change Rc to Cow for type defs.
+
 ### Core Components
 - **[Language Core](#language-core)** - Core language features, syntax, and semantics
   - [Named Types for Nested Attributes](#named-types-for-nested-attributes)

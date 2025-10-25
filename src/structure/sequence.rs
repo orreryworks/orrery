@@ -76,6 +76,12 @@ pub enum SequenceEvent<'a> {
     ///
     /// Marks the end of a fragment's scope, closing the grouping of interactions.
     FragmentEnd,
+
+    /// A note annotation in the diagram.
+    ///
+    /// Notes provide additional context or documentation without participating
+    /// in the diagram's structural relationships.
+    Note(&'a ast::Note),
 }
 
 /// Main graph structure for sequence diagrams.
@@ -233,6 +239,9 @@ impl<'a> SequenceGraph<'a> {
 
                     // Emit FragmentEnd event
                     graph.add_event(SequenceEvent::FragmentEnd);
+                }
+                ast::Element::Note(note) => {
+                    graph.add_event(SequenceEvent::Note(note));
                 }
             }
         }

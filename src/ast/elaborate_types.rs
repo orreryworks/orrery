@@ -124,6 +124,116 @@ impl Relation {
     }
 }
 
+/// Alignment for note positioning in diagrams.
+///
+/// Different diagram types support different alignment values:
+/// - Sequence diagrams: Over, Left, Right
+/// - Component diagrams: Left, Right, Top, Bottom
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteAlign {
+    Over,
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+impl FromStr for NoteAlign {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "over" => Ok(NoteAlign::Over),
+            "left" => Ok(NoteAlign::Left),
+            "right" => Ok(NoteAlign::Right),
+            "top" => Ok(NoteAlign::Top),
+            "bottom" => Ok(NoteAlign::Bottom),
+            _ => Err("Invalid alignment value"),
+        }
+    }
+}
+
+/// Represents a note annotation in a diagram.
+///
+/// Notes provide additional context or documentation without participating
+/// in the diagram's structural relationships.
+///
+/// # Examples
+///
+/// ```
+/// # use filament::ast::{Note, NoteAlign, TypeDefinition};
+/// # use filament::identifier::Id;
+/// # use filament::draw::NoteDefinition;
+/// # use std::rc::Rc;
+/// #
+/// // Create a margin note (not attached to any elements)
+/// let note = Note::new(
+///     vec![],  // Empty vec = margin note
+///     NoteAlign::Over,
+///     "This is a note".to_string(),
+///     Rc::new(TypeDefinition::new_note(Id::new("Note"), NoteDefinition::new())),
+/// );
+/// assert_eq!(note.on().len(), 0);
+/// assert_eq!(note.content(), "This is a note");
+///
+/// // Create a note attached to an element
+/// let attached_note = Note::new(
+///     vec![Id::new("server")],
+///     NoteAlign::Right,
+///     "Server note".to_string(),
+///     Rc::new(TypeDefinition::new_note(Id::new("Note"), NoteDefinition::new())),
+/// );
+/// assert_eq!(attached_note.on().len(), 1);
+/// ```
+#[derive(Debug, Clone)]
+pub struct Note {
+    /// Element IDs this note is attached to. Empty vec means margin note.
+    on: Vec<Id>,
+    /// Alignment of the note relative to attached elements
+    align: NoteAlign,
+    /// Text content of the note
+    content: String,
+    /// Styling definition for the note
+    definition: Rc<TypeDefinition>,
+}
+
+impl Note {
+    /// Create a new Note.
+    pub fn new(
+        on: Vec<Id>,
+        align: NoteAlign,
+        content: String,
+        definition: Rc<TypeDefinition>,
+    ) -> Self {
+        Self {
+            on,
+            align,
+            content,
+            definition,
+        }
+    }
+
+    /// Get the element IDs this note is attached to.
+    pub fn on(&self) -> &[Id] {
+        &self.on
+    }
+
+    /// Get the alignment of the note.
+    pub fn align(&self) -> NoteAlign {
+        self.align
+    }
+
+    /// Get the text content of the note.
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    /// Borrow the note's type definition.
+    pub fn definition(&self) -> &TypeDefinition {
+        &self.definition
+    }
+}
+
 /// Top-level elaborated element within a scope.
 /// Represents nodes, relations, and activation events in AST order.
 #[derive(Debug, Clone)]
@@ -133,6 +243,7 @@ pub enum Element {
     Activate(Id),
     Deactivate(Id),
     Fragment(Fragment),
+    Note(Note),
 }
 
 /// Represents a fragment block in a sequence diagram.
@@ -249,6 +360,7 @@ pub enum DrawDefinition {
     Shape(Rc<dyn draw::ShapeDefinition>),
     Arrow(Rc<draw::ArrowDefinition>),
     Fragment(Rc<draw::FragmentDefinition>),
+    Note(Rc<draw::NoteDefinition>),
 }
 
 /// A concrete, elaborated type with text styling and drawing definition.
@@ -423,6 +535,15 @@ impl TypeDefinition {
         )
     }
 
+    /// Construct a concrete note type definition from a note definition.
+    pub fn new_note(id: Id, note_definition: draw::NoteDefinition) -> Self {
+        Self::new(
+            id,
+            draw::TextDefinition::new(),
+            DrawDefinition::Note(Rc::from(note_definition)),
+        )
+    }
+
     /// Get the identifier for this type definition.
     pub fn id(&self) -> Id {
         self.id
@@ -462,6 +583,16 @@ impl TypeDefinition {
         match &self.draw_definition {
             DrawDefinition::Fragment(fragment) => Ok(fragment),
             _ => Err(format!("Type '{}' is not a fragment type", self.id)),
+        }
+    }
+
+    /// Borrow the Rc-backed note definition if this type is a note; otherwise returns an error.
+    ///
+    /// Returning &Rc<_> makes cloning explicit at the call site when needed.
+    pub fn note_definition_rc(&self) -> Result<&Rc<draw::NoteDefinition>, String> {
+        match &self.draw_definition {
+            DrawDefinition::Note(note) => Ok(note),
+            _ => Err(format!("Type '{}' is not a note type", self.id)),
         }
     }
 }
@@ -1015,6 +1146,82 @@ impl TypeDefinition {
 
                 Ok(Self::new_fragment(id, text_def, new_fragment_def))
             }
+            DrawDefinition::Note(note_def) => {
+                let mut new_note_def = (**note_def).clone();
+                let mut new_stroke = new_note_def.stroke().clone();
+
+                for attr in attributes {
+                    let name = attr.name.inner();
+                    let value = &attr.value;
+
+                    match *name {
+                        "background_color" => {
+                            let val = Color::new(value.as_str().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid color value",
+                                    Some("Color values must be strings".to_string()),
+                                )
+                            })?)
+                            .map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    format!("Invalid background_color '{value}': {err}"),
+                                    attr.span(),
+                                    "invalid color",
+                                    Some("Use a CSS color".to_string()),
+                                )
+                            })?;
+                            new_note_def.set_background_color(Some(val));
+                        }
+                        "stroke" => {
+                            let nested_attrs = value.as_attributes().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid stroke attribute value",
+                                    Some("Stroke attribute must contain nested attributes like [color=\"blue\", width=2.0, style=\"dashed\"]".to_string()),
+                                )
+                            })?;
+
+                            StrokeAttributeExtractor::extract_stroke_attributes(
+                                &mut new_stroke,
+                                nested_attrs,
+                            )?;
+                        }
+                        "text" => {
+                            let nested_attrs = value.as_attributes().map_err(|err| {
+                                ElaborationDiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid text attribute value",
+                                    Some("Text attribute must contain nested attributes like [font_size=12, color=\"blue\"]".to_string()),
+                                )
+                            })?;
+
+                            TextAttributeExtractor::extract_text_attributes(
+                                &mut text_def,
+                                nested_attrs,
+                            )?;
+                        }
+                        name => {
+                            return Err(ElaborationDiagnosticError::from_span(
+                                format!("Unknown note attribute '{name}'"),
+                                attr.span(),
+                                "unknown attribute",
+                                Some(
+                                    "Valid note attributes are: background_color, stroke=[...], text=[...]"
+                                        .to_string(),
+                                ),
+                            ));
+                        }
+                    }
+                }
+
+                new_note_def.set_stroke(new_stroke);
+
+                Ok(Self::new_note(id, new_note_def))
+            }
         }
     }
 
@@ -1095,6 +1302,7 @@ impl TypeDefinition {
                 draw::TextDefinition::new(),
                 draw::FragmentDefinition::new(),
             )),
+            Rc::new(Self::new_note(Id::new("Note"), draw::NoteDefinition::new())),
         ]
     }
 }

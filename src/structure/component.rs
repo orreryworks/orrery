@@ -164,7 +164,8 @@ impl<'a, 'idx> ContainmentScope<'a, 'idx> {
                 ast::Element::Node(..) => {}
                 ast::Element::Activate(..)
                 | ast::Element::Deactivate(..)
-                | ast::Element::Fragment(..) => {
+                | ast::Element::Fragment(..)
+                | ast::Element::Note(..) => {
                     unreachable!("Unexpected element type")
                 }
             }

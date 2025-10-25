@@ -269,12 +269,12 @@ impl Fragment<'_> {
 /// - `attributes` - Optional configuration for positioning, styling, and attachment
 /// - `content` - The note text as a string literal (supports escape sequences)
 #[derive(Debug)]
-pub struct NoteElement<'a> {
+pub struct Note<'a> {
     pub attributes: Vec<Attribute<'a>>,
     pub content: Spanned<String>,
 }
 
-impl NoteElement<'_> {
+impl Note<'_> {
     pub fn span(&self) -> Span {
         self.attributes
             .iter()
@@ -354,7 +354,7 @@ pub enum Element<'a> {
         attributes: Vec<Attribute<'a>>,
     },
     /// Note element with optional attributes and text content
-    Note(NoteElement<'a>),
+    Note(Note<'a>),
 }
 
 impl Element<'_> {
