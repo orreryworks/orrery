@@ -132,9 +132,9 @@ pub struct ActivationBox {
 ///
 /// # Lifecycle
 ///
-/// 1. **Creation**: Created immediately when [`SequenceEvent::Activate`] occurs with exact start position
+/// 1. **Creation**: Created immediately when [`SequenceEvent::Activate`](crate::structure::SequenceEvent::Activate) occurs with exact start position
 /// 2. **Stack Management**: Stored in participant-specific activation stacks
-/// 3. **Conversion**: Converted to [`ActivationBox`] when [`SequenceEvent::Deactivate`] occurs
+/// 3. **Conversion**: Converted to [`ActivationBox`] when [`SequenceEvent::Deactivate`](crate::structure::SequenceEvent::Deactivate) occurs
 #[derive(Debug, Clone)]
 pub struct ActivationTiming {
     participant_id: Id,
@@ -243,7 +243,7 @@ impl ActivationBox {
 ///
 /// This struct accumulates information about a fragment as it's being processed during
 /// layout calculation, including its vertical position, horizontal bounds, and sections.
-/// It's converted to a [`Fragment`] once processing is complete.
+/// It's converted to a [`Fragment`](draw::Fragment) once processing is complete.
 ///
 /// # Fields
 /// - `start_y`: The Y coordinate where this fragment begins

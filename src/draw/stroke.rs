@@ -10,7 +10,7 @@
 //! - [`StrokeStyle`]: Enum defining line patterns (solid, dashed, dotted, etc.)
 //! - [`StrokeCap`]: Enum defining how line endpoints are rendered (butt, round, square)
 //! - [`StrokeJoin`]: Enum defining how line corners are rendered (miter, round, bevel)
-//! - [`apply_stroke!`]: Macro for applying stroke attributes to SVG elements
+//! - [`apply_stroke!`](crate::apply_stroke!): Macro for applying stroke attributes to SVG elements
 //!
 //! # Design Philosophy
 //!
@@ -39,7 +39,7 @@
 //!
 //! ## Applying to SVG Elements
 //!
-//! Use the [`apply_stroke!`] macro to apply all stroke attributes at once:
+//! Use the [`apply_stroke!`](crate::apply_stroke!) macro to apply all stroke attributes at once:
 //!
 //! ```
 //! use filament::draw::StrokeDefinition;

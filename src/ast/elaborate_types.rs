@@ -284,7 +284,7 @@ impl Fragment {
         &self.sections
     }
 
-    /// Clone and return the Rc<FragmentDefinition> for this fragment.
+    /// Clone and return the [`Rc<FragmentDefinition>`] for this fragment.
     ///
     /// This method retrieves the fragment definition from the type definition and
     /// returns a cloned Rc reference, allowing shared ownership of the definition.

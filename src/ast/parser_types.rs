@@ -3,7 +3,7 @@ use std::fmt;
 
 /// AST types that utilize span information
 /// This module contains parser types with a span.
-/// Leaf types (strings, literals) are wrapped in Spanned<T>
+/// Leaf types (strings, literals) are wrapped in [`Spanned<T>`]
 /// Composite types use unwrapped collections and derive spans from inner elements
 #[derive(Debug)]
 pub struct TypeDefinition<'a> {

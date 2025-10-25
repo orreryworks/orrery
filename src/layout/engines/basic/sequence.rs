@@ -215,7 +215,7 @@ impl Engine {
     ///
     /// This method processes ordered events sequentially to create messages, activation boxes,
     /// and fragments with precise timing and positioning. It uses a HashMap-based stack approach
-    /// (Id -> Vec<ActivationTiming>) to track activation periods per participant and converts
+    /// (Id -> [`Vec<ActivationTiming>`]) to track activation periods per participant and converts
     /// them to ActivationBox objects when deactivation occurs.
     ///
     /// # Algorithm

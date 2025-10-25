@@ -176,7 +176,7 @@ fn identifiers<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<Spanned<Strin
 
                 // Build identifier list starting with first identifier
                 let mut ids = vec![Spanned::new(id_str, id_span)];
-                
+
                 // Parse remaining identifiers separated by commas
                 // Uses `repeat` combinator for clean separation of concerns
                 let rest: Vec<Spanned<String>> = repeat(
@@ -513,11 +513,11 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>
 
 /// Parse an activate block
 ///
-/// Grammar:
-///   activate <nested_identifier> { <elements> };
+/// ## Grammar:
+///   `activate <nested_identifier> { <elements> };`
 ///
-/// Notes:
-/// - Accepts nested identifiers (e.g., `parent::child`) and returns `Spanned<String>`
+/// ## Notes:
+/// - Accepts nested identifiers (e.g., `parent::child`) and returns [`Spanned<String>`]
 ///   for the component. The element span equals the identifier span; the `activate`
 ///   keyword and the trailing semicolon are not included in the element span
 ///   (consistent with `Element::span()` semantics using the inner `component` span).
@@ -827,15 +827,15 @@ fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
 
 /// Shared helper to parse an activation-style statement after a specific keyword.
 ///
-/// Grammar:
-///   <keyword> <nested_identifier> ;
+/// ## Grammar:
+///   `<keyword> <nested_identifier> ;`
 ///
-/// Where:
-/// - <keyword> is one of: `activate`, `deactivate` (passed as a Token)
-/// - <nested_identifier> supports `::`-qualified names and returns (String, Span)
+/// ## Where:
+/// - `<keyword>` is one of: `activate`, `deactivate` (passed as a Token)
+/// - `<nested_identifier>` supports `::`-qualified names and returns ([`String`], [`Span`])
 /// - Optional whitespace and line comments are permitted between tokens
 ///
-/// Span guarantees:
+/// ## Span guarantees:
 /// - The returned `Spanned<String>` covers only the nested identifier; the keyword
 ///   and the trailing semicolon are excluded.
 /// - This aligns with `Element::span()` behavior that mirrors the identifier span.
