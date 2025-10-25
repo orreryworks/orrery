@@ -8,9 +8,6 @@ The roadmap is organized into major feature categories, each containing specific
 
 ## Table of Contents
 
-Is DrawDefinition really useful for Fragment or Note at the moment?
-Change Rc to Cow for type defs.
-
 ### Core Components
 - **[Language Core](#language-core)** - Core language features, syntax, and semantics
   - [Named Types for Nested Attributes](#named-types-for-nested-attributes)
@@ -33,6 +30,9 @@ Change Rc to Cow for type defs.
   - [Add Support for Prelude of Shapes](#add-support-for-prelude-of-shapes)
   - [Add Base Type Override Support](#add-base-type-override-support)
   - [Fix Scoping Types in graph::Graph](#fix-scoping-types-in-graphgraph)
+  - [Stroke Style Validation](#stroke-style-validation)
+  - [Investigate DrawDefinition Usage](#investigate-drawdefinition-usage)
+  - [Change Rc to CoW for Type Draw Definitions](#change-rc-to-cow-for-type-draw-definitions)
 - **[Rendering](#rendering)** - Visual output and drawing capabilities
   - [Adding More UML Shapes](#adding-more-uml-shapes)
   - [Relation-Triggered Activation](#relation-triggered-activation)
@@ -753,6 +753,79 @@ type Invalid3 = Rectangle [stroke=[style="-5,3"]];        // ✗ Negative values
 - Add validation in stroke attribute extraction
 - Maintain backward compatibility with existing valid patterns
 - Clear documentation of supported formats
+
+---
+
+#### Investigate DrawDefinition Usage
+
+**Description**:
+Investigate whether `DrawDefinition` is truly useful for `Fragment` or `Note` elements at the moment, and consider if it needs to be refactored.
+
+**Current Concerns**:
+- `DrawDefinition` may be applied to `Fragment` and `Note` elements without providing meaningful value
+- The current implementation might be adding unnecessary complexity
+- May need architectural changes to better align with actual use cases
+
+**Investigation Areas**:
+- Review current usage of `DrawDefinition` in `elaborate_types` module
+- Analyze how `Fragment` and `Note` elements utilize draw definitions
+- Determine if draw definitions provide actual rendering benefits for these element types
+- Evaluate alternative approaches that might be more appropriate
+
+**References**:
+- `src/ast/elaborate_types/`
+- `src/ast/elaborate.rs`
+
+**Potential Outcomes**:
+- Keep current implementation if justified by use cases
+- Refactor to remove `DrawDefinition` from specific element types
+- Redesign the abstraction to better match actual needs
+- Document the rationale for current design if maintaining status quo
+
+**Benefits**:
+- Cleaner, more maintainable codebase
+- Reduced complexity where not needed
+- Better alignment between abstractions and actual use cases
+- Improved code clarity and intent
+
+---
+
+#### Change Rc to CoW for Type Draw Definitions
+
+**Description**:
+Replace `Rc` (Reference Counting) with `CoW` (Clone-on-Write) for type draw definitions to simplify cloning and provide a semi-optimized approach for handling definition data.
+
+**Current Implementation**:
+- Type draw definitions currently use `Rc` for shared ownership
+- Cloning behavior requires manual reference counting management
+- May lead to unnecessary complexity in certain scenarios
+
+**Proposed Implementation**:
+- Replace `Rc<DrawDefinition>` with `Cow<'static, DrawDefinition>` (or appropriate lifetime)
+- Leverage CoW's automatic cloning semantics
+- Maintain read-only sharing where possible, clone only when modifications are needed
+
+**Benefits**:
+- Simplified cloning process - CoW handles it automatically
+- More idiomatic Rust patterns
+- Reduced cognitive overhead for developers
+- Semi-optimized: avoids cloning when data is not modified
+- Better memory efficiency in read-heavy scenarios
+- Clearer ownership semantics
+
+**Implementation Considerations**:
+- Audit all usages of draw definitions to ensure compatibility
+- Update type signatures throughout the codebase
+- Consider performance implications in write-heavy scenarios
+- Ensure lifetimes are properly managed
+- Update tests to reflect new implementation
+
+**Migration Path**:
+1. Identify all locations using `Rc<DrawDefinition>`
+2. Replace with `Cow<'_, DrawDefinition>` or owned types as appropriate
+3. Update cloning logic to leverage CoW semantics
+4. Run comprehensive tests to ensure correctness
+5. Benchmark to verify performance characteristics
 
 ---
 
