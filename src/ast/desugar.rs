@@ -7,6 +7,13 @@
 //! The design follows the Fold (Catamorphism) pattern, similar to the Rust
 //! compiler's folder, where each AST node type has a corresponding fold method
 //! that consumes the node and produces a transformed version.
+//!
+//! ## Identifier Resolution
+//!
+//! Component identifiers are resolved from relative names to fully qualified paths
+//! using a path stack that tracks the current namespace context during traversal.
+//! For example, a reference to "child1" inside "parent" becomes "parent::child1".
+//! This enables the validation phase to perform comprehensive cross-reference checks.
 
 use super::{
     parser_types::{
@@ -15,6 +22,46 @@ use super::{
     },
     span::Spanned,
 };
+
+/// Stack tracking the current namespace path for identifier resolution
+#[derive(Debug)]
+struct PathStack {
+    /// Stack of parent paths
+    /// Example: entering "parent" then "child" gives ["parent", "parent::child"]
+    stack: Vec<String>,
+}
+
+impl PathStack {
+    fn new() -> Self {
+        Self { stack: Vec::new() }
+    }
+
+    /// Push a new level onto the path
+    fn push(&mut self, name: &str) {
+        self.stack.push(self.qualify(name));
+    }
+
+    /// Pop the current level
+    fn pop(&mut self) {
+        self.stack.pop();
+    }
+
+    /// Get the current qualified path (empty string if at root)
+    fn current(&self) -> &str {
+        self.stack.last().map(|s| s.as_str()).unwrap_or("")
+    }
+
+    /// Qualify a name with the current path
+    fn qualify(&self, name: &str) -> String {
+        if self.stack.is_empty() {
+            // At root level
+            name.to_string()
+        } else {
+            // Nested - prepend current path
+            format!("{}::{}", self.current(), name)
+        }
+    }
+}
 
 /// The main trait for folding/rewriting AST nodes.
 ///
@@ -85,6 +132,14 @@ trait Folder<'a> {
     /// Fold an identifiers attribute value (list of identifiers)
     fn fold_identifiers(&mut self, identifiers: Vec<Spanned<String>>) -> Vec<Spanned<String>> {
         identifiers
+            .into_iter()
+            .map(|id| self.fold_identifier(id))
+            .collect()
+    }
+
+    /// Fold a single identifier
+    fn fold_identifier(&mut self, identifier: Spanned<String>) -> Spanned<String> {
+        identifier
     }
 
     /// Fold a list of type definitions
@@ -147,8 +202,12 @@ trait Folder<'a> {
                 component,
                 elements,
             } => self.fold_activate_block(component, elements),
-            Element::Activate { component } => Element::Activate { component },
-            Element::Deactivate { component } => Element::Deactivate { component },
+            Element::Activate { component } => Element::Activate {
+                component: self.fold_activate_component(component),
+            },
+            Element::Deactivate { component } => Element::Deactivate {
+                component: self.fold_activate_component(component),
+            },
             Element::Note(note) => Element::Note(self.fold_note(note)),
             Element::Fragment(fragment) => Element::Fragment(self.fold_fragment(fragment)),
             // Fragment sugar syntax - default behavior is to fold sections recursively
@@ -218,7 +277,7 @@ trait Folder<'a> {
     /// Fold a component element
     fn fold_component(
         &mut self,
-        name: Spanned<&'a str>,
+        name: Spanned<String>,
         display_name: Option<Spanned<String>>,
         type_name: Spanned<&'a str>,
         attributes: Vec<Attribute<'a>>,
@@ -234,8 +293,8 @@ trait Folder<'a> {
     }
 
     /// Fold a component name
-    fn fold_component_name(&mut self, name: Spanned<&'a str>) -> Spanned<&'a str> {
-        name
+    fn fold_component_name(&mut self, name: Spanned<String>) -> Spanned<String> {
+        self.fold_identifier(name)
     }
 
     /// Fold a display name
@@ -268,12 +327,12 @@ trait Folder<'a> {
 
     /// Fold a relation source
     fn fold_relation_source(&mut self, source: Spanned<String>) -> Spanned<String> {
-        source
+        self.fold_identifier(source)
     }
 
     /// Fold a relation target
     fn fold_relation_target(&mut self, target: Spanned<String>) -> Spanned<String> {
-        target
+        self.fold_identifier(target)
     }
 
     /// Fold a relation type
@@ -348,7 +407,7 @@ trait Folder<'a> {
     }
     /// Fold an activate component identifier into an owned `String`
     fn fold_activate_component(&mut self, component: Spanned<String>) -> Spanned<String> {
-        component
+        self.fold_identifier(component)
     }
 }
 
@@ -363,9 +422,63 @@ trait Folder<'a> {
 ///    - `par` → `fragment "par" { ... }`
 ///    - `break` → `fragment "break" { ... }`
 ///    - `critical` → `fragment "critical" { ... }`
-pub struct Desugar;
+/// 3. Identifier Resolution
+///    - Qualifies component identifiers to fully qualified paths
+///    - Uses a path stack to track the current namespace context
+///    - Preserves original spans for accurate error reporting
+///    - Example: "child" inside "parent" becomes "parent::child"
+///
+/// ## Path Stack
+/// The `path_stack` field tracks the current position in the component hierarchy,
+/// allowing nested identifiers to be qualified with their full path from the root.
+pub struct Desugar {
+    path_stack: PathStack,
+}
+
+impl Desugar {
+    /// Create a new Desugar folder instance
+    fn new() -> Self {
+        Self {
+            path_stack: PathStack::new(),
+        }
+    }
+}
 
 impl<'a> Folder<'a> for Desugar {
+    /// Override fold_component to add path tracking for identifier resolution
+    fn fold_component(
+        &mut self,
+        name: Spanned<String>,
+        display_name: Option<Spanned<String>>,
+        type_name: Spanned<&'a str>,
+        attributes: Vec<Attribute<'a>>,
+        nested_elements: Vec<Element<'a>>,
+    ) -> Element<'a> {
+        // Enter this component's namespace
+        self.path_stack.push(name.inner());
+
+        // Process nested elements (they will be qualified with this component's path)
+        let resolved_nested = self.fold_elements(nested_elements);
+
+        // Exit this component's namespace
+        self.path_stack.pop();
+
+        Element::Component {
+            name: self.fold_component_name(name),
+            display_name: display_name.map(|dn| self.fold_display_name(dn)),
+            type_name: self.fold_component_type(type_name),
+            attributes: self.fold_attributes(attributes),
+            nested_elements: resolved_nested,
+        }
+    }
+
+    /// Override fold_identifier to qualify identifier with current path
+    fn fold_identifier(&mut self, identifier: Spanned<String>) -> Spanned<String> {
+        let original_span = identifier.span();
+        let qualified = self.path_stack.qualify(identifier.inner());
+        Spanned::new(qualified, original_span)
+    }
+
     fn fold_elements(&mut self, elements: Vec<Element<'a>>) -> Vec<Element<'a>> {
         let mut out = Vec::with_capacity(elements.len());
         for elem in elements {
@@ -413,8 +526,12 @@ impl<'a> Folder<'a> for Desugar {
                 elements,
             } => self.fold_activate_block(component, elements),
             Element::Fragment(fragment) => Element::Fragment(self.fold_fragment(fragment)),
-            Element::Activate { component } => Element::Activate { component },
-            Element::Deactivate { component } => Element::Deactivate { component },
+            Element::Activate { component } => Element::Activate {
+                component: self.fold_activate_component(component),
+            },
+            Element::Deactivate { component } => Element::Deactivate {
+                component: self.fold_activate_component(component),
+            },
             Element::Note(note) => Element::Note(self.fold_note(note)),
 
             // ========================================================================
@@ -517,9 +634,10 @@ impl<'a> Folder<'a> for Desugar {
 /// All desugaring happens in a single pass using the `Desugar` folder:
 /// 1. `ActivateBlock` elements → explicit `activate`/`deactivate` statements
 /// 2. Fragment keyword sugar syntax → base `Fragment` elements
+/// 3. Component identifiers → fully qualified paths (e.g., "child" → "parent::child")
 pub fn desugar<'a>(diagram: Spanned<Element<'a>>) -> Spanned<Element<'a>> {
     let span = diagram.span();
-    let mut folder = Desugar;
+    let mut folder = Desugar::new();
     let desugared = folder.fold_element(diagram.into_inner());
     Spanned::new(desugared, span)
 }
@@ -539,6 +657,26 @@ mod tests {
     /// Helper to create a spanned value for testing
     fn spanned<T>(value: T) -> Spanned<T> {
         Spanned::new(value, Span::new(0..1))
+    }
+
+    #[test]
+    fn test_path_stack_operations() {
+        let mut stack = PathStack::new();
+        assert_eq!(stack.current(), "");
+
+        stack.push("parent");
+        assert_eq!(stack.current(), "parent");
+        assert_eq!(stack.qualify("child"), "parent::child");
+
+        stack.push("child");
+        assert_eq!(stack.current(), "parent::child");
+        assert_eq!(stack.qualify("grandchild"), "parent::child::grandchild");
+
+        stack.pop();
+        assert_eq!(stack.current(), "parent");
+
+        stack.pop();
+        assert_eq!(stack.current(), "");
     }
 
     #[test]
@@ -648,7 +786,7 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::Component {
-                name: spanned("frontend"),
+                name: spanned("frontend".to_string()),
                 display_name: Some(spanned("Frontend App".to_string())),
                 type_name: spanned("Rectangle"),
                 attributes: vec![Attribute {
@@ -811,7 +949,7 @@ mod tests {
         let wrapped = spanned(diagram);
 
         // Apply Desugar folder directly
-        let mut folder = Desugar;
+        let mut folder = Desugar::new();
         let result_elem = folder.fold_element(wrapped.into_inner());
 
         // Verify activate block was rewritten into explicit statements
@@ -858,7 +996,7 @@ mod tests {
             attributes: vec![],
         };
 
-        let mut folder = Desugar;
+        let mut folder = Desugar::new();
         let result = folder.fold_element(opt_block);
 
         match result {
@@ -892,7 +1030,7 @@ mod tests {
             attributes: vec![],
         };
 
-        let mut folder = Desugar;
+        let mut folder = Desugar::new();
         let result = folder.fold_element(loop_block);
 
         match result {
@@ -925,7 +1063,7 @@ mod tests {
             attributes: vec![],
         };
 
-        let mut folder = Desugar;
+        let mut folder = Desugar::new();
         let result = folder.fold_element(break_block);
 
         match result {
@@ -958,7 +1096,7 @@ mod tests {
             attributes: vec![],
         };
 
-        let mut folder = Desugar;
+        let mut folder = Desugar::new();
         let result = folder.fold_element(critical_block);
 
         match result {
@@ -1013,7 +1151,7 @@ mod tests {
             attributes: vec![],
         };
 
-        let mut folder = Desugar;
+        let mut folder = Desugar::new();
         let result = folder.fold_element(alt_else_block);
 
         match result {
@@ -1063,7 +1201,7 @@ mod tests {
             attributes: vec![],
         };
 
-        let mut folder = Desugar;
+        let mut folder = Desugar::new();
         let result = folder.fold_element(par_block);
 
         match result {
@@ -1103,7 +1241,7 @@ mod tests {
             ],
         };
 
-        let mut folder = Desugar;
+        let mut folder = Desugar::new();
         let result = folder.fold_element(opt_block);
 
         match result {
@@ -1143,7 +1281,7 @@ mod tests {
             attributes: vec![],
         };
 
-        let mut folder = Desugar;
+        let mut folder = Desugar::new();
         let result = folder.fold_element(opt_block);
 
         match result {
@@ -1176,7 +1314,7 @@ mod tests {
             attributes: vec![],
         };
 
-        let mut folder = Desugar;
+        let mut folder = Desugar::new();
         let result = folder.fold_element(opt_block);
 
         match result {
@@ -1200,7 +1338,7 @@ mod tests {
             attributes: vec![],
         };
 
-        let mut folder = Desugar;
+        let mut folder = Desugar::new();
         let result = folder.fold_element(opt_block);
 
         match result {
@@ -1220,7 +1358,7 @@ mod tests {
             content: spanned("Simple note".to_string()),
         });
 
-        let mut folder = Desugar;
+        let mut folder = Desugar::new();
         let result = folder.fold_element(note);
 
         match result {
@@ -1248,7 +1386,7 @@ mod tests {
             content: spanned("Note with attributes".to_string()),
         });
 
-        let mut folder = Desugar;
+        let mut folder = Desugar::new();
         let result = folder.fold_element(note);
 
         match result {
@@ -1259,6 +1397,288 @@ mod tests {
                 assert_eq!(note_result.content.inner(), "Note with attributes");
             }
             _ => panic!("Expected Note element"),
+        }
+    }
+
+    #[test]
+    fn test_nested_component_relation_resolution() {
+        // Create a nested component with a relation between siblings
+        let parent_component = Element::Component {
+            name: spanned("parent".to_string()),
+            display_name: None,
+            type_name: spanned("Rectangle"),
+            attributes: vec![],
+            nested_elements: vec![
+                Element::Component {
+                    name: spanned("child1".to_string()),
+                    display_name: None,
+                    type_name: spanned("Oval"),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Component {
+                    name: spanned("child2".to_string()),
+                    display_name: None,
+                    type_name: spanned("Rectangle"),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Relation {
+                    source: spanned("child1".to_string()),
+                    target: spanned("child2".to_string()),
+                    relation_type: spanned("->"),
+                    type_spec: None,
+                    label: None,
+                },
+            ],
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(parent_component);
+
+        // Extract the relation from the result
+        if let Element::Component {
+            nested_elements, ..
+        } = result
+        {
+            let relation = nested_elements.iter().find_map(|e| match e {
+                Element::Relation { source, target, .. } => Some((source, target)),
+                _ => None,
+            });
+
+            if let Some((source, target)) = relation {
+                assert_eq!(source.inner(), "parent::child1");
+                assert_eq!(target.inner(), "parent::child2");
+            } else {
+                panic!("Expected to find a relation in nested elements");
+            }
+        } else {
+            panic!("Expected Component element");
+        }
+    }
+
+    #[test]
+    fn test_deeply_nested_component_resolution() {
+        // Create deeply nested components: level1 { level2 { level3 } }
+        let level1 = Element::Component {
+            name: spanned("level1".to_string()),
+            display_name: None,
+            type_name: spanned("Rectangle"),
+            attributes: vec![],
+            nested_elements: vec![Element::Component {
+                name: spanned("level2".to_string()),
+                display_name: None,
+                type_name: spanned("Rectangle"),
+                attributes: vec![],
+                nested_elements: vec![
+                    Element::Component {
+                        name: spanned("level3".to_string()),
+                        display_name: None,
+                        type_name: spanned("Oval"),
+                        attributes: vec![],
+                        nested_elements: vec![],
+                    },
+                    Element::Relation {
+                        source: spanned("level3".to_string()),
+                        target: spanned("sibling".to_string()),
+                        relation_type: spanned("->"),
+                        type_spec: None,
+                        label: None,
+                    },
+                ],
+            }],
+        };
+
+        let mut folder = Desugar {
+            path_stack: PathStack::new(),
+        };
+        let result = folder.fold_element(level1);
+
+        // Navigate to the deeply nested relation
+        if let Element::Component {
+            nested_elements: level1_nested,
+            ..
+        } = result
+        {
+            if let Some(Element::Component {
+                nested_elements: level2_nested,
+                ..
+            }) = level1_nested.first()
+            {
+                let relation = level2_nested.iter().find_map(|e| match e {
+                    Element::Relation { source, target, .. } => Some((source, target)),
+                    _ => None,
+                });
+
+                if let Some((source, target)) = relation {
+                    assert_eq!(source.inner(), "level1::level2::level3");
+                    assert_eq!(target.inner(), "level1::level2::sibling");
+                } else {
+                    panic!("Expected to find a relation");
+                }
+            } else {
+                panic!("Expected nested component");
+            }
+        } else {
+            panic!("Expected Component element");
+        }
+    }
+
+    #[test]
+    fn test_activate_component_resolution() {
+        let parent_component = Element::Component {
+            name: spanned("parent".to_string()),
+            display_name: None,
+            type_name: spanned("Rectangle"),
+            attributes: vec![],
+            nested_elements: vec![
+                Element::Component {
+                    name: spanned("child".to_string()),
+                    display_name: None,
+                    type_name: spanned("Oval"),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Activate {
+                    component: spanned("child".to_string()),
+                },
+            ],
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(parent_component);
+
+        if let Element::Component {
+            nested_elements, ..
+        } = result
+        {
+            let activate = nested_elements.iter().find_map(|e| match e {
+                Element::Activate { component } => Some(component),
+                _ => None,
+            });
+
+            if let Some(component) = activate {
+                assert_eq!(component.inner(), "parent::child");
+            } else {
+                panic!("Expected to find Activate element");
+            }
+        } else {
+            panic!("Expected Component element");
+        }
+    }
+
+    #[test]
+    fn test_note_on_attribute_resolution() {
+        let parent_component = Element::Component {
+            name: spanned("parent".to_string()),
+            display_name: None,
+            type_name: spanned("Rectangle"),
+            attributes: vec![],
+            nested_elements: vec![
+                Element::Component {
+                    name: spanned("child".to_string()),
+                    display_name: None,
+                    type_name: spanned("Oval"),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Note(Note {
+                    attributes: vec![Attribute {
+                        name: spanned("on"),
+                        value: AttributeValue::Identifiers(vec![spanned("child".to_string())]),
+                    }],
+                    content: spanned("Note about child".to_string()),
+                }),
+            ],
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(parent_component);
+
+        if let Element::Component {
+            nested_elements, ..
+        } = result
+        {
+            let note = nested_elements.iter().find_map(|e| match e {
+                Element::Note(n) => Some(n),
+                _ => None,
+            });
+
+            if let Some(note) = note {
+                let on_attr = note.attributes.iter().find(|a| *a.name.inner() == "on");
+                if let Some(attr) = on_attr {
+                    if let AttributeValue::Identifiers(ids) = &attr.value {
+                        assert_eq!(ids[0].inner(), "parent::child");
+                    } else {
+                        panic!("Expected Identifiers value");
+                    }
+                } else {
+                    panic!("Expected 'on' attribute");
+                }
+            } else {
+                panic!("Expected Note element");
+            }
+        } else {
+            panic!("Expected Component element");
+        }
+    }
+
+    #[test]
+    fn test_root_level_identifiers_unchanged() {
+        // Relations at root level should remain unchanged
+        let relation = Element::Relation {
+            source: spanned("system1".to_string()),
+            target: spanned("system2".to_string()),
+            relation_type: spanned("->"),
+            type_spec: None,
+            label: None,
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(relation);
+
+        if let Element::Relation { source, target, .. } = result {
+            assert_eq!(source.inner(), "system1");
+            assert_eq!(target.inner(), "system2");
+        } else {
+            panic!("Expected Relation element");
+        }
+    }
+
+    #[test]
+    fn test_span_preservation_during_resolution() {
+        // Verify that spans are preserved when identifiers are qualified
+        let original_span = Span::new(10..15);
+        let parent_component = Element::Component {
+            name: spanned("parent".to_string()),
+            display_name: None,
+            type_name: spanned("Rectangle"),
+            attributes: vec![],
+            nested_elements: vec![Element::Relation {
+                source: Spanned::new("child".to_string(), original_span),
+                target: spanned("other".to_string()),
+                relation_type: spanned("->"),
+                type_spec: None,
+                label: None,
+            }],
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(parent_component);
+
+        if let Element::Component {
+            nested_elements, ..
+        } = result
+        {
+            if let Some(Element::Relation { source, .. }) = nested_elements.first() {
+                // The identifier should be qualified, but the span should be preserved
+                assert_eq!(source.inner(), "parent::child");
+                assert_eq!(source.span(), original_span);
+            } else {
+                panic!("Expected Relation element");
+            }
+        } else {
+            panic!("Expected Component element");
         }
     }
 }

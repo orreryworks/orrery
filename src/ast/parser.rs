@@ -411,7 +411,7 @@ fn relation_type<'src>(input: &mut Input<'src>) -> IResult<'src, &'src str> {
 /// Parse a component with optional nested elements
 fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
     let (name, name_span) = identifier.parse_next(input)?;
-    let name_spanned = make_spanned(name, name_span);
+    let name_spanned = make_spanned(name.to_string(), name_span);
 
     ws_comments0.parse_next(input)?;
 

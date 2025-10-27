@@ -21,7 +21,6 @@ The roadmap is organized into major feature categories, each containing specific
   - [Multi Error Reporting](#multi-error-reporting)
   - [Improve Error Messages](#improve-error-messages)
   - [Empty/Unavailable Span](#emptyunavailable-span)
-  - [Desugar Identifiers to Full Path](#desugar-identifiers-to-full-path)
   - [Validate Relations and Notes Identifiers](#validate-relations-and-notes-identifiers)
 - **[Engines](#engines)** - Diagram generation and processing engines
   - [Fix Cross Level Relations in Component Diagram](#fix-cross-level-relations-in-component-diagram)
@@ -485,49 +484,7 @@ Add an `Empty` or `Unavailable` variant to the `Span` type to explicitly represe
 
 ---
 
-#### Desugar Identifiers to Full Path
 
-**Description**:
-Move the resolution of nested component identifiers from relative paths to fully qualified paths from the elaboration phase to the desugaring phase.
-
-**Current Problem**:
-Filament supports nested components with namespaces and allows relative referencing. Currently, the `elaborate` phase converts these relative identifiers to full path identifiers. This means:
-- Full path identifiers are not available during the validation phase
-- Cross-reference checking cannot be performed during validation
-- Errors related to identifier resolution are detected late in the compilation process
-- Validation logic cannot verify that referenced components actually exist
-
-**Proposed Solution**:
-Move identifier path resolution from `elaborate.rs` to `desugar.rs`:
-1. During desugaring, resolve all relative component references to their fully qualified paths
-2. Build a namespace context to track available identifiers at each scope level
-3. Resolve references based on the current namespace context and search paths
-4. Pass fully resolved identifiers to the validation phase
-
-**Benefits**:
-- Earlier error detection for invalid component references
-- Enables comprehensive cross-reference validation during the validation phase
-- Better separation of concerns between compilation phases
-- More accurate error messages with full context
-- Enables validation of relations and notes that reference components
-
-**Implementation Considerations**:
-- Build a symbol table or namespace resolution system in the desugaring phase
-- Handle scope tracking for nested components correctly
-- Preserve span information during identifier resolution for error reporting
-- Update the validation phase to expect fully qualified identifiers
-- Refactor elaborate phase to remove now-redundant identifier resolution
-- Ensure proper handling of ambiguous references and shadowing
-
-**Dependencies**:
-- Should be implemented before "Validate Relations and Notes Identifiers"
-
-**References**:
-- `src/ast/desugar.rs` - Target location for implementation
-- `src/ast/elaborate.rs` - Current location of identifier resolution
-- `src/ast/validate.rs` - Will benefit from fully qualified identifiers
-
----
 
 #### Validate Relations and Notes Identifiers
 
@@ -564,8 +521,8 @@ Extend the validator in `validate.rs` to:
 - Ensure validation works with the fully qualified identifiers from desugaring
 
 **Dependencies**:
-- **Requires**: "Desugar Identifiers to Full Path" to be implemented first
-- Depends on having fully qualified identifiers available during validation
+- ✅ **Completed**: "Desugar Identifiers to Full Path" - Fully qualified identifiers are now available during validation
+- Ready for implementation now that identifier resolution is complete
 
 **References**:
 - `src/ast/validate.rs` - Primary implementation location

@@ -286,7 +286,7 @@ impl Note<'_> {
 #[derive(Debug)]
 pub enum Element<'a> {
     Component {
-        name: Spanned<&'a str>,
+        name: Spanned<String>,
         display_name: Option<Spanned<String>>,
         type_name: Spanned<&'a str>,
         attributes: Vec<Attribute<'a>>,

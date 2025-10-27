@@ -199,7 +199,7 @@ pub trait Visitor<'a> {
     /// Visit a component element
     fn visit_component(
         &mut self,
-        name: &Spanned<&'a str>,
+        name: &Spanned<String>,
         display_name: &Option<Spanned<String>>,
         type_name: &Spanned<&'a str>,
         attributes: &[Attribute<'a>],
@@ -215,7 +215,7 @@ pub trait Visitor<'a> {
     }
 
     /// Visit a component name
-    fn visit_component_name(&mut self, _name: &Spanned<&'a str>) {}
+    fn visit_component_name(&mut self, _name: &Spanned<String>) {}
 
     /// Visit a display name
     fn visit_display_name(&mut self, _display_name: &Spanned<String>) {}
@@ -535,7 +535,7 @@ mod tests {
     impl<'a> Visitor<'a> for CountingVisitor {
         fn visit_component(
             &mut self,
-            name: &Spanned<&'a str>,
+            name: &Spanned<String>,
             display_name: &Option<Spanned<String>>,
             type_name: &Spanned<&'a str>,
             attributes: &[Attribute<'a>],
@@ -591,7 +591,7 @@ mod tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("user", Span::new(10..14)),
+                    name: Spanned::new("user".to_string(), Span::new(10..14)),
                     display_name: None,
                     type_name: Spanned::new("Rectangle", Span::new(16..25)),
                     attributes: vec![],

@@ -57,7 +57,7 @@ impl<'a> Builder<'a> {
 
                 // Build block from elements
                 debug!("Building block from elements");
-                let block = self.build_block_from_elements(&diag.elements, None, kind)?;
+                let block = self.build_block_from_elements(&diag.elements, kind)?;
 
                 // Convert block to scope
                 let scope = match block {
@@ -180,14 +180,14 @@ impl<'a> Builder<'a> {
 
     fn build_diagram_from_parser(
         &mut self,
-        diag: &parser_types::Element,
+        diag: &parser_types::Element<'a>,
     ) -> EResult<types::Diagram> {
         match diag {
             parser_types::Element::Diagram(diag) => {
                 // Determine diagram kind for embedded diagram
                 let embedded_kind = self.determine_diagram_kind(&diag.kind)?;
                 // Create a block from the diagram elements
-                let block = self.build_block_from_elements(&diag.elements, None, embedded_kind)?;
+                let block = self.build_block_from_elements(&diag.elements, embedded_kind)?;
                 let scope = match block {
                     types::Block::None => types::Scope::default(),
                     types::Block::Scope(scope) => scope,
@@ -229,13 +229,13 @@ impl<'a> Builder<'a> {
 
     fn build_diagram_from_embedded_diagram(
         &mut self,
-        element: &parser_types::Element,
+        element: &parser_types::Element<'a>,
     ) -> EResult<types::Diagram> {
         if let parser_types::Element::Diagram(diag) = element {
             // Determine diagram kind for embedded diagram
             let embedded_kind = self.determine_diagram_kind(&diag.kind)?;
             // Create a block from the diagram elements
-            let block = self.build_block_from_elements(&diag.elements, None, embedded_kind)?;
+            let block = self.build_block_from_elements(&diag.elements, embedded_kind)?;
             let scope = match block {
                 types::Block::None => types::Scope::default(),
                 types::Block::Scope(scope) => scope,
@@ -273,8 +273,7 @@ impl<'a> Builder<'a> {
 
     fn build_block_from_elements(
         &mut self,
-        parser_elements: &[parser_types::Element],
-        parent_id: Option<Id>,
+        parser_elements: &[parser_types::Element<'a>],
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Block> {
         if parser_elements.is_empty() {
@@ -304,7 +303,6 @@ impl<'a> Builder<'a> {
             // If no diagrams were found mixed with other elements, build the scope
             Ok(types::Block::Scope(self.build_scope_from_elements(
                 parser_elements,
-                parent_id,
                 diagram_kind,
             )?))
         }
@@ -312,8 +310,7 @@ impl<'a> Builder<'a> {
 
     fn build_scope_from_elements(
         &mut self,
-        parser_elements: &[parser_types::Element],
-        parent_id: Option<Id>,
+        parser_elements: &[parser_types::Element<'a>],
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Scope> {
         let mut elements = Vec::new();
@@ -332,7 +329,6 @@ impl<'a> Builder<'a> {
                     type_name,
                     attributes,
                     nested_elements,
-                    parent_id,
                     parser_elm,
                     diagram_kind,
                 )?,
@@ -342,14 +338,9 @@ impl<'a> Builder<'a> {
                     relation_type,
                     type_spec,
                     label,
-                } => self.build_relation_element(
-                    source,
-                    target,
-                    relation_type,
-                    type_spec,
-                    label,
-                    parent_id,
-                )?,
+                } => {
+                    self.build_relation_element(source, target, relation_type, type_spec, label)?
+                }
                 parser_types::Element::Diagram(_) => {
                     // This should never happen since we already filtered out invalid elements
                     return Err(ElaborationDiagnosticError::from_span(
@@ -365,13 +356,13 @@ impl<'a> Builder<'a> {
                     );
                 }
                 parser_types::Element::Activate { component } => {
-                    self.build_activate_element(component, parent_id, diagram_kind)?
+                    self.build_activate_element(component, diagram_kind)?
                 }
                 parser_types::Element::Deactivate { component } => {
-                    self.build_deactivate_element(component, parent_id, diagram_kind)?
+                    self.build_deactivate_element(component, diagram_kind)?
                 }
                 parser_types::Element::Fragment(fragment) => {
-                    self.build_fragment_element(fragment, parent_id, diagram_kind)?
+                    self.build_fragment_element(fragment, diagram_kind)?
                 }
                 parser_types::Element::AltElseBlock { .. }
                 | parser_types::Element::OptBlock { .. }
@@ -383,9 +374,7 @@ impl<'a> Builder<'a> {
                         "Fragment sugar syntax should have been desugared into Fragment elements before elaboration"
                     );
                 }
-                parser_types::Element::Note(note) => {
-                    self.build_note_element(note, parent_id, diagram_kind)?
-                }
+                parser_types::Element::Note(note) => self.build_note_element(note, diagram_kind)?,
             };
             elements.push(element);
         }
@@ -395,22 +384,21 @@ impl<'a> Builder<'a> {
     /// Builds a component element from parser data
     fn build_component_element(
         &mut self,
-        name: &Spanned<&str>,
+        name: &Spanned<String>,
         display_name: &Option<Spanned<String>>,
-        type_name: &Spanned<&str>,
+        type_name: &Spanned<&'a str>,
         attributes: &[parser_types::Attribute],
-        nested_elements: &[parser_types::Element],
-        parent_id: Option<Id>,
+        nested_elements: &[parser_types::Element<'a>],
         parser_elm: &parser_types::Element,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
-        let node_id = self.create_type_id(parent_id, name.inner());
+        let node_id = Id::new(name);
 
         let type_def = self
             .build_type_definition(type_name, attributes)
             .map_err(|_| {
                 self.create_undefined_type_error(
-                    name,
+                    type_name,
                     &format!("Unknown type '{type_name}' for component '{name}'"),
                 )
             })?;
@@ -441,7 +429,7 @@ impl<'a> Builder<'a> {
             types::Block::Diagram(elaborated_diagram)
         } else {
             // Process regular nested elements
-            self.build_block_from_elements(nested_elements, Some(node_id), diagram_kind)?
+            self.build_block_from_elements(nested_elements, diagram_kind)?
         };
 
         let node = types::Node::new(
@@ -461,16 +449,14 @@ impl<'a> Builder<'a> {
         source: &Spanned<String>,
         target: &Spanned<String>,
         relation_type: &Spanned<&str>,
-        type_spec: &Option<parser_types::RelationTypeSpec>,
+        type_spec: &Option<parser_types::RelationTypeSpec<'a>>,
         label: &Option<Spanned<String>>,
-        parent_id: Option<Id>,
     ) -> EResult<types::Element> {
         // Extract relation type definition from type_spec
         let relation_type_def = self.build_relation_type_definition_from_spec(type_spec)?;
 
-        // Create source and target IDs based on parent context if present
-        let source_id = self.create_type_id(parent_id, source.inner());
-        let target_id = self.create_type_id(parent_id, target.inner());
+        let source_id = Id::new(source.inner());
+        let target_id = Id::new(target.inner());
 
         let arrow_direction = draw::ArrowDirection::from_str(relation_type).map_err(|_| {
             ElaborationDiagnosticError::from_span(
@@ -494,7 +480,6 @@ impl<'a> Builder<'a> {
     fn build_activate_element(
         &mut self,
         component: &Spanned<String>,
-        parent_id: Option<Id>,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
         // Only allow activate in sequence diagrams
@@ -511,7 +496,7 @@ impl<'a> Builder<'a> {
         }
 
         // Create Id for the component being activated
-        let component_id = self.create_type_id(parent_id, component.inner());
+        let component_id = Id::new(component.inner());
 
         Ok(types::Element::Activate(component_id))
     }
@@ -520,7 +505,6 @@ impl<'a> Builder<'a> {
     fn build_deactivate_element(
         &mut self,
         component: &Spanned<String>,
-        parent_id: Option<Id>,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
         // Only allow deactivate in sequence diagrams
@@ -537,7 +521,7 @@ impl<'a> Builder<'a> {
         }
 
         // Create Id for the component being deactivated
-        let component_id = self.create_type_id(parent_id, component.inner());
+        let component_id = Id::new(component.inner());
 
         Ok(types::Element::Deactivate(component_id))
     }
@@ -545,8 +529,7 @@ impl<'a> Builder<'a> {
     /// Builds a fragment element from parser data
     fn build_fragment_element(
         &mut self,
-        fragment: &parser_types::Fragment,
-        parent_id: Option<Id>,
+        fragment: &parser_types::Fragment<'a>,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
         // Only allow fragments in sequence diagrams
@@ -581,8 +564,7 @@ impl<'a> Builder<'a> {
 
         let mut sections = Vec::new();
         for parser_section in &fragment.sections {
-            let scope =
-                self.build_scope_from_elements(&parser_section.elements, parent_id, diagram_kind)?;
+            let scope = self.build_scope_from_elements(&parser_section.elements, diagram_kind)?;
             let elements_vec = scope.elements().to_vec();
 
             sections.push(types::FragmentSection::new(
@@ -601,7 +583,7 @@ impl<'a> Builder<'a> {
     /// Build a relation type definition from a relation type specification
     fn build_relation_type_definition_from_spec(
         &mut self,
-        type_spec: &Option<parser_types::RelationTypeSpec>,
+        type_spec: &Option<parser_types::RelationTypeSpec<'a>>,
     ) -> EResult<Rc<types::TypeDefinition>> {
         match type_spec {
             Some(spec) => {
@@ -623,7 +605,7 @@ impl<'a> Builder<'a> {
 
     fn build_type_definition(
         &mut self,
-        type_name: &Spanned<&str>,
+        type_name: &Spanned<&'a str>,
         attributes: &[parser_types::Attribute],
     ) -> EResult<Rc<types::TypeDefinition>> {
         // Look up the base type
@@ -662,15 +644,6 @@ impl<'a> Builder<'a> {
                 Some("Supported diagram types are: 'component', 'sequence'".to_string()),
             )),
         }
-    }
-
-    /// Creates an Id from a string name, considering the parent context if available
-    ///
-    /// This function is used for both component names (simple identifiers) and relation
-    /// source/target names (which may be nested identifiers like "frontend::app" created
-    /// by joining parts with "::").
-    fn create_type_id(&self, parent_id: Option<Id>, name: &str) -> Id {
-        parent_id.map_or_else(|| Id::new(name), |parent| parent.create_nested(name))
     }
 
     /// Creates a standardized error for undefined type situations
@@ -946,7 +919,6 @@ impl<'a> Builder<'a> {
     /// # Arguments
     ///
     /// * `note` - Parsed note element from the parser
-    /// * `parent_id` - Parent element ID for resolving element names in 'on' attribute
     /// * `diagram_kind` - Diagram type (determines default alignment)
     ///
     /// # Returns
@@ -955,7 +927,6 @@ impl<'a> Builder<'a> {
     fn build_note_element(
         &mut self,
         note: &parser_types::Note,
-        parent_id: Option<Id>,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
         let type_name = "Note";
@@ -975,8 +946,7 @@ impl<'a> Builder<'a> {
             })?;
 
         // Extract 'on' and 'align' attributes
-        let (on, align) =
-            self.extract_note_attributes(&note.attributes, parent_id, diagram_kind)?;
+        let (on, align) = self.extract_note_attributes(&note.attributes, diagram_kind)?;
 
         let content = note.content.inner().to_string();
 
@@ -994,7 +964,6 @@ impl<'a> Builder<'a> {
     /// # Arguments
     ///
     /// * `attributes` - Note attributes from the parser
-    /// * `parent_id` - Parent element ID for scoping element name resolution
     /// * `diagram_kind` - Diagram type (determines default alignment if not specified)
     ///
     /// # Returns
@@ -1005,7 +974,6 @@ impl<'a> Builder<'a> {
     fn extract_note_attributes(
         &mut self,
         attributes: &[parser_types::Attribute],
-        parent_id: Option<Id>,
         diagram_kind: types::DiagramKind,
     ) -> EResult<(Vec<Id>, types::NoteAlign)> {
         let mut on: Option<Vec<Id>> = None;
@@ -1023,11 +991,7 @@ impl<'a> Builder<'a> {
                         )
                     })?;
 
-                    on = Some(
-                        ids.iter()
-                            .map(|id_str| self.create_type_id(parent_id, id_str.inner()))
-                            .collect(),
-                    );
+                    on = Some(ids.iter().map(|id_str| Id::new(id_str.inner())).collect());
                 }
                 "align" => {
                     let align_str = attr.value.as_str().map_err(|_| {
@@ -1299,7 +1263,7 @@ mod tests {
         let elements = vec![
             // Define a component
             parser_types::Element::Component {
-                name: Spanned::new("user", Span::new(0..4)),
+                name: Spanned::new("user".to_string(), Span::new(0..4)),
                 display_name: None,
                 type_name: Spanned::new("Rectangle", Span::new(5..14)),
                 attributes: vec![],
@@ -1374,7 +1338,7 @@ mod tests {
         let elements = vec![
             // Define a component
             parser_types::Element::Component {
-                name: Spanned::new("user", Span::new(0..4)),
+                name: Spanned::new("user".to_string(), Span::new(0..4)),
                 display_name: None,
                 type_name: Spanned::new("Rectangle", Span::new(5..14)),
                 attributes: vec![],
@@ -1419,21 +1383,21 @@ mod tests {
         let elements = vec![
             // components
             parser_types::Element::Component {
-                name: Spanned::new("user", Span::new(0..4)),
+                name: Spanned::new("user".to_string(), Span::new(0..4)),
                 display_name: None,
                 type_name: Spanned::new("Rectangle", Span::new(0..9)),
                 attributes: vec![],
                 nested_elements: vec![],
             },
             parser_types::Element::Component {
-                name: Spanned::new("server", Span::new(0..6)),
+                name: Spanned::new("server".to_string(), Span::new(0..6)),
                 display_name: None,
                 type_name: Spanned::new("Rectangle", Span::new(0..9)),
                 attributes: vec![],
                 nested_elements: vec![],
             },
             parser_types::Element::Component {
-                name: Spanned::new("database", Span::new(0..8)),
+                name: Spanned::new("database".to_string(), Span::new(0..8)),
                 display_name: None,
                 type_name: Spanned::new("Rectangle", Span::new(0..9)),
                 attributes: vec![],
@@ -1563,7 +1527,7 @@ mod tests {
         };
 
         let diagram_kind = types::DiagramKind::Sequence;
-        let result = builder.build_note_element(&note, None, diagram_kind);
+        let result = builder.build_note_element(&note, diagram_kind);
 
         assert!(result.is_ok());
         let element = result.unwrap();
@@ -1587,7 +1551,7 @@ mod tests {
         };
 
         let diagram_kind = types::DiagramKind::Component;
-        let result = builder.build_note_element(&note, None, diagram_kind);
+        let result = builder.build_note_element(&note, diagram_kind);
 
         assert!(result.is_ok());
         let element = result.unwrap();
@@ -1647,7 +1611,7 @@ mod tests {
         };
 
         let diagram_kind = types::DiagramKind::Sequence;
-        let result = builder.build_note_element(&note, None, diagram_kind);
+        let result = builder.build_note_element(&note, diagram_kind);
 
         assert!(result.is_ok());
         let element = result.unwrap();
