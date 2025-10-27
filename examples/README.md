@@ -44,7 +44,5 @@ The generated SVG will be saved as `out.svg` in the current directory.
 - `float_test.fil` - Floating point positioning
 
 ### Error Examples
-- `elaboration_errors.fil` - Common elaboration errors
-- `error_example.fil` - General error scenarios
 - `uml_error_example.fil` - UML-specific errors
 - `errors/` - Directory with additional error examples

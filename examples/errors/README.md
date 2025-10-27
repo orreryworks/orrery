@@ -25,6 +25,9 @@ This directory contains example files demonstrating Filament's error reporting s
 - [`keyword_typo.fil`](keyword_typo.fil) - Common keyword typos
 - [`error_example.fil`](error_example.fil) - Complex multi-error example
 
+### Elaboration Errors
+- [`elaboration_errors.fil`](elaboration_errors.fil) - Common elaboration errors (type mismatches, undefined types, etc.)
+
 ### Activation Errors (Blocks and Explicit Statements)
 - [`activation_in_component_diagram_block.fil`](activation_in_component_diagram_block.fil) - Activation (block form) used in a component diagram (invalid)
 - [`activation_in_component_diagram_explicit.fil`](activation_in_component_diagram_explicit.fil) - Activation (explicit form) used in a component diagram (invalid)
