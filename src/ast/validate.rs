@@ -3,6 +3,14 @@
 //! This module implements a visitor-based (read-only) traversal system for AST validation.
 //! It sits between the desugar and elaboration phases, allowing for semantic
 //! validation of the AST before elaboration.
+//!
+//! ## Validations Performed
+//!
+//! - **Component Identifier References**: Validates that all component identifiers referenced
+//!   in relations, notes, and activation statements are defined in the diagram
+//! - **Activate/Deactivate Pairing**: Ensures activate statements have corresponding deactivate
+//!   statements in sequence diagrams
+//! - **Note Alignment**: Validates that note alignment values are appropriate for the diagram type
 
 use super::{
     span::Span,
@@ -67,8 +75,15 @@ pub trait Visitor<'a> {
     /// Visit a float attribute value
     fn visit_float_value(&mut self, _value: &Spanned<f32>) {}
 
+    /// Visit a single identifier (component reference)
+    fn visit_identifier(&mut self, _identifier: &Spanned<String>) {}
+
     /// Visit an identifiers attribute value (list of identifiers)
-    fn visit_identifiers(&mut self, _identifiers: &[Spanned<String>]) {}
+    fn visit_identifiers(&mut self, identifiers: &[Spanned<String>]) {
+        for identifier in identifiers {
+            self.visit_identifier(identifier);
+        }
+    }
 
     /// Visit a list of type definitions
     fn visit_type_definitions(&mut self, type_definitions: &[TypeDefinition<'a>]) {
@@ -244,10 +259,14 @@ pub trait Visitor<'a> {
     }
 
     /// Visit a relation source
-    fn visit_relation_source(&mut self, _source: &Spanned<String>) {}
+    fn visit_relation_source(&mut self, source: &Spanned<String>) {
+        self.visit_identifier(source);
+    }
 
     /// Visit a relation target
-    fn visit_relation_target(&mut self, _target: &Spanned<String>) {}
+    fn visit_relation_target(&mut self, target: &Spanned<String>) {
+        self.visit_identifier(target);
+    }
 
     /// Visit a relation type
     fn visit_relation_type(&mut self, _relation_type: &Spanned<&'a str>) {}
@@ -276,10 +295,14 @@ pub trait Visitor<'a> {
     fn visit_activate_component(&mut self, _component: &Spanned<String>) {}
 
     /// Visit an activate statement
-    fn visit_activate(&mut self, _component: &Spanned<String>) {}
+    fn visit_activate(&mut self, component: &Spanned<String>) {
+        self.visit_identifier(component);
+    }
 
     /// Visit a deactivate statement
-    fn visit_deactivate(&mut self, _component: &Spanned<String>) {}
+    fn visit_deactivate(&mut self, component: &Spanned<String>) {
+        self.visit_identifier(component);
+    }
 
     /// Visit a note element
     fn visit_note(&mut self, note: &Note<'a>) {
@@ -299,13 +322,25 @@ pub fn visit_diagram<'a, V: Visitor<'a>>(visitor: &mut V, diagram: &Diagram<'a>)
 /// Validator that checks all diagram semantic constraints
 ///
 /// Uses a visitor-based traversal to validate:
+/// - Component identifier references (relations, notes, activate/deactivate)
 /// - Activate/deactivate pairing in sequence diagrams
 /// - Note attribute values (align)
 ///
 /// The validator collects all errors during traversal for reporting after traversal.
+///
+/// ## Component Registry
+///
+/// The validator maintains a component registry (`Vec<HashMap<String, Span>>`) with one
+/// registry per diagram. Components are registered as they are visited, and all subsequent
+/// identifier references (in relations, activations, and notes) are validated against this
+/// registry. Since identifiers are fully qualified after desugaring, all components in a
+/// diagram are accessible regardless of nesting depth.
 pub struct Validator<'a> {
     // Activation validation state
     activation_stack: Vec<HashMap<Id, Vec<Span>>>,
+
+    // Component identifier registry for validation
+    component_registry: Vec<HashMap<String, Span>>,
 
     // Note validation state
     diagram_kind: Option<&'a str>,
@@ -318,6 +353,7 @@ impl<'a> Validator<'a> {
     pub fn new() -> Self {
         Self {
             activation_stack: Vec::new(),
+            component_registry: Vec::new(),
             diagram_kind: None,
             errors: Vec::new(),
         }
@@ -383,6 +419,20 @@ impl<'a> Validator<'a> {
 }
 
 impl<'a> Visitor<'a> for Validator<'a> {
+    fn visit_diagram(&mut self, diagram: &Diagram<'a>) {
+        // Begin component registry for this diagram
+        self.component_registry.push(HashMap::new());
+
+        // Call default traversal
+        self.visit_diagram_kind(&diagram.kind);
+        self.visit_attributes(&diagram.attributes);
+        self.visit_type_definitions(&diagram.type_definitions);
+        self.visit_elements(&diagram.elements);
+
+        // End component registry scope
+        self.component_registry.pop();
+    }
+
     fn visit_diagram_kind(&mut self, kind: &Spanned<&'a str>) {
         self.diagram_kind = Some(kind.inner());
     }
@@ -419,13 +469,30 @@ impl<'a> Visitor<'a> for Validator<'a> {
         }
     }
 
+    fn visit_component_name(&mut self, name: &Spanned<String>) {
+        // Register this component in the current diagram's registry
+        let registry = self
+            .component_registry
+            .last_mut()
+            .expect("component registry not initialized");
+        registry.insert(name.inner().clone(), name.span());
+    }
+
     fn visit_activate(&mut self, component: &Spanned<String>) {
+        // Validate component identifier exists
+        self.visit_identifier(component);
+
+        // Then handle activation stack logic
         let id = Id::new(component.inner());
         let state = self.activation_state_mut();
         state.entry(id).or_default().push(component.span());
     }
 
     fn visit_deactivate(&mut self, component: &Spanned<String>) {
+        // Validate component identifier exists
+        self.visit_identifier(component);
+
+        // Then handle activation stack logic
         let id = Id::new(component.inner());
         let state = self.activation_state_mut();
         match state.get_mut(&id) {
@@ -452,7 +519,9 @@ impl<'a> Visitor<'a> for Validator<'a> {
     }
 
     fn visit_note(&mut self, note: &Note<'a>) {
-        // Validate note attributes
+        self.visit_attributes(&note.attributes);
+
+        // Validation for align attribute
         for attr in &note.attributes {
             if *attr.name.inner() == "align"
                 && let Ok(align_value) = attr.value.as_str()
@@ -463,6 +532,22 @@ impl<'a> Visitor<'a> for Validator<'a> {
 
         // Visit content
         self.visit_note_content(&note.content);
+    }
+
+    fn visit_identifier(&mut self, identifier: &Spanned<String>) {
+        let registry = self
+            .component_registry
+            .last()
+            .expect("component registry not initialized");
+
+        if !registry.contains_key(identifier.inner()) {
+            self.errors.push(ElaborationDiagnosticError::from_span(
+                format!("Component '{}' not found", identifier.inner()),
+                identifier.span(),
+                "undefined component",
+                Some("Component must be defined before it can be referenced".to_string()),
+            ));
+        }
     }
 }
 
@@ -510,7 +595,6 @@ pub fn validate_notes(diagram: &Diagram<'_>) -> Result<(), ElaborationDiagnostic
 
 #[cfg(test)]
 mod tests {
-    use super::super::span::Span;
     use super::*;
 
     /// Test visitor that counts different element types
@@ -629,11 +713,18 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
+                Element::Component {
+                    name: Spanned::new("user".to_string(), Span::new(0..4)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(6..15)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
                 Element::Activate {
-                    component: Spanned::new("user".to_string(), Span::new(0..4)),
+                    component: Spanned::new("user".to_string(), Span::new(17..21)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user".to_string(), Span::new(5..9)),
+                    component: Spanned::new("user".to_string(), Span::new(23..27)),
                 },
             ],
         };
@@ -679,17 +770,24 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
-                Element::Activate {
-                    component: Spanned::new("user".to_string(), Span::new(0..4)),
+                Element::Component {
+                    name: Spanned::new("user".to_string(), Span::new(0..4)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(6..15)),
+                    attributes: vec![],
+                    nested_elements: vec![],
                 },
                 Element::Activate {
-                    component: Spanned::new("user".to_string(), Span::new(5..9)),
+                    component: Spanned::new("user".to_string(), Span::new(17..21)),
+                },
+                Element::Activate {
+                    component: Spanned::new("user".to_string(), Span::new(23..27)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user".to_string(), Span::new(10..14)),
+                    component: Spanned::new("user".to_string(), Span::new(29..33)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user".to_string(), Span::new(15..19)),
+                    component: Spanned::new("user".to_string(), Span::new(35..39)),
                 },
             ],
         };
@@ -705,17 +803,31 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
-                Element::Activate {
-                    component: Spanned::new("user".to_string(), Span::new(0..4)),
+                Element::Component {
+                    name: Spanned::new("user".to_string(), Span::new(0..4)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(6..15)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Component {
+                    name: Spanned::new("server".to_string(), Span::new(17..23)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(25..34)),
+                    attributes: vec![],
+                    nested_elements: vec![],
                 },
                 Element::Activate {
-                    component: Spanned::new("server".to_string(), Span::new(5..11)),
+                    component: Spanned::new("user".to_string(), Span::new(36..40)),
+                },
+                Element::Activate {
+                    component: Spanned::new("server".to_string(), Span::new(42..48)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user".to_string(), Span::new(12..16)),
+                    component: Spanned::new("user".to_string(), Span::new(50..54)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("server".to_string(), Span::new(17..23)),
+                    component: Spanned::new("server".to_string(), Span::new(56..62)),
                 },
             ],
         };
@@ -748,8 +860,7 @@ mod tests {
 #[cfg(test)]
 mod note_validation_tests {
     use super::*;
-    use crate::ast::lexer::tokenize;
-    use crate::ast::parser::build_diagram;
+    use crate::ast::{lexer::tokenize, parser::build_diagram};
 
     #[test]
     fn test_valid_note_sequence_diagram() {
@@ -881,5 +992,410 @@ mod note_validation_tests {
         } else {
             panic!("Expected Diagram element");
         }
+    }
+}
+
+#[cfg(test)]
+mod identifier_validation_tests {
+    use super::*;
+
+    #[test]
+    fn test_component_registry_fully_qualified_access() {
+        // Test that fully qualified identifiers from nested components
+        // are all accessible in a single diagram-level registry
+        let diagram = Diagram {
+            kind: Spanned::new("component", Span::new(0..9)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements: vec![
+                Element::Component {
+                    name: Spanned::new("frontend".to_string(), Span::new(0..8)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(10..19)),
+                    attributes: vec![],
+                    nested_elements: vec![
+                        Element::Component {
+                            name: Spanned::new("frontend::app".to_string(), Span::new(20..33)),
+                            display_name: None,
+                            type_name: Spanned::new("Rectangle", Span::new(35..44)),
+                            attributes: vec![],
+                            nested_elements: vec![],
+                        },
+                        Element::Component {
+                            name: Spanned::new("frontend::ui".to_string(), Span::new(45..57)),
+                            display_name: None,
+                            type_name: Spanned::new("Rectangle", Span::new(59..68)),
+                            attributes: vec![],
+                            nested_elements: vec![],
+                        },
+                    ],
+                },
+                Element::Component {
+                    name: Spanned::new("backend".to_string(), Span::new(69..76)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(78..87)),
+                    attributes: vec![],
+                    nested_elements: vec![Element::Component {
+                        name: Spanned::new("backend::api".to_string(), Span::new(88..100)),
+                        display_name: None,
+                        type_name: Spanned::new("Rectangle", Span::new(102..111)),
+                        attributes: vec![],
+                        nested_elements: vec![],
+                    }],
+                },
+            ],
+        };
+
+        let mut validator = Validator::new();
+        visit_diagram(&mut validator, &diagram);
+
+        // All components should be registered at diagram level with fully qualified names
+        // This includes: frontend, frontend::app, frontend::ui, backend, backend::api
+        assert!(validator.errors.is_empty());
+    }
+
+    #[test]
+    fn test_visit_identifier_not_found() {
+        let mut validator = Validator::new();
+
+        // Set up registry with a component
+        validator.component_registry.push(
+            vec![("app".to_string(), Span::new(0..3))]
+                .into_iter()
+                .collect(),
+        );
+
+        // Test visit_identifier with a non-existent component
+        validator.visit_identifier(&Spanned::new("unknown".to_string(), Span::new(10..17)));
+
+        // Should have an error
+        assert_eq!(validator.errors.len(), 1);
+        assert!(
+            validator.errors[0]
+                .to_string()
+                .contains("Component 'unknown' not found")
+        );
+    }
+
+    #[test]
+    fn test_visit_identifiers_multiple() {
+        let mut validator = Validator::new();
+
+        // Set up registry with multiple components
+        validator.component_registry.push(
+            vec![
+                ("client".to_string(), Span::new(0..6)),
+                ("server".to_string(), Span::new(18..24)),
+            ]
+            .into_iter()
+            .collect(),
+        );
+
+        // Test visit_identifier with multiple components
+        validator.visit_identifier(&Spanned::new("client".to_string(), Span::new(40..46)));
+        validator.visit_identifier(&Spanned::new("server".to_string(), Span::new(48..54)));
+
+        // Should not add any errors
+        assert!(validator.errors.is_empty());
+    }
+
+    #[test]
+    fn test_visit_identifiers_some_missing() {
+        let mut validator = Validator::new();
+
+        // Set up registry with one component
+        validator.component_registry.push(
+            vec![("client".to_string(), Span::new(0..6))]
+                .into_iter()
+                .collect(),
+        );
+
+        // Test visit_identifier with one valid and one invalid component
+        validator.visit_identifier(&Spanned::new("client".to_string(), Span::new(40..46)));
+        validator.visit_identifier(&Spanned::new("unknown".to_string(), Span::new(48..55)));
+
+        // Should have one error for the missing component
+        assert_eq!(validator.errors.len(), 1);
+        assert!(
+            validator.errors[0]
+                .to_string()
+                .contains("Component 'unknown' not found")
+        );
+    }
+
+    #[test]
+    fn test_relation_with_valid_components() {
+        let diagram = Diagram {
+            kind: Spanned::new("component", Span::new(0..9)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements: vec![
+                Element::Component {
+                    name: Spanned::new("app".to_string(), Span::new(0..3)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(5..14)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Component {
+                    name: Spanned::new("db".to_string(), Span::new(15..17)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(19..28)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Relation {
+                    source: Spanned::new("app".to_string(), Span::new(30..33)),
+                    target: Spanned::new("db".to_string(), Span::new(37..39)),
+                    relation_type: Spanned::new("->", Span::new(34..36)),
+                    type_spec: None,
+                    label: None,
+                },
+            ],
+        };
+
+        let result = validate_diagram(&diagram);
+        assert!(result.is_ok(), "Valid relation should pass validation");
+    }
+
+    #[test]
+    fn test_relation_with_invalid_source() {
+        let diagram = Diagram {
+            kind: Spanned::new("component", Span::new(0..9)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements: vec![
+                Element::Component {
+                    name: Spanned::new("db".to_string(), Span::new(15..17)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(19..28)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Relation {
+                    source: Spanned::new("unknown".to_string(), Span::new(30..37)),
+                    target: Spanned::new("db".to_string(), Span::new(41..43)),
+                    relation_type: Spanned::new("->", Span::new(38..40)),
+                    type_spec: None,
+                    label: None,
+                },
+            ],
+        };
+
+        let result = validate_diagram(&diagram);
+        assert!(result.is_err(), "Invalid source should fail validation");
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Component 'unknown' not found"));
+    }
+
+    #[test]
+    fn test_relation_with_invalid_target() {
+        let diagram = Diagram {
+            kind: Spanned::new("component", Span::new(0..9)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements: vec![
+                Element::Component {
+                    name: Spanned::new("app".to_string(), Span::new(0..3)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(5..14)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Relation {
+                    source: Spanned::new("app".to_string(), Span::new(30..33)),
+                    target: Spanned::new("missing".to_string(), Span::new(37..44)),
+                    relation_type: Spanned::new("->", Span::new(34..36)),
+                    type_spec: None,
+                    label: None,
+                },
+            ],
+        };
+
+        let result = validate_diagram(&diagram);
+        assert!(result.is_err(), "Invalid target should fail validation");
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Component 'missing' not found"));
+    }
+
+    #[test]
+    fn test_activate_with_valid_component() {
+        let diagram = Diagram {
+            kind: Spanned::new("sequence", Span::new(0..8)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements: vec![
+                Element::Component {
+                    name: Spanned::new("server".to_string(), Span::new(0..6)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(8..17)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Activate {
+                    component: Spanned::new("server".to_string(), Span::new(20..26)),
+                },
+                Element::Deactivate {
+                    component: Spanned::new("server".to_string(), Span::new(30..36)),
+                },
+            ],
+        };
+
+        let result = validate_diagram(&diagram);
+        assert!(result.is_ok(), "Valid activate should pass validation");
+    }
+
+    #[test]
+    fn test_activate_with_invalid_component() {
+        let diagram = Diagram {
+            kind: Spanned::new("sequence", Span::new(0..8)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements: vec![
+                Element::Component {
+                    name: Spanned::new("server".to_string(), Span::new(0..6)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(8..17)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Activate {
+                    component: Spanned::new("unknown".to_string(), Span::new(20..27)),
+                },
+            ],
+        };
+
+        let result = validate_diagram(&diagram);
+        assert!(result.is_err(), "Invalid activate should fail validation");
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Component 'unknown' not found"));
+    }
+
+    #[test]
+    fn test_deactivate_with_invalid_component() {
+        let diagram = Diagram {
+            kind: Spanned::new("sequence", Span::new(0..8)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements: vec![
+                Element::Component {
+                    name: Spanned::new("server".to_string(), Span::new(0..6)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(8..17)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Deactivate {
+                    component: Spanned::new("missing".to_string(), Span::new(20..27)),
+                },
+            ],
+        };
+
+        let result = validate_diagram(&diagram);
+        assert!(result.is_err(), "Invalid deactivate should fail validation");
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Component 'missing' not found"));
+    }
+
+    #[test]
+    fn test_note_with_invalid_component() {
+        let diagram = Diagram {
+            kind: Spanned::new("sequence", Span::new(0..8)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements: vec![
+                Element::Component {
+                    name: Spanned::new("client".to_string(), Span::new(0..6)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(8..17)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Note(Note {
+                    attributes: vec![Attribute {
+                        name: Spanned::new("on", Span::new(20..22)),
+                        value: AttributeValue::Identifiers(vec![Spanned::new(
+                            "unknown".to_string(),
+                            Span::new(24..31),
+                        )]),
+                    }],
+                    content: Spanned::new("Invalid note".to_string(), Span::new(33..47)),
+                }),
+            ],
+        };
+
+        let result = validate_diagram(&diagram);
+        assert!(result.is_err(), "Note with invalid component should fail");
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Component 'unknown' not found"));
+    }
+
+    #[test]
+    fn test_note_with_multiple_components() {
+        let diagram = Diagram {
+            kind: Spanned::new("sequence", Span::new(0..8)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements: vec![
+                Element::Component {
+                    name: Spanned::new("client".to_string(), Span::new(0..6)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(8..17)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Component {
+                    name: Spanned::new("server".to_string(), Span::new(19..25)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(27..36)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Note(Note {
+                    attributes: vec![Attribute {
+                        name: Spanned::new("on", Span::new(38..40)),
+                        value: AttributeValue::Identifiers(vec![
+                            Spanned::new("client".to_string(), Span::new(42..48)),
+                            Spanned::new("server".to_string(), Span::new(50..56)),
+                        ]),
+                    }],
+                    content: Spanned::new("Spanning note".to_string(), Span::new(58..73)),
+                }),
+            ],
+        };
+
+        let result = validate_diagram(&diagram);
+        assert!(
+            result.is_ok(),
+            "Note with multiple valid components should pass"
+        );
+    }
+
+    #[test]
+    fn test_note_with_empty_on_attribute() {
+        let diagram = Diagram {
+            kind: Spanned::new("sequence", Span::new(0..8)),
+            attributes: vec![],
+            type_definitions: vec![],
+            elements: vec![
+                Element::Component {
+                    name: Spanned::new("client".to_string(), Span::new(0..6)),
+                    display_name: None,
+                    type_name: Spanned::new("Rectangle", Span::new(8..17)),
+                    attributes: vec![],
+                    nested_elements: vec![],
+                },
+                Element::Note(Note {
+                    attributes: vec![Attribute {
+                        name: Spanned::new("on", Span::new(20..22)),
+                        value: AttributeValue::Identifiers(vec![]),
+                    }],
+                    content: Spanned::new("Margin note".to_string(), Span::new(24..37)),
+                }),
+            ],
+        };
+
+        let result = validate_diagram(&diagram);
+        assert!(result.is_ok(), "Note with empty on attribute should pass");
     }
 }

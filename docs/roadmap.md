@@ -21,7 +21,6 @@ The roadmap is organized into major feature categories, each containing specific
   - [Multi Error Reporting](#multi-error-reporting)
   - [Improve Error Messages](#improve-error-messages)
   - [Empty/Unavailable Span](#emptyunavailable-span)
-  - [Validate Relations and Notes Identifiers](#validate-relations-and-notes-identifiers)
 - **[Engines](#engines)** - Diagram generation and processing engines
   - [Fix Cross Level Relations in Component Diagram](#fix-cross-level-relations-in-component-diagram)
   - [Pre-compute Activation Box Associations for Messages](#pre-compute-activation-box-associations-for-messages)
@@ -485,50 +484,6 @@ Add an `Empty` or `Unavailable` variant to the `Span` type to explicitly represe
 ---
 
 
-
-#### Validate Relations and Notes Identifiers
-
-**Description**:
-Add validation during the validation phase to ensure that component identifiers referenced in relations and notes actually exist and are properly defined.
-
-**Current Problem**:
-Relations and notes can reference component identifiers that may not exist or may be defined later. Currently, these references are not validated early in the compilation process, leading to:
-- Late error detection during elaboration or rendering
-- Poor error messages without proper source location context
-- Inability to catch typos or missing component definitions early
-
-**Proposed Solution**:
-Extend the validator in `validate.rs` to:
-1. Maintain a registry of all defined component identifiers during validation traversal
-2. Check that source and target identifiers in relations reference valid components
-3. Verify that note alignment references (`on: component_name`) point to existing components
-4. Report clear validation errors with source locations when references are invalid
-5. Provide suggestions for similar component names when typos are detected
-
-**Benefits**:
-- Early detection of undefined component references
-- Better error messages with precise source locations
-- Fail-fast behavior reduces wasted compilation time
-- Improved developer experience with clear, actionable error messages
-- Prevents invalid diagrams from progressing through later compilation phases
-
-**Implementation Considerations**:
-- Build component identifier registry during validation traversal
-- Handle scoping correctly for nested components
-- Provide helpful error messages with suggestions for misspelled names
-- Consider forward references and declaration order
-- Validate both relation endpoints and note component references
-- Ensure validation works with the fully qualified identifiers from desugaring
-
-**Dependencies**:
-- ✅ **Completed**: "Desugar Identifiers to Full Path" - Fully qualified identifiers are now available during validation
-- Ready for implementation now that identifier resolution is complete
-
-**References**:
-- `src/ast/validate.rs` - Primary implementation location
-- `src/ast/desugar.rs` - Provides fully qualified identifiers
-
----
 
 ### Engines
 
