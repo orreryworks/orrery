@@ -21,6 +21,8 @@ The roadmap is organized into major feature categories, each containing specific
   - [Multi Error Reporting](#multi-error-reporting)
   - [Improve Error Messages](#improve-error-messages)
   - [Empty/Unavailable Span](#emptyunavailable-span)
+  - [Convert String to Id in Parser/Desugar](#convert-string-to-id-in-parserdesugar)
+  - [Validator Error Variation](#validator-error-variation)
 - **[Engines](#engines)** - Diagram generation and processing engines
   - [Fix Cross Level Relations in Component Diagram](#fix-cross-level-relations-in-component-diagram)
   - [Pre-compute Activation Box Associations for Messages](#pre-compute-activation-box-associations-for-messages)
@@ -480,6 +482,85 @@ Add an `Empty` or `Unavailable` variant to the `Span` type to explicitly represe
 
 **References**:
 - `src/ast/span.rs` - Current span implementation
+
+---
+
+#### Convert String to Id in Parser/Desugar
+
+**Description**:
+Convert `String` types to `Id` types earlier in the compilation pipeline (during parsing or desugaring) to improve performance and reduce redundant work in later stages.
+
+**Current Problem**:
+Currently, identifiers are kept as `String` types through the parser and desugar phases. In the validation and elaboration steps, this requires:
+- Repeated string comparisons instead of efficient `Id` comparisons
+- Constructing `Id` instances multiple times for the same identifier
+- Extra overhead when checking component references, relations, and activations
+
+**Proposed Solution**:
+Convert `String` to `Id` during the parser or desugar phase, so that:
+- All subsequent stages (validation, elaboration) work with `Id` directly
+- Identifier comparisons use efficient interned string comparison
+- `Id` instances are created once and reused throughout the pipeline
+
+**Benefits**:
+- Improved performance through efficient `Id` comparisons
+- Reduced memory allocations for identifier strings
+- Cleaner code in validation and elaboration stages
+- Consistent identifier representation across the AST
+
+**Implementation Considerations**:
+- Update parser types to use `Id` instead of `String` where appropriate
+- Modify parser functions to create `Id` instances during parsing
+- Update desugar phase to work with `Id` types
+- Consider whether nested identifiers should be joined before or after conversion to `Id`
+- Update all downstream code that expects `String` to work with `Id`
+
+**Related Files**:
+- `src/ast/parser.rs` - Parser implementation
+- `src/ast/parser_types.rs` - AST type definitions
+- `src/ast/desugar.rs` - Desugaring phase
+- `src/ast/elaborate.rs` - Elaboration phase
+- `src/ast/validate.rs` - Validation phase
+- `src/identifier.rs` - Id type implementation
+
+---
+
+#### Validator Error Variation
+
+**Description**:
+Create a dedicated error type for validation errors instead of reusing `ElaborationDiagnosticError`.
+
+**Current Problem**:
+The validator currently returns `ElaborationDiagnosticError` for validation errors, which:
+- Creates confusion about where errors originate
+- Makes it harder to distinguish validation errors from elaboration errors
+- Doesn't follow the pattern established by the parser (which has its own `ParseDiagnosticError`)
+- Limits the ability to provide validation-specific error information or context
+
+**Proposed Solution**:
+Create a new `ValidationDiagnosticError` type similar to `ParseDiagnosticError`:
+- Define a new error type in a dedicated module (e.g., `src/error/validate.rs`)
+- Update validator to return this new error type
+- Maintain consistent diagnostic capabilities (spans, labels, help text)
+- Follow the same patterns as parser and elaboration error types
+
+**Benefits**:
+- Clear separation of concerns between compilation phases
+- Better error categorization and reporting
+- Easier to add validation-specific error context
+- Consistent error handling architecture across the compiler
+
+**Implementation Considerations**:
+- Create new `ValidationDiagnosticError` type with miette support
+- Update `Validator` struct to collect `ValidationDiagnosticError` instances
+- Update `validate_diagram()` and related functions to return new error type
+- Update error handling in the compilation pipeline
+- Consider whether to keep a unified top-level error enum that wraps all error types
+
+**Related Files**:
+- `src/ast/validate.rs` - Validator implementation
+- `src/error/elaborate.rs` - Elaboration error types (template/reference)
+- `src/error/parser.rs` - Parser error types (template/reference)
 
 ---
 
