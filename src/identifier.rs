@@ -34,7 +34,7 @@ lazy_static! {
 ///
 /// // Create nested identifiers
 /// let nested_id = user_id.create_nested("database");
-/// assert_eq!(nested_id.to_string(), "user_service::database");
+/// assert_eq!(nested_id, "user_service::database");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Id(DefaultSymbol);
@@ -82,23 +82,27 @@ impl Id {
     ///
     /// # Arguments
     ///
-    /// * `child_id` - The child identifier string to append.
+    /// * `child_id` - The child identifier to append.
     ///
     /// # Examples
     ///
     /// ```
-    /// use filament::identifier::Id;
-    ///
+    /// # use filament::identifier::Id;
+    /// #
     /// let parent = Id::new("frontend");
-    /// let nested = parent.create_nested("app");
-    /// assert_eq!(nested.to_string(), "frontend::app");
+    /// let child = Id::new("app");
+    /// let nested = parent.create_nested_from_id(child);
+    /// assert_eq!(nested, "frontend::app");
     /// ```
-    pub fn create_nested(&self, child_id: &str) -> Self {
+    pub fn create_nested(&self, child_id: Id) -> Self {
         let mut interner = INTERNER.lock().unwrap();
         let parent_str = interner
             .resolve(self.0)
             .expect("Parent ID should exist in interner");
-        let nested_name = format!("{}::{}", parent_str, child_id);
+        let child_str = interner
+            .resolve(child_id.0)
+            .expect("Child ID should exist in interner");
+        let nested_name = format!("{}::{}", parent_str, child_str);
         let symbol = interner.get_or_intern(&nested_name);
         Self(symbol)
     }
@@ -135,10 +139,47 @@ impl From<&str> for Id {
     /// use filament::identifier::Id;
     ///
     /// let id: Id = "example".into();
-    /// assert_eq!(id.to_string(), "example");
+    /// assert_eq!(id, "example");
     /// ```
     fn from(name: &str) -> Self {
         Self::new(name)
+    }
+}
+
+impl PartialEq<str> for Id {
+    /// Allows direct comparison with string slices: `id == "string"`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use filament::identifier::Id;
+    ///
+    /// let id = Id::new("Rectangle");
+    /// assert!(id == "Rectangle");
+    /// ```
+    fn eq(&self, other: &str) -> bool {
+        let interner = INTERNER.lock().unwrap();
+        let self_str = interner
+            .resolve(self.0)
+            .expect("Symbol should exist in interner");
+        self_str == other
+    }
+}
+
+impl PartialEq<&str> for Id {
+    /// Allows direct comparison with string references: `id == &string`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use filament::identifier::Id;
+    ///
+    /// let id = Id::new("Rectangle");
+    /// let name = "Rectangle";
+    /// assert!(id == name);
+    /// ```
+    fn eq(&self, other: &&str) -> bool {
+        self == *other
     }
 }
 
@@ -154,7 +195,7 @@ mod tests {
 
         assert_eq!(id1, id2);
         assert_ne!(id1, id3);
-        assert_eq!(id1.to_string(), "Rectangle");
+        assert_eq!(id1, "Rectangle");
     }
 
     #[test]
@@ -169,29 +210,36 @@ mod tests {
 
     #[test]
     fn test_create_nested() {
-        let parent = Id::new("frontend");
-        let nested1 = parent.create_nested("app");
-        let nested2 = parent.create_nested("service");
+        let parent = Id::new("system");
+        let child1 = Id::new("backend");
+        let child2 = Id::new("frontend");
+
+        let nested1 = parent.create_nested(child1);
+        let nested2 = parent.create_nested(child2);
 
         assert_ne!(nested1, nested2);
-        assert_eq!(nested1.to_string(), "frontend::app");
-        assert_eq!(nested2.to_string(), "frontend::service");
+        assert_eq!(nested1, "system::backend");
+        assert_eq!(nested2, "system::frontend");
     }
 
     #[test]
     fn test_deep_nesting() {
         let root = Id::new("system");
-        let level1 = root.create_nested("frontend");
-        let level2 = level1.create_nested("app");
-        let level3 = level2.create_nested("component");
+        let frontend = Id::new("frontend");
+        let app = Id::new("app");
+        let component = Id::new("component");
 
-        assert_eq!(level3.to_string(), "system::frontend::app::component");
+        let level1 = root.create_nested(frontend);
+        let level2 = level1.create_nested(app);
+        let level3 = level2.create_nested(component);
+
+        assert_eq!(level3, "system::frontend::app::component");
     }
 
     #[test]
     fn test_to_string() {
         let id = Id::new("test_component");
-        assert_eq!(id.to_string(), "test_component");
+        assert_eq!(id, "test_component");
     }
 
     #[test]
@@ -206,7 +254,7 @@ mod tests {
         let id2 = Id::new("test_string");
 
         assert_eq!(id1, id2);
-        assert_eq!(id1.to_string(), "test_string");
+        assert_eq!(id1, "test_string");
     }
 
     #[test]
@@ -235,8 +283,55 @@ mod tests {
         assert_eq!(id1, id2);
         assert_eq!(id1, id3);
         assert_eq!(id2, id3);
-        assert_eq!(id1.to_string(), "copy_test");
-        assert_eq!(id2.to_string(), "copy_test");
-        assert_eq!(id3.to_string(), "copy_test");
+        assert_eq!(id1, "copy_test");
+        assert_eq!(id2, "copy_test");
+        assert_eq!(id3, "copy_test");
+    }
+
+    #[test]
+    fn test_partial_eq_str() {
+        // Test PartialEq<str> implementation
+        let id = Id::new("Rectangle");
+
+        // Test equality with str literal
+        assert!(id == "Rectangle");
+
+        // Test inequality with str literal
+        assert!(id != "Oval");
+
+        // Test with nested identifiers
+        let nested = Id::new("parent::child");
+        assert!(nested == "parent::child");
+        assert!(nested != "parent");
+        assert!(nested != "child");
+
+        // Test with empty string
+        let empty = Id::new("");
+        assert!(empty == "");
+        assert!(empty != "non-empty");
+    }
+
+    #[test]
+    fn test_partial_eq_str_ref() {
+        // Test PartialEq<&str> implementation
+        let id = Id::new("Component");
+
+        let name1 = String::from("Component");
+        let name2 = String::from("Element");
+
+        // Test equality with &str reference
+        assert!(id == name1.as_str());
+
+        // Test inequality with &str reference
+        assert!(id != name2.as_str());
+
+        // Test with borrowed string slices
+        let slice: &str = "Component";
+        assert!(id == slice);
+
+        // Test with nested identifiers
+        let nested = Id::new("frontend::app");
+        let nested_str = String::from("frontend::app");
+        assert!(nested == nested_str.as_str());
     }
 }

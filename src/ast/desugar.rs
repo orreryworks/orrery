@@ -22,13 +22,14 @@ use super::{
     },
     span::Spanned,
 };
+use crate::identifier::Id;
 
 /// Stack tracking the current namespace path for identifier resolution
 #[derive(Debug)]
 struct PathStack {
     /// Stack of parent paths
-    /// Example: entering "parent" then "child" gives ["parent", "parent::child"]
-    stack: Vec<String>,
+    /// Example: entering "parent" then "child" gives [Id("parent"), Id("parent::child")]
+    stack: Vec<Id>,
 }
 
 impl PathStack {
@@ -37,8 +38,8 @@ impl PathStack {
     }
 
     /// Push a new level onto the path
-    fn push(&mut self, name: &str) {
-        self.stack.push(self.qualify(name));
+    fn push(&mut self, id: Id) {
+        self.stack.push(self.qualify(id));
     }
 
     /// Pop the current level
@@ -46,19 +47,19 @@ impl PathStack {
         self.stack.pop();
     }
 
-    /// Get the current qualified path (empty string if at root)
-    fn current(&self) -> &str {
-        self.stack.last().map(|s| s.as_str()).unwrap_or("")
+    /// Get the current qualified path (None if at root)
+    fn current(&self) -> Option<Id> {
+        self.stack.last().copied()
     }
 
     /// Qualify a name with the current path
-    fn qualify(&self, name: &str) -> String {
-        if self.stack.is_empty() {
-            // At root level
-            name.to_string()
-        } else {
+    fn qualify(&self, id: Id) -> Id {
+        if let Some(current_path) = self.current() {
             // Nested - prepend current path
-            format!("{}::{}", self.current(), name)
+            current_path.create_nested(id)
+        } else {
+            // At root level
+            id
         }
     }
 }
@@ -130,7 +131,7 @@ trait Folder<'a> {
     }
 
     /// Fold an identifiers attribute value (list of identifiers)
-    fn fold_identifiers(&mut self, identifiers: Vec<Spanned<String>>) -> Vec<Spanned<String>> {
+    fn fold_identifiers(&mut self, identifiers: Vec<Spanned<Id>>) -> Vec<Spanned<Id>> {
         identifiers
             .into_iter()
             .map(|id| self.fold_identifier(id))
@@ -138,7 +139,7 @@ trait Folder<'a> {
     }
 
     /// Fold a single identifier
-    fn fold_identifier(&mut self, identifier: Spanned<String>) -> Spanned<String> {
+    fn fold_identifier(&mut self, identifier: Spanned<Id>) -> Spanned<Id> {
         identifier
     }
 
@@ -163,12 +164,12 @@ trait Folder<'a> {
     }
 
     /// Fold a type name
-    fn fold_type_name(&mut self, name: Spanned<&'a str>) -> Spanned<&'a str> {
+    fn fold_type_name(&mut self, name: Spanned<Id>) -> Spanned<Id> {
         name
     }
 
     /// Fold a base type
-    fn fold_base_type(&mut self, base_type: Spanned<&'a str>) -> Spanned<&'a str> {
+    fn fold_base_type(&mut self, base_type: Spanned<Id>) -> Spanned<Id> {
         base_type
     }
 
@@ -277,9 +278,9 @@ trait Folder<'a> {
     /// Fold a component element
     fn fold_component(
         &mut self,
-        name: Spanned<String>,
+        name: Spanned<Id>,
         display_name: Option<Spanned<String>>,
-        type_name: Spanned<&'a str>,
+        type_name: Spanned<Id>,
         attributes: Vec<Attribute<'a>>,
         nested_elements: Vec<Element<'a>>,
     ) -> Element<'a> {
@@ -293,7 +294,7 @@ trait Folder<'a> {
     }
 
     /// Fold a component name
-    fn fold_component_name(&mut self, name: Spanned<String>) -> Spanned<String> {
+    fn fold_component_name(&mut self, name: Spanned<Id>) -> Spanned<Id> {
         self.fold_identifier(name)
     }
 
@@ -303,15 +304,15 @@ trait Folder<'a> {
     }
 
     /// Fold a component type
-    fn fold_component_type(&mut self, type_name: Spanned<&'a str>) -> Spanned<&'a str> {
+    fn fold_component_type(&mut self, type_name: Spanned<Id>) -> Spanned<Id> {
         type_name
     }
 
     /// Fold a relation element
     fn fold_relation(
         &mut self,
-        source: Spanned<String>,
-        target: Spanned<String>,
+        source: Spanned<Id>,
+        target: Spanned<Id>,
         relation_type: Spanned<&'a str>,
         type_spec: Option<RelationTypeSpec<'a>>,
         label: Option<Spanned<String>>,
@@ -326,12 +327,12 @@ trait Folder<'a> {
     }
 
     /// Fold a relation source
-    fn fold_relation_source(&mut self, source: Spanned<String>) -> Spanned<String> {
+    fn fold_relation_source(&mut self, source: Spanned<Id>) -> Spanned<Id> {
         self.fold_identifier(source)
     }
 
     /// Fold a relation target
-    fn fold_relation_target(&mut self, target: Spanned<String>) -> Spanned<String> {
+    fn fold_relation_target(&mut self, target: Spanned<Id>) -> Spanned<Id> {
         self.fold_identifier(target)
     }
 
@@ -351,7 +352,7 @@ trait Folder<'a> {
     }
 
     /// Fold a relation type name
-    fn fold_relation_type_name(&mut self, type_name: Spanned<&'a str>) -> Spanned<&'a str> {
+    fn fold_relation_type_name(&mut self, type_name: Spanned<Id>) -> Spanned<Id> {
         type_name
     }
 
@@ -363,7 +364,7 @@ trait Folder<'a> {
     /// Fold an activate block element
     fn fold_activate_block(
         &mut self,
-        component: Spanned<String>,
+        component: Spanned<Id>,
         elements: Vec<Element<'a>>,
     ) -> Element<'a> {
         Element::ActivateBlock {
@@ -405,8 +406,8 @@ trait Folder<'a> {
     fn fold_note_content(&mut self, content: Spanned<String>) -> Spanned<String> {
         content
     }
-    /// Fold an activate component identifier into an owned `String`
-    fn fold_activate_component(&mut self, component: Spanned<String>) -> Spanned<String> {
+    /// Fold an activate component identifier
+    fn fold_activate_component(&mut self, component: Spanned<Id>) -> Spanned<Id> {
         self.fold_identifier(component)
     }
 }
@@ -448,14 +449,14 @@ impl<'a> Folder<'a> for Desugar {
     /// Override fold_component to add path tracking for identifier resolution
     fn fold_component(
         &mut self,
-        name: Spanned<String>,
+        name: Spanned<Id>,
         display_name: Option<Spanned<String>>,
-        type_name: Spanned<&'a str>,
+        type_name: Spanned<Id>,
         attributes: Vec<Attribute<'a>>,
         nested_elements: Vec<Element<'a>>,
     ) -> Element<'a> {
         // Enter this component's namespace
-        self.path_stack.push(name.inner());
+        self.path_stack.push(*name.inner());
 
         // Process nested elements (they will be qualified with this component's path)
         let resolved_nested = self.fold_elements(nested_elements);
@@ -473,9 +474,9 @@ impl<'a> Folder<'a> for Desugar {
     }
 
     /// Override fold_identifier to qualify identifier with current path
-    fn fold_identifier(&mut self, identifier: Spanned<String>) -> Spanned<String> {
+    fn fold_identifier(&mut self, identifier: Spanned<Id>) -> Spanned<Id> {
         let original_span = identifier.span();
-        let qualified = self.path_stack.qualify(identifier.inner());
+        let qualified = self.path_stack.qualify(*identifier.inner());
         Spanned::new(qualified, original_span)
     }
 
@@ -501,6 +502,7 @@ impl<'a> Folder<'a> for Desugar {
         out
     }
 
+    /// Fold an Element node, performing transformations and recursive descent
     fn fold_element(&mut self, element: Element<'a>) -> Element<'a> {
         match element {
             // ========================================================================
@@ -662,21 +664,24 @@ mod tests {
     #[test]
     fn test_path_stack_operations() {
         let mut stack = PathStack::new();
-        assert_eq!(stack.current(), "");
+        assert_eq!(stack.current(), None);
 
-        stack.push("parent");
-        assert_eq!(stack.current(), "parent");
-        assert_eq!(stack.qualify("child"), "parent::child");
+        stack.push(Id::new("parent"));
+        assert_eq!(stack.current().unwrap(), "parent");
+        assert_eq!(stack.qualify(Id::new("child")), "parent::child");
 
-        stack.push("child");
-        assert_eq!(stack.current(), "parent::child");
-        assert_eq!(stack.qualify("grandchild"), "parent::child::grandchild");
+        stack.push(Id::new("child"));
+        assert_eq!(stack.current().unwrap(), "parent::child");
+        assert_eq!(
+            stack.qualify(Id::new("grandchild")),
+            "parent::child::grandchild"
+        );
 
         stack.pop();
-        assert_eq!(stack.current(), "parent");
+        assert_eq!(stack.current().unwrap(), "parent");
 
         stack.pop();
-        assert_eq!(stack.current(), "");
+        assert_eq!(stack.current(), None);
     }
 
     #[test]
@@ -751,8 +756,8 @@ mod tests {
             kind: spanned("component"),
             attributes: vec![],
             type_definitions: vec![TypeDefinition {
-                name: spanned("Database"),
-                base_type: spanned("Rectangle"),
+                name: spanned(Id::new("Database")),
+                base_type: spanned(Id::new("Rectangle")),
                 attributes: vec![Attribute {
                     name: spanned("fill_color"),
                     value: AttributeValue::String(spanned("lightblue".to_string())),
@@ -786,9 +791,9 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::Component {
-                name: spanned("frontend".to_string()),
+                name: spanned(Id::new("frontend")),
                 display_name: Some(spanned("Frontend App".to_string())),
-                type_name: spanned("Rectangle"),
+                type_name: spanned(Id::new("Rectangle")),
                 attributes: vec![Attribute {
                     name: spanned("fill_color"),
                     value: AttributeValue::String(spanned("blue".to_string())),
@@ -835,11 +840,11 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::Relation {
-                source: spanned("frontend".to_string()),
-                target: spanned("backend".to_string()),
+                source: spanned(Id::new("frontend")),
+                target: spanned(Id::new("backend")),
                 relation_type: spanned("->"),
                 type_spec: Some(RelationTypeSpec {
-                    type_name: Some(spanned("Arrow")),
+                    type_name: Some(spanned(Id::new("Arrow"))),
                     attributes: vec![Attribute {
                         name: spanned("color"),
                         value: AttributeValue::String(spanned("red".to_string())),
@@ -887,10 +892,10 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::ActivateBlock {
-                component: spanned("user".to_string()),
+                component: spanned(Id::new("user")),
                 elements: vec![Element::Relation {
-                    source: spanned("user".to_string()),
-                    target: spanned("server".to_string()),
+                    source: spanned(Id::new("user")),
+                    target: spanned(Id::new("server")),
                     relation_type: spanned("->"),
                     type_spec: None,
                     label: Some(spanned("Request".to_string())),
@@ -936,10 +941,10 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::ActivateBlock {
-                component: spanned("user".to_string()),
+                component: spanned(Id::new("user")),
                 elements: vec![Element::Relation {
-                    source: spanned("user".to_string()),
-                    target: spanned("server".to_string()),
+                    source: spanned(Id::new("user")),
+                    target: spanned(Id::new("server")),
                     relation_type: spanned("->"),
                     type_spec: None,
                     label: Some(spanned("Request".to_string())),
@@ -986,8 +991,8 @@ mod tests {
             section: FragmentSection {
                 title: Some(spanned("user authenticated".to_string())),
                 elements: vec![Element::Relation {
-                    source: spanned("user".to_string()),
-                    target: spanned("profile".to_string()),
+                    source: spanned(Id::new("user")),
+                    target: spanned(Id::new("profile")),
                     relation_type: spanned("->"),
                     type_spec: None,
                     label: Some(spanned("Load".to_string())),
@@ -1020,8 +1025,8 @@ mod tests {
             section: FragmentSection {
                 title: Some(spanned("for each item".to_string())),
                 elements: vec![Element::Relation {
-                    source: spanned("client".to_string()),
-                    target: spanned("server".to_string()),
+                    source: spanned(Id::new("client")),
+                    target: spanned(Id::new("server")),
                     relation_type: spanned("->"),
                     type_spec: None,
                     label: Some(spanned("Process".to_string())),
@@ -1053,8 +1058,8 @@ mod tests {
             section: FragmentSection {
                 title: Some(spanned("timeout".to_string())),
                 elements: vec![Element::Relation {
-                    source: spanned("client".to_string()),
-                    target: spanned("server".to_string()),
+                    source: spanned(Id::new("client")),
+                    target: spanned(Id::new("server")),
                     relation_type: spanned("->"),
                     type_spec: None,
                     label: Some(spanned("Cancel".to_string())),
@@ -1086,8 +1091,8 @@ mod tests {
             section: FragmentSection {
                 title: Some(spanned("database lock".to_string())),
                 elements: vec![Element::Relation {
-                    source: spanned("app".to_string()),
-                    target: spanned("db".to_string()),
+                    source: spanned(Id::new("app")),
+                    target: spanned(Id::new("db")),
                     relation_type: spanned("->"),
                     type_spec: None,
                     label: Some(spanned("UPDATE".to_string())),
@@ -1120,8 +1125,8 @@ mod tests {
                 FragmentSection {
                     title: Some(spanned("x > 0".to_string())),
                     elements: vec![Element::Relation {
-                        source: spanned("a".to_string()),
-                        target: spanned("b".to_string()),
+                        source: spanned(Id::new("a")),
+                        target: spanned(Id::new("b")),
                         relation_type: spanned("->"),
                         type_spec: None,
                         label: None,
@@ -1130,8 +1135,8 @@ mod tests {
                 FragmentSection {
                     title: Some(spanned("x < 0".to_string())),
                     elements: vec![Element::Relation {
-                        source: spanned("b".to_string()),
-                        target: spanned("a".to_string()),
+                        source: spanned(Id::new("b")),
+                        target: spanned(Id::new("a")),
                         relation_type: spanned("->"),
                         type_spec: None,
                         label: None,
@@ -1140,8 +1145,8 @@ mod tests {
                 FragmentSection {
                     title: None,
                     elements: vec![Element::Relation {
-                        source: spanned("a".to_string()),
-                        target: spanned("a".to_string()),
+                        source: spanned(Id::new("a")),
+                        target: spanned(Id::new("a")),
                         relation_type: spanned("->"),
                         type_spec: None,
                         label: None,
@@ -1180,8 +1185,8 @@ mod tests {
                 FragmentSection {
                     title: Some(spanned("thread 1".to_string())),
                     elements: vec![Element::Relation {
-                        source: spanned("a".to_string()),
-                        target: spanned("b".to_string()),
+                        source: spanned(Id::new("a")),
+                        target: spanned(Id::new("b")),
                         relation_type: spanned("->"),
                         type_spec: None,
                         label: None,
@@ -1190,8 +1195,8 @@ mod tests {
                 FragmentSection {
                     title: Some(spanned("thread 2".to_string())),
                     elements: vec![Element::Relation {
-                        source: spanned("c".to_string()),
-                        target: spanned("d".to_string()),
+                        source: spanned(Id::new("c")),
+                        target: spanned(Id::new("d")),
                         relation_type: spanned("->"),
                         type_spec: None,
                         label: None,
@@ -1380,7 +1385,7 @@ mod tests {
                 },
                 Attribute {
                     name: spanned("on"),
-                    value: AttributeValue::Identifiers(vec![spanned("component".to_string())]),
+                    value: AttributeValue::Identifiers(vec![spanned(Id::new("component"))]),
                 },
             ],
             content: spanned("Note with attributes".to_string()),
@@ -1404,28 +1409,28 @@ mod tests {
     fn test_nested_component_relation_resolution() {
         // Create a nested component with a relation between siblings
         let parent_component = Element::Component {
-            name: spanned("parent".to_string()),
+            name: spanned(Id::new("parent")),
             display_name: None,
-            type_name: spanned("Rectangle"),
+            type_name: spanned(Id::new("Rectangle")),
             attributes: vec![],
             nested_elements: vec![
                 Element::Component {
-                    name: spanned("child1".to_string()),
+                    name: spanned(Id::new("child1")),
                     display_name: None,
-                    type_name: spanned("Oval"),
+                    type_name: spanned(Id::new("Oval")),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Component {
-                    name: spanned("child2".to_string()),
+                    name: spanned(Id::new("child2")),
                     display_name: None,
-                    type_name: spanned("Rectangle"),
+                    type_name: spanned(Id::new("Rectangle")),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Relation {
-                    source: spanned("child1".to_string()),
-                    target: spanned("child2".to_string()),
+                    source: spanned(Id::new("child1")),
+                    target: spanned(Id::new("child2")),
                     relation_type: spanned("->"),
                     type_spec: None,
                     label: None,
@@ -1461,26 +1466,26 @@ mod tests {
     fn test_deeply_nested_component_resolution() {
         // Create deeply nested components: level1 { level2 { level3 } }
         let level1 = Element::Component {
-            name: spanned("level1".to_string()),
+            name: spanned(Id::new("level1")),
             display_name: None,
-            type_name: spanned("Rectangle"),
+            type_name: spanned(Id::new("Rectangle")),
             attributes: vec![],
             nested_elements: vec![Element::Component {
-                name: spanned("level2".to_string()),
+                name: spanned(Id::new("level2")),
                 display_name: None,
-                type_name: spanned("Rectangle"),
+                type_name: spanned(Id::new("Rectangle")),
                 attributes: vec![],
                 nested_elements: vec![
                     Element::Component {
-                        name: spanned("level3".to_string()),
+                        name: spanned(Id::new("level3")),
                         display_name: None,
-                        type_name: spanned("Oval"),
+                        type_name: spanned(Id::new("Oval")),
                         attributes: vec![],
                         nested_elements: vec![],
                     },
                     Element::Relation {
-                        source: spanned("level3".to_string()),
-                        target: spanned("sibling".to_string()),
+                        source: spanned(Id::new("level3")),
+                        target: spanned(Id::new("sibling")),
                         relation_type: spanned("->"),
                         type_spec: None,
                         label: None,
@@ -1527,20 +1532,20 @@ mod tests {
     #[test]
     fn test_activate_component_resolution() {
         let parent_component = Element::Component {
-            name: spanned("parent".to_string()),
+            name: spanned(Id::new("parent")),
             display_name: None,
-            type_name: spanned("Rectangle"),
+            type_name: spanned(Id::new("Rectangle")),
             attributes: vec![],
             nested_elements: vec![
                 Element::Component {
-                    name: spanned("child".to_string()),
+                    name: spanned(Id::new("child")),
                     display_name: None,
-                    type_name: spanned("Oval"),
+                    type_name: spanned(Id::new("Oval")),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Activate {
-                    component: spanned("child".to_string()),
+                    component: spanned(Id::new("child")),
                 },
             ],
         };
@@ -1570,22 +1575,22 @@ mod tests {
     #[test]
     fn test_note_on_attribute_resolution() {
         let parent_component = Element::Component {
-            name: spanned("parent".to_string()),
+            name: spanned(Id::new("parent")),
             display_name: None,
-            type_name: spanned("Rectangle"),
+            type_name: spanned(Id::new("Rectangle")),
             attributes: vec![],
             nested_elements: vec![
                 Element::Component {
-                    name: spanned("child".to_string()),
+                    name: spanned(Id::new("child")),
                     display_name: None,
-                    type_name: spanned("Oval"),
+                    type_name: spanned(Id::new("Oval")),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Note(Note {
                     attributes: vec![Attribute {
                         name: spanned("on"),
-                        value: AttributeValue::Identifiers(vec![spanned("child".to_string())]),
+                        value: AttributeValue::Identifiers(vec![spanned(Id::new("child"))]),
                     }],
                     content: spanned("Note about child".to_string()),
                 }),
@@ -1627,8 +1632,8 @@ mod tests {
     fn test_root_level_identifiers_unchanged() {
         // Relations at root level should remain unchanged
         let relation = Element::Relation {
-            source: spanned("system1".to_string()),
-            target: spanned("system2".to_string()),
+            source: spanned(Id::new("system1")),
+            target: spanned(Id::new("system2")),
             relation_type: spanned("->"),
             type_spec: None,
             label: None,
@@ -1650,13 +1655,13 @@ mod tests {
         // Verify that spans are preserved when identifiers are qualified
         let original_span = Span::new(10..15);
         let parent_component = Element::Component {
-            name: spanned("parent".to_string()),
+            name: spanned(Id::new("parent")),
             display_name: None,
-            type_name: spanned("Rectangle"),
+            type_name: spanned(Id::new("Rectangle")),
             attributes: vec![],
             nested_elements: vec![Element::Relation {
-                source: Spanned::new("child".to_string(), original_span),
-                target: spanned("other".to_string()),
+                source: Spanned::new(Id::new("child"), original_span),
+                target: spanned(Id::new("other")),
                 relation_type: spanned("->"),
                 type_spec: None,
                 label: None,

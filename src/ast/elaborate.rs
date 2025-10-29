@@ -1,3 +1,9 @@
+//! Elaboration phase for the Filament AST
+//!
+//! This module transforms the desugared AST from parser types into fully elaborated
+//! types ready for layout and rendering. It performs type resolution, validates
+//! semantic correctness, and builds the final representation.
+
 use super::{elaborate_types as types, parser_types};
 use crate::{
     ast::span::{Span, Spanned},
@@ -142,10 +148,9 @@ impl<'a> Builder<'a> {
         type_definitions: &Vec<parser_types::TypeDefinition<'a>>,
     ) -> EResult<()> {
         for type_def in type_definitions {
-            let base_type_name = Id::new(&type_def.base_type);
             let base = self
                 .type_definition_map
-                .get(&base_type_name)
+                .get(type_def.base_type.inner())
                 .ok_or_else(|| {
                     // Create a rich diagnostic error with source location information
                     let type_name = &type_def.base_type;
@@ -157,7 +162,7 @@ impl<'a> Builder<'a> {
 
             // Try to create the type definition
             match types::TypeDefinition::from_base(
-                Id::new(&type_def.name),
+                *type_def.name.inner(),
                 base,
                 &type_def.attributes,
             ) {
@@ -384,16 +389,14 @@ impl<'a> Builder<'a> {
     /// Builds a component element from parser data
     fn build_component_element(
         &mut self,
-        name: &Spanned<String>,
+        name: &Spanned<Id>,
         display_name: &Option<Spanned<String>>,
-        type_name: &Spanned<&'a str>,
+        type_name: &Spanned<Id>,
         attributes: &[parser_types::Attribute],
         nested_elements: &[parser_types::Element<'a>],
         parser_elm: &parser_types::Element,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
-        let node_id = Id::new(name);
-
         let type_def = self
             .build_type_definition(type_name, attributes)
             .map_err(|_| {
@@ -433,7 +436,7 @@ impl<'a> Builder<'a> {
         };
 
         let node = types::Node::new(
-            node_id,
+            *name.inner(),
             name.to_string(),
             display_name.as_ref().map(|n| n.to_string()),
             block,
@@ -446,17 +449,14 @@ impl<'a> Builder<'a> {
     /// Builds a relation element from parser data
     fn build_relation_element(
         &mut self,
-        source: &Spanned<String>,
-        target: &Spanned<String>,
+        source: &Spanned<Id>,
+        target: &Spanned<Id>,
         relation_type: &Spanned<&str>,
         type_spec: &Option<parser_types::RelationTypeSpec<'a>>,
         label: &Option<Spanned<String>>,
     ) -> EResult<types::Element> {
         // Extract relation type definition from type_spec
         let relation_type_def = self.build_relation_type_definition_from_spec(type_spec)?;
-
-        let source_id = Id::new(source.inner());
-        let target_id = Id::new(target.inner());
 
         let arrow_direction = draw::ArrowDirection::from_str(relation_type).map_err(|_| {
             ElaborationDiagnosticError::from_span(
@@ -468,8 +468,8 @@ impl<'a> Builder<'a> {
         })?;
 
         Ok(types::Element::Relation(types::Relation::new(
-            source_id,
-            target_id,
+            *source.inner(),
+            *target.inner(),
             arrow_direction,
             label.as_ref().map(|l| l.to_string()),
             relation_type_def,
@@ -479,7 +479,7 @@ impl<'a> Builder<'a> {
     /// Builds an activate element from parser data
     fn build_activate_element(
         &mut self,
-        component: &Spanned<String>,
+        component: &Spanned<Id>,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
         // Only allow activate in sequence diagrams
@@ -495,16 +495,13 @@ impl<'a> Builder<'a> {
             ));
         }
 
-        // Create Id for the component being activated
-        let component_id = Id::new(component.inner());
-
-        Ok(types::Element::Activate(component_id))
+        Ok(types::Element::Activate(*component.inner()))
     }
 
     /// Builds a deactivate element from parser data
     fn build_deactivate_element(
         &mut self,
-        component: &Spanned<String>,
+        component: &Spanned<Id>,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
         // Only allow deactivate in sequence diagrams
@@ -520,10 +517,7 @@ impl<'a> Builder<'a> {
             ));
         }
 
-        // Create Id for the component being deactivated
-        let component_id = Id::new(component.inner());
-
-        Ok(types::Element::Deactivate(component_id))
+        Ok(types::Element::Deactivate(*component.inner()))
     }
 
     /// Builds a fragment element from parser data
@@ -542,18 +536,18 @@ impl<'a> Builder<'a> {
             ));
         }
 
-        let type_name = "Fragment"; // TODO: Hardcoded for now.
+        let type_id = Id::new("Fragment"); // TODO: Hardcoded for now.
 
         // Build the type definition for this fragment
         let type_def = self
             .build_type_definition(
-                &Spanned::new(type_name, fragment.operation.span()),
+                &Spanned::new(type_id, fragment.operation.span()),
                 &fragment.attributes,
             )
             .map_err(|_| {
                 ElaborationDiagnosticError::from_span(
                     format!(
-                        "Unknown fragment type '{type_name}' for operation '{}'",
+                        "Unknown fragment type '{type_id}' for operation '{}'",
                         fragment.operation.inner()
                     ),
                     fragment.operation.span(),
@@ -605,12 +599,11 @@ impl<'a> Builder<'a> {
 
     fn build_type_definition(
         &mut self,
-        type_name: &Spanned<&'a str>,
+        type_name: &Spanned<Id>,
         attributes: &[parser_types::Attribute],
     ) -> EResult<Rc<types::TypeDefinition>> {
         // Look up the base type
-        let type_id = Id::new(type_name);
-        let Some(base) = self.type_definition_map.get(&type_id) else {
+        let Some(base) = self.type_definition_map.get(type_name.inner()) else {
             return Err(
                 self.create_undefined_type_error(type_name, &format!("Unknown type '{type_name}'"))
             );
@@ -649,7 +642,7 @@ impl<'a> Builder<'a> {
     /// Creates a standardized error for undefined type situations
     fn create_undefined_type_error(
         &self,
-        span: &Spanned<&str>,
+        span: &Spanned<Id>,
         message: &str,
     ) -> ElaborationDiagnosticError {
         ElaborationDiagnosticError::from_span(
@@ -929,16 +922,16 @@ impl<'a> Builder<'a> {
         note: &parser_types::Note,
         diagram_kind: types::DiagramKind,
     ) -> EResult<types::Element> {
-        let type_name = "Note";
+        let type_id = Id::new("Note");
 
         let type_def = self
             .build_type_definition(
-                &Spanned::new(type_name, note.content.span()),
+                &Spanned::new(type_id, note.content.span()),
                 &note.attributes,
             )
             .map_err(|_| {
                 ElaborationDiagnosticError::from_span(
-                    format!("Unknown type '{type_name}' for note"),
+                    format!("Unknown type '{type_id}' for note"),
                     note.content.span(),
                     "unknown note type",
                     Some("Note types must be defined in the type system".to_string()),
@@ -991,7 +984,7 @@ impl<'a> Builder<'a> {
                         )
                     })?;
 
-                    on = Some(ids.iter().map(|id_str| Id::new(id_str.inner())).collect());
+                    on = Some(ids.iter().map(|id| *id.inner()).collect());
                 }
                 "align" => {
                     let align_str = attr.value.as_str().map_err(|_| {
@@ -1038,7 +1031,7 @@ mod tests {
     fn test_activate_block_panics_in_elaboration() {
         // Build a parser_types diagram directly with an ActivateBlock element
         let elements = vec![parser_types::Element::ActivateBlock {
-            component: Spanned::new("user".to_string(), Span::new(0..4)),
+            component: Spanned::new(Id::new("user"), Span::new(0..4)),
             elements: vec![],
         }];
 
@@ -1063,24 +1056,24 @@ mod tests {
         // Test that sequence diagrams don't create namespace scopes within activate blocks
         let elements = vec![
             parser_types::Element::Activate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             },
             parser_types::Element::Relation {
-                source: Spanned::new("user".to_string(), Span::new(0..4)),
-                target: Spanned::new("server".to_string(), Span::new(0..6)),
+                source: Spanned::new(Id::new("user"), Span::new(0..4)),
+                target: Spanned::new(Id::new("server"), Span::new(0..6)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
                 type_spec: None,
                 label: Some(Spanned::new("Request".to_string(), Span::new(0..7))),
             },
             parser_types::Element::Relation {
-                source: Spanned::new("server".to_string(), Span::new(0..6)),
-                target: Spanned::new("database".to_string(), Span::new(0..8)),
+                source: Spanned::new(Id::new("server"), Span::new(0..6)),
+                target: Spanned::new(Id::new("database"), Span::new(0..8)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
                 type_spec: None,
                 label: Some(Spanned::new("Query".to_string(), Span::new(0..5))),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             },
         ];
 
@@ -1129,11 +1122,11 @@ mod tests {
         // Test that nested activate blocks work and same component can be activated multiple times
         let elements = vec![
             parser_types::Element::Activate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             },
             parser_types::Element::Relation {
-                source: Spanned::new("user".to_string(), Span::new(0..4)),
-                target: Spanned::new("server".to_string(), Span::new(0..6)),
+                source: Spanned::new(Id::new("user"), Span::new(0..4)),
+                target: Spanned::new(Id::new("server"), Span::new(0..6)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
                 type_spec: None,
                 label: Some(Spanned::new(
@@ -1142,33 +1135,33 @@ mod tests {
                 )),
             },
             parser_types::Element::Activate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             },
             parser_types::Element::Relation {
-                source: Spanned::new("user".to_string(), Span::new(0..4)),
-                target: Spanned::new("database".to_string(), Span::new(0..8)),
+                source: Spanned::new(Id::new("user"), Span::new(0..4)),
+                target: Spanned::new(Id::new("database"), Span::new(0..8)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
                 type_spec: None,
                 label: Some(Spanned::new("Direct query".to_string(), Span::new(0..12))),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             },
             parser_types::Element::Activate {
-                component: Spanned::new("server".to_string(), Span::new(0..6)),
+                component: Spanned::new(Id::new("server"), Span::new(0..6)),
             },
             parser_types::Element::Relation {
-                source: Spanned::new("server".to_string(), Span::new(0..6)),
-                target: Spanned::new("cache".to_string(), Span::new(0..5)),
+                source: Spanned::new(Id::new("server"), Span::new(0..6)),
+                target: Spanned::new(Id::new("cache"), Span::new(0..5)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
                 type_spec: None,
                 label: Some(Spanned::new("Cache lookup".to_string(), Span::new(0..12))),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("server".to_string(), Span::new(0..6)),
+                component: Spanned::new(Id::new("server"), Span::new(0..6)),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             },
         ];
 
@@ -1263,19 +1256,19 @@ mod tests {
         let elements = vec![
             // Define a component
             parser_types::Element::Component {
-                name: Spanned::new("user".to_string(), Span::new(0..4)),
+                name: Spanned::new(Id::new("user"), Span::new(0..4)),
                 display_name: None,
-                type_name: Spanned::new("Rectangle", Span::new(5..14)),
+                type_name: Spanned::new(Id::new("Rectangle"), Span::new(5..14)),
                 attributes: vec![],
                 nested_elements: vec![],
             },
             // Activate the component
             parser_types::Element::Activate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             },
             // Deactivate the component
             parser_types::Element::Deactivate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             },
         ];
 
@@ -1338,15 +1331,15 @@ mod tests {
         let elements = vec![
             // Define a component
             parser_types::Element::Component {
-                name: Spanned::new("user".to_string(), Span::new(0..4)),
+                name: Spanned::new(Id::new("user"), Span::new(0..4)),
                 display_name: None,
-                type_name: Spanned::new("Rectangle", Span::new(5..14)),
+                type_name: Spanned::new(Id::new("Rectangle"), Span::new(5..14)),
                 attributes: vec![],
                 nested_elements: vec![],
             },
             // Try to activate the component (should fail)
             parser_types::Element::Activate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             },
         ];
 
@@ -1383,50 +1376,50 @@ mod tests {
         let elements = vec![
             // components
             parser_types::Element::Component {
-                name: Spanned::new("user".to_string(), Span::new(0..4)),
+                name: Spanned::new(Id::new("user"), Span::new(0..4)),
                 display_name: None,
-                type_name: Spanned::new("Rectangle", Span::new(0..9)),
+                type_name: Spanned::new(Id::new("Rectangle"), Span::new(0..9)),
                 attributes: vec![],
                 nested_elements: vec![],
             },
             parser_types::Element::Component {
-                name: Spanned::new("server".to_string(), Span::new(0..6)),
+                name: Spanned::new(Id::new("server"), Span::new(0..6)),
                 display_name: None,
-                type_name: Spanned::new("Rectangle", Span::new(0..9)),
+                type_name: Spanned::new(Id::new("Rectangle"), Span::new(0..9)),
                 attributes: vec![],
                 nested_elements: vec![],
             },
             parser_types::Element::Component {
-                name: Spanned::new("database".to_string(), Span::new(0..8)),
+                name: Spanned::new(Id::new("database"), Span::new(0..8)),
                 display_name: None,
-                type_name: Spanned::new("Rectangle", Span::new(0..9)),
+                type_name: Spanned::new(Id::new("Rectangle"), Span::new(0..9)),
                 attributes: vec![],
                 nested_elements: vec![],
             },
             // activations and relations
             parser_types::Element::Activate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             },
             parser_types::Element::Relation {
-                source: Spanned::new("user".to_string(), Span::new(0..4)),
-                target: Spanned::new("server".to_string(), Span::new(0..6)),
+                source: Spanned::new(Id::new("user"), Span::new(0..4)),
+                target: Spanned::new(Id::new("server"), Span::new(0..6)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
                 type_spec: None,
                 label: Some(Spanned::new("First request".to_string(), Span::new(0..13))),
             },
             parser_types::Element::Activate {
-                component: Spanned::new("server".to_string(), Span::new(0..6)),
+                component: Spanned::new(Id::new("server"), Span::new(0..6)),
             },
             parser_types::Element::Relation {
-                source: Spanned::new("server".to_string(), Span::new(0..6)),
-                target: Spanned::new("database".to_string(), Span::new(0..8)),
+                source: Spanned::new(Id::new("server"), Span::new(0..6)),
+                target: Spanned::new(Id::new("database"), Span::new(0..8)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
                 type_spec: None,
                 label: Some(Spanned::new("Nested query".to_string(), Span::new(0..12))),
             },
             parser_types::Element::Relation {
-                source: Spanned::new("database".to_string(), Span::new(0..8)),
-                target: Spanned::new("server".to_string(), Span::new(0..6)),
+                source: Spanned::new(Id::new("database"), Span::new(0..8)),
+                target: Spanned::new(Id::new("server"), Span::new(0..6)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
                 type_spec: None,
                 label: Some(Spanned::new(
@@ -1435,30 +1428,30 @@ mod tests {
                 )),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("server".to_string(), Span::new(0..6)),
+                component: Spanned::new(Id::new("server"), Span::new(0..6)),
             },
             parser_types::Element::Relation {
-                source: Spanned::new("server".to_string(), Span::new(0..6)),
-                target: Spanned::new("user".to_string(), Span::new(0..4)),
+                source: Spanned::new(Id::new("server"), Span::new(0..6)),
+                target: Spanned::new(Id::new("user"), Span::new(0..4)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
                 type_spec: None,
                 label: Some(Spanned::new("First response".to_string(), Span::new(0..14))),
             },
             parser_types::Element::Activate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             },
             parser_types::Element::Relation {
-                source: Spanned::new("user".to_string(), Span::new(0..4)),
-                target: Spanned::new("server".to_string(), Span::new(0..6)),
+                source: Spanned::new(Id::new("user"), Span::new(0..4)),
+                target: Spanned::new(Id::new("server"), Span::new(0..6)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
                 type_spec: None,
                 label: Some(Spanned::new("Second request".to_string(), Span::new(0..14))),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             },
             parser_types::Element::Deactivate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             },
         ];
 

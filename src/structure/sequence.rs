@@ -363,8 +363,8 @@ mod tests {
         let node_ids: Vec<Id> = graph.node_ids().copied().collect();
 
         assert_eq!(node_ids.len(), 3, "Should still have 3 participants");
-        assert_eq!(node_ids[0], Id::new("Zara"), "Zara should remain first");
-        assert_eq!(node_ids[1], Id::new("Bob"), "Bob should remain second");
-        assert_eq!(node_ids[2], Id::new("Alice"), "Alice should remain third");
+        assert_eq!(node_ids[0], "Zara", "Zara should remain first");
+        assert_eq!(node_ids[1], "Bob", "Bob should remain second");
+        assert_eq!(node_ids[2], "Alice", "Alice should remain third");
     }
 }

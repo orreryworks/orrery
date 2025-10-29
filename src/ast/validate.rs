@@ -76,10 +76,10 @@ pub trait Visitor<'a> {
     fn visit_float_value(&mut self, _value: &Spanned<f32>) {}
 
     /// Visit a single identifier (component reference)
-    fn visit_identifier(&mut self, _identifier: &Spanned<String>) {}
+    fn visit_identifier(&mut self, _identifier: &Spanned<Id>) {}
 
     /// Visit an identifiers attribute value (list of identifiers)
-    fn visit_identifiers(&mut self, identifiers: &[Spanned<String>]) {
+    fn visit_identifiers(&mut self, identifiers: &[Spanned<Id>]) {
         for identifier in identifiers {
             self.visit_identifier(identifier);
         }
@@ -100,10 +100,10 @@ pub trait Visitor<'a> {
     }
 
     /// Visit a type name
-    fn visit_type_name(&mut self, _name: &Spanned<&'a str>) {}
+    fn visit_type_name(&mut self, _name: &Spanned<Id>) {}
 
     /// Visit a base type
-    fn visit_base_type(&mut self, _base_type: &Spanned<&'a str>) {}
+    fn visit_base_type(&mut self, _base_type: &Spanned<Id>) {}
 
     /// Visit a list of elements
     fn visit_elements(&mut self, elements: &[Element<'a>]) {
@@ -214,9 +214,9 @@ pub trait Visitor<'a> {
     /// Visit a component element
     fn visit_component(
         &mut self,
-        name: &Spanned<String>,
+        name: &Spanned<Id>,
         display_name: &Option<Spanned<String>>,
-        type_name: &Spanned<&'a str>,
+        type_name: &Spanned<Id>,
         attributes: &[Attribute<'a>],
         nested_elements: &[Element<'a>],
     ) {
@@ -230,19 +230,19 @@ pub trait Visitor<'a> {
     }
 
     /// Visit a component name
-    fn visit_component_name(&mut self, _name: &Spanned<String>) {}
+    fn visit_component_name(&mut self, _name: &Spanned<Id>) {}
 
     /// Visit a display name
     fn visit_display_name(&mut self, _display_name: &Spanned<String>) {}
 
     /// Visit a component type
-    fn visit_component_type(&mut self, _type_name: &Spanned<&'a str>) {}
+    fn visit_component_type(&mut self, _type_name: &Spanned<Id>) {}
 
     /// Visit a relation element
     fn visit_relation(
         &mut self,
-        source: &Spanned<String>,
-        target: &Spanned<String>,
+        source: &Spanned<Id>,
+        target: &Spanned<Id>,
         relation_type: &Spanned<&'a str>,
         type_spec: &Option<RelationTypeSpec<'a>>,
         label: &Option<Spanned<String>>,
@@ -259,12 +259,12 @@ pub trait Visitor<'a> {
     }
 
     /// Visit a relation source
-    fn visit_relation_source(&mut self, source: &Spanned<String>) {
+    fn visit_relation_source(&mut self, source: &Spanned<Id>) {
         self.visit_identifier(source);
     }
 
     /// Visit a relation target
-    fn visit_relation_target(&mut self, target: &Spanned<String>) {
+    fn visit_relation_target(&mut self, target: &Spanned<Id>) {
         self.visit_identifier(target);
     }
 
@@ -280,27 +280,27 @@ pub trait Visitor<'a> {
     }
 
     /// Visit a relation type name
-    fn visit_relation_type_name(&mut self, _type_name: &Spanned<&'a str>) {}
+    fn visit_relation_type_name(&mut self, _type_name: &Spanned<Id>) {}
 
     /// Visit a relation label
     fn visit_relation_label(&mut self, _label: &Spanned<String>) {}
 
     /// Visit an activate block element
-    fn visit_activate_block(&mut self, component: &Spanned<String>, elements: &[Element<'a>]) {
+    fn visit_activate_block(&mut self, component: &Spanned<Id>, elements: &[Element<'a>]) {
         self.visit_activate_component(component);
         self.visit_elements(elements);
     }
 
     /// Visit an activate block component reference
-    fn visit_activate_component(&mut self, _component: &Spanned<String>) {}
+    fn visit_activate_component(&mut self, _component: &Spanned<Id>) {}
 
     /// Visit an activate statement
-    fn visit_activate(&mut self, component: &Spanned<String>) {
+    fn visit_activate(&mut self, component: &Spanned<Id>) {
         self.visit_identifier(component);
     }
 
     /// Visit a deactivate statement
-    fn visit_deactivate(&mut self, component: &Spanned<String>) {
+    fn visit_deactivate(&mut self, component: &Spanned<Id>) {
         self.visit_identifier(component);
     }
 
@@ -340,7 +340,7 @@ pub struct Validator<'a> {
     activation_stack: Vec<HashMap<Id, Vec<Span>>>,
 
     // Component identifier registry for validation
-    component_registry: Vec<HashMap<String, Span>>,
+    component_registry: Vec<HashMap<Id, Span>>,
 
     // Note validation state
     diagram_kind: Option<&'a str>,
@@ -469,33 +469,34 @@ impl<'a> Visitor<'a> for Validator<'a> {
         }
     }
 
-    fn visit_component_name(&mut self, name: &Spanned<String>) {
+    fn visit_component_name(&mut self, name: &Spanned<Id>) {
         // Register this component in the current diagram's registry
         let registry = self
             .component_registry
             .last_mut()
             .expect("component registry not initialized");
-        registry.insert(name.inner().clone(), name.span());
+        registry.insert(*name.inner(), name.span());
     }
 
-    fn visit_activate(&mut self, component: &Spanned<String>) {
+    fn visit_activate(&mut self, component: &Spanned<Id>) {
         // Validate component identifier exists
         self.visit_identifier(component);
 
         // Then handle activation stack logic
-        let id = Id::new(component.inner());
         let state = self.activation_state_mut();
-        state.entry(id).or_default().push(component.span());
+        state
+            .entry(*component.inner())
+            .or_default()
+            .push(component.span());
     }
 
-    fn visit_deactivate(&mut self, component: &Spanned<String>) {
+    fn visit_deactivate(&mut self, component: &Spanned<Id>) {
         // Validate component identifier exists
         self.visit_identifier(component);
 
         // Then handle activation stack logic
-        let id = Id::new(component.inner());
         let state = self.activation_state_mut();
-        match state.get_mut(&id) {
+        match state.get_mut(component.inner()) {
             Some(spans) if !spans.is_empty() => {
                 // Remove the most recent activation span (LIFO)
                 let _ = spans.pop();
@@ -534,7 +535,7 @@ impl<'a> Visitor<'a> for Validator<'a> {
         self.visit_note_content(&note.content);
     }
 
-    fn visit_identifier(&mut self, identifier: &Spanned<String>) {
+    fn visit_identifier(&mut self, identifier: &Spanned<Id>) {
         let registry = self
             .component_registry
             .last()
@@ -619,9 +620,9 @@ mod tests {
     impl<'a> Visitor<'a> for CountingVisitor {
         fn visit_component(
             &mut self,
-            name: &Spanned<String>,
+            name: &Spanned<Id>,
             display_name: &Option<Spanned<String>>,
-            type_name: &Spanned<&'a str>,
+            type_name: &Spanned<Id>,
             attributes: &[Attribute<'a>],
             nested_elements: &[Element<'a>],
         ) {
@@ -638,8 +639,8 @@ mod tests {
 
         fn visit_relation(
             &mut self,
-            source: &Spanned<String>,
-            target: &Spanned<String>,
+            source: &Spanned<Id>,
+            target: &Spanned<Id>,
             relation_type: &Spanned<&'a str>,
             type_spec: &Option<RelationTypeSpec<'a>>,
             label: &Option<Spanned<String>>,
@@ -657,11 +658,11 @@ mod tests {
             }
         }
 
-        fn visit_activate(&mut self, _component: &Spanned<String>) {
+        fn visit_activate(&mut self, _component: &Spanned<Id>) {
             self.activate_count += 1;
         }
 
-        fn visit_deactivate(&mut self, _component: &Spanned<String>) {
+        fn visit_deactivate(&mut self, _component: &Spanned<Id>) {
             self.deactivate_count += 1;
         }
     }
@@ -675,24 +676,24 @@ mod tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("user".to_string(), Span::new(10..14)),
+                    name: Spanned::new(Id::new("user"), Span::new(10..14)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(16..25)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(16..25)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Activate {
-                    component: Spanned::new("user".to_string(), Span::new(30..34)),
+                    component: Spanned::new(Id::new("user"), Span::new(30..34)),
                 },
                 Element::Relation {
-                    source: Spanned::new("user".to_string(), Span::new(40..44)),
-                    target: Spanned::new("server".to_string(), Span::new(48..54)),
+                    source: Spanned::new(Id::new("user"), Span::new(40..44)),
+                    target: Spanned::new(Id::new("server"), Span::new(48..54)),
                     relation_type: Spanned::new("->", Span::new(45..47)),
                     type_spec: None,
                     label: None,
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user".to_string(), Span::new(60..64)),
+                    component: Spanned::new(Id::new("user"), Span::new(60..64)),
                 },
             ],
         };
@@ -714,17 +715,17 @@ mod tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("user".to_string(), Span::new(0..4)),
+                    name: Spanned::new(Id::new("user"), Span::new(0..4)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(6..15)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(6..15)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Activate {
-                    component: Spanned::new("user".to_string(), Span::new(17..21)),
+                    component: Spanned::new(Id::new("user"), Span::new(17..21)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user".to_string(), Span::new(23..27)),
+                    component: Spanned::new(Id::new("user"), Span::new(23..27)),
                 },
             ],
         };
@@ -740,7 +741,7 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::Deactivate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             }],
         };
 
@@ -755,7 +756,7 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::Activate {
-                component: Spanned::new("user".to_string(), Span::new(0..4)),
+                component: Spanned::new(Id::new("user"), Span::new(0..4)),
             }],
         };
 
@@ -771,23 +772,23 @@ mod tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("user".to_string(), Span::new(0..4)),
+                    name: Spanned::new(Id::new("user"), Span::new(0..4)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(6..15)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(6..15)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Activate {
-                    component: Spanned::new("user".to_string(), Span::new(17..21)),
+                    component: Spanned::new(Id::new("user"), Span::new(17..21)),
                 },
                 Element::Activate {
-                    component: Spanned::new("user".to_string(), Span::new(23..27)),
+                    component: Spanned::new(Id::new("user"), Span::new(23..27)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user".to_string(), Span::new(29..33)),
+                    component: Spanned::new(Id::new("user"), Span::new(29..33)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user".to_string(), Span::new(35..39)),
+                    component: Spanned::new(Id::new("user"), Span::new(35..39)),
                 },
             ],
         };
@@ -804,30 +805,30 @@ mod tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("user".to_string(), Span::new(0..4)),
+                    name: Spanned::new(Id::new("user"), Span::new(0..4)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(6..15)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(6..15)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Component {
-                    name: Spanned::new("server".to_string(), Span::new(17..23)),
+                    name: Spanned::new(Id::new("server"), Span::new(17..23)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(25..34)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(25..34)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Activate {
-                    component: Spanned::new("user".to_string(), Span::new(36..40)),
+                    component: Spanned::new(Id::new("user"), Span::new(36..40)),
                 },
                 Element::Activate {
-                    component: Spanned::new("server".to_string(), Span::new(42..48)),
+                    component: Spanned::new(Id::new("server"), Span::new(42..48)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("user".to_string(), Span::new(50..54)),
+                    component: Spanned::new(Id::new("user"), Span::new(50..54)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("server".to_string(), Span::new(56..62)),
+                    component: Spanned::new(Id::new("server"), Span::new(56..62)),
                 },
             ],
         };
@@ -844,10 +845,10 @@ mod tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Deactivate {
-                    component: Spanned::new("user".to_string(), Span::new(0..4)),
+                    component: Spanned::new(Id::new("user"), Span::new(0..4)),
                 },
                 Element::Activate {
-                    component: Spanned::new("user".to_string(), Span::new(5..9)),
+                    component: Spanned::new(Id::new("user"), Span::new(5..9)),
                 },
             ],
         };
@@ -1009,36 +1010,36 @@ mod identifier_validation_tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("frontend".to_string(), Span::new(0..8)),
+                    name: Spanned::new(Id::new("frontend"), Span::new(0..8)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(10..19)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(10..19)),
                     attributes: vec![],
                     nested_elements: vec![
                         Element::Component {
-                            name: Spanned::new("frontend::app".to_string(), Span::new(20..33)),
+                            name: Spanned::new(Id::new("frontend::app"), Span::new(20..33)),
                             display_name: None,
-                            type_name: Spanned::new("Rectangle", Span::new(35..44)),
+                            type_name: Spanned::new(Id::new("Rectangle"), Span::new(35..44)),
                             attributes: vec![],
                             nested_elements: vec![],
                         },
                         Element::Component {
-                            name: Spanned::new("frontend::ui".to_string(), Span::new(45..57)),
+                            name: Spanned::new(Id::new("frontend::ui"), Span::new(45..57)),
                             display_name: None,
-                            type_name: Spanned::new("Rectangle", Span::new(59..68)),
+                            type_name: Spanned::new(Id::new("Rectangle"), Span::new(59..68)),
                             attributes: vec![],
                             nested_elements: vec![],
                         },
                     ],
                 },
                 Element::Component {
-                    name: Spanned::new("backend".to_string(), Span::new(69..76)),
+                    name: Spanned::new(Id::new("backend"), Span::new(69..76)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(78..87)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(78..87)),
                     attributes: vec![],
                     nested_elements: vec![Element::Component {
-                        name: Spanned::new("backend::api".to_string(), Span::new(88..100)),
+                        name: Spanned::new(Id::new("backend::api"), Span::new(88..100)),
                         display_name: None,
-                        type_name: Spanned::new("Rectangle", Span::new(102..111)),
+                        type_name: Spanned::new(Id::new("Rectangle"), Span::new(102..111)),
                         attributes: vec![],
                         nested_elements: vec![],
                     }],
@@ -1060,13 +1061,13 @@ mod identifier_validation_tests {
 
         // Set up registry with a component
         validator.component_registry.push(
-            vec![("app".to_string(), Span::new(0..3))]
+            vec![(Id::new("app"), Span::new(0..3))]
                 .into_iter()
                 .collect(),
         );
 
         // Test visit_identifier with a non-existent component
-        validator.visit_identifier(&Spanned::new("unknown".to_string(), Span::new(10..17)));
+        validator.visit_identifier(&Spanned::new(Id::new("unknown"), Span::new(10..17)));
 
         // Should have an error
         assert_eq!(validator.errors.len(), 1);
@@ -1084,16 +1085,16 @@ mod identifier_validation_tests {
         // Set up registry with multiple components
         validator.component_registry.push(
             vec![
-                ("client".to_string(), Span::new(0..6)),
-                ("server".to_string(), Span::new(18..24)),
+                (Id::new("client"), Span::new(0..6)),
+                (Id::new("server"), Span::new(18..24)),
             ]
             .into_iter()
             .collect(),
         );
 
         // Test visit_identifier with multiple components
-        validator.visit_identifier(&Spanned::new("client".to_string(), Span::new(40..46)));
-        validator.visit_identifier(&Spanned::new("server".to_string(), Span::new(48..54)));
+        validator.visit_identifier(&Spanned::new(Id::new("client"), Span::new(40..46)));
+        validator.visit_identifier(&Spanned::new(Id::new("server"), Span::new(48..54)));
 
         // Should not add any errors
         assert!(validator.errors.is_empty());
@@ -1105,14 +1106,14 @@ mod identifier_validation_tests {
 
         // Set up registry with one component
         validator.component_registry.push(
-            vec![("client".to_string(), Span::new(0..6))]
+            vec![(Id::new("client"), Span::new(0..6))]
                 .into_iter()
                 .collect(),
         );
 
         // Test visit_identifier with one valid and one invalid component
-        validator.visit_identifier(&Spanned::new("client".to_string(), Span::new(40..46)));
-        validator.visit_identifier(&Spanned::new("unknown".to_string(), Span::new(48..55)));
+        validator.visit_identifier(&Spanned::new(Id::new("client"), Span::new(40..46)));
+        validator.visit_identifier(&Spanned::new(Id::new("unknown"), Span::new(48..55)));
 
         // Should have one error for the missing component
         assert_eq!(validator.errors.len(), 1);
@@ -1131,22 +1132,22 @@ mod identifier_validation_tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("app".to_string(), Span::new(0..3)),
+                    name: Spanned::new(Id::new("app"), Span::new(0..3)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(5..14)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(5..14)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Component {
-                    name: Spanned::new("db".to_string(), Span::new(15..17)),
+                    name: Spanned::new(Id::new("db"), Span::new(15..17)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(19..28)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(19..28)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Relation {
-                    source: Spanned::new("app".to_string(), Span::new(30..33)),
-                    target: Spanned::new("db".to_string(), Span::new(37..39)),
+                    source: Spanned::new(Id::new("app"), Span::new(30..33)),
+                    target: Spanned::new(Id::new("db"), Span::new(37..39)),
                     relation_type: Spanned::new("->", Span::new(34..36)),
                     type_spec: None,
                     label: None,
@@ -1166,15 +1167,15 @@ mod identifier_validation_tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("db".to_string(), Span::new(15..17)),
+                    name: Spanned::new(Id::new("db"), Span::new(15..17)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(19..28)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(19..28)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Relation {
-                    source: Spanned::new("unknown".to_string(), Span::new(30..37)),
-                    target: Spanned::new("db".to_string(), Span::new(41..43)),
+                    source: Spanned::new(Id::new("unknown"), Span::new(30..37)),
+                    target: Spanned::new(Id::new("db"), Span::new(41..43)),
                     relation_type: Spanned::new("->", Span::new(38..40)),
                     type_spec: None,
                     label: None,
@@ -1196,15 +1197,15 @@ mod identifier_validation_tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("app".to_string(), Span::new(0..3)),
+                    name: Spanned::new(Id::new("app"), Span::new(0..3)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(5..14)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(5..14)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Relation {
-                    source: Spanned::new("app".to_string(), Span::new(30..33)),
-                    target: Spanned::new("missing".to_string(), Span::new(37..44)),
+                    source: Spanned::new(Id::new("app"), Span::new(30..33)),
+                    target: Spanned::new(Id::new("missing"), Span::new(37..44)),
                     relation_type: Spanned::new("->", Span::new(34..36)),
                     type_spec: None,
                     label: None,
@@ -1226,17 +1227,17 @@ mod identifier_validation_tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("server".to_string(), Span::new(0..6)),
+                    name: Spanned::new(Id::new("server"), Span::new(0..6)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(8..17)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(8..17)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Activate {
-                    component: Spanned::new("server".to_string(), Span::new(20..26)),
+                    component: Spanned::new(Id::new("server"), Span::new(20..26)),
                 },
                 Element::Deactivate {
-                    component: Spanned::new("server".to_string(), Span::new(30..36)),
+                    component: Spanned::new(Id::new("server"), Span::new(30..36)),
                 },
             ],
         };
@@ -1253,14 +1254,14 @@ mod identifier_validation_tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("server".to_string(), Span::new(0..6)),
+                    name: Spanned::new(Id::new("server"), Span::new(0..6)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(8..17)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(8..17)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Activate {
-                    component: Spanned::new("unknown".to_string(), Span::new(20..27)),
+                    component: Spanned::new(Id::new("unknown"), Span::new(20..27)),
                 },
             ],
         };
@@ -1279,14 +1280,14 @@ mod identifier_validation_tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("server".to_string(), Span::new(0..6)),
+                    name: Spanned::new(Id::new("server"), Span::new(0..6)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(8..17)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(8..17)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Deactivate {
-                    component: Spanned::new("missing".to_string(), Span::new(20..27)),
+                    component: Spanned::new(Id::new("missing"), Span::new(20..27)),
                 },
             ],
         };
@@ -1305,9 +1306,9 @@ mod identifier_validation_tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("client".to_string(), Span::new(0..6)),
+                    name: Spanned::new(Id::new("client"), Span::new(0..6)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(8..17)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(8..17)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
@@ -1315,7 +1316,7 @@ mod identifier_validation_tests {
                     attributes: vec![Attribute {
                         name: Spanned::new("on", Span::new(20..22)),
                         value: AttributeValue::Identifiers(vec![Spanned::new(
-                            "unknown".to_string(),
+                            Id::new("unknown"),
                             Span::new(24..31),
                         )]),
                     }],
@@ -1338,16 +1339,16 @@ mod identifier_validation_tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("client".to_string(), Span::new(0..6)),
+                    name: Spanned::new(Id::new("client"), Span::new(0..6)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(8..17)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(8..17)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
                 Element::Component {
-                    name: Spanned::new("server".to_string(), Span::new(19..25)),
+                    name: Spanned::new(Id::new("server"), Span::new(19..25)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(27..36)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(27..36)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },
@@ -1355,8 +1356,8 @@ mod identifier_validation_tests {
                     attributes: vec![Attribute {
                         name: Spanned::new("on", Span::new(38..40)),
                         value: AttributeValue::Identifiers(vec![
-                            Spanned::new("client".to_string(), Span::new(42..48)),
-                            Spanned::new("server".to_string(), Span::new(50..56)),
+                            Spanned::new(Id::new("client"), Span::new(42..48)),
+                            Spanned::new(Id::new("server"), Span::new(50..56)),
                         ]),
                     }],
                     content: Spanned::new("Spanning note".to_string(), Span::new(58..73)),
@@ -1379,9 +1380,9 @@ mod identifier_validation_tests {
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
-                    name: Spanned::new("client".to_string(), Span::new(0..6)),
+                    name: Spanned::new(Id::new("client"), Span::new(0..6)),
                     display_name: None,
-                    type_name: Spanned::new("Rectangle", Span::new(8..17)),
+                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(8..17)),
                     attributes: vec![],
                     nested_elements: vec![],
                 },

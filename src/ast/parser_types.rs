@@ -1,14 +1,20 @@
-use super::span::{Span, Spanned};
-use std::fmt;
+//! Parser AST types
+//!
+//! This module defines the data structures representing parsed Filament diagrams.
+//! These types form the output of the parser.
+//!
+//! ## Source Location Tracking
+//!
+//! Leaf values are wrapped in [`Spanned<T>`] to preserve source location information
+//! for error reporting. Composite types derive their spans from their contents.
 
-/// AST types that utilize span information
-/// This module contains parser types with a span.
-/// Leaf types (strings, literals) are wrapped in [`Spanned<T>`]
-/// Composite types use unwrapped collections and derive spans from inner elements
+use super::span::{Span, Spanned};
+use crate::identifier::Id;
+use std::fmt;
 #[derive(Debug)]
 pub struct TypeDefinition<'a> {
-    pub name: Spanned<&'a str>,
-    pub base_type: Spanned<&'a str>,
+    pub name: Spanned<Id>,
+    pub base_type: Spanned<Id>,
     pub attributes: Vec<Attribute<'a>>,
 }
 
@@ -43,7 +49,7 @@ pub enum AttributeValue<'a> {
     String(Spanned<String>),
     Float(Spanned<f32>),
     Attributes(Vec<Attribute<'a>>),
-    Identifiers(Vec<Spanned<String>>),
+    Identifiers(Vec<Spanned<Id>>),
     Empty,
 }
 
@@ -179,7 +185,7 @@ impl<'a> AttributeValue<'a> {
     }
 
     /// Extract an identifier list, returning an error if this is not an identifiers value
-    pub fn as_identifiers(&self) -> Result<&[Spanned<String>], &'static str> {
+    pub fn as_identifiers(&self) -> Result<&[Spanned<Id>], &'static str> {
         match self {
             AttributeValue::Identifiers(ids) => Ok(ids),
             AttributeValue::Empty => Ok(&[]),
@@ -286,9 +292,9 @@ impl Note<'_> {
 #[derive(Debug)]
 pub enum Element<'a> {
     Component {
-        name: Spanned<String>,
+        name: Spanned<Id>,
         display_name: Option<Spanned<String>>,
-        type_name: Spanned<&'a str>,
+        type_name: Spanned<Id>,
         attributes: Vec<Attribute<'a>>,
         nested_elements: Vec<Element<'a>>,
     },
@@ -297,8 +303,8 @@ pub enum Element<'a> {
     /// Note: `source` and `target` are `String` instead of `&'a str` because they may be
     /// nested identifiers (e.g., "frontend::app") created by joining multiple parts with "::".
     Relation {
-        source: Spanned<String>,
-        target: Spanned<String>,
+        source: Spanned<Id>,
+        target: Spanned<Id>,
         relation_type: Spanned<&'a str>,
         type_spec: Option<RelationTypeSpec<'a>>,
         label: Option<Spanned<String>>,
@@ -306,16 +312,16 @@ pub enum Element<'a> {
     Diagram(Diagram<'a>),
     Fragment(Fragment<'a>),
     ActivateBlock {
-        component: Spanned<String>,
+        component: Spanned<Id>,
         elements: Vec<Element<'a>>,
     },
     /// Explicit activation of a component
     Activate {
-        component: Spanned<String>,
+        component: Spanned<Id>,
     },
     /// Explicit deactivation of a component
     Deactivate {
-        component: Spanned<String>,
+        component: Spanned<Id>,
     },
     /// Alt/else block (sugar syntax for fragment with "alt" operation)
     AltElseBlock {
@@ -473,7 +479,7 @@ impl Element<'_> {
 
 #[derive(Debug)]
 pub struct RelationTypeSpec<'a> {
-    pub type_name: Option<Spanned<&'a str>>,
+    pub type_name: Option<Spanned<Id>>,
     pub attributes: Vec<Attribute<'a>>,
 }
 

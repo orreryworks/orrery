@@ -627,7 +627,7 @@ mod tests {
         let result =
             find_active_activation_box_for_participant(&activation_boxes, Id::new("test"), 130.0);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().participant_id(), Id::new("test"));
+        assert_eq!(result.unwrap().participant_id(), "test");
 
         // Test finding activation box for non-existent participant
         let result = find_active_activation_box_for_participant(

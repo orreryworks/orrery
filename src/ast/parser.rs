@@ -5,6 +5,7 @@ use crate::{
         tokens::{PositionedToken, Token},
     },
     error::ParseDiagnosticError,
+    identifier::Id,
 };
 use winnow::{
     Parser as _,
@@ -67,27 +68,38 @@ fn semicolon<'src>(input: &mut Input<'src>) -> IResult<'src, ()> {
     .parse_next(input)
 }
 
-/// Parse a standard identifier with span preservation
-fn identifier<'src>(input: &mut Input<'src>) -> IResult<'src, (&'src str, Span)> {
+/// Parse a raw identifier string with span preservation (low-level)
+///
+/// Returns the identifier as &str.
+fn raw_identifier<'src>(input: &mut Input<'src>) -> IResult<'src, Spanned<&'src str>> {
     any.verify_map(|token: &PositionedToken<'_>| match &token.token {
-        Token::Identifier(name) => Some((*name, token.span)),
+        Token::Identifier(name) => Some(Spanned::new(*name, token.span)),
         // Allow keywords to be used as identifiers in appropriate contexts
-        Token::Component => Some(("Component", token.span)),
-        Token::Sequence => Some(("Sequence", token.span)),
-        Token::Type => Some(("Type", token.span)),
-        Token::Diagram => Some(("Diagram", token.span)),
-        Token::Embed => Some(("Embed", token.span)),
-        Token::As => Some(("As", token.span)),
+        Token::Component => Some(Spanned::new("Component", token.span)),
+        Token::Sequence => Some(Spanned::new("Sequence", token.span)),
+        Token::Type => Some(Spanned::new("Type", token.span)),
+        Token::Diagram => Some(Spanned::new("Diagram", token.span)),
+        Token::Embed => Some(Spanned::new("Embed", token.span)),
+        Token::As => Some(Spanned::new("As", token.span)),
         _ => None,
     })
     .context(StrContext::Label("identifier"))
     .parse_next(input)
 }
 
+/// Parse a standard identifier with span preservation (high-level)
+///
+/// Returns the identifier as an interned Id.
+fn identifier<'src>(input: &mut Input<'src>) -> IResult<'src, Spanned<Id>> {
+    let raw = raw_identifier.parse_next(input)?;
+    Ok(raw.map(|name| Id::new(name)))
+}
+
 /// Parse nested identifier with :: separators
-fn nested_identifier<'src>(input: &mut Input<'src>) -> IResult<'src, (String, Span)> {
+fn nested_identifier<'src>(input: &mut Input<'src>) -> IResult<'src, Spanned<Id>> {
     let first = identifier.parse_next(input)?;
-    let mut parts = vec![first];
+    let mut current_id = *first.inner();
+    let mut unified_span = first.span();
 
     loop {
         // Try to parse `::` using DoubleColon token
@@ -99,8 +111,9 @@ fn nested_identifier<'src>(input: &mut Input<'src>) -> IResult<'src, (String, Sp
         match double_colon_result {
             Ok(_) => {
                 // Successfully parsed `::`, now parse the identifier
-                let next_identifier = identifier.parse_next(input)?;
-                parts.push(next_identifier);
+                let next = identifier.parse_next(input)?;
+                current_id = current_id.create_nested(*next.inner());
+                unified_span = unified_span.union(next.span());
             }
             Err(_) => {
                 // Failed to parse `::`, reset and exit loop
@@ -110,19 +123,7 @@ fn nested_identifier<'src>(input: &mut Input<'src>) -> IResult<'src, (String, Sp
         }
     }
 
-    let names: Vec<&str> = parts.iter().map(|(name, _span)| *name).collect();
-    let joined_name = names.join("::");
-
-    let unified_span = if let Some((_, first_span)) = parts.first() {
-        parts
-            .iter()
-            .skip(1)
-            .fold(*first_span, |acc, (_, span)| acc.union(*span))
-    } else {
-        unreachable!("This shouldn't happen since we have at least one part")
-    };
-
-    Ok((joined_name, unified_span))
+    Ok(Spanned::new(current_id, unified_span))
 }
 
 /// Parse string literal
@@ -146,7 +147,7 @@ fn string_literal<'src>(input: &mut Input<'src>) -> IResult<'src, Spanned<String
 /// - `[client, server::api, database]` - mixed simple and nested identifiers
 ///
 /// Note: Empty `[]` is handled by `empty_brackets` parser
-fn identifiers<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<Spanned<String>>> {
+fn identifiers<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<Spanned<Id>>> {
     delimited(
         // Opening bracket with optional whitespace
         (
@@ -159,7 +160,7 @@ fn identifiers<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<Spanned<Strin
             // from nested attributes [attr=val]
             move |input: &mut Input<'src>| {
                 // Parse the first identifier (required - empty case handled elsewhere)
-                let (id_str, id_span) = nested_identifier.parse_next(input)?;
+                let first_id = nested_identifier.parse_next(input)?;
                 ws_comments0.parse_next(input)?;
 
                 // Disambiguation: Check if next token is '='
@@ -175,11 +176,11 @@ fn identifiers<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<Spanned<Strin
                 input.reset(&checkpoint);
 
                 // Build identifier list starting with first identifier
-                let mut ids = vec![Spanned::new(id_str, id_span)];
+                let mut ids = vec![first_id];
 
                 // Parse remaining identifiers separated by commas
                 // Uses `repeat` combinator for clean separation of concerns
-                let rest: Vec<Spanned<String>> = repeat(
+                let rest: Vec<Spanned<Id>> = repeat(
                     0..,
                     preceded(
                         // Comma separator with optional whitespace
@@ -190,8 +191,7 @@ fn identifiers<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<Spanned<Strin
                             }),
                             ws_comments0,
                         ),
-                        // Parse identifier and convert tuple to Spanned
-                        nested_identifier.map(|(s, span)| Spanned::new(s, span)),
+                        nested_identifier,
                     ),
                 )
                 .parse_next(input)?;
@@ -261,8 +261,7 @@ fn attribute_value<'src>(input: &mut Input<'src>) -> IResult<'src, types::Attrib
 
 /// Parse a single attribute
 fn attribute<'src>(input: &mut Input<'src>) -> IResult<'src, types::Attribute<'src>> {
-    let (name, name_span) = identifier.parse_next(input)?;
-    let name_spanned = make_spanned(name, name_span);
+    let name = raw_identifier.parse_next(input)?;
 
     preceded(
         ws_comments0,
@@ -274,10 +273,7 @@ fn attribute<'src>(input: &mut Input<'src>) -> IResult<'src, types::Attribute<'s
 
     let value = attribute_value.parse_next(input)?;
 
-    Ok(types::Attribute {
-        name: name_spanned,
-        value,
-    })
+    Ok(types::Attribute { name, value })
 }
 
 /// Parse comma-separated attributes
@@ -318,7 +314,7 @@ fn type_definition<'src>(input: &mut Input<'src>) -> IResult<'src, types::TypeDe
         .parse_next(input)?;
 
     ws_comments1.parse_next(input)?;
-    let (name, name_span) = identifier.parse_next(input)?;
+    let name = identifier.parse_next(input)?;
 
     preceded(
         ws_comments0,
@@ -327,7 +323,7 @@ fn type_definition<'src>(input: &mut Input<'src>) -> IResult<'src, types::TypeDe
     .parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
-    let (base_type, base_type_span) = identifier.parse_next(input)?;
+    let base_type = identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
     let attributes = opt(wrapped_attributes)
@@ -337,8 +333,8 @@ fn type_definition<'src>(input: &mut Input<'src>) -> IResult<'src, types::TypeDe
     semicolon.parse_next(input)?;
 
     Ok(types::TypeDefinition {
-        name: make_spanned(name, name_span),
-        base_type: make_spanned(base_type, base_type_span),
+        name,
+        base_type,
         attributes,
     })
 }
@@ -363,20 +359,18 @@ fn relation_type_spec<'src>(
             ws_comments0,
             attributes,
         )
-            .map(
-                |(type_name_pair, _, _, _, attributes)| types::RelationTypeSpec {
-                    type_name: Some(make_spanned(type_name_pair.0, type_name_pair.1)),
-                    attributes,
-                },
-            ),
+            .map(|(type_name, _, _, _, attributes)| types::RelationTypeSpec {
+                type_name: Some(type_name),
+                attributes,
+            }),
         // [TypeName] (no attributes or semicolon) - identifier NOT followed by equals
         (
             identifier,
             ws_comments0,
             not(any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Equals))),
         )
-            .map(|(type_name_pair, _, _)| types::RelationTypeSpec {
-                type_name: Some(make_spanned(type_name_pair.0, type_name_pair.1)),
+            .map(|(type_name, _, _)| types::RelationTypeSpec {
+                type_name: Some(type_name),
                 attributes: Vec::new(),
             }),
         // [attributes] (no type name) - attributes only
@@ -410,8 +404,7 @@ fn relation_type<'src>(input: &mut Input<'src>) -> IResult<'src, &'src str> {
 
 /// Parse a component with optional nested elements
 fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
-    let (name, name_span) = identifier.parse_next(input)?;
-    let name_spanned = make_spanned(name.to_string(), name_span);
+    let name = identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
 
@@ -429,8 +422,7 @@ fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<'src, types
         .parse_next(input)?;
     ws_comments0.parse_next(input)?;
 
-    let (type_name, type_name_span) = identifier.parse_next(input)?;
-    let type_name_spanned = make_spanned(type_name, type_name_span);
+    let type_name = identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
     let attributes = opt(wrapped_attributes)
@@ -458,9 +450,9 @@ fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<'src, types
     semicolon.parse_next(input)?;
 
     Ok(types::Element::Component {
-        name: name_spanned,
+        name,
         display_name,
-        type_name: type_name_spanned,
+        type_name,
         attributes,
         nested_elements,
     })
@@ -468,7 +460,7 @@ fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<'src, types
 
 /// Parse a complete relation statement
 fn relation<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
-    let (from_component, from_span) = nested_identifier.parse_next(input)?;
+    let source = nested_identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
     let relation_type = relation_type.parse_next(input)?;
@@ -489,7 +481,7 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>
     .parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
-    let (to_component, to_span) = nested_identifier.parse_next(input)?;
+    let target = nested_identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
 
@@ -503,8 +495,8 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>
     semicolon.parse_next(input)?;
 
     Ok(types::Element::Relation {
-        source: make_spanned(from_component, from_span),
-        target: make_spanned(to_component, to_span),
+        source,
+        target,
         relation_type: make_spanned(relation_type, Span::new(0..0)), // TODO: track proper span
         type_spec,
         label,
@@ -534,10 +526,9 @@ fn activate_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
         .context(StrContext::Label("whitespace after activate"))
         .parse_next(input)?;
 
-    let (component_name, component_span) = nested_identifier
+    let component = nested_identifier
         .context(StrContext::Label("component nested identifier"))
         .parse_next(input)?;
-    let component_spanned = make_spanned(component_name, component_span);
 
     ws_comments0.parse_next(input)?;
 
@@ -568,7 +559,7 @@ fn activate_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
         .parse_next(input)?;
 
     Ok(types::Element::ActivateBlock {
-        component: component_spanned,
+        component,
         elements: nested_elements,
     })
 }
@@ -842,7 +833,7 @@ fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
 fn parse_keyword_then_nested_identifier_then_semicolon<'src>(
     input: &mut Input<'src>,
     keyword: Token,
-) -> IResult<'src, Spanned<String>> {
+) -> IResult<'src, Spanned<Id>> {
     any.verify(|token: &PositionedToken<'_>| token.token == keyword)
         .void()
         .context(StrContext::Label("keyword"))
@@ -851,14 +842,14 @@ fn parse_keyword_then_nested_identifier_then_semicolon<'src>(
     ws_comments1
         .context(StrContext::Label("whitespace after keyword"))
         .parse_next(input)?;
-    let (name, name_span) = nested_identifier
+    let component = nested_identifier
         .context(StrContext::Label("component nested identifier"))
         .parse_next(input)?;
     ws_comments0.parse_next(input)?;
     semicolon
         .context(StrContext::Label("semicolon after activation statement"))
         .parse_next(input)?;
-    Ok(Spanned::new(name, name_span))
+    Ok(component)
 }
 
 /// Parse an explicit activate statement: `activate <nested_identifier>;`
@@ -1125,13 +1116,33 @@ mod tests {
     }
 
     #[test]
+    fn test_raw_identifier() {
+        // Test that raw_identifier returns &str wrapped in Spanned
+        let tokens = parse_tokens("test_name");
+        let mut slice = TokenSlice::new(&tokens);
+        let result = raw_identifier.parse_next(&mut slice);
+        assert!(result.is_ok());
+        let spanned_str = result.unwrap();
+        assert_eq!(*spanned_str.inner(), "test_name");
+        assert!(!spanned_str.span().is_empty());
+
+        // Test with keyword used as identifier
+        let tokens = parse_tokens("Component");
+        let mut slice = TokenSlice::new(&tokens);
+        let result = raw_identifier.parse_next(&mut slice);
+        assert!(result.is_ok());
+        let spanned_str = result.unwrap();
+        assert_eq!(*spanned_str.inner(), "Component");
+    }
+
+    #[test]
     fn test_identifier() {
         let tokens = parse_tokens("test_id");
         let mut slice = TokenSlice::new(&tokens);
         let result = identifier.parse_next(&mut slice);
         assert!(result.is_ok());
-        let (name, _span) = result.unwrap();
-        assert_eq!(name, "test_id");
+        let spanned_id = result.unwrap();
+        assert_eq!(*spanned_id.inner(), "test_id");
     }
 
     #[test]
@@ -1149,8 +1160,8 @@ mod tests {
         let mut slice = TokenSlice::new(&tokens);
         let result = nested_identifier.parse_next(&mut slice);
         assert!(result.is_ok());
-        let (name, _span) = result.unwrap();
-        assert_eq!(name, "parent::child::grandchild");
+        let spanned_id = result.unwrap();
+        assert_eq!(*spanned_id.inner(), "parent::child::grandchild");
     }
 
     #[test]
@@ -1184,7 +1195,7 @@ mod tests {
 
         match elem.unwrap() {
             types::Element::Activate { component } => {
-                assert_eq!(component.inner(), "user");
+                assert_eq!(*component.inner(), "user");
                 let id_span = first_identifier_span(&tokens);
                 assert_eq!(
                     component.span(),
@@ -1207,7 +1218,7 @@ mod tests {
 
         match elem.unwrap() {
             types::Element::Deactivate { component } => {
-                assert_eq!(component.inner(), "server");
+                assert_eq!(*component.inner(), "server");
                 let id_span = first_identifier_span(&tokens);
                 assert_eq!(
                     component.span(),
@@ -1232,7 +1243,7 @@ mod tests {
         );
         match elem.unwrap() {
             types::Element::Activate { component } => {
-                assert_eq!(component.inner(), "user");
+                assert_eq!(*component.inner(), "user");
             }
             other => panic!("expected Activate element, got {:?}", other),
         }
@@ -1251,7 +1262,7 @@ mod tests {
         );
         match elem.unwrap() {
             types::Element::Deactivate { component } => {
-                assert_eq!(component.inner(), "user");
+                assert_eq!(*component.inner(), "user");
             }
             other => panic!("expected Deactivate element, got {:?}", other),
         }
@@ -1287,7 +1298,7 @@ mod tests {
         assert!(elem.is_ok(), "activate with nested identifier should parse");
         match elem.unwrap() {
             types::Element::Activate { component } => {
-                assert_eq!(component.inner(), "parent::child");
+                assert_eq!(*component.inner(), "parent::child");
                 let expected_span = nested_identifier_span(&tokens);
                 assert_eq!(
                     component.span(),
@@ -1312,7 +1323,7 @@ mod tests {
         );
         match elem.unwrap() {
             types::Element::Deactivate { component } => {
-                assert_eq!(component.inner(), "a::b::c");
+                assert_eq!(*component.inner(), "a::b::c");
                 let expected_span = nested_identifier_span(&tokens);
                 assert_eq!(
                     component.span(),
@@ -1347,7 +1358,7 @@ mod tests {
             elements,
         } = element
         {
-            assert_eq!(component.inner(), "user");
+            assert_eq!(*component.inner(), "user");
             assert_eq!(elements.len(), 1);
         } else {
             panic!("Expected ActivateBlock element, got {:?}", element);
@@ -1467,17 +1478,17 @@ mod tests {
         let mut input = FilamentTokenSlice::new(&tokens);
         let result = identifier(&mut input);
         assert!(result.is_ok());
-        let (name, span) = result.unwrap();
-        assert_eq!(name, "hello");
-        assert!(!span.is_empty());
+        let spanned_id = result.unwrap();
+        assert_eq!(*spanned_id.inner(), "hello");
+        assert!(!spanned_id.span().is_empty());
 
         // Test keywords as identifiers
         let tokens = tokenize("Component").expect("Failed to tokenize");
         let mut input = FilamentTokenSlice::new(&tokens);
         let result = identifier(&mut input);
         assert!(result.is_ok());
-        let (name, _) = result.unwrap();
-        assert_eq!(name, "Component");
+        let spanned_id = result.unwrap();
+        assert_eq!(*spanned_id.inner(), "Component");
 
         // Test failure cases
         let tokens = tokenize("->").expect("Failed to tokenize");
@@ -1492,17 +1503,17 @@ mod tests {
         let mut input = FilamentTokenSlice::new(&tokens);
         let result = nested_identifier(&mut input);
         assert!(result.is_ok());
-        let (name, span) = result.unwrap();
-        assert_eq!(name, "simple");
-        assert!(!span.is_empty());
+        let spanned_id = result.unwrap();
+        assert_eq!(*spanned_id.inner(), "simple");
+        assert!(!spanned_id.span().is_empty());
 
         // Test nested identifiers
         let tokens = tokenize("parent::child").expect("Failed to tokenize");
         let mut input = FilamentTokenSlice::new(&tokens);
         let result = nested_identifier(&mut input);
         assert!(result.is_ok());
-        let (name, _) = result.unwrap();
-        assert_eq!(name, "parent::child");
+        let spanned_id = result.unwrap();
+        assert_eq!(*spanned_id.inner(), "parent::child");
     }
 
     #[test]
@@ -1998,7 +2009,7 @@ mod tests {
             elements,
         } = element
         {
-            assert_eq!(component.inner(), &"user");
+            assert_eq!(*component.inner(), "user");
             assert_eq!(elements.len(), 0);
         } else {
             panic!("Expected ActivateBlock element");
@@ -2025,7 +2036,7 @@ mod tests {
             elements,
         } = element
         {
-            assert_eq!(component.inner(), &"user");
+            assert_eq!(*component.inner(), "user");
             assert_eq!(elements.len(), 2); // relation + nested activate block
 
             // Verify nested activate block exists
@@ -2059,7 +2070,7 @@ mod tests {
             elements,
         } = element
         {
-            assert_eq!(component.inner(), &"user");
+            assert_eq!(*component.inner(), "user");
             assert_eq!(elements.len(), 2); // component + relation
         } else {
             panic!("Expected ActivateBlock element");
@@ -2560,7 +2571,7 @@ mod tests {
 
         let ids = result.unwrap();
         assert_eq!(ids.len(), 1);
-        assert_eq!(ids[0].inner(), "Component");
+        assert_eq!(*ids[0].inner(), "Component");
     }
 
     #[test]
@@ -2574,9 +2585,9 @@ mod tests {
 
         let ids = result.unwrap();
         assert_eq!(ids.len(), 3);
-        assert_eq!(ids[0].inner(), "client");
-        assert_eq!(ids[1].inner(), "server");
-        assert_eq!(ids[2].inner(), "database");
+        assert_eq!(*ids[0].inner(), "client");
+        assert_eq!(*ids[1].inner(), "server");
+        assert_eq!(*ids[2].inner(), "database");
     }
 
     #[test]
@@ -2590,8 +2601,8 @@ mod tests {
 
         let ids = result.unwrap();
         assert_eq!(ids.len(), 2);
-        assert_eq!(ids[0].inner(), "frontend::app");
-        assert_eq!(ids[1].inner(), "backend::api");
+        assert_eq!(*ids[0].inner(), "frontend::app");
+        assert_eq!(*ids[1].inner(), "backend::api");
     }
 
     #[test]
