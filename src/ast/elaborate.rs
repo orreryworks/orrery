@@ -14,7 +14,7 @@ use crate::{
     identifier::Id,
 };
 use log::{debug, info, trace};
-use std::{collections::HashMap, rc::Rc, str::FromStr};
+use std::{borrow::Cow, collections::HashMap, rc::Rc, str::FromStr};
 
 /// Type alias for Result with ElaborationDiagnosticError as the error type
 type EResult<T> = Result<T, ElaborationDiagnosticError>;
@@ -409,7 +409,7 @@ impl<'a> Builder<'a> {
         // Check if this shape supports content before processing nested elements
         if !nested_elements.is_empty()
             && !type_def
-                .shape_definition_rc()
+                .shape_definition()
                 .is_ok_and(|s| s.supports_content())
         {
             return Err(ElaborationDiagnosticError::from_span(
@@ -806,7 +806,7 @@ impl<'a> Builder<'a> {
             }
         }
 
-        Ok(draw::LifelineDefinition::new(Rc::new(stroke_def)))
+        Ok(draw::LifelineDefinition::new(Cow::Owned(stroke_def)))
     }
 
     /// Extract activation box definition from an attribute
@@ -841,7 +841,7 @@ impl<'a> Builder<'a> {
                         &mut stroke_def,
                         stroke_attrs,
                     )?;
-                    definition.set_stroke(Rc::new(stroke_def));
+                    definition.set_stroke(Cow::Owned(stroke_def));
                 }
                 "fill_color" => {
                     let color_str = attr.value.as_str().map_err(|err| {
@@ -1615,7 +1615,7 @@ mod tests {
 
             // Verify type definition was created (styling was processed)
             let def = note_elem.definition();
-            assert!(def.note_definition_rc().is_ok());
+            assert!(def.note_definition().is_ok());
         } else {
             panic!("Expected Note element");
         }

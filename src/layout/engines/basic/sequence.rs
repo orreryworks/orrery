@@ -16,7 +16,7 @@ use crate::{
     },
     structure::{SequenceEvent, SequenceGraph},
 };
-use std::{collections::HashMap, rc::Rc};
+use std::{borrow::Cow, collections::HashMap};
 
 /// Basic sequence layout engine implementation that implements the SequenceLayoutEngine trait
 pub struct Engine {
@@ -100,14 +100,15 @@ impl Engine {
         let mut participant_shapes: HashMap<_, _> = graph
             .nodes()
             .map(|node| {
-                let mut shape = draw::Shape::new(Rc::clone(
+                let mut shape = draw::Shape::new(
                     node.type_definition()
-                        .shape_definition_rc()
-                        .expect("Node must have a shape definition for sequence layout"),
-                ));
+                        .shape_definition()
+                        .expect("Node must have a shape definition for sequence layout")
+                        .clone_box(),
+                );
                 shape.set_padding(self.padding);
                 let text = draw::Text::new(
-                    Rc::clone(node.type_definition().text_definition_rc()),
+                    Cow::Owned(node.type_definition().text_definition().clone()),
                     node.display_text().to_string(),
                 );
                 let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));

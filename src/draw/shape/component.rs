@@ -4,7 +4,7 @@ use crate::{
     draw::{StrokeDefinition, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
-use std::{fmt, rc::Rc};
+use std::{borrow::Cow, fmt};
 use svg::{self, node::element as svg_element};
 
 /// Component shape definition with UML component styling
@@ -139,32 +139,32 @@ where
         self.rectangle_definition.set_rounded(radius)
     }
 
-    fn set_stroke(&mut self, stroke: StrokeDefinition) -> Result<(), &'static str> {
+    fn set_stroke(&mut self, stroke: Cow<'static, StrokeDefinition>) -> Result<(), &'static str> {
         self.rectangle_definition.set_stroke(stroke)
     }
 
     fn with_fill_color(
         &self,
         color: Option<Color>,
-    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
         let mut cloned = self.clone();
         cloned.set_fill_color(color)?;
-        Ok(Rc::new(cloned))
+        Ok(Box::new(cloned))
     }
 
-    fn with_rounded(&self, radius: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+    fn with_rounded(&self, radius: usize) -> Result<Box<dyn ShapeDefinition>, &'static str> {
         let mut cloned = self.clone();
         cloned.set_rounded(radius)?;
-        Ok(Rc::new(cloned))
+        Ok(Box::new(cloned))
     }
 
     fn with_stroke(
         &self,
-        stroke: StrokeDefinition,
-    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        stroke: Cow<'static, StrokeDefinition>,
+    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
         let mut cloned = self.clone();
         cloned.set_stroke(stroke)?;
-        Ok(Rc::new(cloned))
+        Ok(Box::new(cloned))
     }
 
     fn text_positioning_strategy(&self) -> TextPositioningStrategy {

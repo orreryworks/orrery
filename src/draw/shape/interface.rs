@@ -4,7 +4,7 @@ use crate::{
     draw::StrokeDefinition,
     geometry::{Insets, Point, Size},
 };
-use std::rc::Rc;
+use std::borrow::Cow;
 use svg::{self, node::element as svg_element};
 
 /// UML Interface shape definition - a circle with an "I" symbol
@@ -12,7 +12,7 @@ use svg::{self, node::element as svg_element};
 #[derive(Debug, Clone)]
 pub struct InterfaceDefinition {
     fill_color: Option<Color>,
-    stroke: Rc<StrokeDefinition>,
+    stroke: Cow<'static, StrokeDefinition>,
 }
 
 impl InterfaceDefinition {
@@ -25,8 +25,8 @@ impl InterfaceDefinition {
 impl Default for InterfaceDefinition {
     fn default() -> Self {
         Self {
-            fill_color: Some(Color::new("white").unwrap()),
-            stroke: Rc::new(StrokeDefinition::solid(Color::default(), 2.0)),
+            fill_color: Some(Color::new("white").expect("Failed to create white color")),
+            stroke: Cow::Borrowed(StrokeDefinition::default_solid_borrowed()),
         }
     }
 }
@@ -53,27 +53,27 @@ impl ShapeDefinition for InterfaceDefinition {
         Ok(())
     }
 
-    fn set_stroke(&mut self, stroke: StrokeDefinition) -> Result<(), &'static str> {
-        self.stroke = Rc::new(stroke);
+    fn set_stroke(&mut self, stroke: Cow<'static, StrokeDefinition>) -> Result<(), &'static str> {
+        self.stroke = stroke;
         Ok(())
     }
 
     fn with_fill_color(
         &self,
         color: Option<Color>,
-    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
         let mut cloned = self.clone();
         cloned.set_fill_color(color)?;
-        Ok(Rc::new(cloned))
+        Ok(Box::new(cloned))
     }
 
     fn with_stroke(
         &self,
-        stroke: StrokeDefinition,
-    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        stroke: Cow<'static, StrokeDefinition>,
+    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
         let mut cloned = self.clone();
         cloned.set_stroke(stroke)?;
-        Ok(Rc::new(cloned))
+        Ok(Box::new(cloned))
     }
 
     fn render_to_svg(&self, _size: Size, position: Point) -> Box<dyn svg::Node> {

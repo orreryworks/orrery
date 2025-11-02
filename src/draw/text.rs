@@ -4,12 +4,62 @@ use crate::{
     geometry::{Insets, Point, Size},
 };
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
+use lazy_static::lazy_static;
 use log::info;
 use std::{
-    rc::Rc,
+    borrow::Cow,
     sync::{Arc, Mutex},
 };
 use svg::{self, node::element as svg_element};
+
+// =============================================================================
+// Static Default Definitions
+// =============================================================================
+
+lazy_static! {
+    /// Default text definition with standard settings.
+    ///
+    /// - Font family: "sans-serif"
+    /// - Font size: 12
+    /// - Background color: None
+    /// - Text color: None (uses SVG default, typically black)
+    /// - Padding: 4px on all sides
+    ///
+    /// Use with `Cow::Borrowed(&DEFAULT_TEXT)` for zero-allocation defaults.
+    static ref DEFAULT_TEXT: TextDefinition = TextDefinition {
+        font_family: String::from("sans-serif"),
+        font_size: 12,
+        background_color: None,
+        color: None,
+        padding: Insets::uniform(4.0),
+    };
+
+    /// Default text definition for fragment operation labels.
+    ///
+    /// Small text for "alt", "loop", "opt", etc. labels in sequence diagrams.
+    static ref DEFAULT_FRAGMENT_OPERATION_TEXT: TextDefinition = TextDefinition {
+        font_family: String::from("sans-serif"),
+        font_size: 10,
+        background_color: None,
+        color: None,
+        padding: Insets::uniform(4.0),
+    };
+
+    /// Default text definition for fragment section titles.
+    ///
+    /// Standard size for section labels like "[condition]".
+    static ref DEFAULT_FRAGMENT_SECTION_TEXT: TextDefinition = TextDefinition {
+        font_family: String::from("sans-serif"),
+        font_size: 12,
+        background_color: None,
+        color: None,
+        padding: Insets::uniform(4.0),
+    };
+}
+
+// =============================================================================
+// Type Definitions
+// =============================================================================
 
 #[derive(Debug, Clone)]
 pub struct TextDefinition {
@@ -21,6 +71,33 @@ pub struct TextDefinition {
 }
 
 impl TextDefinition {
+    /// Returns a reference to the default text definition (borrowed from static).
+    ///
+    /// - Font family: "sans-serif"
+    /// - Font size: 12
+    /// - Background color: None
+    /// - Text color: None
+    /// - Padding: 4px on all sides
+    pub fn default_borrowed() -> &'static Self {
+        &DEFAULT_TEXT
+    }
+
+    /// Returns a reference to the default fragment operation text (borrowed from static).
+    ///
+    /// Small text for "alt", "loop", "opt", etc. labels in sequence diagrams.
+    /// - Font size: 10
+    pub fn default_fragment_operation_borrowed() -> &'static Self {
+        &DEFAULT_FRAGMENT_OPERATION_TEXT
+    }
+
+    /// Returns a reference to the default fragment section text (borrowed from static).
+    ///
+    /// Standard size for section labels like "[condition]".
+    /// - Font size: 12
+    pub fn default_fragment_section_borrowed() -> &'static Self {
+        &DEFAULT_FRAGMENT_SECTION_TEXT
+    }
+
     /// Create a new text definition with default values
     pub fn new() -> Self {
         Self::default()
@@ -110,12 +187,12 @@ impl Default for TextDefinition {
 
 #[derive(Debug, Clone)]
 pub struct Text {
-    definition: Rc<TextDefinition>,
+    definition: Cow<'static, TextDefinition>,
     content: String,
 }
 
 impl Text {
-    pub fn new(definition: Rc<TextDefinition>, content: String) -> Self {
+    pub fn new(definition: Cow<'static, TextDefinition>, content: String) -> Self {
         Self {
             definition,
             content,

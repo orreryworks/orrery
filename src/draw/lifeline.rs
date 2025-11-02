@@ -19,11 +19,10 @@
 //! 3. The lifeline renders as a vertical line from (0,0) to (0,height)
 
 use crate::{
-    color::Color,
     draw::{Drawable, StrokeDefinition},
     geometry::{Point, Size},
 };
-use std::rc::Rc;
+use std::borrow::Cow;
 use svg::{self, node::element as svg_element};
 
 /// Styling configuration for lifelines in sequence diagrams.
@@ -38,12 +37,12 @@ use svg::{self, node::element as svg_element};
 #[derive(Debug, Clone)]
 pub struct LifelineDefinition {
     /// The stroke styling for the lifeline
-    stroke: Rc<StrokeDefinition>,
+    stroke: Cow<'static, StrokeDefinition>,
 }
 
 impl LifelineDefinition {
     /// Creates a new LifelineDefinition with the given stroke definition
-    pub fn new(stroke: Rc<StrokeDefinition>) -> Self {
+    pub fn new(stroke: Cow<'static, StrokeDefinition>) -> Self {
         Self { stroke }
     }
 
@@ -55,7 +54,9 @@ impl LifelineDefinition {
 
 impl Default for LifelineDefinition {
     fn default() -> Self {
-        Self::new(Rc::new(StrokeDefinition::dashed(Color::default(), 1.0)))
+        Self {
+            stroke: Cow::Borrowed(StrokeDefinition::default_dashed_borrowed()),
+        }
     }
 }
 
@@ -68,20 +69,20 @@ impl Default for LifelineDefinition {
 #[derive(Debug, Clone)]
 pub struct Lifeline {
     /// The styling definition for this lifeline
-    definition: Rc<LifelineDefinition>,
+    definition: Cow<'static, LifelineDefinition>,
     /// The height of the lifeline
     height: f32,
 }
 
 impl Lifeline {
     /// Creates a new Lifeline with the given definition and height
-    pub fn new(definition: Rc<LifelineDefinition>, height: f32) -> Self {
+    pub fn new(definition: Cow<'static, LifelineDefinition>, height: f32) -> Self {
         Self { definition, height }
     }
 
     /// Creates a new Lifeline with default styling and specified height
     pub fn with_default_style(height: f32) -> Self {
-        Self::new(Rc::new(LifelineDefinition::default()), height)
+        Self::new(Cow::Owned(LifelineDefinition::default()), height)
     }
 
     /// Returns the height of the lifeline

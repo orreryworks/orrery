@@ -1,5 +1,5 @@
 use crate::{color::Color, draw::StrokeDefinition, geometry::Point};
-use std::{collections::HashMap, fmt, rc::Rc, str};
+use std::{borrow::Cow, collections::HashMap, fmt, str};
 use svg::{self, node::element as svg_element};
 
 /// Defines the visual style of arrow paths.
@@ -41,14 +41,14 @@ impl str::FromStr for ArrowStyle {
 /// an arrow, including stroke properties and path style.
 #[derive(Debug, Clone)]
 pub struct ArrowDefinition {
-    stroke: Rc<StrokeDefinition>,
+    stroke: Cow<'static, StrokeDefinition>,
     style: ArrowStyle,
 }
 
 impl ArrowDefinition {
     /// Creates a new ArrowDefinition with the given stroke
     /// Style defaults to Straight and can be changed with set_style()
-    pub fn new(stroke: Rc<StrokeDefinition>) -> Self {
+    pub fn new(stroke: Cow<'static, StrokeDefinition>) -> Self {
         Self {
             stroke,
             style: ArrowStyle::default(),
@@ -73,7 +73,10 @@ impl ArrowDefinition {
 
 impl Default for ArrowDefinition {
     fn default() -> Self {
-        Self::new(Rc::new(StrokeDefinition::default()))
+        Self {
+            stroke: Cow::Borrowed(StrokeDefinition::default_borrowed()),
+            style: ArrowStyle::default(),
+        }
     }
 }
 
@@ -129,7 +132,7 @@ impl fmt::Display for ArrowDirection {
 /// which markers to display and where.
 #[derive(Debug, Clone)]
 pub struct Arrow {
-    definition: Rc<ArrowDefinition>,
+    definition: Cow<'static, ArrowDefinition>,
     direction: ArrowDirection,
 }
 
@@ -187,7 +190,7 @@ impl ArrowDrawer {
 
 impl Arrow {
     /// Creates a new Arrow
-    pub fn new(definition: Rc<ArrowDefinition>, direction: ArrowDirection) -> Self {
+    pub fn new(definition: Cow<'static, ArrowDefinition>, direction: ArrowDirection) -> Self {
         Self {
             definition,
             direction,

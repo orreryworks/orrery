@@ -5,7 +5,7 @@ use crate::{
     layout::{component, positioning::LayoutSizing},
 };
 use log::warn;
-use std::{collections::HashMap, rc::Rc};
+use std::{borrow::Cow, collections::HashMap};
 
 /// Sequence diagram participant that holds its drawable component and lifeline.
 #[derive(Debug, Clone)]
@@ -63,7 +63,7 @@ impl Message {
     /// A new Message containing all necessary rendering information
     pub fn from_ast(relation: &ast::Relation, source: Id, target: Id, y_position: f32) -> Self {
         let arrow_def = relation.clone_arrow_definition();
-        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
+        let arrow = draw::Arrow::new(Cow::Owned(arrow_def), relation.arrow_direction());
         let mut arrow_with_text = draw::ArrowWithText::new(arrow);
         if let Some(text) = relation.text() {
             arrow_with_text.set_text(text);
@@ -164,8 +164,9 @@ impl ActivationTiming {
 
         let center_y = (self.start_y() + end_y) / 2.0;
         let height = end_y - self.start_y();
-        let definition = Rc::new(draw::ActivationBoxDefinition::default());
-        let drawable = draw::ActivationBox::new(definition, height, self.nesting_level());
+        let definition = draw::ActivationBoxDefinition::default();
+        let drawable =
+            draw::ActivationBox::new(Cow::Owned(definition), height, self.nesting_level());
 
         ActivationBox {
             participant_id: self.participant_id(),
@@ -334,7 +335,7 @@ impl<'a> FragmentTiming<'a> {
         assert!(self.active_section.is_none());
 
         let drawable = draw::Fragment::new(
-            self.fragment.clone_fragment_definition(),
+            Cow::Owned(self.fragment.clone_fragment_definition()),
             self.fragment.operation().to_string(),
             self.sections,
             Size::new(self.max_x - self.min_x, end_y - self.start_y),
@@ -511,12 +512,13 @@ impl LayoutSizing for Layout {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{borrow::Cow, rc::Rc};
 
     #[test]
     fn test_activation_box_is_active_at_y() {
         // Create a test activation box with center_y=100.0 and height=20.0
-        let definition = Rc::new(draw::ActivationBoxDefinition::default());
-        let drawable = draw::ActivationBox::new(definition, 20.0, 0);
+        let definition = draw::ActivationBoxDefinition::default();
+        let drawable = draw::ActivationBox::new(Cow::Owned(definition), 20.0, 0);
         let activation_box = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 100.0,
@@ -536,8 +538,8 @@ mod tests {
     #[test]
     fn test_activation_box_get_intersection_x() {
         // Create a test activation box with nesting level 0
-        let definition = Rc::new(draw::ActivationBoxDefinition::default());
-        let drawable = draw::ActivationBox::new(definition, 20.0, 0);
+        let definition = draw::ActivationBoxDefinition::default();
+        let drawable = draw::ActivationBox::new(Cow::Owned(definition), 20.0, 0);
         let activation_box = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 100.0,
@@ -558,8 +560,8 @@ mod tests {
     #[test]
     fn test_activation_box_nesting_offset() {
         // Test activation box with nesting level 2
-        let definition = Rc::new(draw::ActivationBoxDefinition::default());
-        let drawable = draw::ActivationBox::new(definition, 20.0, 2);
+        let definition = draw::ActivationBoxDefinition::default();
+        let drawable = draw::ActivationBox::new(Cow::Owned(definition), 20.0, 2);
         let activation_box = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 100.0,
@@ -578,10 +580,13 @@ mod tests {
     #[test]
     fn test_find_active_activation_box_for_participant() {
         // Create test activation boxes
-        let definition = Rc::new(draw::ActivationBoxDefinition::default());
 
         // Activation box 1: participant 0, Y range [90-110], nesting level 0
-        let drawable1 = draw::ActivationBox::new(definition.clone(), 20.0, 0);
+        let drawable1 = draw::ActivationBox::new(
+            Cow::Owned(draw::ActivationBoxDefinition::default()),
+            20.0,
+            0,
+        );
         let activation_box1 = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 100.0,
@@ -589,7 +594,11 @@ mod tests {
         };
 
         // Activation box 2: participant 0, Y range [95-105], nesting level 1 (nested)
-        let drawable2 = draw::ActivationBox::new(definition.clone(), 10.0, 1);
+        let drawable2 = draw::ActivationBox::new(
+            Cow::Owned(draw::ActivationBoxDefinition::default()),
+            10.0,
+            1,
+        );
         let activation_box2 = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 100.0,
@@ -597,7 +606,11 @@ mod tests {
         };
 
         // Activation box 3: participant 1, Y range [120-140], nesting level 0
-        let drawable3 = draw::ActivationBox::new(definition, 20.0, 0);
+        let drawable3 = draw::ActivationBox::new(
+            Cow::Owned(draw::ActivationBoxDefinition::default()),
+            20.0,
+            0,
+        );
         let activation_box3 = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 130.0,
@@ -645,11 +658,10 @@ mod tests {
         assert!(result.is_none());
 
         // Test with multiple boxes at different nesting levels
-        let definition = Rc::new(draw::ActivationBoxDefinition::default());
-
         let boxes: Vec<ActivationBox> = (0..5)
             .map(|i| {
-                let drawable = draw::ActivationBox::new(definition.clone(), 20.0, i);
+                let definition = draw::ActivationBoxDefinition::default();
+                let drawable = draw::ActivationBox::new(Cow::Owned(definition), 20.0, i);
                 ActivationBox {
                     participant_id: Id::new("test"),
                     center_y: 100.0,
@@ -667,8 +679,8 @@ mod tests {
     #[test]
     fn test_find_active_activation_box_error_handling() {
         // Create a test activation box for error handling tests
-        let definition = Rc::new(draw::ActivationBoxDefinition::default());
-        let drawable = draw::ActivationBox::new(definition, 20.0, 0);
+        let definition = draw::ActivationBoxDefinition::default();
+        let drawable = draw::ActivationBox::new(Cow::Owned(definition), 20.0, 0);
         let activation_box = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 100.0,
@@ -715,8 +727,8 @@ mod tests {
         assert!(result.is_none());
 
         // Test with activation boxes for different participant (should fallback)
-        let definition = Rc::new(draw::ActivationBoxDefinition::default());
-        let drawable = draw::ActivationBox::new(definition, 20.0, 0);
+        let definition = draw::ActivationBoxDefinition::default();
+        let drawable = draw::ActivationBox::new(Cow::Owned(definition), 20.0, 0);
         let activation_box = ActivationBox {
             participant_id: Id::new("test_1"), // Different participant
             center_y: 100.0,
@@ -740,7 +752,7 @@ mod tests {
         let fragment_def = draw::FragmentDefinition::default();
         let type_def = Rc::new(ast::TypeDefinition::new_fragment(
             Id::new("test_fragment"),
-            draw::TextDefinition::new(),
+            Cow::Borrowed(draw::TextDefinition::default_borrowed()),
             fragment_def,
         ));
 
@@ -785,7 +797,7 @@ mod tests {
         let fragment_def = draw::FragmentDefinition::default();
         let type_def = Rc::new(ast::TypeDefinition::new_fragment(
             Id::new("test_fragment"),
-            draw::TextDefinition::new(),
+            Cow::Borrowed(draw::TextDefinition::default_borrowed()),
             fragment_def,
         ));
 

@@ -4,14 +4,14 @@ use crate::{
     draw::{StrokeDefinition, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
-use std::rc::Rc;
+use std::borrow::Cow;
 use svg::{self, node::element as svg_element};
 
 /// Oval shape definition
 #[derive(Debug, Clone)]
 pub struct OvalDefinition {
     fill_color: Option<Color>,
-    stroke: Rc<StrokeDefinition>,
+    stroke: Cow<'static, StrokeDefinition>,
 }
 
 impl OvalDefinition {
@@ -25,7 +25,7 @@ impl Default for OvalDefinition {
     fn default() -> Self {
         Self {
             fill_color: None,
-            stroke: Rc::new(StrokeDefinition::solid(Color::default(), 2.0)),
+            stroke: Cow::Borrowed(StrokeDefinition::default_solid_borrowed()),
         }
     }
 }
@@ -106,27 +106,27 @@ impl ShapeDefinition for OvalDefinition {
         Ok(())
     }
 
-    fn set_stroke(&mut self, stroke: StrokeDefinition) -> Result<(), &'static str> {
-        self.stroke = Rc::new(stroke);
+    fn set_stroke(&mut self, stroke: Cow<'static, StrokeDefinition>) -> Result<(), &'static str> {
+        self.stroke = stroke;
         Ok(())
     }
 
     fn with_fill_color(
         &self,
         color: Option<Color>,
-    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
         let mut cloned = self.clone();
         cloned.set_fill_color(color)?;
-        Ok(Rc::new(cloned))
+        Ok(Box::new(cloned))
     }
 
     fn with_stroke(
         &self,
-        stroke: StrokeDefinition,
-    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        stroke: Cow<'static, StrokeDefinition>,
+    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
         let mut cloned = self.clone();
         cloned.set_stroke(stroke)?;
-        Ok(Rc::new(cloned))
+        Ok(Box::new(cloned))
     }
 
     fn text_positioning_strategy(&self) -> TextPositioningStrategy {

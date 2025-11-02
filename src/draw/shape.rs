@@ -3,7 +3,7 @@ use crate::{
     draw::{Drawable, StrokeDefinition, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
-use std::rc::Rc;
+use std::borrow::Cow;
 
 mod actor;
 mod boundary;
@@ -49,13 +49,13 @@ pub trait ShapeDefinition: std::fmt::Debug {
     fn with_fill_color(
         &self,
         _color: Option<Color>,
-    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
         Err("with_fill_color is not supported for this shape")
     }
 
     /// Create a new shape definition with the corner rounding changed
     /// Default implementation returns error - override in concrete implementations
-    fn with_rounded(&self, _radius: usize) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+    fn with_rounded(&self, _radius: usize) -> Result<Box<dyn ShapeDefinition>, &'static str> {
         Err("with_rounded is not supported for this shape")
     }
 
@@ -70,7 +70,7 @@ pub trait ShapeDefinition: std::fmt::Debug {
     }
 
     /// Set the stroke definition for the shape
-    fn set_stroke(&mut self, _stroke: StrokeDefinition) -> Result<(), &'static str> {
+    fn set_stroke(&mut self, _stroke: Cow<'static, StrokeDefinition>) -> Result<(), &'static str> {
         Err("set_stroke is not supported for this shape")
     }
 
@@ -78,8 +78,8 @@ pub trait ShapeDefinition: std::fmt::Debug {
     /// Default implementation returns error - override in concrete implementations
     fn with_stroke(
         &self,
-        _stroke: StrokeDefinition,
-    ) -> Result<Rc<dyn ShapeDefinition>, &'static str> {
+        _stroke: Cow<'static, StrokeDefinition>,
+    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
         Err("with_stroke is not supported for this shape")
     }
 
@@ -113,15 +113,23 @@ pub trait ShapeDefinition: std::fmt::Debug {
 }
 
 /// A shape instance that combines a definition with content size and padding
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Shape {
-    definition: Rc<dyn ShapeDefinition>,
+    definition: Box<dyn ShapeDefinition>,
     content_size: Size,
     padding: Insets,
 }
 
+impl Clone for Shape {
+    fn clone(&self) -> Self {
+        Self {
+            definition: self.definition.clone_box(),
+            ..*self
+        }
+    }
+}
 impl Shape {
-    pub fn new(definition: Rc<dyn ShapeDefinition>) -> Self {
+    pub fn new(definition: Box<dyn ShapeDefinition>) -> Self {
         let content_size = definition.min_content_size();
         Self {
             definition,

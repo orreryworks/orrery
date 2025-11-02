@@ -13,14 +13,14 @@
 //! # Examples
 //!
 //! ```
-//! # use std::rc::Rc;
 //! # use filament::draw::{Note, NoteDefinition};
 //! # use filament::geometry::Point;
 //! # use filament::draw::Drawable;
+//! # use std::borrow::Cow;
 //! #
 //! // Create a note with default styling
-//! let definition = Rc::new(NoteDefinition::new());
-//! let note = Note::new(definition, "This is a note".to_string());
+//! let definition = NoteDefinition::new();
+//! let note = Note::new(Cow::Owned(definition), "This is a note".to_string());
 //!
 //! // Get the size
 //! let size = note.size();
@@ -35,6 +35,7 @@
 //! ```
 //! # use filament::draw::{NoteDefinition, StrokeDefinition};
 //! # use filament::color::Color;
+//! # use std::borrow::Cow;
 //! #
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut definition = NoteDefinition::new();
@@ -44,7 +45,7 @@
 //!
 //! // Customize border
 //! let stroke = StrokeDefinition::dashed(Color::new("blue")?, 2.0);
-//! definition.set_stroke(stroke);
+//! definition.set_stroke(Cow::Owned(stroke));
 //! # Ok(())
 //! # }
 //! ```
@@ -54,7 +55,7 @@ use crate::{
     draw::{Drawable, StrokeDefinition, Text, TextDefinition},
     geometry::{Insets, Point, Size},
 };
-use std::rc::Rc;
+use std::borrow::Cow;
 use svg::{self, node::element as svg_element};
 
 /// Fixed size for the dog-eared corner fold in pixels.
@@ -81,6 +82,7 @@ const CORNER_FOLD_SIZE: f32 = 12.0;
 /// ```
 /// # use filament::draw::{NoteDefinition, StrokeDefinition};
 /// # use filament::color::Color;
+/// # use std::borrow::Cow;
 /// #
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create with defaults
@@ -89,15 +91,15 @@ const CORNER_FOLD_SIZE: f32 = 12.0;
 /// // Customize
 /// definition.set_background_color(Some(Color::new("lightblue")?));
 /// let stroke = StrokeDefinition::new(Color::new("navy")?, 2.0);
-/// definition.set_stroke(stroke);
+/// definition.set_stroke(Cow::Owned(stroke));
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Debug, Clone)]
 pub struct NoteDefinition {
     background_color: Option<Color>,
-    stroke: Rc<StrokeDefinition>,
-    text: Rc<TextDefinition>,
+    stroke: Cow<'static, StrokeDefinition>,
+    text: Cow<'static, TextDefinition>,
 }
 
 impl NoteDefinition {
@@ -153,15 +155,16 @@ impl NoteDefinition {
     /// ```
     /// # use filament::draw::{NoteDefinition, StrokeDefinition};
     /// # use filament::color::Color;
+    /// # use std::borrow::Cow;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut definition = NoteDefinition::new();
     /// let stroke = StrokeDefinition::dashed(Color::new("blue")?, 1.5);
-    /// definition.set_stroke(stroke);
+    /// definition.set_stroke(Cow::Owned(stroke));
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_stroke(&mut self, stroke: StrokeDefinition) {
-        self.stroke = Rc::new(stroke);
+    pub fn set_stroke(&mut self, stroke: Cow<'static, StrokeDefinition>) {
+        self.stroke = stroke;
     }
 
     /// Sets the text definition for the note content.
@@ -178,17 +181,18 @@ impl NoteDefinition {
     /// ```
     /// # use filament::draw::{NoteDefinition, TextDefinition};
     /// # use filament::color::Color;
+    /// # use std::borrow::Cow;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut definition = NoteDefinition::new();
     /// let mut text_def = TextDefinition::new();
     /// text_def.set_font_size(16);
     /// text_def.set_color(Some(Color::new("darkblue")?));
-    /// definition.set_text_definition(text_def);
+    /// definition.set_text_definition(Cow::Owned(text_def));
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_text_definition(&mut self, text: TextDefinition) {
-        self.text = Rc::new(text);
+    pub fn set_text_definition(&mut self, text: Cow<'static, TextDefinition>) {
+        self.text = text;
     }
 
     /// Returns the background color of the note.
@@ -206,8 +210,8 @@ impl Default for NoteDefinition {
     fn default() -> Self {
         Self {
             background_color: Some(Color::new("#fffacd").expect("valid color")), // Light yellow
-            stroke: Rc::new(StrokeDefinition::default()),
-            text: Rc::new(TextDefinition::new()),
+            stroke: Cow::Borrowed(StrokeDefinition::default_borrowed()),
+            text: Cow::Borrowed(TextDefinition::default_borrowed()),
         }
     }
 }
@@ -229,12 +233,12 @@ impl Default for NoteDefinition {
 /// # Examples
 ///
 /// ```
-/// # use std::rc::Rc;
 /// # use filament::draw::{Note, NoteDefinition, Drawable};
 /// # use filament::geometry::Point;
+/// # use std::borrow::Cow;
 /// #
-/// let definition = Rc::new(NoteDefinition::new());
-/// let note = Note::new(definition, "Important note".to_string());
+/// let definition = NoteDefinition::new();
+/// let note = Note::new(Cow::Owned(definition), "Important note".to_string());
 ///
 /// // The note calculates its own size based on text
 /// let size = note.size();
@@ -245,7 +249,7 @@ impl Default for NoteDefinition {
 /// ```
 #[derive(Debug, Clone)]
 pub struct Note {
-    definition: Rc<NoteDefinition>,
+    definition: Cow<'static, NoteDefinition>,
     content: String,
 }
 
@@ -260,13 +264,13 @@ impl Note {
     /// # Examples
     ///
     /// ```
-    /// # use std::rc::Rc;
     /// # use filament::draw::{Note, NoteDefinition};
+    /// # use std::borrow::Cow;
     /// #
-    /// let definition = Rc::new(NoteDefinition::new());
-    /// let note = Note::new(definition, "My note text".to_string());
+    /// let definition = NoteDefinition::new();
+    /// let note = Note::new(Cow::Owned(definition), "My note text".to_string());
     /// ```
-    pub fn new(definition: Rc<NoteDefinition>, content: String) -> Self {
+    pub fn new(definition: Cow<'static, NoteDefinition>, content: String) -> Self {
         Self {
             definition,
             content,
@@ -437,8 +441,8 @@ mod tests {
 
     #[test]
     fn test_note_creation() {
-        let def = Rc::new(NoteDefinition::new());
-        let note = Note::new(def, "Test note".to_string());
+        let def = NoteDefinition::new();
+        let note = Note::new(Cow::Owned(def.clone()), "Test note".to_string());
         let size = note.size();
         // Verify note was created with non-zero size (indicates content was stored)
         assert!(size.width() > 0.0);
@@ -447,8 +451,8 @@ mod tests {
 
     #[test]
     fn test_note_size_calculation() {
-        let def = Rc::new(NoteDefinition::new());
-        let note = Note::new(def, "Test".to_string());
+        let def = NoteDefinition::new();
+        let note = Note::new(Cow::Owned(def.clone()), "Test".to_string());
         let size = note.size();
         assert!(size.width() > 0.0);
         assert!(size.height() > 0.0);
@@ -456,8 +460,8 @@ mod tests {
 
     #[test]
     fn test_empty_note() {
-        let def = Rc::new(NoteDefinition::new());
-        let note = Note::new(def, String::new());
+        let def = NoteDefinition::new();
+        let note = Note::new(Cow::Owned(def.clone()), String::new());
         let size = note.size();
         // Even empty notes should have some size due to padding
         assert!(size.width() > 0.0);
@@ -468,6 +472,7 @@ mod tests {
     fn test_note_definition_customization() {
         let mut def = NoteDefinition::new();
         def.set_background_color(Some(Color::new("blue").expect("valid color")));
+        let _note = Note::new(Cow::Owned(def.clone()), String::new());
         assert_eq!(
             def.background_color(),
             Some(Color::new("blue").expect("valid color"))

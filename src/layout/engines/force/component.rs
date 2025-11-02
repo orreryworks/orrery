@@ -8,15 +8,15 @@ use crate::{
     ast,
     draw::{self, Drawable},
     geometry::{Insets, Point, Size},
-    structure::{ComponentGraph, ContainmentScope},
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
         layer::{ContentStack, PositionedContent},
     },
+    structure::{ComponentGraph, ContainmentScope},
 };
 use log::debug;
-use std::{collections::HashMap, rc::Rc};
+use std::{borrow::Cow, collections::HashMap};
 
 /// Force layout engine for component diagrams
 ///
@@ -109,14 +109,15 @@ impl Engine {
 
         // TODO: move it to the best place.
         for node in graph.scope_nodes(containment_scope) {
-            let mut shape = draw::Shape::new(Rc::clone(
+            let mut shape = draw::Shape::new(
                 node.type_definition()
-                    .shape_definition_rc()
-                    .expect("Node must have a shape definition for component layout"),
-            ));
+                    .shape_definition()
+                    .expect("Node must have a shape definition for component layout")
+                    .clone_box(),
+            );
             shape.set_padding(self.padding);
             let text = draw::Text::new(
-                Rc::clone(node.type_definition().text_definition_rc()),
+                Cow::Owned(node.type_definition().text_definition().clone()),
                 node.display_text().to_string(),
             );
             let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));

@@ -6,7 +6,7 @@ use crate::{
     structure,
 };
 use log::{debug, error};
-use std::{collections::HashMap, rc::Rc};
+use std::{borrow::Cow, collections::HashMap, rc::Rc};
 
 /// Represents a diagram component with a reference to its AST node and positioning information
 /// TODO: Do I need Clone?!
@@ -89,7 +89,7 @@ impl LayoutRelation {
     /// A new LayoutRelation containing all necessary rendering information
     pub fn from_ast(relation: &ast::Relation, source_index: usize, target_index: usize) -> Self {
         let arrow_def = relation.clone_arrow_definition();
-        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
+        let arrow = draw::Arrow::new(Cow::Owned(arrow_def), relation.arrow_direction());
         let mut arrow_with_text = draw::ArrowWithText::new(arrow);
         if let Some(text) = relation.text() {
             arrow_with_text.set_text(text);
