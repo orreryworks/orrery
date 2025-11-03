@@ -75,6 +75,19 @@ impl Svg {
         fragment.render_to_svg()
     }
 
+    /// Render a note in a sequence diagram.
+    ///
+    /// Converts a note into its SVG representation.
+    ///
+    /// # Arguments
+    /// * `note` - The positioned note to render
+    ///
+    /// # Returns
+    /// A boxed SVG node representing the note
+    pub fn render_note(&self, note: &draw::PositionedDrawable<draw::Note>) -> Box<dyn svg::Node> {
+        note.render_to_svg()
+    }
+
     pub fn render_activation_box(
         &self,
         activation_box: &sequence::ActivationBox,
@@ -109,6 +122,12 @@ impl Svg {
                     .map(|p| p.component().bounds())
                     .reduce(|acc, bounds| acc.merge(&bounds))
                     .unwrap_or_default();
+
+                // Include notes in bounds calculation
+                for note in layout.notes() {
+                    let note_bounds = note.position().to_bounds(note.size());
+                    content_bounds = content_bounds.merge(&note_bounds);
+                }
 
                 content_bounds.set_max_y(layout.max_lifeline_end());
 

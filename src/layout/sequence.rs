@@ -432,13 +432,14 @@ pub fn calculate_message_endpoint_x(
     }
 }
 
-/// Sequence layout containing participants, messages, activation boxes and metrics.
+/// Sequence layout containing participants, messages, activation boxes, notes and metrics.
 #[derive(Debug, Clone)]
 pub struct Layout {
     participants: HashMap<Id, Participant>,
     messages: Vec<Message>,
     activations: Vec<ActivationBox>,
     fragments: Vec<draw::PositionedDrawable<draw::Fragment>>,
+    notes: Vec<draw::PositionedDrawable<draw::Note>>,
     max_lifeline_end: f32, // TODO: Consider calculating on the fly.
 }
 
@@ -449,6 +450,7 @@ impl Layout {
         messages: Vec<Message>,
         activations: Vec<ActivationBox>,
         fragments: Vec<draw::PositionedDrawable<draw::Fragment>>,
+        notes: Vec<draw::PositionedDrawable<draw::Note>>,
         max_lifeline_end: f32,
     ) -> Self {
         Self {
@@ -456,6 +458,7 @@ impl Layout {
             messages,
             activations,
             fragments,
+            notes,
             max_lifeline_end,
         }
     }
@@ -478,6 +481,11 @@ impl Layout {
     /// Borrow all fragments in this sequence layout.
     pub fn fragments(&self) -> &[draw::PositionedDrawable<draw::Fragment>] {
         &self.fragments
+    }
+
+    /// Borrow all notes in this sequence layout.
+    pub fn notes(&self) -> &[draw::PositionedDrawable<draw::Note>] {
+        &self.notes
     }
 
     /// The maximum Y coordinate (bottom) reached by any lifeline.

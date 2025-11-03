@@ -160,17 +160,16 @@ impl FromStr for NoteAlign {
 /// # Examples
 ///
 /// ```
-/// # use filament::ast::{Note, NoteAlign, TypeDefinition};
+/// # use filament::ast::{Note, NoteAlign};
 /// # use filament::identifier::Id;
 /// # use filament::draw::NoteDefinition;
-/// # use std::rc::Rc;
 /// #
 /// // Create a margin note (not attached to any elements)
 /// let note = Note::new(
 ///     vec![],  // Empty vec = margin note
 ///     NoteAlign::Over,
 ///     "This is a note".to_string(),
-///     Rc::new(TypeDefinition::new_note(Id::new("Note"), NoteDefinition::new())),
+///     NoteDefinition::new(),
 /// );
 /// assert_eq!(note.on().len(), 0);
 /// assert_eq!(note.content(), "This is a note");
@@ -180,7 +179,7 @@ impl FromStr for NoteAlign {
 ///     vec![Id::new("server")],
 ///     NoteAlign::Right,
 ///     "Server note".to_string(),
-///     Rc::new(TypeDefinition::new_note(Id::new("Note"), NoteDefinition::new())),
+///     NoteDefinition::new(),
 /// );
 /// assert_eq!(attached_note.on().len(), 1);
 /// ```
@@ -193,7 +192,7 @@ pub struct Note {
     /// Text content of the note
     content: String,
     /// Styling definition for the note
-    definition: Rc<TypeDefinition>,
+    definition: draw::NoteDefinition,
 }
 
 impl Note {
@@ -202,7 +201,7 @@ impl Note {
         on: Vec<Id>,
         align: NoteAlign,
         content: String,
-        definition: Rc<TypeDefinition>,
+        definition: draw::NoteDefinition,
     ) -> Self {
         Self {
             on,
@@ -227,8 +226,8 @@ impl Note {
         &self.content
     }
 
-    /// Borrow the note's type definition.
-    pub fn definition(&self) -> &TypeDefinition {
+    /// Borrow the note's styling definition.
+    pub fn definition(&self) -> &draw::NoteDefinition {
         &self.definition
     }
 }
@@ -1193,6 +1192,10 @@ impl TypeDefinition {
                                 &mut text_def,
                                 nested_attrs,
                             )?;
+                        }
+                        "on" | "align" => {
+                            // Skip positioning attributes - these are handled by build_note_element
+                            // and are not part of the note's styling definition
                         }
                         name => {
                             return Err(ElaborationDiagnosticError::from_span(

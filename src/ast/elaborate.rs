@@ -943,8 +943,21 @@ impl<'a> Builder<'a> {
 
         let content = note.content.inner().to_string();
 
+        // Extract NoteDefinition from TypeDefinition
+        let note_def = type_def
+            .note_definition()
+            .map_err(|err| {
+                ElaborationDiagnosticError::from_span(
+                    err,
+                    note.content.span(),
+                    "invalid note type",
+                    None,
+                )
+            })?
+            .clone();
+
         Ok(types::Element::Note(types::Note::new(
-            on, align, content, type_def,
+            on, align, content, note_def,
         )))
     }
 
@@ -1612,10 +1625,6 @@ mod tests {
             assert_eq!(note_elem.content(), "Styled note");
             assert_eq!(note_elem.align(), types::NoteAlign::Over); // Default for sequence
             assert_eq!(note_elem.on().len(), 0); // Margin note
-
-            // Verify type definition was created (styling was processed)
-            let def = note_elem.definition();
-            assert!(def.note_definition().is_ok());
         } else {
             panic!("Expected Note element");
         }

@@ -1,0 +1,65 @@
+diagram sequence;
+
+user: Rectangle;
+server: Rectangle;
+database: Rectangle;
+
+// Edge Case 1: Empty content note
+note [on=[user]]: "";
+
+// Edge Case 2: Custom background color
+note [on=[user], background_color="lightblue"]: "Custom blue background";
+
+user -> server: "Request 1";
+
+// Edge Case 3: Custom stroke styling
+note [on=[server], stroke=[color="red", width=2.0, style="dashed"]]: "Custom border style";
+
+// Edge Case 4: Custom text styling
+note [on=[server], text=[font_size=16, color="darkblue"]]: "Custom text";
+
+server -> database: "Query";
+
+// Edge Case 5: Very long content that should expand note width
+note [on=[database]]: "This is a very long note with lots of text content that should cause the note box to expand horizontally to accommodate all the text without wrapping in strange ways";
+
+database -> server: "Result";
+
+// Edge Case 6: Multiple consecutive notes on same participant
+note [on=[server]]: "First note";
+note [on=[server]]: "Second note immediately after";
+note [on=[server]]: "Third note in sequence";
+
+server -> user: "Response";
+
+// Edge Case 7: Note with combined custom styling
+note [on=[user], background_color="lightyellow", stroke=[color="orange", width=2.0], text=[font_size=12, color="darkred"]]: "Fully styled note";
+
+// Edge Case 8: Notes inside activation block
+activate server {
+    user -> server: "Complex request";
+
+    note [on=[server]]: "Processing inside activation";
+
+    server -> database: "DB operation";
+    database -> server: "Data";
+
+    note [on=[server]]: "Another note in activation";
+};
+
+// Edge Case 9: Notes in fragment sections
+alt {
+    note [on=[server]]: "Success path note";
+
+    server -> user: "Success";
+} else {
+    note [on=[server]]: "Error path note";
+
+    server -> user: "Error";
+};
+
+// Edge Case 10: Very short content
+note [on=[database]]: "OK";
+
+// Edge Case 11: Note at the very end
+note [on=[user]]: "End of diagram";

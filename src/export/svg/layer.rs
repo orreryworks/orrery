@@ -252,7 +252,8 @@ impl Svg {
             content.participants().len()
                 + content.messages().len()
                 + content.activations().len()
-                + content.activations().len(),
+                + content.fragments().len()
+                + content.notes().len(),
         );
 
         // Render all participants within this positioned content
@@ -272,6 +273,11 @@ impl Svg {
 
         for activation_box in sorted_activations {
             groups.push(self.render_activation_box(activation_box, content));
+        }
+
+        // Render all notes within this positioned content
+        for note in content.notes() {
+            groups.push(self.render_note(note));
         }
 
         // Render all messages within this positioned content

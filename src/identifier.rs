@@ -33,7 +33,7 @@ lazy_static! {
 /// let anon_id = Id::from_anonymous(0);
 ///
 /// // Create nested identifiers
-/// let nested_id = user_id.create_nested("database");
+/// let nested_id = user_id.create_nested(Id::new("database"));
 /// assert_eq!(nested_id, "user_service::database");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -87,12 +87,12 @@ impl Id {
     /// # Examples
     ///
     /// ```
-    /// # use filament::identifier::Id;
-    /// #
-    /// let parent = Id::new("frontend");
-    /// let child = Id::new("app");
-    /// let nested = parent.create_nested_from_id(child);
-    /// assert_eq!(nested, "frontend::app");
+    /// use filament::identifier::Id;
+    ///
+    /// let parent = Id::new("user");
+    /// let child = Id::new("profile");
+    /// let nested = parent.create_nested(child);
+    /// assert_eq!(nested, "user::profile");
     /// ```
     pub fn create_nested(&self, child_id: Id) -> Self {
         let mut interner = INTERNER.lock().unwrap();

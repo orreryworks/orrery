@@ -1,0 +1,114 @@
+// Comprehensive Note Example for Sequence Diagrams
+// This example demonstrates all supported note features
+
+diagram sequence [layout_engine="basic"];
+
+// Define participants
+user: Rectangle;
+api: Rectangle;
+database: Rectangle;
+
+// ============================================
+// Basic Notes
+// ============================================
+
+// Note at the very beginning of the diagram
+note [on=[user]]: "User starts the authentication flow";
+
+user -> api: "POST /auth/login";
+
+// Note on different participants
+note [on=[api]]: "API receives login request";
+
+api -> database: "SELECT * FROM users WHERE email = ?";
+
+note [on=[database]]: "Database looks up user credentials";
+
+database -> api: "User record found";
+
+// ============================================
+// Notes with Custom Styling
+// ============================================
+
+// Note with custom background color
+note [on=[api], background_color="lightyellow"]: "Validating credentials with custom styling";
+
+api -> user: "200 OK {token}";
+
+// ============================================
+// Multiple Sequential Notes
+// ============================================
+
+// Multiple notes in a row demonstrate proper spacing
+note [on=[user]]: "Step 1: Store token";
+note [on=[user]]: "Step 2: Update UI";
+note [on=[user]]: "Step 3: Redirect to dashboard";
+
+// ============================================
+// Notes with Activation Blocks
+// ============================================
+
+user -> api: "GET /api/profile";
+
+activate api {
+    note [on=[api]]: "API is processing inside activation block";
+
+    api -> database: "SELECT profile FROM users";
+    database -> api: "Profile data";
+
+    note [on=[api]]: "Formatting response";
+};
+
+api -> user: "Profile data";
+
+// ============================================
+// Notes with Fragments
+// ============================================
+
+user -> api: "POST /api/data";
+
+alt {
+    note [on=[api]]: "Success path: Data is valid";
+
+    api -> database: "INSERT INTO data VALUES (...)";
+    database -> api: "Success";
+    api -> user: "201 Created";
+} else {
+    note [on=[api]]: "Error path: Data validation failed";
+
+    api -> user: "400 Bad Request";
+};
+
+// ============================================
+// Notes at End of Diagram
+// ============================================
+
+note [on=[user]]: "Flow completed successfully";
+
+// ============================================
+// Advanced: Notes with Different Alignments
+// ============================================
+
+// The align attribute supports "left", "right", and "over" (default)
+// Note: "over" is the default and centers the note on the participant
+
+user -> api: "GET /api/status";
+
+note [on=[api], align="left"]: "Left aligned note";
+note [on=[database], align="right"]: "Right aligned note";
+note [on=[user]]: "Center aligned (default)";
+
+api -> user: "200 OK";
+
+// ============================================
+// Edge Cases
+// ============================================
+
+// Empty note (valid but not recommended for clarity)
+note [on=[api]]: "";
+
+// Long content note
+note [on=[database]]: "This is a note with much longer content that demonstrates how notes can contain detailed explanations about what's happening in the sequence diagram at this particular point in time";
+
+// Final note
+note [on=[user]]: "End of comprehensive note demonstration";

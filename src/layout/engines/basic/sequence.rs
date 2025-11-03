@@ -185,7 +185,7 @@ impl Engine {
             .max_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap_or_default();
 
-        let (messages, activations, fragments, lifeline_end) =
+        let (messages, activations, fragments, notes, lifeline_end) =
             self.process_events(graph, participants_height, &components);
 
         // Update lifeline ends to match diagram height and finalize lifelines
@@ -204,7 +204,14 @@ impl Engine {
             })
             .collect();
 
-        let layout = Layout::new(participants, messages, activations, fragments, lifeline_end);
+        let layout = Layout::new(
+            participants,
+            messages,
+            activations,
+            fragments,
+            notes,
+            lifeline_end,
+        );
 
         let mut content_stack = ContentStack::new();
         content_stack.push(PositionedContent::new(layout));
@@ -228,6 +235,7 @@ impl Engine {
     /// 6. For `SequenceEvent::FragmentSectionStart`: Start new section in current fragment
     /// 7. For `SequenceEvent::FragmentSectionEnd`: End current section in current fragment
     /// 8. For `SequenceEvent::FragmentEnd`: Pop fragment, convert to Fragment with final bounds
+    /// 9. For `SequenceEvent::Note`: Create positioned Note at current Y, update fragment bounds if inside a fragment, then advance Y by note height
     ///
     /// # Parameters
     /// * `graph` - The sequence diagram graph containing ordered events
@@ -239,6 +247,7 @@ impl Engine {
     /// * `Vec<Message>` - All messages with their positions and arrow information
     /// * `Vec<ActivationBox>` - All activation boxes with precise positioning and nesting levels
     /// * `Vec<draw::PositionedDrawable<draw::Fragment>>` - All fragments with their sections and bounds
+    /// * `Vec<draw::PositionedDrawable<draw::Note>>` - All notes with their positions and content
     /// * `f32` - The final Y coordinate (lifeline end position)
     fn process_events(
         &self,
@@ -249,11 +258,13 @@ impl Engine {
         Vec<Message>,
         Vec<ActivationBox>,
         Vec<draw::PositionedDrawable<draw::Fragment>>,
+        Vec<draw::PositionedDrawable<draw::Note>>,
         f32,
     ) {
         let mut messages: Vec<Message> = Vec::new();
         let mut activation_boxes: Vec<ActivationBox> = Vec::new();
         let mut fragments: Vec<draw::PositionedDrawable<draw::Fragment>> = Vec::new();
+        let mut notes: Vec<draw::PositionedDrawable<draw::Note>> = Vec::new();
 
         let mut activation_stack: HashMap<Id, Vec<ActivationTiming>> = HashMap::new();
         let mut fragment_stack: Vec<FragmentTiming> = Vec::new();
@@ -342,14 +353,37 @@ impl Engine {
                     let fragment = fragment_timing.into_fragment(current_y);
                     fragments.push(fragment);
                 }
-                SequenceEvent::Note(_note) => {
-                    // TODO: Implement note layout
-                    // Notes don't affect the vertical position or timing for now
+                SequenceEvent::Note(note) => {
+                    // Only handle single participant "over" alignment for now
+                    // Skip multi-participant, margin, or left/right aligned notes
+                    if note.on().len() != 1 {
+                        // Future: Support multi-participant and margin notes
+                        continue;
+                    }
+
+                    let participant_id = note.on()[0];
+
+                    let note_def = note.definition();
+
+                    let note_drawable =
+                        draw::Note::new(Cow::Owned(note_def.clone()), note.content().to_string());
+                    let note_size = note_drawable.size();
+
+                    let participant = &components[&participant_id];
+                    let position = participant.position();
+                    let position = position.with_y(current_y + note_size.height() / 2.0);
+
+                    let positioned_note =
+                        draw::PositionedDrawable::new(note_drawable).with_position(position);
+
+                    notes.push(positioned_note);
+
+                    current_y += note_size.height() + self.message_spacing;
                 }
             }
         }
 
-        (messages, activation_boxes, fragments, current_y)
+        (messages, activation_boxes, fragments, notes, current_y)
     }
 }
 
