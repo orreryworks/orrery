@@ -100,6 +100,7 @@ pub struct NoteDefinition {
     background_color: Option<Color>,
     stroke: Cow<'static, StrokeDefinition>,
     text: Cow<'static, TextDefinition>,
+    min_width: Option<f32>,
 }
 
 impl NoteDefinition {
@@ -195,6 +196,18 @@ impl NoteDefinition {
         self.text = text;
     }
 
+    /// Sets the minimum width for the note.
+    ///
+    /// When set, the note will expand to at least this width, useful for spanning notes
+    /// across multiple participants in sequence diagrams.
+    ///
+    /// # Arguments
+    ///
+    /// * `width` - Optional minimum width in pixels. Use `None` for natural sizing.
+    pub fn set_min_width(&mut self, width: Option<f32>) {
+        self.min_width = width;
+    }
+
     /// Returns the background color of the note.
     fn background_color(&self) -> Option<Color> {
         self.background_color
@@ -212,6 +225,7 @@ impl Default for NoteDefinition {
             background_color: Some(Color::new("#fffacd").expect("valid color")), // Light yellow
             stroke: Cow::Borrowed(StrokeDefinition::default_borrowed()),
             text: Cow::Borrowed(TextDefinition::default_borrowed()),
+            min_width: None,
         }
     }
 }
@@ -289,7 +303,15 @@ impl Note {
     /// Calculates the total size of the note including padding.
     fn calculate_size(&self) -> Size {
         let text_size = self.text_size();
-        text_size.add_padding(Insets::new(10.0, 10.0 + CORNER_FOLD_SIZE, 10.0, 10.0))
+        let size = text_size.add_padding(Insets::new(10.0, 10.0 + CORNER_FOLD_SIZE, 10.0, 10.0));
+
+        // Apply minimum width if specified
+        if let Some(min_width) = self.definition.min_width {
+            let width = size.width().max(min_width);
+            Size::new(width, size.height())
+        } else {
+            size
+        }
     }
 
     /// Creates the SVG path element for the main note body with dog-eared corner.

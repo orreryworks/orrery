@@ -354,36 +354,76 @@ impl Engine {
                     fragments.push(fragment);
                 }
                 SequenceEvent::Note(note) => {
-                    // Only handle single participant "over" alignment for now
-                    // Skip multi-participant, margin, or left/right aligned notes
-                    if note.on().len() != 1 {
-                        // Future: Support multi-participant and margin notes
-                        continue;
-                    }
-
-                    let participant_id = note.on()[0];
-
-                    let note_def = note.definition();
-
-                    let note_drawable =
-                        draw::Note::new(Cow::Owned(note_def.clone()), note.content().to_string());
-                    let note_size = note_drawable.size();
-
-                    let participant = &components[&participant_id];
-                    let position = participant.position();
-                    let position = position.with_y(current_y + note_size.height() / 2.0);
-
-                    let positioned_note =
-                        draw::PositionedDrawable::new(note_drawable).with_position(position);
+                    let positioned_note = self.create_positioned_note(note, components, current_y);
+                    let note_height = positioned_note.size().height();
 
                     notes.push(positioned_note);
-
-                    current_y += note_size.height() + self.message_spacing;
+                    current_y += note_height + self.message_spacing;
                 }
             }
         }
 
         (messages, activation_boxes, fragments, notes, current_y)
+    }
+
+    /// Create a positioned note drawable for a sequence diagram.
+    ///
+    /// Calculates the appropriate position and width for a note based on the participants
+    /// it spans. If `note.on()` is empty, the note spans all participants in the diagram.
+    ///
+    /// # Arguments
+    ///
+    /// * `note` - The note element from the AST
+    /// * `components` - Map of all participant components in the diagram
+    /// * `current_y` - Current Y position in the sequence diagram
+    ///
+    /// # Returns
+    ///
+    /// A `PositionedDrawable<Note>` ready to be added to the layout
+    fn create_positioned_note(
+        &self,
+        note: &ast::Note,
+        components: &HashMap<Id, Component>,
+        current_y: f32,
+    ) -> draw::PositionedDrawable<draw::Note> {
+        // Select appropriate components: all if on=[], otherwise specified ones
+        let filtered_components: Box<dyn Iterator<Item = &Component>> = if note.on().is_empty() {
+            Box::new(components.values())
+        } else {
+            Box::new(
+                note.on()
+                    .iter()
+                    .map(|id| components.get(id).expect("component not found")),
+            )
+        };
+
+        // Calculate actual min/max edges considering component widths
+        let (min_x, max_x) = filtered_components
+            .map(|component| {
+                let center_x = component.position().x();
+                let width = component.drawable().size().width();
+                let left_edge = center_x - width / 2.0;
+                let right_edge = center_x + width / 2.0;
+                (left_edge, right_edge)
+            })
+            .reduce(|(min_x, max_x), (left_edge, right_edge)| {
+                (min_x.min(left_edge), max_x.max(right_edge))
+            })
+            .expect("note should have at least one participant");
+
+        // Create note with min_width spanning from left edge to right edge
+        let mut note_def = note.definition().clone();
+        let span_width = max_x - min_x;
+        note_def.set_min_width(Some(span_width));
+
+        let note_drawable = draw::Note::new(Cow::Owned(note_def), note.content().to_string());
+        let note_size = note_drawable.size();
+
+        // Calculate center position (midpoint between actual edges)
+        let center_x = (min_x + max_x) / 2.0;
+        let position = Point::new(center_x, current_y + note_size.height() / 2.0);
+
+        draw::PositionedDrawable::new(note_drawable).with_position(position)
     }
 }
 

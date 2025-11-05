@@ -82,7 +82,7 @@ The note spans across the listed elements. In sequence diagrams, this is typical
 note [on=[]]: "This note appears in the diagram margin";
 note []: "Omitting 'on' also creates a margin note";
 ```
-The note is positioned in the diagram's margin, independent of any specific element.
+In sequence diagrams, the note spans across all participants in the diagram, from the leftmost to rightmost participant's visual edges. This is equivalent to explicitly listing all participants in the `on` attribute.
 
 ### 3.3 The `align` Attribute
 
