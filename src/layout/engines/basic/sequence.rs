@@ -386,6 +386,8 @@ impl Engine {
         components: &HashMap<Id, Component>,
         current_y: f32,
     ) -> draw::PositionedDrawable<draw::Note> {
+        const NOTE_SPACING: f32 = 20.0; // Spacing between note and participant lifeline
+
         // Select appropriate components: all if on=[], otherwise specified ones
         let filtered_components: Box<dyn Iterator<Item = &Component>> = if note.on().is_empty() {
             Box::new(components.values())
@@ -397,30 +399,43 @@ impl Engine {
             )
         };
 
-        // Calculate actual min/max edges considering component widths
-        let (min_x, max_x) = filtered_components
-            .map(|component| {
+        let edge_map: fn(&Component) -> (f32, f32) = match note.align() {
+            ast::NoteAlign::Over => |component| {
                 let center_x = component.position().x();
                 let width = component.drawable().size().width();
                 let left_edge = center_x - width / 2.0;
                 let right_edge = center_x + width / 2.0;
                 (left_edge, right_edge)
-            })
-            .reduce(|(min_x, max_x), (left_edge, right_edge)| {
-                (min_x.min(left_edge), max_x.max(right_edge))
-            })
+            },
+            ast::NoteAlign::Left | ast::NoteAlign::Right => {
+                |component| (component.position().x(), component.position().x())
+            }
+            ast::NoteAlign::Top | ast::NoteAlign::Bottom => {
+                unreachable!("Alignments is not supported for sequence diagrams")
+            }
+        };
+
+        let (min_x, max_x) = filtered_components
+            .map(edge_map)
+            .reduce(|(min_x, max_x), (left_x, right_x)| (min_x.min(left_x), max_x.max(right_x)))
             .expect("note should have at least one participant");
 
-        // Create note with min_width spanning from left edge to right edge
         let mut note_def = note.definition().clone();
-        let span_width = max_x - min_x;
-        note_def.set_min_width(Some(span_width));
+        if note.align() == ast::NoteAlign::Over {
+            note_def.set_min_width(Some(max_x - min_x));
+        }
 
         let note_drawable = draw::Note::new(Cow::Owned(note_def), note.content().to_string());
-        let note_size = note_drawable.size();
 
-        // Calculate center position (midpoint between actual edges)
-        let center_x = (min_x + max_x) / 2.0;
+        let note_size = note_drawable.size();
+        let center_x = match note.align() {
+            ast::NoteAlign::Over => (min_x + max_x) / 2.0,
+            ast::NoteAlign::Left => min_x - (note_size.width() / 2.0) - NOTE_SPACING,
+            ast::NoteAlign::Right => max_x + (note_size.width() / 2.0) + NOTE_SPACING,
+            ast::NoteAlign::Top | ast::NoteAlign::Bottom => {
+                unreachable!("Alignments is not supported for sequence diagrams")
+            }
+        };
         let position = Point::new(center_x, current_y + note_size.height() / 2.0);
 
         draw::PositionedDrawable::new(note_drawable).with_position(position)
