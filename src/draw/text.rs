@@ -4,11 +4,10 @@ use crate::{
     geometry::{Insets, Point, Size},
 };
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
-use lazy_static::lazy_static;
 use log::info;
 use std::{
     borrow::Cow,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 use svg::{self, node::element as svg_element};
 
@@ -16,46 +15,26 @@ use svg::{self, node::element as svg_element};
 // Static Default Definitions
 // =============================================================================
 
-lazy_static! {
-    /// Default text definition with standard settings.
-    ///
-    /// - Font family: "sans-serif"
-    /// - Font size: 12
-    /// - Background color: None
-    /// - Text color: None (uses SVG default, typically black)
-    /// - Padding: 4px on all sides
-    ///
-    /// Use with `Cow::Borrowed(&DEFAULT_TEXT)` for zero-allocation defaults.
-    static ref DEFAULT_TEXT: TextDefinition = TextDefinition {
-        font_family: String::from("sans-serif"),
-        font_size: 12,
-        background_color: None,
-        color: None,
-        padding: Insets::uniform(4.0),
-    };
+/// Default text definition with standard settings.
+///
+/// - Font family: "sans-serif"
+/// - Font size: 12
+/// - Background color: None
+/// - Text color: None (uses SVG default, typically black)
+/// - Padding: 4px on all sides
+///
+/// Use with `Cow::Borrowed(&DEFAULT_TEXT)` for zero-allocation defaults.
+static DEFAULT_TEXT: OnceLock<TextDefinition> = OnceLock::new();
 
-    /// Default text definition for fragment operation labels.
-    ///
-    /// Small text for "alt", "loop", "opt", etc. labels in sequence diagrams.
-    static ref DEFAULT_FRAGMENT_OPERATION_TEXT: TextDefinition = TextDefinition {
-        font_family: String::from("sans-serif"),
-        font_size: 10,
-        background_color: None,
-        color: None,
-        padding: Insets::uniform(4.0),
-    };
+/// Default text definition for fragment operation labels.
+///
+/// Small text for "alt", "loop", "opt", etc. labels in sequence diagrams.
+static DEFAULT_FRAGMENT_OPERATION_TEXT: OnceLock<TextDefinition> = OnceLock::new();
 
-    /// Default text definition for fragment section titles.
-    ///
-    /// Standard size for section labels like "[condition]".
-    static ref DEFAULT_FRAGMENT_SECTION_TEXT: TextDefinition = TextDefinition {
-        font_family: String::from("sans-serif"),
-        font_size: 12,
-        background_color: None,
-        color: None,
-        padding: Insets::uniform(4.0),
-    };
-}
+/// Default text definition for fragment section titles.
+///
+/// Standard size for section labels like "[condition]".
+static DEFAULT_FRAGMENT_SECTION_TEXT: OnceLock<TextDefinition> = OnceLock::new();
 
 // =============================================================================
 // Type Definitions
@@ -79,7 +58,13 @@ impl TextDefinition {
     /// - Text color: None
     /// - Padding: 4px on all sides
     pub fn default_borrowed() -> &'static Self {
-        &DEFAULT_TEXT
+        DEFAULT_TEXT.get_or_init(|| TextDefinition {
+            font_family: String::from("sans-serif"),
+            font_size: 12,
+            background_color: None,
+            color: None,
+            padding: Insets::uniform(4.0),
+        })
     }
 
     /// Returns a reference to the default fragment operation text (borrowed from static).
@@ -87,7 +72,13 @@ impl TextDefinition {
     /// Small text for "alt", "loop", "opt", etc. labels in sequence diagrams.
     /// - Font size: 10
     pub fn default_fragment_operation_borrowed() -> &'static Self {
-        &DEFAULT_FRAGMENT_OPERATION_TEXT
+        DEFAULT_FRAGMENT_OPERATION_TEXT.get_or_init(|| TextDefinition {
+            font_family: String::from("sans-serif"),
+            font_size: 10,
+            background_color: None,
+            color: None,
+            padding: Insets::uniform(4.0),
+        })
     }
 
     /// Returns a reference to the default fragment section text (borrowed from static).
@@ -95,7 +86,13 @@ impl TextDefinition {
     /// Standard size for section labels like "[condition]".
     /// - Font size: 12
     pub fn default_fragment_section_borrowed() -> &'static Self {
-        &DEFAULT_FRAGMENT_SECTION_TEXT
+        DEFAULT_FRAGMENT_SECTION_TEXT.get_or_init(|| TextDefinition {
+            font_family: String::from("sans-serif"),
+            font_size: 12,
+            background_color: None,
+            color: None,
+            padding: Insets::uniform(4.0),
+        })
     }
 
     /// Create a new text definition with default values
@@ -211,7 +208,9 @@ impl Text {
 
     /// Calculate the size required to display this text content without padding.
     fn calculate_size_without_padding(&self) -> Size {
-        TEXT_MANAGER.calculate_text_size(&self.content, &self.definition)
+        TEXT_MANAGER
+            .get_or_init(TextManager::new)
+            .calculate_text_size(&self.content, &self.definition)
     }
 }
 
@@ -357,6 +356,4 @@ impl TextManager {
 }
 
 // Create a global instance for use throughout the application
-lazy_static::lazy_static! {
-    static ref TEXT_MANAGER: TextManager = TextManager::new();
-}
+static TEXT_MANAGER: OnceLock<TextManager> = OnceLock::new();

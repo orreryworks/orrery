@@ -68,62 +68,35 @@
 //! | `join` | `stroke-linejoin` | `"miter"`, `"round"`, `"bevel"` |
 
 use crate::color::Color;
-use lazy_static::lazy_static;
-use std::str::FromStr;
+use std::{str::FromStr, sync::OnceLock};
 
 // =============================================================================
 // Static Default Definitions
 // =============================================================================
 
-lazy_static! {
-    /// Default stroke definition with standard settings.
-    ///
-    /// - Color: black (default)
-    /// - Width: 1.0
-    /// - Style: Solid
-    /// - Cap: Butt
-    /// - Join: Miter
-    ///
-    /// Use with `Cow::Borrowed(&DEFAULT_STROKE)` for zero-allocation defaults.
-    static ref DEFAULT_STROKE: StrokeDefinition = StrokeDefinition {
-        color: Color::default(),
-        width: 1.0,
-        style: StrokeStyle::Solid,
-        cap: StrokeCap::Butt,
-        join: StrokeJoin::Miter,
-    };
+/// Default stroke definition with standard settings.
+///
+/// - Color: black (default)
+/// - Width: 1.0
+/// - Style: Solid
+/// - Cap: Butt
+/// - Join: Miter
+///
+/// Use with `Cow::Borrowed(&DEFAULT_STROKE)` for zero-allocation defaults.
+static DEFAULT_STROKE: OnceLock<StrokeDefinition> = OnceLock::new();
 
-    /// Default solid stroke with 2.0 width.
-    ///
-    /// Used for shape outlines like Actor, Boundary, Control, etc.
-    static ref DEFAULT_SOLID_STROKE: StrokeDefinition = StrokeDefinition {
-        color: Color::default(),
-        width: 2.0,
-        style: StrokeStyle::Solid,
-        cap: StrokeCap::Butt,
-        join: StrokeJoin::Miter,
-    };
+/// Default solid stroke with 2.0 width.
+///
+/// Used for shape outlines like Actor, Boundary, Control, etc.
+static DEFAULT_SOLID_STROKE: OnceLock<StrokeDefinition> = OnceLock::new();
 
-    /// Default dashed stroke with 1.0 width.
-    ///
-    /// Used for lifelines and some fragment separators.
-    static ref DEFAULT_DASHED_STROKE: StrokeDefinition = StrokeDefinition {
-        color: Color::default(),
-        width: 1.0,
-        style: StrokeStyle::Dashed,
-        cap: StrokeCap::Butt,
-        join: StrokeJoin::Miter,
-    };
+/// Default dashed stroke with 1.0 width.
+///
+/// Used for lifelines and some fragment separators.
+static DEFAULT_DASHED_STROKE: OnceLock<StrokeDefinition> = OnceLock::new();
 
-    /// Default dotted stroke with 1.0 width.
-    static ref DEFAULT_DOTTED_STROKE: StrokeDefinition = StrokeDefinition {
-        color: Color::default(),
-        width: 1.0,
-        style: StrokeStyle::Dotted,
-        cap: StrokeCap::Butt,
-        join: StrokeJoin::Miter,
-    };
-}
+/// Default dotted stroke with 1.0 width.
+static DEFAULT_DOTTED_STROKE: OnceLock<StrokeDefinition> = OnceLock::new();
 
 // =============================================================================
 // Type Definitions
@@ -342,7 +315,13 @@ impl StrokeDefinition {
     /// - Cap: Butt
     /// - Join: Miter
     pub fn default_borrowed() -> &'static Self {
-        &DEFAULT_STROKE
+        DEFAULT_STROKE.get_or_init(|| StrokeDefinition {
+            color: Color::default(),
+            width: 1.0,
+            style: StrokeStyle::Solid,
+            cap: StrokeCap::Butt,
+            join: StrokeJoin::Miter,
+        })
     }
 
     /// Returns a reference to the default solid stroke (borrowed from static).
@@ -353,7 +332,13 @@ impl StrokeDefinition {
     ///
     /// Used for shape outlines like Actor, Boundary, Control, etc.
     pub fn default_solid_borrowed() -> &'static Self {
-        &DEFAULT_SOLID_STROKE
+        DEFAULT_SOLID_STROKE.get_or_init(|| StrokeDefinition {
+            color: Color::default(),
+            width: 2.0,
+            style: StrokeStyle::Solid,
+            cap: StrokeCap::Butt,
+            join: StrokeJoin::Miter,
+        })
     }
 
     /// Returns a reference to the default dashed stroke (borrowed from static).
@@ -364,7 +349,13 @@ impl StrokeDefinition {
     ///
     /// Used for lifelines and some fragment separators.
     pub fn default_dashed_borrowed() -> &'static Self {
-        &DEFAULT_DASHED_STROKE
+        DEFAULT_DASHED_STROKE.get_or_init(|| StrokeDefinition {
+            color: Color::default(),
+            width: 1.0,
+            style: StrokeStyle::Dashed,
+            cap: StrokeCap::Butt,
+            join: StrokeJoin::Miter,
+        })
     }
 
     /// Returns a reference to the default dotted stroke (borrowed from static).
@@ -373,7 +364,13 @@ impl StrokeDefinition {
     /// - Width: 1.0
     /// - Style: Dotted
     pub fn default_dotted_borrowed() -> &'static Self {
-        &DEFAULT_DOTTED_STROKE
+        DEFAULT_DOTTED_STROKE.get_or_init(|| StrokeDefinition {
+            color: Color::default(),
+            width: 1.0,
+            style: StrokeStyle::Dotted,
+            cap: StrokeCap::Butt,
+            join: StrokeJoin::Miter,
+        })
     }
 
     /// Creates a new stroke with the given color and width.

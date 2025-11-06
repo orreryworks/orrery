@@ -2,18 +2,18 @@
 //!
 //! This module provides the `Id` type with an efficient string-interner based approach.
 
-use lazy_static::lazy_static;
-use std::{fmt, sync::Mutex};
+use std::{
+    fmt,
+    sync::{Mutex, OnceLock},
+};
 use string_interner::{DefaultStringInterner, DefaultSymbol};
 
-lazy_static! {
-    /// Global string interner for efficient identifier storage.
-    ///
-    /// # Thread Safety
-    ///
-    /// This uses `Mutex` for thread-safe access to the string interner.
-    static ref INTERNER: Mutex<DefaultStringInterner> = Mutex::new(DefaultStringInterner::new());
-}
+/// Global string interner for efficient identifier storage.
+///
+/// # Thread Safety
+///
+/// This uses `Mutex` for thread-safe access to the string interner.
+static INTERNER: OnceLock<Mutex<DefaultStringInterner>> = OnceLock::new();
 
 /// Efficient identifier type using string interning
 ///
@@ -55,7 +55,10 @@ impl Id {
     /// let type_id = Id::new("Rectangle");
     /// ```
     pub fn new(name: &str) -> Self {
-        let mut interner = INTERNER.lock().expect("Failed to acquire interner lock");
+        let mut interner = INTERNER
+            .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
+            .lock()
+            .expect("Failed to acquire interner lock");
         let symbol = interner.get_or_intern(name);
         Self(symbol)
     }
@@ -95,7 +98,10 @@ impl Id {
     /// assert_eq!(nested, "user::profile");
     /// ```
     pub fn create_nested(&self, child_id: Id) -> Self {
-        let mut interner = INTERNER.lock().unwrap();
+        let mut interner = INTERNER
+            .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
+            .lock()
+            .unwrap();
         let parent_str = interner
             .resolve(self.0)
             .expect("Parent ID should exist in interner");
@@ -110,7 +116,10 @@ impl Id {
 
 impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let interner = INTERNER.lock().unwrap();
+        let interner = INTERNER
+            .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
+            .lock()
+            .unwrap();
         let str_value = interner
             .resolve(self.0)
             .expect("Symbol should exist in interner");
@@ -122,7 +131,10 @@ impl std::str::FromStr for Id {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut interner = INTERNER.lock().unwrap();
+        let mut interner = INTERNER
+            .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
+            .lock()
+            .unwrap();
         let symbol = interner.get_or_intern(s);
         Ok(Self(symbol))
     }
@@ -158,7 +170,10 @@ impl PartialEq<str> for Id {
     /// assert!(id == "Rectangle");
     /// ```
     fn eq(&self, other: &str) -> bool {
-        let interner = INTERNER.lock().unwrap();
+        let interner = INTERNER
+            .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
+            .lock()
+            .unwrap();
         let self_str = interner
             .resolve(self.0)
             .expect("Symbol should exist in interner");
