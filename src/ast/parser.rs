@@ -1,3 +1,11 @@
+use winnow::{
+    Parser as _,
+    combinator::{alt, delimited, not, opt, preceded, repeat, separated},
+    error::{ContextError, ErrMode, StrContext},
+    stream::{Stream, TokenSlice},
+    token::any,
+};
+
 use crate::{
     ast::{
         parser_types as types,
@@ -6,13 +14,6 @@ use crate::{
     },
     error::ParseDiagnosticError,
     identifier::Id,
-};
-use winnow::{
-    Parser as _,
-    combinator::{alt, delimited, not, opt, preceded, repeat, separated},
-    error::{ContextError, ErrMode, StrContext},
-    stream::{Stream, TokenSlice},
-    token::any,
 };
 
 type Input<'src> = FilamentTokenSlice<'src>;

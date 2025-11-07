@@ -18,16 +18,18 @@
 //! - Dashed horizontal separators between sections
 //! - Content area with padding for nested elements
 
+use std::borrow::Cow;
+
+use svg::{self, node::element as svg_element};
+
 use crate::{
     color::Color,
     draw::{Drawable, StrokeDefinition, Text, TextDefinition},
     geometry::{Bounds, Insets, Point, Size},
 };
-use std::borrow::Cow;
 
 #[cfg(test)]
 use crate::draw::StrokeStyle;
-use svg::{self, node::element as svg_element};
 
 /// Styling configuration for fragment blocks in sequence diagrams.
 ///

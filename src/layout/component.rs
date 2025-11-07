@@ -1,3 +1,7 @@
+use std::{borrow::Cow, collections::HashMap, rc::Rc};
+
+use log::{debug, error};
+
 use crate::{
     ast, draw,
     geometry::{self, Size},
@@ -5,8 +9,6 @@ use crate::{
     layout::{layer, positioning::LayoutSizing},
     structure,
 };
-use log::{debug, error};
-use std::{borrow::Cow, collections::HashMap, rc::Rc};
 
 /// Represents a diagram component with a reference to its AST node and positioning information
 /// TODO: Do I need Clone?!

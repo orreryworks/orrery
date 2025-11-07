@@ -1,13 +1,15 @@
-use crate::{
-    ast::parser_types, color::Color, draw, error::ElaborationDiagnosticError, geometry::Insets,
-    identifier::Id,
-};
-use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
     fmt::{self, Display},
     rc::Rc,
     str::FromStr,
+};
+
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    ast::parser_types, color::Color, draw, error::ElaborationDiagnosticError, geometry::Insets,
+    identifier::Id,
 };
 
 /// A diagram node (component/participant) with visual definition and nested content.

@@ -1,6 +1,7 @@
-use crate::ast::span::Span;
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
+
+use crate::ast::span::Span;
 
 /// A rich diagnostic error for elaboration issues in the Filament language.
 ///

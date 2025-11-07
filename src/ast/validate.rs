@@ -12,18 +12,16 @@
 //!   statements in sequence diagrams
 //! - **Note Alignment**: Validates that note alignment values are appropriate for the diagram type
 
+use std::collections::HashMap;
+
 use super::{
-    span::Span,
-    {
-        parser_types::{
-            Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
-            RelationTypeSpec, TypeDefinition,
-        },
-        span::Spanned,
+    parser_types::{
+        Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
+        RelationTypeSpec, TypeDefinition,
     },
+    span::{Span, Spanned},
 };
 use crate::{error::ElaborationDiagnosticError, identifier::Id};
-use std::collections::HashMap;
 
 /// Visitor trait for traversing/analyzing AST nodes.
 ///

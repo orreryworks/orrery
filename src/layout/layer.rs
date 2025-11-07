@@ -1,9 +1,10 @@
+use log::debug;
+
 use crate::{
     draw,
     geometry::{Bounds, Insets, Point, Size},
     layout::{component, positioning::LayoutSizing, sequence},
 };
-use log::debug;
 
 /// Content types that can be laid out in a layer
 #[derive(Debug)]

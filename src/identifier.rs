@@ -6,6 +6,7 @@ use std::{
     fmt,
     sync::{Mutex, OnceLock},
 };
+
 use string_interner::{DefaultStringInterner, DefaultSymbol};
 
 /// Global string interner for efficient identifier storage.

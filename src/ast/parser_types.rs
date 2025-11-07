@@ -8,9 +8,10 @@
 //! Leaf values are wrapped in [`Spanned<T>`] to preserve source location information
 //! for error reporting. Composite types derive their spans from their contents.
 
+use std::fmt;
+
 use super::span::{Span, Spanned};
 use crate::identifier::Id;
-use std::fmt;
 #[derive(Debug)]
 pub struct TypeDefinition<'a> {
     pub name: Spanned<Id>,

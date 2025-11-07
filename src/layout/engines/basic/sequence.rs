@@ -3,6 +3,8 @@
 //! This module provides a layout engine for sequence diagrams
 //! using a simple, deterministic algorithm.
 
+use std::{borrow::Cow, collections::HashMap};
+
 use crate::{
     ast,
     draw::{self, Drawable as _},
@@ -16,7 +18,6 @@ use crate::{
     },
     structure::{SequenceEvent, SequenceGraph},
 };
-use std::{borrow::Cow, collections::HashMap};
 
 /// Basic sequence layout engine implementation that implements the SequenceLayoutEngine trait
 pub struct Engine {

@@ -3,6 +3,12 @@
 //! This module provides a layout engine for component diagrams
 //! using a simple, deterministic algorithm.
 
+use std::{
+    borrow::Cow,
+    cmp::Ordering,
+    collections::{HashMap, HashSet, VecDeque},
+};
+
 use crate::{
     ast,
     draw::{self, Drawable},
@@ -14,11 +20,6 @@ use crate::{
         layer::{ContentStack, PositionedContent},
     },
     structure::{ComponentGraph, ContainmentScope},
-};
-use std::{
-    borrow::Cow,
-    cmp::Ordering,
-    collections::{HashMap, HashSet, VecDeque},
 };
 
 /// Basic component layout engine implementation that implements the ComponentLayoutEngine trait

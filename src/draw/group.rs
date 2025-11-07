@@ -1,8 +1,11 @@
 //! Provides a container to group multiple `Drawable` objects with relative positioning.
 
-use crate::draw::Drawable;
-use crate::geometry::{Point, Size};
 use svg::{self, node::element as svg_element};
+
+use crate::{
+    draw::Drawable,
+    geometry::{Point, Size},
+};
 
 /// A group of drawable objects that can be rendered together as an SVG group.
 ///

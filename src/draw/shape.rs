@@ -1,9 +1,10 @@
+use std::borrow::Cow;
+
 use crate::{
     color::Color,
     draw::{Drawable, StrokeDefinition, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
-use std::borrow::Cow;
 
 mod actor;
 mod boundary;

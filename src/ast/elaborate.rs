@@ -4,6 +4,10 @@
 //! types ready for layout and rendering. It performs type resolution, validates
 //! semantic correctness, and builds the final representation.
 
+use std::{borrow::Cow, collections::HashMap, rc::Rc, str::FromStr};
+
+use log::{debug, info, trace};
+
 use super::{elaborate_types as types, parser_types};
 use crate::{
     ast::span::{Span, Spanned},
@@ -13,8 +17,6 @@ use crate::{
     error::ElaborationDiagnosticError,
     identifier::Id,
 };
-use log::{debug, info, trace};
-use std::{borrow::Cow, collections::HashMap, rc::Rc, str::FromStr};
 
 /// Type alias for Result with ElaborationDiagnosticError as the error type
 type EResult<T> = Result<T, ElaborationDiagnosticError>;

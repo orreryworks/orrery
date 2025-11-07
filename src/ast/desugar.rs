@@ -22,6 +22,7 @@ use super::{
     },
     span::Spanned,
 };
+
 use crate::identifier::Id;
 
 /// Stack tracking the current namespace path for identifier resolution

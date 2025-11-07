@@ -1,14 +1,16 @@
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
+use directories::ProjectDirs;
+use log::{debug, info};
+use serde::Deserialize;
+
 use crate::{
     ast::LayoutEngine,
     color::Color,
     error::{ConfigError, FilamentError},
-};
-use directories::ProjectDirs;
-use log::{debug, info};
-use serde::Deserialize;
-use std::{
-    fs,
-    path::{Path, PathBuf},
 };
 
 /// Application configuration loaded from TOML file

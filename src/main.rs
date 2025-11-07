@@ -1,7 +1,9 @@
-use clap::Parser;
-use filament::{Config, FilamentError};
-use log::{LevelFilter, debug, error, info};
 use std::{process, str::FromStr};
+
+use clap::Parser;
+use log::{LevelFilter, debug, error, info};
+
+use filament::{Config, FilamentError};
 
 fn main() {
     // Install miette's pretty panic hook early for better panic reports

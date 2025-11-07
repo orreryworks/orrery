@@ -1,8 +1,13 @@
-use crate::identifier::Id;
+use std::{borrow::Cow, collections::HashMap};
+
+use log::debug;
+use rust_sugiyama::configure::Config;
+
 use crate::{
     ast,
     draw::{self, Drawable},
     geometry::{Insets, Point, Size},
+    identifier::Id,
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
@@ -10,9 +15,6 @@ use crate::{
     },
     structure::{ComponentGraph, ContainmentScope},
 };
-use log::debug;
-use rust_sugiyama::configure::Config;
-use std::{borrow::Cow, collections::HashMap};
 
 /// The Sugiyama layout engine for component diagrams
 /// Based on the Sugiyama algorithm for layered drawing of directed graphs

@@ -1,6 +1,8 @@
-use filament::Config;
 use std::{fs, path::PathBuf};
+
 use tempfile::tempdir;
+
+use filament::Config;
 
 /// Collects all .fil files from a directory, optionally excluding specific filenames
 fn collect_fil_files(dir: PathBuf, exclusions: &[&str]) -> Vec<PathBuf> {

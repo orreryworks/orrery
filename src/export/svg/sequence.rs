@@ -1,10 +1,11 @@
+use svg::node::element as svg_element;
+
 use super::Svg;
 use crate::{
     draw::{self, Drawable as _},
     geometry::{Bounds, Point},
     layout::{layer::ContentStack, sequence},
 };
-use svg::node::element as svg_element;
 
 impl Svg {
     pub fn render_participant(&self, participant: &sequence::Participant) -> Box<dyn svg::Node> {

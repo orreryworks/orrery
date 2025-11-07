@@ -1,7 +1,9 @@
 //! Provides `PositionedDrawable`, a wrapper for a Drawable and its absolute position.
 
-use crate::draw::Drawable;
-use crate::geometry::{Bounds, Point, Size};
+use crate::{
+    draw::Drawable,
+    geometry::{Bounds, Point, Size},
+};
 
 /// A drawable object together with an absolute position.
 ///

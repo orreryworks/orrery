@@ -1,15 +1,17 @@
+use std::{
+    borrow::Cow,
+    sync::{Arc, Mutex, OnceLock},
+};
+
+use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
+use log::info;
+use svg::{self, node::element as svg_element};
+
 use crate::{
     color::Color,
     draw::Drawable,
     geometry::{Insets, Point, Size},
 };
-use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
-use log::info;
-use std::{
-    borrow::Cow,
-    sync::{Arc, Mutex, OnceLock},
-};
-use svg::{self, node::element as svg_element};
 
 // =============================================================================
 // Static Default Definitions

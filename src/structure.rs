@@ -10,8 +10,9 @@
 //! - **Hierarchy management**: Tree structure for nested diagrams [`DiagramHierarchy`], [`HierarchyNode`]
 //! - **Specialized graphs**: Type-specific graph implementations for component and sequence diagrams
 
-use crate::{FilamentError, ast, identifier::Id};
 use log::trace;
+
+use crate::{FilamentError, ast, identifier::Id};
 
 mod component;
 mod graph_base;

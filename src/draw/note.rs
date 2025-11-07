@@ -50,13 +50,15 @@
 //! # }
 //! ```
 
+use std::borrow::Cow;
+
+use svg::{self, node::element as svg_element};
+
 use crate::{
     color::Color,
     draw::{Drawable, StrokeDefinition, Text, TextDefinition},
     geometry::{Insets, Point, Size},
 };
-use std::borrow::Cow;
-use svg::{self, node::element as svg_element};
 
 /// Fixed size for the dog-eared corner fold in pixels.
 ///

@@ -18,13 +18,15 @@
 //! 2. The activation box applies its nesting offset: `position.x() + (nesting_level * nesting_offset)`
 //! 3. The box is centered on the adjusted position
 
+use std::borrow::Cow;
+
+use svg::{self, node::element as svg_element};
+
 use crate::{
     color::Color,
     draw::{Drawable, StrokeDefinition},
     geometry::{Bounds, Point, Size},
 };
-use std::borrow::Cow;
-use svg::{self, node::element as svg_element};
 
 /// Styling configuration for activation boxes in sequence diagrams.
 ///

@@ -18,12 +18,14 @@
 //! 2. Positioning is handled by wrapping with PositionedDrawable
 //! 3. The lifeline renders as a vertical line from (0,0) to (0,height)
 
+use std::borrow::Cow;
+
+use svg::{self, node::element as svg_element};
+
 use crate::{
     draw::{Drawable, StrokeDefinition},
     geometry::{Point, Size},
 };
-use std::borrow::Cow;
-use svg::{self, node::element as svg_element};
 
 /// Styling configuration for lifelines in sequence diagrams.
 ///

@@ -1,11 +1,13 @@
+use std::borrow::Cow;
+
+use svg::{self, node::element as svg_element};
+
 use super::ShapeDefinition;
 use crate::{
     color::Color,
     draw::{StrokeDefinition, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
-use std::borrow::Cow;
-use svg::{self, node::element as svg_element};
 
 /// Rectangle shape definition
 #[derive(Debug, Clone)]

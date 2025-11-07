@@ -3,8 +3,9 @@
 //! This module provides algorithms for calculating element positions in diagrams.
 //! It contains reusable positioning logic that can be used by different layout engines.
 
-use crate::{draw, geometry::Size};
 use std::iter::IntoIterator;
+
+use crate::{draw, geometry::Size};
 
 /// A trait for types that can calculate their own size
 pub trait LayoutSizing {

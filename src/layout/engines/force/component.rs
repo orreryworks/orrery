@@ -3,11 +3,15 @@
 //! This module implements a force-directed graph layout algorithm
 //! for component diagrams.
 
-use crate::identifier::Id;
+use std::{borrow::Cow, collections::HashMap};
+
+use log::debug;
+
 use crate::{
     ast,
     draw::{self, Drawable},
     geometry::{Insets, Point, Size},
+    identifier::Id,
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
@@ -15,8 +19,6 @@ use crate::{
     },
     structure::{ComponentGraph, ContainmentScope},
 };
-use log::debug;
-use std::{borrow::Cow, collections::HashMap};
 
 /// Force layout engine for component diagrams
 ///

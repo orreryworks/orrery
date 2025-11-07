@@ -1,11 +1,13 @@
+use std::{borrow::Cow, collections::HashMap};
+
+use log::warn;
+
 use crate::{
     ast, draw,
     geometry::{Bounds, Point, Size},
     identifier::Id,
     layout::{component, positioning::LayoutSizing},
 };
-use log::warn;
-use std::{borrow::Cow, collections::HashMap};
 
 /// Sequence diagram participant that holds its drawable component and lifeline.
 #[derive(Debug, Clone)]

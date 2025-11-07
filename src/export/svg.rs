@@ -2,6 +2,11 @@ mod component;
 mod layer;
 mod sequence;
 
+use std::{fs::File, io::Write};
+
+use log::{debug, error, info};
+use svg::{Document, node::element::Rectangle};
+
 use crate::{
     ast,
     color::Color,
@@ -12,9 +17,6 @@ use crate::{
     geometry::{Insets, Size},
     layout::layer::LayeredLayout,
 };
-use log::{debug, error, info};
-use std::{fs::File, io::Write};
-use svg::{Document, node::element::Rectangle};
 
 /// SVG exporter builder to configure and build the SVG exporter
 pub struct SvgBuilder<'a> {

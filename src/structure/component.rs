@@ -19,11 +19,13 @@
 //! Relations can cross containment boundaries (e.g., a component at the root level can have
 //! a relation to a component nested inside another component).
 
-use crate::{FilamentError, ast, identifier::Id};
 use log::debug;
 
-use super::HierarchyNode;
-use super::graph_base::{EdgeIndex, GraphInternal};
+use super::{
+    HierarchyNode,
+    graph_base::{EdgeIndex, GraphInternal},
+};
+use crate::{FilamentError, ast, identifier::Id};
 
 /// Represents a containment scope within a component diagram.
 ///

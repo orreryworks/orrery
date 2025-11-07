@@ -1,8 +1,9 @@
-use color::DynamicColor;
 use std::{
     hash::{Hash, Hasher},
     str::FromStr,
 };
+
+use color::DynamicColor;
 
 /// Wrapper around the `DynamicColor` type from the color crate
 /// This provides convenience methods for working with colors in the Filament project

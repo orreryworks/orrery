@@ -1,11 +1,13 @@
+use std::{borrow::Cow, fmt};
+
+use svg::{self, node::element as svg_element};
+
 use super::{RectangleDefinition, ShapeDefinition, rectangle};
 use crate::{
     color::Color,
     draw::{StrokeDefinition, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
-use std::{borrow::Cow, fmt};
-use svg::{self, node::element as svg_element};
 
 /// Component shape definition with UML component styling
 pub type ComponentDefinition = RectangleWithIconDefinition<ComponentIcon>;

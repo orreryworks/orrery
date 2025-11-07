@@ -1,8 +1,9 @@
+use svg::node::element as svg_element;
+
 use crate::{
     draw::{Arrow, ArrowDrawer, Drawable, Text},
     geometry::{Point, Size},
 };
-use svg::node::element as svg_element;
 
 /// A drawable that combines an arrow with optional text positioned at the midpoint.
 ///

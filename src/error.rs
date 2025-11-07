@@ -1,11 +1,13 @@
 mod elaborate;
 mod parser;
 
-pub use elaborate::ElaborationDiagnosticError;
-use miette::Diagnostic;
-pub use parser::ParseDiagnosticError;
 use std::{io, path::PathBuf};
+
+use miette::Diagnostic;
 use thiserror::Error;
+
+pub use elaborate::ElaborationDiagnosticError;
+pub use parser::ParseDiagnosticError;
 
 /// The main error type for Filament operations
 #[derive(Debug, Error)]

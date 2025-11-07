@@ -1,4 +1,5 @@
 use std::fmt;
+
 use winnow::stream::Stream;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

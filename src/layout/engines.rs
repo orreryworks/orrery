@@ -13,6 +13,11 @@ mod basic;
 mod force;
 mod sugiyama;
 
+use std::collections::HashMap;
+
+use log::trace;
+
+use super::layer::ContentStack;
 use crate::{
     ast::LayoutEngine,
     draw, geometry,
@@ -24,10 +29,6 @@ use crate::{
     },
     structure,
 };
-use log::trace;
-use std::collections::HashMap;
-
-use super::layer::ContentStack;
 
 /// Enum to store different layout results based on diagram type
 /// Contains the direct layout information without any embedded diagram data

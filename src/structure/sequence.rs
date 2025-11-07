@@ -15,9 +15,10 @@
 //! The graph stores participants as nodes and maintains a separate ordered list of events
 //! that represents the timeline of interactions.
 
-use crate::{FilamentError, ast, identifier::Id};
 use indexmap::IndexMap;
 use log::debug;
+
+use crate::{FilamentError, ast, identifier::Id};
 
 /// Represents ordered events in a sequence diagram.
 ///

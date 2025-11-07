@@ -1,6 +1,8 @@
-use crate::{color::Color, draw::StrokeDefinition, geometry::Point};
 use std::{borrow::Cow, collections::HashMap, fmt, str};
+
 use svg::{self, node::element as svg_element};
+
+use crate::{color::Color, draw::StrokeDefinition, geometry::Point};
 
 /// Defines the visual style of arrow paths.
 ///

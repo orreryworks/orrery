@@ -9,12 +9,14 @@ pub mod identifier;
 mod layout;
 mod structure;
 
+use std::fs;
+
 use clap::Parser;
+use log::{debug, info, trace};
+
 use config::AppConfig;
 pub use error::FilamentError;
 use export::Exporter;
-use log::{debug, info, trace};
-use std::fs;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

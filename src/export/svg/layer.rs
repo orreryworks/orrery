@@ -1,3 +1,7 @@
+use log::debug;
+use svg::{self, node::element as svg_element};
+
+use super::Svg;
 use crate::{
     geometry::Bounds,
     layout::{
@@ -7,10 +11,6 @@ use crate::{
         sequence,
     },
 };
-use log::debug;
-use svg::{self, node::element as svg_element};
-
-use super::Svg;
 
 impl Svg {
     /// Render the complete layered layout to an SVG document

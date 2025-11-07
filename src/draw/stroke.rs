@@ -67,8 +67,9 @@
 //! | `cap` | `stroke-linecap` | `"butt"`, `"round"`, `"square"` |
 //! | `join` | `stroke-linejoin` | `"miter"`, `"round"`, `"bevel"` |
 
-use crate::color::Color;
 use std::{str::FromStr, sync::OnceLock};
+
+use crate::color::Color;
 
 // =============================================================================
 // Static Default Definitions

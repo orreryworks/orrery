@@ -1,11 +1,14 @@
-use super::span::Span;
-use super::tokens::{PositionedToken, Token};
 use winnow::{
     Parser as _,
     ascii::{float, multispace1},
     combinator::{alt, delimited, not, peek, preceded, repeat, terminated},
     error::{ContextError, ModalResult, StrContext},
     token::{literal, none_of, one_of, take_while},
+};
+
+use super::{
+    span::Span,
+    tokens::{PositionedToken, Token},
 };
 
 type Input<'a> = &'a str;

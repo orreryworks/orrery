@@ -21,8 +21,9 @@
 //! This is an internal module; its types are not exposed publicly but are used
 //! by the higher-level `ComponentGraph` and `SequenceGraph` structures.
 
-use crate::identifier::Id;
 use std::{collections::HashMap, marker::PhantomData};
+
+use crate::identifier::Id;
 
 // =============================================================================
 // Low-level primitive types and internal data structures
