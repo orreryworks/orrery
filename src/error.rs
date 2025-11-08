@@ -1,13 +1,11 @@
-mod elaborate;
-mod parser;
+mod diagnostic;
 
 use std::{io, path::PathBuf};
 
 use miette::Diagnostic;
 use thiserror::Error;
 
-pub use elaborate::ElaborationDiagnosticError;
-pub use parser::ParseDiagnosticError;
+pub use diagnostic::DiagnosticError;
 
 /// The main error type for Filament operations
 #[derive(Debug, Error)]
@@ -15,14 +13,21 @@ pub enum FilamentError {
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
 
-    /// For rich diagnostic parsing errors
-    #[error(transparent)]
-    ParseDiagnostic(#[from] ParseDiagnosticError),
+    /// For rich diagnostic parsing errors - holds the source code too.
+    #[error("{err}")]
+    ParseDiagnostic { err: DiagnosticError, src: String },
 
     /// For rich diagnostic elaboration errors - holds the source code too.
     #[error("{err}")] // Empty message to avoid duplication with inner error
     ElaborationDiagnostic {
-        err: ElaborationDiagnosticError,
+        err: DiagnosticError,
+        src: String, // The source code for this error
+    },
+
+    /// For rich diagnostic validation errors - holds the source code too.
+    #[error("{err}")]
+    ValidationDiagnostic {
+        err: DiagnosticError,
         src: String, // The source code for this error
     },
 
@@ -44,8 +49,15 @@ impl Diagnostic for FilamentError {
     fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
             Self::Io(_) => Some(Box::new("filament::error::io")),
-            Self::ParseDiagnostic(_) => Some(Box::new("filament::error::parser_diagnostic")),
+            Self::ParseDiagnostic { .. } => {
+                // Return None to suppress the error code in output
+                None
+            }
             Self::ElaborationDiagnostic { .. } => {
+                // Return None to suppress the error code in output
+                None
+            }
+            Self::ValidationDiagnostic { .. } => {
                 // Return None to suppress the error code in output
                 None
             }
@@ -58,24 +70,27 @@ impl Diagnostic for FilamentError {
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         match self {
+            Self::ParseDiagnostic { err: source, .. } => source.help(),
             Self::ElaborationDiagnostic { err: source, .. } => source.help(),
-            Self::ParseDiagnostic(e) => e.help(),
+            Self::ValidationDiagnostic { err: source, .. } => source.help(),
             _ => None, // Other errors don't have specific help
         }
     }
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         match self {
-            Self::ParseDiagnostic(e) => Some(&e.src),
+            Self::ParseDiagnostic { src, .. } => Some(src),
             Self::ElaborationDiagnostic { src, .. } => Some(src),
+            Self::ValidationDiagnostic { src, .. } => Some(src),
             _ => None,
         }
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         match self {
-            Self::ParseDiagnostic(e) => e.labels(),
-            Self::ElaborationDiagnostic { err: source, .. } => source.labels(),
+            Self::ParseDiagnostic { err, .. } => err.labels(),
+            Self::ElaborationDiagnostic { err, .. } => err.labels(),
+            Self::ValidationDiagnostic { err, .. } => err.labels(),
             _ => None,
         }
     }
@@ -105,13 +120,28 @@ pub enum ConfigError {
 impl FilamentError {
     /// Create a new `ElaborationDiagnostic` error with the associated source code.
     /// This provides a cleaner API than directly constructing the variant.
-    pub fn new_elaboration_error(
-        error: ElaborationDiagnosticError,
-        source_code: impl Into<String>,
-    ) -> Self {
+    pub fn new_elaboration_error(err: DiagnosticError, src: impl Into<String>) -> Self {
         Self::ElaborationDiagnostic {
-            err: error,
-            src: source_code.into(),
+            err,
+            src: src.into(),
+        }
+    }
+
+    /// Create a new `ValidationDiagnostic` error with the associated source code.
+    /// This provides a cleaner API than directly constructing the variant.
+    pub fn new_validation_error(err: DiagnosticError, src: impl Into<String>) -> Self {
+        Self::ValidationDiagnostic {
+            err,
+            src: src.into(),
+        }
+    }
+
+    /// Create a new `ParseDiagnostic` error with the associated source code.
+    /// This provides a cleaner API than directly constructing the variant.
+    pub fn new_parse_error(err: DiagnosticError, src: impl Into<String>) -> Self {
+        Self::ParseDiagnostic {
+            err,
+            src: src.into(),
         }
     }
 }

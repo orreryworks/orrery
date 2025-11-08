@@ -21,7 +21,7 @@ use super::{
     },
     span::{Span, Spanned},
 };
-use crate::{error::ElaborationDiagnosticError, identifier::Id};
+use crate::{error::DiagnosticError, identifier::Id};
 
 /// Visitor trait for traversing/analyzing AST nodes.
 ///
@@ -344,7 +344,7 @@ pub struct Validator<'a> {
     diagram_kind: Option<&'a str>,
 
     // Shared error collection
-    errors: Vec<ElaborationDiagnosticError>,
+    errors: Vec<DiagnosticError>,
 }
 
 impl<'a> Validator<'a> {
@@ -375,7 +375,7 @@ impl<'a> Validator<'a> {
         match self.diagram_kind {
             Some("sequence") => {
                 if !matches!(align_value, "over" | "left" | "right") {
-                    self.errors.push(ElaborationDiagnosticError::from_span(
+                    self.errors.push(DiagnosticError::from_span(
                         format!("Invalid align value '{}' for sequence diagram. Valid values: over, left, right", align_value),
                         span,
                         "invalid align value",
@@ -385,7 +385,7 @@ impl<'a> Validator<'a> {
             }
             Some("component") => {
                 if !matches!(align_value, "left" | "right" | "top" | "bottom") {
-                    self.errors.push(ElaborationDiagnosticError::from_span(
+                    self.errors.push(DiagnosticError::from_span(
                         format!("Invalid align value '{}' for component diagram. Valid values: left, right, top, bottom", align_value),
                         span,
                         "invalid align value",
@@ -394,7 +394,7 @@ impl<'a> Validator<'a> {
                 }
             }
             Some(kind) => {
-                self.errors.push(ElaborationDiagnosticError::from_span(
+                self.errors.push(DiagnosticError::from_span(
                     format!(
                         "Unknown diagram type '{}'. Cannot validate align attribute",
                         kind
@@ -405,7 +405,7 @@ impl<'a> Validator<'a> {
                 ));
             }
             None => {
-                self.errors.push(ElaborationDiagnosticError::from_span(
+                self.errors.push(DiagnosticError::from_span(
                     "Diagram type not set. Cannot validate align attribute".to_string(),
                     span,
                     "missing diagram type",
@@ -450,7 +450,7 @@ impl<'a> Visitor<'a> for Validator<'a> {
             for (component_id, spans) in state.iter() {
                 if !spans.is_empty() {
                     let span = spans.last().cloned().unwrap_or_default();
-                    self.errors.push(ElaborationDiagnosticError::from_span(
+                    self.errors.push(DiagnosticError::from_span(
                         format!(
                             "Component '{}' was activated but never deactivated",
                             component_id
@@ -501,7 +501,7 @@ impl<'a> Visitor<'a> for Validator<'a> {
             }
             _ => {
                 // No matching activate
-                self.errors.push(ElaborationDiagnosticError::from_span(
+                self.errors.push(DiagnosticError::from_span(
                     format!(
                         "Cannot deactivate component '{}': no matching activate statement",
                         component.inner()
@@ -540,7 +540,7 @@ impl<'a> Visitor<'a> for Validator<'a> {
             .expect("component registry not initialized");
 
         if !registry.contains_key(identifier.inner()) {
-            self.errors.push(ElaborationDiagnosticError::from_span(
+            self.errors.push(DiagnosticError::from_span(
                 format!("Component '{}' not found", identifier.inner()),
                 identifier.span(),
                 "undefined component",
@@ -554,8 +554,8 @@ impl<'a> Visitor<'a> for Validator<'a> {
 ///
 /// Returns:
 /// - Ok(()) when no validation issues are found
-/// - Err(ElaborationDiagnosticError) with the first collected error otherwise
-pub fn validate_diagram(diagram: &Diagram<'_>) -> Result<(), ElaborationDiagnosticError> {
+/// - Err(DiagnosticError) with the first collected error otherwise
+pub fn validate_diagram(diagram: &Diagram<'_>) -> Result<(), DiagnosticError> {
     let mut validator = Validator::new();
     visit_diagram(&mut validator, diagram);
     // TODO: Support multi error.
@@ -572,10 +572,10 @@ pub fn validate_diagram(diagram: &Diagram<'_>) -> Result<(), ElaborationDiagnost
 ///
 /// Returns:
 /// - Ok(()) when no activation pairing issues are found
-/// - Err(ElaborationDiagnosticError) with the first collected error otherwise
+/// - Err(DiagnosticError) with the first collected error otherwise
 #[allow(dead_code)]
 #[deprecated(since = "0.1.0", note = "Use validate_diagram instead")]
-pub fn validate_activation_pairs(diagram: &Diagram<'_>) -> Result<(), ElaborationDiagnosticError> {
+pub fn validate_activation_pairs(diagram: &Diagram<'_>) -> Result<(), DiagnosticError> {
     validate_diagram(diagram)
 }
 
@@ -585,10 +585,10 @@ pub fn validate_activation_pairs(diagram: &Diagram<'_>) -> Result<(), Elaboratio
 ///
 /// Returns:
 /// - Ok(()) when no note validation issues are found
-/// - Err(ElaborationDiagnosticError) with the first collected error otherwise
+/// - Err(DiagnosticError) with the first collected error otherwise
 #[allow(dead_code)]
 #[deprecated(since = "0.1.0", note = "Use validate_diagram instead")]
-pub fn validate_notes(diagram: &Diagram<'_>) -> Result<(), ElaborationDiagnosticError> {
+pub fn validate_notes(diagram: &Diagram<'_>) -> Result<(), DiagnosticError> {
     validate_diagram(diagram)
 }
 
@@ -874,7 +874,7 @@ mod note_validation_tests {
         "#;
 
         let tokens = tokenize(input).expect("Failed to tokenize");
-        let element = build_diagram(&tokens, input).expect("Failed to parse");
+        let element = build_diagram(&tokens).expect("Failed to parse");
         if let Element::Diagram(diagram) = element.inner() {
             let result = validate_diagram(diagram);
             assert!(result.is_ok(), "Valid notes should pass validation");
@@ -896,7 +896,7 @@ mod note_validation_tests {
         "#;
 
         let tokens = tokenize(input).expect("Failed to tokenize");
-        let element = build_diagram(&tokens, input).expect("Failed to parse");
+        let element = build_diagram(&tokens).expect("Failed to parse");
         if let Element::Diagram(diagram) = element.inner() {
             let result = validate_diagram(diagram);
             assert!(result.is_ok(), "Valid notes should pass validation");
@@ -915,7 +915,7 @@ mod note_validation_tests {
         "#;
 
         let tokens = tokenize(input).expect("Failed to tokenize");
-        let element = build_diagram(&tokens, input).expect("Failed to parse");
+        let element = build_diagram(&tokens).expect("Failed to parse");
         if let Element::Diagram(diagram) = element.inner() {
             let result = validate_diagram(diagram);
             assert!(result.is_err(), "Invalid align should fail validation");
@@ -937,7 +937,7 @@ mod note_validation_tests {
         "#;
 
         let tokens = tokenize(input).expect("Failed to tokenize");
-        let element = build_diagram(&tokens, input).expect("Failed to parse");
+        let element = build_diagram(&tokens).expect("Failed to parse");
         if let Element::Diagram(diagram) = element.inner() {
             let result = validate_diagram(diagram);
             assert!(result.is_err(), "Invalid align should fail validation");
@@ -962,7 +962,7 @@ mod note_validation_tests {
         "#;
 
         let tokens = tokenize(input).expect("Failed to tokenize");
-        let element = build_diagram(&tokens, input).expect("Failed to parse");
+        let element = build_diagram(&tokens).expect("Failed to parse");
         if let Element::Diagram(diagram) = element.inner() {
             let result = validate_diagram(diagram);
             assert!(result.is_ok(), "Valid spanning note should pass validation");
@@ -981,7 +981,7 @@ mod note_validation_tests {
         "#;
 
         let tokens = tokenize(input).expect("Failed to tokenize");
-        let element = build_diagram(&tokens, input).expect("Failed to parse");
+        let element = build_diagram(&tokens).expect("Failed to parse");
         if let Element::Diagram(diagram) = element.inner() {
             let result = validate_diagram(diagram);
             assert!(

@@ -14,12 +14,12 @@ use crate::{
     color::Color,
     config::AppConfig,
     draw,
-    error::ElaborationDiagnosticError,
+    error::DiagnosticError,
     identifier::Id,
 };
 
-/// Type alias for Result with ElaborationDiagnosticError as the error type
-type EResult<T> = Result<T, ElaborationDiagnosticError>;
+/// Type alias for Result with DiagnosticError as the error type
+type EResult<T> = Result<T, DiagnosticError>;
 
 pub struct Builder<'a> {
     cfg: &'a AppConfig,
@@ -81,7 +81,7 @@ impl<'a> Builder<'a> {
                         scope
                     }
                     types::Block::Diagram(_) => {
-                        return Err(ElaborationDiagnosticError::from_span(
+                        return Err(DiagnosticError::from_span(
                             "Nested diagram not allowed".to_string(),
                             diag.kind.span(),
                             "invalid diagram structure",
@@ -107,7 +107,7 @@ impl<'a> Builder<'a> {
                     activation_box_definition,
                 ))
             }
-            _ => Err(ElaborationDiagnosticError::from_span(
+            _ => Err(DiagnosticError::from_span(
                 "Invalid element, expected Diagram".to_string(),
                 diag.span(),
                 "invalid element",
@@ -136,7 +136,7 @@ impl<'a> Builder<'a> {
         } else {
             // We could use a span here if we tracked where the duplicate was defined
             // For now, we use a simple error since we don't store that information
-            Err(ElaborationDiagnosticError::from_span(
+            Err(DiagnosticError::from_span(
                 format!("Type definition '{}' already exists", type_def.id()),
                 span,
                 "duplicate type definition",
@@ -173,7 +173,7 @@ impl<'a> Builder<'a> {
                 }
                 Err(err) => {
                     // Wrap the error with location information for attribute errors
-                    return Err(ElaborationDiagnosticError::from_span(
+                    return Err(DiagnosticError::from_span(
                         format!("Invalid type definition: {err}"),
                         type_def.span(),
                         "type definition error",
@@ -199,7 +199,7 @@ impl<'a> Builder<'a> {
                     types::Block::None => types::Scope::default(),
                     types::Block::Scope(scope) => scope,
                     types::Block::Diagram(_) => {
-                        return Err(ElaborationDiagnosticError::from_span(
+                        return Err(DiagnosticError::from_span(
                             "Nested diagram not allowed".to_string(),
                             diag.kind.span(),
                             "invalid nesting",
@@ -225,7 +225,7 @@ impl<'a> Builder<'a> {
                     activation_box_definition,
                 ))
             }
-            _ => Err(ElaborationDiagnosticError::from_span(
+            _ => Err(DiagnosticError::from_span(
                 "Invalid element, expected Diagram".to_string(),
                 diag.span(),
                 "invalid element",
@@ -247,7 +247,7 @@ impl<'a> Builder<'a> {
                 types::Block::None => types::Scope::default(),
                 types::Block::Scope(scope) => scope,
                 types::Block::Diagram(_) => {
-                    return Err(ElaborationDiagnosticError::from_span(
+                    return Err(DiagnosticError::from_span(
                         "Nested diagram not allowed".to_string(),
                         diag.kind.span(),
                         "invalid nesting",
@@ -269,7 +269,7 @@ impl<'a> Builder<'a> {
                 activation_box_definition,
             ))
         } else {
-            Err(ElaborationDiagnosticError::from_span(
+            Err(DiagnosticError::from_span(
                 "Expected diagram element".to_string(),
                 element.span(),
                 "invalid element",
@@ -295,7 +295,7 @@ impl<'a> Builder<'a> {
             for parser_elm in parser_elements {
                 if let parser_types::Element::Diagram(diag) = parser_elm {
                     // If we found a diagram mixed with other elements, provide a rich error
-                    return Err(ElaborationDiagnosticError::from_span(
+                    return Err(DiagnosticError::from_span(
                         "Diagram cannot share scope with other elements".to_string(),
                         diag.kind.span(), // Use the diagram kind span as the error location
                         "invalid nesting",
@@ -350,7 +350,7 @@ impl<'a> Builder<'a> {
                 }
                 parser_types::Element::Diagram(_) => {
                     // This should never happen since we already filtered out invalid elements
-                    return Err(ElaborationDiagnosticError::from_span(
+                    return Err(DiagnosticError::from_span(
                         "Invalid element type".to_string(),
                         parser_elm.span(),
                         "invalid element type",
@@ -414,7 +414,7 @@ impl<'a> Builder<'a> {
                 .shape_definition()
                 .is_ok_and(|s| s.supports_content())
         {
-            return Err(ElaborationDiagnosticError::from_span(
+            return Err(DiagnosticError::from_span(
                 format!("Shape type '{type_name}' does not support nested content"),
                 parser_elm.span(),
                 "content not supported",
@@ -461,7 +461,7 @@ impl<'a> Builder<'a> {
         let relation_type_def = self.build_relation_type_definition_from_spec(type_spec)?;
 
         let arrow_direction = draw::ArrowDirection::from_str(relation_type).map_err(|_| {
-            ElaborationDiagnosticError::from_span(
+            DiagnosticError::from_span(
                 format!("Invalid arrow direction '{relation_type}'"),
                 relation_type.span(),
                 "invalid direction",
@@ -486,7 +486,7 @@ impl<'a> Builder<'a> {
     ) -> EResult<types::Element> {
         // Only allow activate in sequence diagrams
         if diagram_kind != types::DiagramKind::Sequence {
-            return Err(ElaborationDiagnosticError::from_span(
+            return Err(DiagnosticError::from_span(
                 "Activate statements are only supported in sequence diagrams".to_string(),
                 component.span(),
                 "activate not allowed here",
@@ -508,7 +508,7 @@ impl<'a> Builder<'a> {
     ) -> EResult<types::Element> {
         // Only allow deactivate in sequence diagrams
         if diagram_kind != types::DiagramKind::Sequence {
-            return Err(ElaborationDiagnosticError::from_span(
+            return Err(DiagnosticError::from_span(
                 "Deactivate statements are only supported in sequence diagrams".to_string(),
                 component.span(),
                 "deactivate not allowed here",
@@ -530,7 +530,7 @@ impl<'a> Builder<'a> {
     ) -> EResult<types::Element> {
         // Only allow fragments in sequence diagrams
         if diagram_kind != types::DiagramKind::Sequence {
-            return Err(ElaborationDiagnosticError::from_span(
+            return Err(DiagnosticError::from_span(
                 "Fragment blocks are only supported in sequence diagrams".to_string(),
                 fragment.span(),
                 "fragment not allowed here",
@@ -547,7 +547,7 @@ impl<'a> Builder<'a> {
                 &fragment.attributes,
             )
             .map_err(|_| {
-                ElaborationDiagnosticError::from_span(
+                DiagnosticError::from_span(
                     format!(
                         "Unknown fragment type '{type_id}' for operation '{}'",
                         fragment.operation.inner()
@@ -632,7 +632,7 @@ impl<'a> Builder<'a> {
         match *kind_str.inner() {
             "sequence" => Ok(types::DiagramKind::Sequence),
             "component" => Ok(types::DiagramKind::Component),
-            _ => Err(ElaborationDiagnosticError::from_span(
+            _ => Err(DiagnosticError::from_span(
                 format!("Invalid diagram kind: '{kind_str}'"),
                 kind_str.span(),
                 "unsupported diagram type",
@@ -646,8 +646,8 @@ impl<'a> Builder<'a> {
         &self,
         span: &Spanned<Id>,
         message: &str,
-    ) -> ElaborationDiagnosticError {
-        ElaborationDiagnosticError::from_span(
+    ) -> DiagnosticError {
+        DiagnosticError::from_span(
             message.to_string(),
             span.span(),
             "undefined type",
@@ -701,7 +701,7 @@ impl<'a> Builder<'a> {
                 "lifeline" => {
                     // Only valid for sequence diagrams
                     if kind != types::DiagramKind::Sequence {
-                        return Err(ElaborationDiagnosticError::from_span(
+                        return Err(DiagnosticError::from_span(
                             "lifeline attribute is only valid for sequence diagrams".to_string(),
                             attr.span(),
                             "invalid attribute",
@@ -714,7 +714,7 @@ impl<'a> Builder<'a> {
                 "activation_box" => {
                     // Only valid for sequence diagrams
                     if kind != types::DiagramKind::Sequence {
-                        return Err(ElaborationDiagnosticError::from_span(
+                        return Err(DiagnosticError::from_span(
                             "activation_box attribute is only valid for sequence diagrams"
                                 .to_string(),
                             attr.span(),
@@ -726,7 +726,7 @@ impl<'a> Builder<'a> {
                     activation_box_definition = Some(Rc::new(definition));
                 }
                 _ => {
-                    return Err(ElaborationDiagnosticError::from_span(
+                    return Err(DiagnosticError::from_span(
                         format!("Unsupported diagram attribute '{}'", attr.name),
                         attr.span(),
                         "unsupported attribute",
@@ -747,7 +747,7 @@ impl<'a> Builder<'a> {
     /// Extract background color from an attribute
     fn extract_background_color(color_attr: &parser_types::Attribute<'_>) -> EResult<Color> {
         let color_str = color_attr.value.as_str().map_err(|err| {
-            ElaborationDiagnosticError::from_span(
+            DiagnosticError::from_span(
                 err.to_string(),
                 color_attr.value.span(),
                 "invalid color value",
@@ -755,7 +755,7 @@ impl<'a> Builder<'a> {
             )
         })?;
         Color::new(color_str).map_err(|err| {
-            ElaborationDiagnosticError::from_span(
+            DiagnosticError::from_span(
                 format!("Invalid background_color: {err}"),
                 color_attr.value.span(),
                 "invalid color",
@@ -769,7 +769,7 @@ impl<'a> Builder<'a> {
         lifeline_attr: &parser_types::Attribute<'_>,
     ) -> EResult<draw::LifelineDefinition> {
         let nested_attrs = lifeline_attr.value.as_attributes().map_err(|err| {
-            ElaborationDiagnosticError::from_span(
+            DiagnosticError::from_span(
                 err.to_string(),
                 lifeline_attr.value.span(),
                 "invalid lifeline attribute value",
@@ -784,7 +784,7 @@ impl<'a> Builder<'a> {
             match *attr.name {
                 "stroke" => {
                     let stroke_attrs = attr.value.as_attributes().map_err(|err| {
-                        ElaborationDiagnosticError::from_span(
+                        DiagnosticError::from_span(
                             err.to_string(),
                             attr.value.span(),
                             "invalid stroke attribute value",
@@ -798,7 +798,7 @@ impl<'a> Builder<'a> {
                     )?;
                 }
                 _ => {
-                    return Err(ElaborationDiagnosticError::from_span(
+                    return Err(DiagnosticError::from_span(
                         format!("Unknown lifeline attribute '{}'", attr.name),
                         attr.span(),
                         "unknown attribute",
@@ -816,7 +816,7 @@ impl<'a> Builder<'a> {
         activation_box_attr: &parser_types::Attribute<'_>,
     ) -> EResult<draw::ActivationBoxDefinition> {
         let nested_attrs = activation_box_attr.value.as_attributes().map_err(|err| {
-            ElaborationDiagnosticError::from_span(
+            DiagnosticError::from_span(
                 err.to_string(),
                 activation_box_attr.value.span(),
                 "invalid activation_box attribute value",
@@ -830,7 +830,7 @@ impl<'a> Builder<'a> {
             match *attr.name {
                 "stroke" => {
                     let stroke_attrs = attr.value.as_attributes().map_err(|err| {
-                        ElaborationDiagnosticError::from_span(
+                        DiagnosticError::from_span(
                             err.to_string(),
                             attr.value.span(),
                             "invalid stroke attribute value",
@@ -847,7 +847,7 @@ impl<'a> Builder<'a> {
                 }
                 "fill_color" => {
                     let color_str = attr.value.as_str().map_err(|err| {
-                        ElaborationDiagnosticError::from_span(
+                        DiagnosticError::from_span(
                             err.to_string(),
                             attr.value.span(),
                             "invalid color value",
@@ -855,7 +855,7 @@ impl<'a> Builder<'a> {
                         )
                     })?;
                     let color = Color::new(color_str).map_err(|err| {
-                        ElaborationDiagnosticError::from_span(
+                        DiagnosticError::from_span(
                             format!("Invalid fill_color: {err}"),
                             attr.value.span(),
                             "invalid color",
@@ -865,7 +865,7 @@ impl<'a> Builder<'a> {
                     definition.set_fill_color(color);
                 }
                 _ => {
-                    return Err(ElaborationDiagnosticError::from_span(
+                    return Err(DiagnosticError::from_span(
                         format!("Unknown activation_box attribute '{}'", attr.name),
                         attr.span(),
                         "unknown attribute",
@@ -886,7 +886,7 @@ impl<'a> Builder<'a> {
         engine_attr: &parser_types::Attribute<'_>,
     ) -> EResult<types::LayoutEngine> {
         let engine_str = engine_attr.value.as_str().map_err(|err| {
-            ElaborationDiagnosticError::from_span(
+            DiagnosticError::from_span(
                 err.to_string(),
                 engine_attr.value.span(),
                 "invalid layout engine",
@@ -894,7 +894,7 @@ impl<'a> Builder<'a> {
             )
         })?;
         types::LayoutEngine::from_str(engine_str).map_err(|_| {
-            ElaborationDiagnosticError::from_span(
+            DiagnosticError::from_span(
                 format!("Invalid layout_engine value: '{engine_str}'"),
                 engine_attr.value.span(),
                 "unsupported layout engine",
@@ -932,7 +932,7 @@ impl<'a> Builder<'a> {
                 &note.attributes,
             )
             .map_err(|_| {
-                ElaborationDiagnosticError::from_span(
+                DiagnosticError::from_span(
                     format!("Unknown type '{type_id}' for note"),
                     note.content.span(),
                     "unknown note type",
@@ -949,7 +949,7 @@ impl<'a> Builder<'a> {
         let note_def = type_def
             .note_definition()
             .map_err(|err| {
-                ElaborationDiagnosticError::from_span(
+                DiagnosticError::from_span(
                     err,
                     note.content.span(),
                     "invalid note type",
@@ -991,7 +991,7 @@ impl<'a> Builder<'a> {
             match *attr.name.inner() {
                 "on" => {
                     let ids = attr.value.as_identifiers().map_err(|_| {
-                        ElaborationDiagnosticError::from_span(
+                        DiagnosticError::from_span(
                             "'on' attribute must be a list of element identifiers".to_string(),
                             attr.value.span(),
                             "invalid on value",
@@ -1003,7 +1003,7 @@ impl<'a> Builder<'a> {
                 }
                 "align" => {
                     let align_str = attr.value.as_str().map_err(|_| {
-                        ElaborationDiagnosticError::from_span(
+                        DiagnosticError::from_span(
                             "'align' attribute must be a string".to_string(),
                             attr.value.span(),
                             "invalid align value",
@@ -1012,7 +1012,7 @@ impl<'a> Builder<'a> {
                     })?;
 
                     let alignment = align_str.parse::<types::NoteAlign>().map_err(|_| {
-                        ElaborationDiagnosticError::from_span(
+                        DiagnosticError::from_span(
                             format!("Invalid alignment value: '{}'", align_str),
                             attr.value.span(),
                             "invalid alignment",

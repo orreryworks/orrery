@@ -36,8 +36,12 @@ pub mod span;
 mod tokens;
 mod validate;
 
-use crate::{config::AppConfig, error::FilamentError};
+use crate::{
+    config::AppConfig,
+    error::{DiagnosticError, FilamentError},
+};
 pub use elaborate_types::*;
+use span::Span;
 
 /// Builds a fully elaborated AST from source code using the two-stage parser.
 ///
@@ -83,16 +87,18 @@ pub use elaborate_types::*;
 pub fn build_ast(cfg: &AppConfig, source: &str) -> Result<elaborate_types::Diagram, FilamentError> {
     // Step 1: Tokenize the source code
     let tokens = lexer::tokenize(source).map_err(|err| {
-        crate::error::ParseDiagnosticError {
-            src: source.to_string(),
-            message: format!("Lexer failed to parse input: {err}"),
-            span: None, // TODO: Extract span from lexer error
-            help: Some("Check for invalid characters or malformed tokens".to_string()),
-        }
+        let diag_err = DiagnosticError::from_span(
+            format!("Lexer failed to parse input: {err}"),
+            Span::default(), // TODO: Extract span from lexer error
+            "lexer error",
+            Some("Check for invalid characters or malformed tokens".to_string()),
+        );
+        FilamentError::new_parse_error(diag_err, source)
     })?;
 
     // Step 2: Parse the tokens into AST
-    let parsed_ast = parser::build_diagram(&tokens, source)?;
+    let parsed_ast =
+        parser::build_diagram(&tokens).map_err(|e| FilamentError::new_parse_error(e, source))?;
 
     // Step 3: Apply desugaring transformations
     let desugared_ast = desugar::desugar(parsed_ast);
@@ -100,7 +106,7 @@ pub fn build_ast(cfg: &AppConfig, source: &str) -> Result<elaborate_types::Diagr
     // Step 4: Validate diagram semantics at syntax level before elaboration
     if let parser_types::Element::Diagram(diagram) = desugared_ast.inner() {
         validate::validate_diagram(diagram)
-            .map_err(|e| FilamentError::new_elaboration_error(e, source))?;
+            .map_err(|e| FilamentError::new_validation_error(e, source))?;
     }
 
     // Step 5: Elaborate the AST with rich error handling

@@ -33,10 +33,9 @@ fn main() {
         let reporter = miette::GraphicalReportHandler::new();
         let mut writer = String::new();
         match err {
-            FilamentError::ParseDiagnostic(ref err) => {
-                reporter.render_report(&mut writer, err).unwrap();
-            }
-            FilamentError::ElaborationDiagnostic { .. } => {
+            FilamentError::ParseDiagnostic { .. }
+            | FilamentError::ElaborationDiagnostic { .. }
+            | FilamentError::ValidationDiagnostic { .. } => {
                 // Pass the FilamentError itself which implements Diagnostic and has source_code
                 reporter.render_report(&mut writer, &err).unwrap();
             }

@@ -12,7 +12,7 @@ use crate::{
         span::{Span, Spanned},
         tokens::{PositionedToken, Token},
     },
-    error::ParseDiagnosticError,
+    error::DiagnosticError,
     identifier::Id,
 };
 
@@ -1024,7 +1024,7 @@ fn diagram<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>>
 }
 
 /// Utility function to convert winnow errors to our custom error format
-fn convert_error(error: ErrMode<ContextError>, source: &str) -> ParseDiagnosticError {
+fn convert_error(error: ErrMode<ContextError>) -> DiagnosticError {
     match error {
         ErrMode::Backtrack(e) | ErrMode::Cut(e) => {
             // Extract context information for better error messages
@@ -1043,27 +1043,26 @@ fn convert_error(error: ErrMode<ContextError>, source: &str) -> ParseDiagnosticE
                 contexts.join(", ")
             };
 
-            ParseDiagnosticError {
-                src: source.to_string(),
-                message: format!("Parse error: {message}"),
-                span: None, // TODO: Extract span from context if available
-                help: Some("Check syntax and token positioning".to_string()),
-            }
+            DiagnosticError::from_span(
+                format!("Parse error: {message}"),
+                Span::default(), // TODO: Extract span from context if available
+                "here",
+                Some("Check syntax and token positioning".to_string()),
+            )
         }
-        ErrMode::Incomplete(_) => ParseDiagnosticError {
-            src: source.to_string(),
-            message: "Incomplete input - more tokens expected".to_string(),
-            span: None,
-            help: Some("Ensure input is complete".to_string()),
-        },
+        ErrMode::Incomplete(_) => DiagnosticError::from_span(
+            "Incomplete input - more tokens expected".to_string(),
+            Span::default(), // TODO: Extract span from context if available
+            "here",
+            Some("Ensure input is complete".to_string()),
+        ),
     }
 }
 
 /// Build a diagram from tokens
 pub fn build_diagram<'src>(
     tokens: &'src [PositionedToken<'src>],
-    source: &str,
-) -> Result<Spanned<types::Element<'src>>, ParseDiagnosticError> {
+) -> Result<Spanned<types::Element<'src>>, DiagnosticError> {
     let mut token_slice = TokenSlice::new(tokens);
 
     match diagram.parse_next(&mut token_slice) {
@@ -1077,7 +1076,7 @@ pub fn build_diagram<'src>(
             };
             Ok(make_spanned(diagram, Span::new(total_span)))
         }
-        Err(e) => Err(convert_error(e, source)),
+        Err(e) => Err(convert_error(e)),
     }
 }
 
@@ -1170,7 +1169,7 @@ mod tests {
         let input = r#"diagram component;
         app: Rectangle;"#;
         let tokens = parse_tokens(input);
-        let result = build_diagram(&tokens, input);
+        let result = build_diagram(&tokens);
         assert!(result.is_ok());
     }
 
@@ -1179,7 +1178,7 @@ mod tests {
         let input = r#"diagram component;
         frontend -> backend;"#;
         let tokens = parse_tokens(input);
-        let result = build_diagram(&tokens, input);
+        let result = build_diagram(&tokens);
         assert!(result.is_ok());
     }
 
@@ -1388,7 +1387,7 @@ mod tests {
 
         frontend -> backend: "API calls";"#;
         let tokens = parse_tokens(input);
-        let result = build_diagram(&tokens, input);
+        let result = build_diagram(&tokens);
         assert!(result.is_ok());
     }
 

@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use crate::ast::span::Span;
 
-/// A rich diagnostic error for elaboration issues in the Filament language.
+/// A rich diagnostic error for compiler issues in the Filament language.
 ///
 /// This error provides detailed diagnostic information including:
 /// - The source code where the error occurred
@@ -11,11 +11,16 @@ use crate::ast::span::Span;
 /// - A descriptive message and label
 /// - Optional help text with suggestions to fix the error
 ///
+/// This is a shared diagnostic type used across all compilation phases
+/// (parsing, validation, elaboration, etc.). Phase context is provided
+/// by the `FilamentError` variant that wraps this diagnostic.
+///
 /// These rich errors are displayed using miette's pretty error formatting.
-/// The source code itself is expected to be provided by the container error type (e.g., `FilamentError`).
+/// The source code itself is expected to be provided by the container error
+/// type (e.g., `FilamentError::ValidationDiagnostic`).
 #[derive(Debug, Error)]
 #[error("{message}")]
-pub struct ElaborationDiagnosticError {
+pub struct DiagnosticError {
     /// Error message to display
     message: String,
 
@@ -29,10 +34,7 @@ pub struct ElaborationDiagnosticError {
     help: Option<String>,
 }
 
-// We implement Diagnostic manually or via the containing error type,
-// as #[source_code] is no longer here.
-impl Diagnostic for ElaborationDiagnosticError {
-    // We only define the parts miette can't get from the container
+impl Diagnostic for DiagnosticError {
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         Some(Box::new(std::iter::once(
             miette::LabeledSpan::new_with_span(Some(self.label.clone()), self.span),
@@ -45,12 +47,18 @@ impl Diagnostic for ElaborationDiagnosticError {
             .map(|h| Box::new(h) as Box<dyn std::fmt::Display + 'a>)
     }
 
-    // code(), severity(), url(), related() can use defaults or be customized if needed
-    // code() will now come from the FilamentError wrapper
+    // code(), severity(), url(), related() use defaults
+    // code() will come from the FilamentError wrapper variant
 }
 
-impl ElaborationDiagnosticError {
-    /// Create a new elaboration error from a Span value.
+impl DiagnosticError {
+    /// Create a new diagnostic error from a Span value.
+    ///
+    /// # Arguments
+    /// * `message` - The main error message
+    /// * `span` - The source location where the error occurred
+    /// * `label` - A label describing the error location
+    /// * `help` - Optional help text with suggestions to fix the error
     pub fn from_span(
         message: String,
         span: Span,

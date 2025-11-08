@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ast::parser_types, color::Color, draw, error::ElaborationDiagnosticError, geometry::Insets,
+    ast::parser_types, color::Color, draw, error::DiagnosticError, geometry::Insets,
     identifier::Id,
 };
 
@@ -593,7 +593,7 @@ impl TextAttributeExtractor {
     fn extract_text_attributes(
         text_def: &mut draw::TextDefinition,
         attrs: &[parser_types::Attribute],
-    ) -> Result<(), ElaborationDiagnosticError> {
+    ) -> Result<(), DiagnosticError> {
         for attr in attrs {
             Self::extract_single_attribute(text_def, attr)?;
         }
@@ -607,14 +607,14 @@ impl TextAttributeExtractor {
     fn extract_single_attribute(
         text_def: &mut draw::TextDefinition,
         attr: &parser_types::Attribute,
-    ) -> Result<(), ElaborationDiagnosticError> {
+    ) -> Result<(), DiagnosticError> {
         let name = attr.name.inner();
         let value = &attr.value;
 
         match *name {
             "font_size" => {
                 let val = value.as_u16().map_err(|_| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         format!("Invalid font_size value '{value}'"),
                         attr.span(),
                         "invalid number",
@@ -626,7 +626,7 @@ impl TextAttributeExtractor {
             }
             "font_family" => {
                 text_def.set_font_family(value.as_str().map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         err.to_string(),
                         attr.span(),
                         "invalid font family",
@@ -637,7 +637,7 @@ impl TextAttributeExtractor {
             }
             "background_color" => {
                 let val = Color::new(value.as_str().map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         err.to_string(),
                         attr.span(),
                         "invalid color value",
@@ -645,7 +645,7 @@ impl TextAttributeExtractor {
                     )
                 })?)
                 .map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         format!("Invalid background_color: {err}"),
                         attr.span(),
                         "invalid color",
@@ -657,7 +657,7 @@ impl TextAttributeExtractor {
             }
             "padding" => {
                 let val = value.as_float().map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         format!("Invalid padding value: {err}"),
                         attr.span(),
                         "invalid number",
@@ -669,7 +669,7 @@ impl TextAttributeExtractor {
             }
             "color" => {
                 let val = Color::new(value.as_str().map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         err.to_string(),
                         attr.span(),
                         "invalid color value",
@@ -677,7 +677,7 @@ impl TextAttributeExtractor {
                     )
                 })?)
                 .map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         format!("Invalid color: {err}"),
                         attr.span(),
                         "invalid color",
@@ -687,7 +687,7 @@ impl TextAttributeExtractor {
                 text_def.set_color(Some(val));
                 Ok(())
             }
-            name => Err(ElaborationDiagnosticError::from_span(
+            name => Err(DiagnosticError::from_span(
                 format!("Unknown text attribute '{name}'"),
                 attr.span(),
                 "unknown text attribute",
@@ -708,7 +708,7 @@ impl StrokeAttributeExtractor {
     pub fn extract_stroke_attributes(
         stroke_def: &mut draw::StrokeDefinition,
         attrs: &[parser_types::Attribute],
-    ) -> Result<(), ElaborationDiagnosticError> {
+    ) -> Result<(), DiagnosticError> {
         for attr in attrs {
             Self::extract_single_attribute(stroke_def, attr)?;
         }
@@ -719,14 +719,14 @@ impl StrokeAttributeExtractor {
     fn extract_single_attribute(
         stroke_def: &mut draw::StrokeDefinition,
         attr: &parser_types::Attribute,
-    ) -> Result<(), ElaborationDiagnosticError> {
+    ) -> Result<(), DiagnosticError> {
         let name = *attr.name.inner();
         let value = &attr.value;
 
         match name {
             "color" => {
                 let color_str = value.as_str().map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         err.to_string(),
                         attr.span(),
                         "invalid color value",
@@ -734,7 +734,7 @@ impl StrokeAttributeExtractor {
                     )
                 })?;
                 let val = Color::new(color_str).map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         format!("Invalid stroke color: {err}"),
                         attr.span(),
                         "invalid color",
@@ -746,7 +746,7 @@ impl StrokeAttributeExtractor {
             }
             "width" => {
                 let val = value.as_float().map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         format!("Invalid stroke width value: {err}"),
                         attr.span(),
                         "invalid number",
@@ -758,7 +758,7 @@ impl StrokeAttributeExtractor {
             }
             "style" => {
                 let style_str = value.as_str().map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         err.to_string(),
                         attr.span(),
                         "invalid stroke style value",
@@ -769,7 +769,7 @@ impl StrokeAttributeExtractor {
                 // Parse as predefined style or custom pattern
                 // Note: Currently never fails, but may fail in the future when custom pattern validation is added
                 let style = draw::StrokeStyle::from_str(style_str).map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         err,
                         attr.span(),
                         "invalid stroke style",
@@ -782,7 +782,7 @@ impl StrokeAttributeExtractor {
             }
             "cap" => {
                 let cap_str = value.as_str().map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         err.to_string(),
                         attr.span(),
                         "invalid stroke cap value",
@@ -790,7 +790,7 @@ impl StrokeAttributeExtractor {
                     )
                 })?;
                 let cap = draw::StrokeCap::from_str(cap_str).map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         err,
                         attr.span(),
                         "invalid stroke cap",
@@ -802,7 +802,7 @@ impl StrokeAttributeExtractor {
             }
             "join" => {
                 let join_str = value.as_str().map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         err.to_string(),
                         attr.span(),
                         "invalid stroke join value",
@@ -810,7 +810,7 @@ impl StrokeAttributeExtractor {
                     )
                 })?;
                 let join = draw::StrokeJoin::from_str(join_str).map_err(|err| {
-                    ElaborationDiagnosticError::from_span(
+                    DiagnosticError::from_span(
                         err,
                         attr.span(),
                         "invalid stroke join",
@@ -820,7 +820,7 @@ impl StrokeAttributeExtractor {
                 stroke_def.set_join(join);
                 Ok(())
             }
-            name => Err(ElaborationDiagnosticError::from_span(
+            name => Err(DiagnosticError::from_span(
                 format!("Unknown stroke attribute '{name}'"),
                 attr.span(),
                 "unknown stroke attribute",
@@ -835,7 +835,7 @@ impl TypeDefinition {
         id: Id,
         base: &Self,
         attributes: &[parser_types::Attribute],
-    ) -> Result<Self, ElaborationDiagnosticError> {
+    ) -> Result<Self, DiagnosticError> {
         let mut text_def = base.text_definition.as_ref().clone();
 
         match &base.draw_definition {
@@ -849,7 +849,7 @@ impl TypeDefinition {
                     match *name {
                         "fill_color" => {
                             let val = Color::new(value.as_str().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "invalid color value",
@@ -857,7 +857,7 @@ impl TypeDefinition {
                                 )
                             })?)
                             .map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     format!("Invalid fill_color '{value}': {err}"),
                                     attr.span(),
                                     "invalid color",
@@ -865,7 +865,7 @@ impl TypeDefinition {
                                 )
                             })?;
                             new_shape_def.set_fill_color(Some(val)).map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "unsupported attribute",
@@ -875,7 +875,7 @@ impl TypeDefinition {
                         }
                         "stroke" => {
                             let nested_attrs = value.as_attributes().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "invalid stroke attribute value",
@@ -891,7 +891,7 @@ impl TypeDefinition {
                             new_shape_def
                                 .set_stroke(Cow::Owned(new_stroke))
                                 .map_err(|err| {
-                                    ElaborationDiagnosticError::from_span(
+                                    DiagnosticError::from_span(
                                         err.to_string(),
                                         attr.span(),
                                         "unsupported attribute",
@@ -901,7 +901,7 @@ impl TypeDefinition {
                         }
                         "rounded" => {
                             let val = value.as_usize().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     format!("Invalid rounded value: {err}"),
                                     attr.span(),
                                     "invalid number",
@@ -909,7 +909,7 @@ impl TypeDefinition {
                                 )
                             })?;
                             new_shape_def.set_rounded(val).map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "unsupported attribute",
@@ -920,7 +920,7 @@ impl TypeDefinition {
                         "text" => {
                             // Handle nested text attributes
                             let nested_attrs = value.as_attributes().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "invalid text attribute value",
@@ -934,7 +934,7 @@ impl TypeDefinition {
                             )?;
                         }
                         name => {
-                            return Err(ElaborationDiagnosticError::from_span(
+                            return Err(DiagnosticError::from_span(
                                 format!("Unknown shape attribute '{name}'"),
                                 attr.span(),
                                 "unknown attribute",
@@ -960,7 +960,7 @@ impl TypeDefinition {
                     match *name {
                         "stroke" => {
                             let nested_attrs = value.as_attributes().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "invalid stroke attribute value",
@@ -976,7 +976,7 @@ impl TypeDefinition {
                         "style" => {
                             let val =
                                 draw::ArrowStyle::from_str(value.as_str().map_err(|err| {
-                                    ElaborationDiagnosticError::from_span(
+                                    DiagnosticError::from_span(
                                         err.to_string(),
                                         attr.span(),
                                         "invalid style value",
@@ -984,7 +984,7 @@ impl TypeDefinition {
                                     )
                                 })?)
                                 .map_err(|_| {
-                                    ElaborationDiagnosticError::from_span(
+                                    DiagnosticError::from_span(
                                     "Invalid arrow style".to_string(),
                                     attr.span(),
                                     "invalid style",
@@ -998,7 +998,7 @@ impl TypeDefinition {
                         }
                         "text" => {
                             let nested_attrs = value.as_attributes().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "invalid text attribute value",
@@ -1012,7 +1012,7 @@ impl TypeDefinition {
                             )?;
                         }
                         name => {
-                            return Err(ElaborationDiagnosticError::from_span(
+                            return Err(DiagnosticError::from_span(
                                 format!("Unknown arrow attribute '{name}'"),
                                 attr.span(),
                                 "unknown attribute",
@@ -1041,7 +1041,7 @@ impl TypeDefinition {
                     match *name {
                         "border_stroke" => {
                             let nested_attrs = value.as_attributes().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "invalid border_stroke attribute value",
@@ -1056,7 +1056,7 @@ impl TypeDefinition {
                         }
                         "background_color" => {
                             let val = Color::new(value.as_str().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "invalid color value",
@@ -1064,7 +1064,7 @@ impl TypeDefinition {
                                 )
                             })?)
                             .map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     format!("Invalid background_color '{value}': {err}"),
                                     attr.span(),
                                     "invalid color",
@@ -1075,7 +1075,7 @@ impl TypeDefinition {
                         }
                         "separator_stroke" => {
                             let nested_attrs = value.as_attributes().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "invalid separator_stroke attribute value",
@@ -1090,7 +1090,7 @@ impl TypeDefinition {
                         }
                         "content_padding" => {
                             let val = value.as_float().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "invalid padding value",
@@ -1101,7 +1101,7 @@ impl TypeDefinition {
                         }
                         "text" => {
                             let nested_attrs = value.as_attributes().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "invalid text attribute value",
@@ -1115,7 +1115,7 @@ impl TypeDefinition {
                             )?;
                         }
                         name => {
-                            return Err(ElaborationDiagnosticError::from_span(
+                            return Err(DiagnosticError::from_span(
                                 format!("Unknown fragment attribute '{name}'"),
                                 attr.span(),
                                 "unknown attribute",
@@ -1148,7 +1148,7 @@ impl TypeDefinition {
                     match *name {
                         "background_color" => {
                             let val = Color::new(value.as_str().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "invalid color value",
@@ -1156,7 +1156,7 @@ impl TypeDefinition {
                                 )
                             })?)
                             .map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     format!("Invalid background_color '{value}': {err}"),
                                     attr.span(),
                                     "invalid color",
@@ -1167,7 +1167,7 @@ impl TypeDefinition {
                         }
                         "stroke" => {
                             let nested_attrs = value.as_attributes().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "invalid stroke attribute value",
@@ -1182,7 +1182,7 @@ impl TypeDefinition {
                         }
                         "text" => {
                             let nested_attrs = value.as_attributes().map_err(|err| {
-                                ElaborationDiagnosticError::from_span(
+                                DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
                                     "invalid text attribute value",
@@ -1200,7 +1200,7 @@ impl TypeDefinition {
                             // and are not part of the note's styling definition
                         }
                         name => {
-                            return Err(ElaborationDiagnosticError::from_span(
+                            return Err(DiagnosticError::from_span(
                                 format!("Unknown note attribute '{name}'"),
                                 attr.span(),
                                 "unknown attribute",
