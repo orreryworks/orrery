@@ -38,26 +38,31 @@ diagram component [layout_engine="force"];
 
 ## 4. Type System
 
-### 4.1 Built-in Types
+Filament uses a unified Type System for defining and applying types to all language constructs. The system distinguishes between **declarations** (`:`) for creating named instances and **invocations** (`@`) for performing actions with types.
 
-Filament provides eight built-in shape types and one built-in relation type:
+**For complete Type System documentation, see:** [Type System Specification](type_system.md)
 
-- `Rectangle`: A rectangular shape with customizable properties
-- `Oval`: An elliptical shape with customizable properties
-- `Component`: A UML-style component shape with a rectangular body and component icon
-- `Boundary`: A UML boundary shape consisting of a circle with a vertical line on the left, representing external actors, users, or system boundaries (content-free)
-- `Actor`: A UML actor shape represented as a stick figure, used to represent external users or systems (content-free)
-- `Entity`: A UML entity shape represented as a circle, used to represent data entities or business objects (content-free)
-- `Control`: A UML control shape represented as a circle with an arrow, used to represent control logic or processes (content-free)
-- `Interface`: A UML interface shape represented as a circle, used to represent system interfaces or contracts (content-free)
-- `Arrow`: A built-in relation type used as the base for custom relation types, supporting attributes like color, width, and style
+### 4.1 Quick Reference: Built-in Base Types
 
-### 4.2 Type Definitions
+**Component Types:**
+- `Rectangle`, `Oval`, `Component` - Accept nested elements
+- `Boundary`, `Actor`, `Entity`, `Control`, `Interface` - Content-free (no nesting)
 
-Custom types can be defined by extending built-in types:
+**Relation Type:**
+- `Arrow` - Base type for connections
+
+**Construct Types:**
+- `Note` - Annotations
+- `Activate` - Activation blocks
+- `Fragment` - Fragment blocks
+
+**Attribute Group Types:**
+- `Stroke`, `Text` - Reusable attribute sets
+
+### 4.2 Basic Type Declaration
 
 ```
-type <TypeName> = <BaseType> [attribute1="value1", attribute2="value2", ...];
+type TypeName = BaseType[attributes...];
 ```
 
 **Naming Conventions:**
@@ -114,14 +119,17 @@ diagram component [background_color="#e6f3ff"];
 Relations define connections between components using the following syntax:
 
 ```
-<source> <relation_type> [<type_specification>] <target> [: "label"];
+<source> <relation_type> @TypeName [attributes...] <target> : "label";
 ```
 
 Where:
 - `<source>` and `<target>` are component identifiers
 - `<relation_type>` is one of the four relation types (see below)
-- `[<type_specification>]` is optional and customizes the relation appearance
-- `[: "label"]` is an optional text label displayed on the relation
+- `@TypeName` applies a type to the relation (optional - defaults to `@Arrow`)
+- `[attributes...]` are optional attributes that override type attributes
+- `: "label"` is an optional text label displayed on the relation
+
+**For complete Type System documentation, see:** [Type System Specification](type_system.md)
 
 #### 6.2.1 Relation Types
 
@@ -132,27 +140,36 @@ Filament supports four relation types:
 - **Bidirectional** (`<->`) - Arrows pointing in both directions
 - **Plain** (`-`) - Simple line with no arrowheads
 
-#### 6.2.2 Type Specifications
+#### 6.2.2 Examples
 
-Type specifications are optional and appear in square brackets between the relation type and target. They support three forms:
-
-- **Direct attributes**: `[color="red", width=3.0]` - Creates an anonymous relation type with specified attributes
-- **Type reference**: `[RedArrow]` - Uses a predefined relation type
-- **Type with additional attributes**: `[RedArrow; width=5]` - Extends a predefined type with additional attributes
-
-**Examples:**
+**Type Definitions:**
 ```
-// Basic relation (uses default styling)
+type DashedArrow = Arrow[stroke=[style="dashed"]];
+type ThickArrow = Arrow[stroke=[width=3.0, color="blue"]];
+```
+
+**Usage:**
+```
+// Sugar syntax (uses default @Arrow)
 app -> database;
+app -> database: "Query";
 
-// Direct attributes (anonymous type)
-frontend_app -> [color="blue", width=2.0] user_database: "Stores data";
+// Named TypeSpec
+client -> @DashedArrow server: "Request";
 
-// Using predefined relation type
-app -> [RedArrow] cache: "Fast access";
+// Anonymous TypeSpec (extending base type)
+server -> @Arrow[color="red"] database: "Query";
 
-// Predefined type with additional attributes
-cache -> [BlueArrow; style="curved"] database: "Sync data";
+// Anonymous TypeSpec (extending named type)
+server -> @DashedArrow[color="blue"] client: "Response";
+```
+
+**Syntactic Sugar:**
+
+When `@TypeSpec` is omitted, it defaults to `@Arrow`:
+```
+client -> server;           // Equivalent to: client -> @Arrow server;
+client -> [color="red"] server;  // Equivalent to: client -> @Arrow [color="red"] server;
 ```
 
 ### 6.3 Activation (Blocks and Explicit Statements)
@@ -165,17 +182,24 @@ Preferred style: use block syntax whenever a clear lexical scope exists (it is m
 
 1) Explicit statements
 ```
-activate <component_name>;
+activate @TypeName [attributes...] <component>;
 deactivate <component_name>;
 ```
 
 2) Block (sugar for explicit)
 ```
-activate <component_name> {
+activate @TypeName [attributes...] <component> {
     // Elements active during this period
     // Can include relations, nested components, or other activate blocks
 };
 ```
+
+Where:
+- `@TypeName` is optional (defaults to `@Activate`)
+- `[attributes...]` creates an anonymous type
+- `<component>` is the component identifier
+
+**For complete Type System documentation, see:** [Type System Specification](type_system.md)
 
 **Key Properties:**
 - **Sequence diagrams only**: Activation is supported only in sequence diagrams
@@ -186,7 +210,7 @@ activate <component_name> {
 
 #### 6.3.1 Basic Usage (Block)
 
-```filament
+```
 diagram sequence;
 
 user: Rectangle;
@@ -200,7 +224,7 @@ activate user {
 
 #### 6.3.2 Nested Activation (Block)
 
-```filament
+```
 diagram sequence;
 
 client: Rectangle;
@@ -219,23 +243,34 @@ activate client {
 };
 ```
 
-#### 6.3.3 Multiple Activations
+#### 6.3.3 Custom Activation Types
 
-```filament
+```
 diagram sequence;
+
+type CriticalActivation = Activate[fill_color="red", stroke=[color="red", width=2.0]];
 
 user: Rectangle;
 service: Rectangle;
+database: Rectangle;
 
-activate user {
-    user -> service: "First interaction";
-
-    activate user {
-        user -> service: "Nested interaction";
+// Named TypeSpec
+activate @CriticalActivation user {
+    user -> service: "Critical request";
+    
+    // Anonymous TypeSpec
+    activate [fill_color="blue)"] service {
+        service -> database: "Query";
     };
-
-    service -> user: "Response";
 };
+```
+
+**Syntactic Sugar:**
+
+When `@TypeName` is omitted, it defaults to `@Activate`:
+```
+activate user { };              // Equivalent to: activate @Activate user { };
+activate [fill_color="red"] user { };  // Equivalent to: activate @Activate [fill_color="red"] user { };
 ```
 
 #### 6.3.4 Scoping Behavior
@@ -251,7 +286,7 @@ This ensures activate blocks serve their purpose as temporal grouping constructs
 
 Activate blocks are only supported in sequence diagrams:
 
-```filament
+```
 // ✅ Valid: Activate blocks in sequence diagram
 diagram sequence;
 activate user { user -> server; };
@@ -328,8 +363,8 @@ Fragments group related interactions in sequence diagrams into labeled sections.
 
 #### 6.4.1 Syntax
 
-```filament
-fragment [attribute1=value1, attribute2=value2, ...] "operation" {
+```
+fragment @TypeName [attributes...] "operation" {
     section "title" {
         // sequence elements...
         // Valid: component definitions, relations, activate blocks, nested fragments
@@ -338,13 +373,16 @@ fragment [attribute1=value1, attribute2=value2, ...] "operation" {
 };
 ```
 
-Requirements:
-- Fragment operation is required and must be a string literal
-- Attributes are optional and, when present, must appear before the operation string in square brackets
+Where:
+- `@TypeName` is optional (defaults to `@Fragment`)
+- `[attributes...]` creates an anonymous type
+- `"operation"` is a required string literal
 - At least one section is required
 - Section titles are optional; if present, they must be string literals
 - Each section must end with a semicolon
 - The fragment block must end with a semicolon
+
+**For complete Type System documentation, see:** [Type System Specification](type_system.md)
 
 #### 6.4.2 Semantics
 
@@ -380,11 +418,15 @@ To improve ergonomics and readability, Filament provides dedicated keywords for 
 - Consistent with UML terminology
 
 **General Pattern:**
-```filament
-keyword [attributes] "title" {
+```
+keyword @TypeName [attributes...] "title" {
     // elements
 };
 ```
+
+**Syntactic Sugar:**
+
+When `@TypeName` is omitted, it defaults to `@Fragment`:
 
 The generic `fragment` syntax remains fully supported for custom operations or when explicit control is needed.
 
@@ -393,8 +435,8 @@ The generic `fragment` syntax remains fully supported for custom operations or w
 Represents conditional branching with mutually exclusive paths.
 
 **Syntax:**
-```filament
-alt [attributes] "condition1" {
+```
+alt @TypeName [attributes...] "condition1" {
     // first alternative
 } else "condition2" {
     // second alternative
@@ -411,8 +453,8 @@ alt [attributes] "condition1" {
 - Each block ends with `}`, final clause ends with `};`
 
 **Desugars to:**
-```filament
-fragment "alt" {
+```
+fragment @TypeName [attributes...] "alt" {
     section "condition1" { /* ... */ };
     section "condition2" { /* ... */ };
     section "condition3" { /* ... */ };
@@ -424,8 +466,8 @@ fragment "alt" {
 Represents a single conditional execution path.
 
 **Syntax:**
-```filament
-opt [attributes] "condition" {
+```
+opt @TypeName [attributes...] "condition" {
     // optional elements
 };
 ```
@@ -436,8 +478,8 @@ opt [attributes] "condition" {
 - Attributes apply to the fragment (optional)
 
 **Desugars to:**
-```filament
-fragment "opt" {
+```
+fragment @TypeName [attributes...] "opt" {
     section "condition" { /* ... */ };
 };
 ```
@@ -447,8 +489,8 @@ fragment "opt" {
 Represents repeated execution with a loop guard condition.
 
 **Syntax:**
-```filament
-loop [attributes] "guard_condition" {
+```
+loop @TypeName [attributes...] "guard_condition" {
     // repeated elements
 };
 ```
@@ -457,11 +499,11 @@ loop [attributes] "guard_condition" {
 - Single block only
 - Title string is optional but recommended (describes loop condition)
 - Attributes apply to the fragment (optional)
-- Common titles: "for eacem", "while x > 0", "until complete"
+- Common titles: "for each", "while x > 0", "until complete"
 
 **Desugars to:**
-```filament
-fragment "loop" {
+```
+fragment @TypeName [attributes...] "loop" {
     section "guard_condition" { /* ... */ };
 };
 ```
@@ -471,8 +513,8 @@ fragment "loop" {
 Represents concurrent execution of multiple paths.
 
 **Syntax:**
-```filament
-par [attributes] "label1" {
+```
+par @TypeName [attributes...] "label1" {
     // first parallel path
 } par "label2" {
     // second parallel path
@@ -487,8 +529,8 @@ par [attributes] "label1" {
 - Each block ends with `}`, final block ends with `};`
 
 **Desugars to:**
-```filament
-fragment "par" {
+```
+fragment @TypeName [attributes...] "par" {
     section "label1" { /* ... */ };
     section "label2" { /* ... */ };
 };
@@ -499,8 +541,8 @@ fragment "par" {
 Represents breaking out of an enclosing fragment, typically used for exceptions or interrupts.
 
 **Syntax:**
-```filament
-break [attributes] "condition" {
+```
+break @TypeName [attributes...] "condition" {
     // interruption handling
 };
 ```
@@ -512,8 +554,8 @@ break [attributes] "condition" {
 - Semantically breaks out of enclosing loop/alt/opt fragment
 
 **Desugars to:**
-```filament
-fragment "break" {
+```
+fragment @TypeName [attributes...] "break" {
     section "condition" { /* ... */ };
 };
 ```
@@ -523,8 +565,8 @@ fragment "break" {
 Represents an atomic execution region that must not be interleaved.
 
 **Syntax:**
-```filament
-critical [attributes] "label" {
+```
+critical @TypeName [attributes...] "label" {
     // atomic operations
 };
 ```
@@ -536,8 +578,8 @@ critical [attributes] "label" {
 - Indicates mutual exclusion semantics
 
 **Desugars to:**
-```filament
-fragment "critical" {
+```
+fragment @TypeName [attributes...] "critical" {
     section "label" { /* ... */ };
 };
 ```
@@ -547,7 +589,7 @@ fragment "critical" {
 ##### Base Fragment Examples
 
 Basic fragment with a single section:
-```filament
+```
 diagram sequence;
 
 a: Rectangle;
@@ -561,7 +603,7 @@ fragment "Minimal" {
 ```
 
 Multiple sections (alternatives) and nesting:
-```filament
+```
 diagram sequence;
 
 user: Rectangle;
@@ -595,7 +637,7 @@ fragment [border_style="dashed", background_color="#f8f8f8"] "Authentication Flo
 
 Using all fragment keywords together:
 
-```filament
+```
 diagram sequence;
 
 client: Rectangle;
@@ -646,7 +688,7 @@ par "fetch user data" {
 
 Individual keyword examples:
 
-```filament
+```
 // alt/else - alternatives
 alt "valid token" {
     client -> server: "Proceed";
@@ -703,7 +745,7 @@ Filament supports two types of attribute values: string literals and float liter
 
 Stroke attributes control the appearance of borders, lines, and outlines. They must be grouped under the `stroke` attribute using nested attribute syntax.
 
-```filament
+```
 stroke=[attribute1=value1, attribute2=value2, ...]
 ```
 
@@ -722,7 +764,7 @@ The `style` attribute supports custom dash patterns specified as comma-separated
 - `"10,5,2,5"` - 10 units dash, 5 units gap, 2 units dash, 5 units gap (repeating)
 
 Example usage for shapes:
-```filament
+```
 type StyledBox = Rectangle [
     fill_color="lightblue",
     stroke=[color="navy", width=2.5, style="solid"]
@@ -751,7 +793,7 @@ type CustomDashBox = Rectangle [
 
 Text attributes must be grouped under the `text` attribute using nested attribute syntax.
 
-```filament
+```
 text=[attribute1=value1, attribute2=value2, ...]
 ```
 
@@ -764,7 +806,7 @@ Available text attributes within the `text` group:
 - `padding`: Padding around text content (float, e.g., `5.0`, `8.5`)
 
 Example usage:
-```filament
+```
 type StyledButton = Rectangle [
     fill_color="blue",
     text=[font_size=16, font_family="Arial", color="white", background_color="blue", padding=8.0]
@@ -788,15 +830,15 @@ type SemiTransparentText = Rectangle [
 - `stroke`: Line styling for relations (see section 7.3 for details)
 
 Example usage for relations:
-```filament
+```
 // Basic relation with stroke styling
-source -> [stroke=[color="red", width=2.5]] target;
+source -> @Arrow[stroke=[color="red", width=2.5]] target;
 
 // Relation with dashed stroke
-source -> [stroke=[style="dashed", width=1.5], style="curved"] target;
+source -> @Arrow[stroke=[style="dashed", width=1.5], style="curved"] target;
 
 // Relation with custom dash pattern
-source -> [stroke=[style="5,3", color="blue"]] target;
+source -> @Arrow[stroke=[style="5,3", color="blue"]] target;
 ```
 
 Relations also support all text attributes listed in section 7.4 for styling their labels, including text color.
@@ -954,17 +996,17 @@ backend_system as "Backend System": Service {
 api_gateway: Service;
 
 end_user -> api_gateway;
-api_gateway -> [ThickRedArrow] backend_system;
-api_gateway -> [RedArrow; style="curved"] end_user: "Response";
-backend_system -> [OrthogonalBlueArrow] user_database: "Query";
-end_user -> [BlueArrow] auth_service: "Auth requests";
+api_gateway -> @ThickRedArrow backend_system;
+api_gateway -> @RedArrow[ style="curved"] end_user: "Response";
+backend_system -> @OrthogonalBlueArrow user_database: "Query";
+end_user -> @BlueArrow auth_service: "Auth requests";
 ```
 
 ### 12.2 Sequence Diagram Example
 
 Basic sequence diagram with fragment keyword sugar syntax:
 
-```filament
+```
 diagram sequence;
 
 client: Rectangle;
@@ -1017,7 +1059,7 @@ critical "payment transaction" {
 
 The same diagram using base `fragment` syntax:
 
-```filament
+```
 diagram sequence;
 
 client: Rectangle;
@@ -1097,7 +1139,7 @@ auth_service: Service embed diagram sequence {
 };
 database: Database;
 
-user_interface -> [SecureArrow] auth_service: "Secure connection";
+user_interface -> @SecureArrow auth_service: "Secure connection";
 auth_service -> database;
 ```
 

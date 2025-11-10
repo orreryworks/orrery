@@ -14,7 +14,7 @@ The note system in Filament is designed around a minimal, attribute-driven synta
 
 A note is declared using the `note` keyword followed by an attribute block and content:
 
-```filament
+```
 note [attribute1=value, attribute2=value, ...]: "Note content";
 ```
 
@@ -47,7 +47,7 @@ The `on` attribute specifies which diagram element(s) the note is associated wit
 
 The `on` attribute accepts a list of element identifiers enclosed in square brackets:
 
-```filament
+```
 on=[element_name]              // Single element identifier
 on=[element1, element2]        // Multiple element identifiers
 on=[]                          // Empty list (margin note)
@@ -55,7 +55,7 @@ on=[]                          // Empty list (margin note)
 
 Element identifiers refer to elements defined in the diagram:
 
-```filament
+```
 server: Rectangle;
 database: Rectangle;
 
@@ -66,19 +66,19 @@ note [on=[server, database]]: "Note spanning both elements";
 #### 3.2.2 Behavior by Value
 
 **Single Element (Attached Note):**
-```filament
+```
 note [on=[api_gateway]]: "This note is attached to api_gateway";
 ```
 The note is positioned relative to one specific element.
 
 **Multiple Elements (Spanning Note):**
-```filament
+```
 note [on=[client, server]]: "This note spans from client to server";
 ```
 The note spans across the listed elements. In sequence diagrams, this is typically rendered "over" the participants. In component diagrams, the note spans across the specified components.
 
 **Empty List or Omitted (Margin Note):**
-```filament
+```
 note [on=[]]: "This note appears in the diagram margin";
 note []: "Omitting 'on' also creates a margin note";
 ```
@@ -110,7 +110,7 @@ Sequence diagrams support the following alignments:
 | Contains element(s) | `"right"` | Note positioned to the right of the specified element(s) |
 
 **Examples:**
-```filament
+```
 // "over" alignment
 note [on=[server]]: "Over the server (default)";
 note [on=[server], align="over"]: "Explicitly over the server";
@@ -140,7 +140,7 @@ Component diagrams support the following alignments:
 These alignments work consistently regardless of whether `on` is empty (margin), contains a single element, or contains multiple elements.
 
 **Examples:**
-```filament
+```
 note [on=[database]]: "Below the database (default)";
 note [on=[database], align="left"]: "Left of the database";
 note [on=[api, gateway], align="top"]: "Above api and gateway";
@@ -158,7 +158,7 @@ When attributes are omitted, the following defaults apply:
   - **Component diagrams**: Defaults to `"bottom"`
 
 **Sequence Diagram Defaults:**
-```filament
+```
 diagram sequence;
 // These are equivalent - note over all elements:
 note: "Over all elements";
@@ -169,7 +169,7 @@ note [on=[], align="over"]: "Over all elements";
 ```
 
 **Component Diagram Defaults:**
-```filament
+```
 diagram component;
 // These are equivalent - bottom margin note:
 note: "Bottom margin note";
@@ -187,7 +187,7 @@ Notes support visual customization through styling attributes.
 
 Controls the border of the note box using nested stroke attributes:
 
-```filament
+```
 note [stroke=[color="blue", width=2.0, style="dashed"]]: "Note with custom border";
 ```
 
@@ -197,7 +197,7 @@ For complete stroke attribute documentation, see [Literal Values and Data Types 
 
 Controls the text styling within the note using nested text attributes:
 
-```filament
+```
 note [text=[font_size=14, color="darkblue", font_family="Arial"]]: "Note with custom text";
 ```
 
@@ -207,7 +207,7 @@ For complete text attribute documentation, see [Literal Values and Data Types Sp
 
 Sets the background color of the note box:
 
-```filament
+```
 note [background_color="lightyellow"]: "Note with yellow background";
 note [background_color="#ffe4b5"]: "Note with hex color background";
 note [background_color="rgba(255, 255, 200, 0.8)"]: "Note with transparent background";
@@ -217,7 +217,7 @@ note [background_color="rgba(255, 255, 200, 0.8)"]: "Note with transparent backg
 
 All styling attributes can be combined:
 
-```filament
+```
 note [
     on=[database],
     align="left",
@@ -231,7 +231,7 @@ note [
 
 Note content is provided as a string literal following the colon separator. The string follows Filament's standard string literal rules, supporting escape sequences:
 
-```filament
+```
 note [on=[component]]: "Simple text content";
 
 note [on=[component]]: "Text with \"quoted\" content";
@@ -247,7 +247,7 @@ For comprehensive string literal documentation, see [Literal Values and Data Typ
 
 ### 5.1 Component Diagram with Comprehensive Notes
 
-```filament
+```
 diagram component;
 
 type Service = Rectangle [fill_color="lightblue", rounded=5];
@@ -285,7 +285,7 @@ note [align="right"]: "Last updated: 2024-01-15";
 
 ### 5.2 Sequence Diagram with All Note Types
 
-```filament
+```
 diagram sequence;
 
 client: Rectangle;
@@ -329,4 +329,66 @@ user_service -> gateway: "Profile updated";
 gateway -> client: "200 OK";
 
 note [align="left"]: "Profile update successful";
+```
+
+## 6. Type System Integration
+
+Notes use the Type System invocation pattern with `@<TypeSpec>` to apply custom styling and behavior.
+
+### 6.1 Syntax
+
+```
+note @TypeName [attributes...]: "content";
+```
+
+Where:
+- `@TypeName` is optional (defaults to `@Note`)
+- `[attributes...]` creates an anonymous type
+- `: "content"` is the note text
+
+**For complete Type System documentation, see:** [Type System Specification](type_system.md)
+
+### 6.2 Syntactic Sugar
+
+When `@TypeName` is omitted, it defaults to `@Note`:
+
+```
+// These are equivalent:
+note: "Simple note";
+note @Note: "Simple note";
+
+// With attributes:
+note [background_color="yellow"]: "Warning";
+note @Note [background_color="yellow"]: "Warning";
+```
+
+### 6.3 Complete Example
+
+```
+diagram sequence;
+
+type WarningNote = Note[background_color="lightyellow", stroke=[color="orange"]];
+type ErrorNote = Note[background_color="lightpink", stroke=[color="red", width=2.0]];
+
+client: Rectangle;
+server: Rectangle;
+database: Rectangle;
+
+// Named TypeSpec
+note @WarningNote: "High traffic detected";
+
+client -> server: "Request";
+
+// Anonymous TypeSpec
+note @Note[on=[server], background_color="lightblue"]: "Processing started";
+
+activate server {
+    server -> database: "Query";
+    
+    // Named TypeSpec with instance attributes
+    note @ErrorNote[on=[database]]: "Connection timeout!";
+};
+
+// Sugar syntax (default @Note)
+note [align="right"]: "Request completed";
 ```
