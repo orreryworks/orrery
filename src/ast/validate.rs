@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use super::{
     parser_types::{
         Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
-        RelationTypeSpec, TypeDefinition,
+        TypeDefinition, TypeSpec,
     },
     span::{Span, Spanned},
 };
@@ -93,8 +93,7 @@ pub trait Visitor<'a> {
     /// Visit a single type definition
     fn visit_type_definition(&mut self, type_def: &TypeDefinition<'a>) {
         self.visit_type_name(&type_def.name);
-        self.visit_base_type(&type_def.base_type);
-        self.visit_attributes(&type_def.attributes);
+        self.visit_type_spec(&type_def.type_spec);
     }
 
     /// Visit a type name
@@ -102,6 +101,14 @@ pub trait Visitor<'a> {
 
     /// Visit a base type
     fn visit_base_type(&mut self, _base_type: &Spanned<Id>) {}
+
+    /// Visit a type specification
+    fn visit_type_spec(&mut self, type_spec: &TypeSpec<'a>) {
+        if let Some(ref type_name) = type_spec.type_name {
+            self.visit_base_type(type_name);
+        }
+        self.visit_attributes(&type_spec.attributes);
+    }
 
     /// Visit a list of elements
     fn visit_elements(&mut self, elements: &[Element<'a>]) {
@@ -116,10 +123,9 @@ pub trait Visitor<'a> {
             Element::Component {
                 ref name,
                 ref display_name,
-                ref type_name,
-                ref attributes,
+                ref type_spec,
                 ref nested_elements,
-            } => self.visit_component(name, display_name, type_name, attributes, nested_elements),
+            } => self.visit_component(name, display_name, type_spec, nested_elements),
             Element::Relation {
                 ref source,
                 ref target,
@@ -130,61 +136,65 @@ pub trait Visitor<'a> {
             Element::Diagram(ref diagram) => self.visit_diagram(diagram),
             Element::ActivateBlock {
                 ref component,
+                ref type_spec,
                 ref elements,
-            } => self.visit_activate_block(component, elements),
-            Element::Activate { ref component } => self.visit_activate(component),
+            } => self.visit_activate_block(component, type_spec, elements),
+            Element::Activate {
+                ref component,
+                ref type_spec,
+            } => self.visit_activate(component, type_spec),
             Element::Deactivate { ref component } => self.visit_deactivate(component),
             Element::Fragment(ref fragment) => self.visit_fragment(fragment),
             Element::AltElseBlock {
                 keyword_span: _,
+                ref type_spec,
                 ref sections,
-                ref attributes,
             } => {
-                self.visit_attributes(attributes);
+                self.visit_type_spec(type_spec);
                 for section in sections {
                     self.visit_elements(&section.elements);
                 }
             }
             Element::OptBlock {
                 keyword_span: _,
+                ref type_spec,
                 ref section,
-                ref attributes,
             } => {
-                self.visit_attributes(attributes);
+                self.visit_type_spec(type_spec);
                 self.visit_elements(&section.elements);
             }
             Element::LoopBlock {
                 keyword_span: _,
+                ref type_spec,
                 ref section,
-                ref attributes,
             } => {
-                self.visit_attributes(attributes);
+                self.visit_type_spec(type_spec);
                 self.visit_elements(&section.elements);
             }
             Element::ParBlock {
                 keyword_span: _,
+                ref type_spec,
                 ref sections,
-                ref attributes,
             } => {
-                self.visit_attributes(attributes);
+                self.visit_type_spec(type_spec);
                 for section in sections {
                     self.visit_elements(&section.elements);
                 }
             }
             Element::BreakBlock {
                 keyword_span: _,
+                ref type_spec,
                 ref section,
-                ref attributes,
             } => {
-                self.visit_attributes(attributes);
+                self.visit_type_spec(type_spec);
                 self.visit_elements(&section.elements);
             }
             Element::CriticalBlock {
                 keyword_span: _,
+                ref type_spec,
                 ref section,
-                ref attributes,
             } => {
-                self.visit_attributes(attributes);
+                self.visit_type_spec(type_spec);
                 self.visit_elements(&section.elements);
             }
             Element::Note(ref note) => {
@@ -214,16 +224,14 @@ pub trait Visitor<'a> {
         &mut self,
         name: &Spanned<Id>,
         display_name: &Option<Spanned<String>>,
-        type_name: &Spanned<Id>,
-        attributes: &[Attribute<'a>],
+        type_spec: &TypeSpec<'a>,
         nested_elements: &[Element<'a>],
     ) {
         self.visit_component_name(name);
         if let Some(dn) = display_name {
             self.visit_display_name(dn);
         }
-        self.visit_component_type(type_name);
-        self.visit_attributes(attributes);
+        self.visit_type_spec(type_spec);
         self.visit_elements(nested_elements);
     }
 
@@ -233,24 +241,19 @@ pub trait Visitor<'a> {
     /// Visit a display name
     fn visit_display_name(&mut self, _display_name: &Spanned<String>) {}
 
-    /// Visit a component type
-    fn visit_component_type(&mut self, _type_name: &Spanned<Id>) {}
-
     /// Visit a relation element
     fn visit_relation(
         &mut self,
         source: &Spanned<Id>,
         target: &Spanned<Id>,
         relation_type: &Spanned<&'a str>,
-        type_spec: &Option<RelationTypeSpec<'a>>,
+        type_spec: &TypeSpec<'a>,
         label: &Option<Spanned<String>>,
     ) {
         self.visit_relation_source(source);
         self.visit_relation_target(target);
         self.visit_relation_type(relation_type);
-        if let Some(ts) = type_spec {
-            self.visit_relation_type_spec(ts);
-        }
+        self.visit_type_spec(type_spec);
         if let Some(l) = label {
             self.visit_relation_label(l);
         }
@@ -269,23 +272,18 @@ pub trait Visitor<'a> {
     /// Visit a relation type
     fn visit_relation_type(&mut self, _relation_type: &Spanned<&'a str>) {}
 
-    /// Visit a relation type specification
-    fn visit_relation_type_spec(&mut self, type_spec: &RelationTypeSpec<'a>) {
-        if let Some(tn) = &type_spec.type_name {
-            self.visit_relation_type_name(tn);
-        }
-        self.visit_attributes(&type_spec.attributes);
-    }
-
-    /// Visit a relation type name
-    fn visit_relation_type_name(&mut self, _type_name: &Spanned<Id>) {}
-
     /// Visit a relation label
     fn visit_relation_label(&mut self, _label: &Spanned<String>) {}
 
     /// Visit an activate block element
-    fn visit_activate_block(&mut self, component: &Spanned<Id>, elements: &[Element<'a>]) {
+    fn visit_activate_block(
+        &mut self,
+        component: &Spanned<Id>,
+        type_spec: &TypeSpec<'a>,
+        elements: &[Element<'a>],
+    ) {
         self.visit_activate_component(component);
+        self.visit_type_spec(type_spec);
         self.visit_elements(elements);
     }
 
@@ -293,8 +291,9 @@ pub trait Visitor<'a> {
     fn visit_activate_component(&mut self, _component: &Spanned<Id>) {}
 
     /// Visit an activate statement
-    fn visit_activate(&mut self, component: &Spanned<Id>) {
+    fn visit_activate(&mut self, component: &Spanned<Id>, type_spec: &TypeSpec<'a>) {
         self.visit_identifier(component);
+        self.visit_type_spec(type_spec);
     }
 
     /// Visit a deactivate statement
@@ -304,7 +303,7 @@ pub trait Visitor<'a> {
 
     /// Visit a note element
     fn visit_note(&mut self, note: &Note<'a>) {
-        self.visit_attributes(&note.attributes);
+        self.visit_type_spec(&note.type_spec);
         self.visit_note_content(&note.content);
     }
 
@@ -476,9 +475,11 @@ impl<'a> Visitor<'a> for Validator<'a> {
         registry.insert(*name.inner(), name.span());
     }
 
-    fn visit_activate(&mut self, component: &Spanned<Id>) {
+    fn visit_activate(&mut self, component: &Spanned<Id>, type_spec: &TypeSpec<'a>) {
         // Validate component identifier exists
         self.visit_identifier(component);
+
+        self.visit_type_spec(type_spec);
 
         // Then handle activation stack logic
         let state = self.activation_state_mut();
@@ -518,10 +519,10 @@ impl<'a> Visitor<'a> for Validator<'a> {
     }
 
     fn visit_note(&mut self, note: &Note<'a>) {
-        self.visit_attributes(&note.attributes);
+        self.visit_type_spec(&note.type_spec);
 
         // Validation for align attribute
-        for attr in &note.attributes {
+        for attr in &note.type_spec.attributes {
             if *attr.name.inner() == "align"
                 && let Ok(align_value) = attr.value.as_str()
             {
@@ -620,8 +621,7 @@ mod tests {
             &mut self,
             name: &Spanned<Id>,
             display_name: &Option<Spanned<String>>,
-            type_name: &Spanned<Id>,
-            attributes: &[Attribute<'a>],
+            type_spec: &TypeSpec<'a>,
             nested_elements: &[Element<'a>],
         ) {
             self.component_count += 1;
@@ -630,8 +630,7 @@ mod tests {
             if let Some(dn) = display_name {
                 self.visit_display_name(dn);
             }
-            self.visit_component_type(type_name);
-            self.visit_attributes(attributes);
+            self.visit_type_spec(type_spec);
             self.visit_elements(nested_elements);
         }
 
@@ -640,7 +639,7 @@ mod tests {
             source: &Spanned<Id>,
             target: &Spanned<Id>,
             relation_type: &Spanned<&'a str>,
-            type_spec: &Option<RelationTypeSpec<'a>>,
+            type_spec: &TypeSpec<'a>,
             label: &Option<Spanned<String>>,
         ) {
             self.relation_count += 1;
@@ -648,20 +647,21 @@ mod tests {
             self.visit_relation_source(source);
             self.visit_relation_target(target);
             self.visit_relation_type(relation_type);
-            if let Some(ts) = type_spec {
-                self.visit_relation_type_spec(ts);
-            }
+            self.visit_type_spec(type_spec);
             if let Some(l) = label {
                 self.visit_relation_label(l);
             }
         }
 
-        fn visit_activate(&mut self, _component: &Spanned<Id>) {
+        fn visit_activate(&mut self, component: &Spanned<Id>, type_spec: &TypeSpec<'a>) {
+            self.visit_identifier(component);
+            self.visit_type_spec(type_spec);
             self.activate_count += 1;
         }
 
-        fn visit_deactivate(&mut self, _component: &Spanned<Id>) {
+        fn visit_deactivate(&mut self, component: &Spanned<Id>) {
             self.deactivate_count += 1;
+            self.visit_identifier(component);
         }
     }
 
@@ -676,18 +676,21 @@ mod tests {
                 Element::Component {
                     name: Spanned::new(Id::new("user"), Span::new(10..14)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(16..25)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(16..25))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("user"), Span::new(30..34)),
+                    type_spec: TypeSpec::default(),
                 },
                 Element::Relation {
                     source: Spanned::new(Id::new("user"), Span::new(40..44)),
                     target: Spanned::new(Id::new("server"), Span::new(48..54)),
                     relation_type: Spanned::new("->", Span::new(45..47)),
-                    type_spec: None,
+                    type_spec: TypeSpec::default(),
                     label: None,
                 },
                 Element::Deactivate {
@@ -715,12 +718,15 @@ mod tests {
                 Element::Component {
                     name: Spanned::new(Id::new("user"), Span::new(0..4)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(6..15)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(6..15))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("user"), Span::new(17..21)),
+                    type_spec: TypeSpec::default(),
                 },
                 Element::Deactivate {
                     component: Spanned::new(Id::new("user"), Span::new(23..27)),
@@ -755,6 +761,7 @@ mod tests {
             type_definitions: vec![],
             elements: vec![Element::Activate {
                 component: Spanned::new(Id::new("user"), Span::new(0..4)),
+                type_spec: TypeSpec::default(),
             }],
         };
 
@@ -772,15 +779,19 @@ mod tests {
                 Element::Component {
                     name: Spanned::new(Id::new("user"), Span::new(0..4)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(6..15)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(6..15))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("user"), Span::new(17..21)),
+                    type_spec: TypeSpec::default(),
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("user"), Span::new(23..27)),
+                    type_spec: TypeSpec::default(),
                 },
                 Element::Deactivate {
                     component: Spanned::new(Id::new("user"), Span::new(29..33)),
@@ -805,22 +816,28 @@ mod tests {
                 Element::Component {
                     name: Spanned::new(Id::new("user"), Span::new(0..4)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(6..15)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(6..15))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Component {
                     name: Spanned::new(Id::new("server"), Span::new(17..23)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(25..34)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(25..34))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("user"), Span::new(36..40)),
+                    type_spec: TypeSpec::default(),
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("server"), Span::new(42..48)),
+                    type_spec: TypeSpec::default(),
                 },
                 Element::Deactivate {
                     component: Spanned::new(Id::new("user"), Span::new(50..54)),
@@ -847,6 +864,7 @@ mod tests {
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("user"), Span::new(5..9)),
+                    type_spec: TypeSpec::default(),
                 },
             ],
         };
@@ -1010,21 +1028,33 @@ mod identifier_validation_tests {
                 Element::Component {
                     name: Spanned::new(Id::new("frontend"), Span::new(0..8)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(10..19)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(10..19))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![
                         Element::Component {
                             name: Spanned::new(Id::new("frontend::app"), Span::new(20..33)),
                             display_name: None,
-                            type_name: Spanned::new(Id::new("Rectangle"), Span::new(35..44)),
-                            attributes: vec![],
+                            type_spec: TypeSpec {
+                                type_name: Some(Spanned::new(
+                                    Id::new("Rectangle"),
+                                    Span::new(35..44),
+                                )),
+                                attributes: vec![],
+                            },
                             nested_elements: vec![],
                         },
                         Element::Component {
                             name: Spanned::new(Id::new("frontend::ui"), Span::new(45..57)),
                             display_name: None,
-                            type_name: Spanned::new(Id::new("Rectangle"), Span::new(59..68)),
-                            attributes: vec![],
+                            type_spec: TypeSpec {
+                                type_name: Some(Spanned::new(
+                                    Id::new("Rectangle"),
+                                    Span::new(59..68),
+                                )),
+                                attributes: vec![],
+                            },
                             nested_elements: vec![],
                         },
                     ],
@@ -1032,13 +1062,20 @@ mod identifier_validation_tests {
                 Element::Component {
                     name: Spanned::new(Id::new("backend"), Span::new(69..76)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(78..87)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(78..87))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![Element::Component {
                         name: Spanned::new(Id::new("backend::api"), Span::new(88..100)),
                         display_name: None,
-                        type_name: Spanned::new(Id::new("Rectangle"), Span::new(102..111)),
-                        attributes: vec![],
+                        type_spec: TypeSpec {
+                            type_name: Some(Spanned::new(
+                                Id::new("Rectangle"),
+                                Span::new(102..111),
+                            )),
+                            attributes: vec![],
+                        },
                         nested_elements: vec![],
                     }],
                 },
@@ -1132,22 +1169,26 @@ mod identifier_validation_tests {
                 Element::Component {
                     name: Spanned::new(Id::new("app"), Span::new(0..3)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(5..14)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(5..14))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Component {
                     name: Spanned::new(Id::new("db"), Span::new(15..17)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(19..28)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(19..28))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Relation {
                     source: Spanned::new(Id::new("app"), Span::new(30..33)),
                     target: Spanned::new(Id::new("db"), Span::new(37..39)),
                     relation_type: Spanned::new("->", Span::new(34..36)),
-                    type_spec: None,
+                    type_spec: TypeSpec::default(),
                     label: None,
                 },
             ],
@@ -1167,15 +1208,17 @@ mod identifier_validation_tests {
                 Element::Component {
                     name: Spanned::new(Id::new("db"), Span::new(15..17)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(19..28)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(19..28))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Relation {
                     source: Spanned::new(Id::new("unknown"), Span::new(30..37)),
                     target: Spanned::new(Id::new("db"), Span::new(41..43)),
                     relation_type: Spanned::new("->", Span::new(38..40)),
-                    type_spec: None,
+                    type_spec: TypeSpec::default(),
                     label: None,
                 },
             ],
@@ -1197,15 +1240,17 @@ mod identifier_validation_tests {
                 Element::Component {
                     name: Spanned::new(Id::new("app"), Span::new(0..3)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(5..14)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(5..14))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Relation {
                     source: Spanned::new(Id::new("app"), Span::new(30..33)),
                     target: Spanned::new(Id::new("missing"), Span::new(37..44)),
                     relation_type: Spanned::new("->", Span::new(34..36)),
-                    type_spec: None,
+                    type_spec: TypeSpec::default(),
                     label: None,
                 },
             ],
@@ -1227,12 +1272,15 @@ mod identifier_validation_tests {
                 Element::Component {
                     name: Spanned::new(Id::new("server"), Span::new(0..6)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(8..17)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(8..17))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("server"), Span::new(20..26)),
+                    type_spec: TypeSpec::default(),
                 },
                 Element::Deactivate {
                     component: Spanned::new(Id::new("server"), Span::new(30..36)),
@@ -1254,12 +1302,15 @@ mod identifier_validation_tests {
                 Element::Component {
                     name: Spanned::new(Id::new("server"), Span::new(0..6)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(8..17)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(8..17))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("unknown"), Span::new(20..27)),
+                    type_spec: TypeSpec::default(),
                 },
             ],
         };
@@ -1280,8 +1331,10 @@ mod identifier_validation_tests {
                 Element::Component {
                     name: Spanned::new(Id::new("server"), Span::new(0..6)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(8..17)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(8..17))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Deactivate {
@@ -1306,18 +1359,23 @@ mod identifier_validation_tests {
                 Element::Component {
                     name: Spanned::new(Id::new("client"), Span::new(0..6)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(8..17)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(8..17))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Note(Note {
-                    attributes: vec![Attribute {
-                        name: Spanned::new("on", Span::new(20..22)),
-                        value: AttributeValue::Identifiers(vec![Spanned::new(
-                            Id::new("unknown"),
-                            Span::new(24..31),
-                        )]),
-                    }],
+                    type_spec: TypeSpec {
+                        type_name: None,
+                        attributes: vec![Attribute {
+                            name: Spanned::new("on", Span::new(20..22)),
+                            value: AttributeValue::Identifiers(vec![Spanned::new(
+                                Id::new("unknown"),
+                                Span::new(24..31),
+                            )]),
+                        }],
+                    },
                     content: Spanned::new("Invalid note".to_string(), Span::new(33..47)),
                 }),
             ],
@@ -1339,26 +1397,33 @@ mod identifier_validation_tests {
                 Element::Component {
                     name: Spanned::new(Id::new("client"), Span::new(0..6)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(8..17)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(8..17))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Component {
                     name: Spanned::new(Id::new("server"), Span::new(19..25)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(27..36)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(27..36))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Note(Note {
-                    attributes: vec![Attribute {
-                        name: Spanned::new("on", Span::new(38..40)),
-                        value: AttributeValue::Identifiers(vec![
-                            Spanned::new(Id::new("client"), Span::new(42..48)),
-                            Spanned::new(Id::new("server"), Span::new(50..56)),
-                        ]),
-                    }],
-                    content: Spanned::new("Spanning note".to_string(), Span::new(58..73)),
+                    type_spec: TypeSpec {
+                        type_name: None,
+                        attributes: vec![Attribute {
+                            name: Spanned::new("on", Span::new(38..40)),
+                            value: AttributeValue::Identifiers(vec![
+                                Spanned::new(Id::new("client"), Span::new(42..48)),
+                                Spanned::new(Id::new("server"), Span::new(50..56)),
+                            ]),
+                        }],
+                    },
+                    content: Spanned::new("Multi-component note".to_string(), Span::new(58..78)),
                 }),
             ],
         };
@@ -1380,21 +1445,130 @@ mod identifier_validation_tests {
                 Element::Component {
                     name: Spanned::new(Id::new("client"), Span::new(0..6)),
                     display_name: None,
-                    type_name: Spanned::new(Id::new("Rectangle"), Span::new(8..17)),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(8..17))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Note(Note {
-                    attributes: vec![Attribute {
-                        name: Spanned::new("on", Span::new(20..22)),
-                        value: AttributeValue::Identifiers(vec![]),
-                    }],
-                    content: Spanned::new("Margin note".to_string(), Span::new(24..37)),
+                    type_spec: TypeSpec {
+                        type_name: None,
+                        attributes: vec![Attribute {
+                            name: Spanned::new("on", Span::new(20..22)),
+                            value: AttributeValue::Identifiers(vec![]),
+                        }],
+                    },
+                    content: Spanned::new("Margin note".to_string(), Span::new(26..39)),
                 }),
             ],
         };
 
         let result = validate_diagram(&diagram);
         assert!(result.is_ok(), "Note with empty on attribute should pass");
+    }
+
+    #[test]
+    fn test_validation_with_typespec() {
+        let diagram = Diagram {
+            kind: Spanned::new("sequence", Span::new(0..8)),
+            attributes: vec![],
+            type_definitions: vec![TypeDefinition {
+                name: Spanned::new(Id::new("CustomArrow"), Span::new(10..21)),
+                type_spec: TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(24..29))),
+                    attributes: vec![Attribute {
+                        name: Spanned::new("color", Span::new(30..35)),
+                        value: AttributeValue::String(Spanned::new(
+                            "red".to_string(),
+                            Span::new(37..42),
+                        )),
+                    }],
+                },
+            }],
+            elements: vec![
+                Element::Component {
+                    name: Spanned::new(Id::new("client"), Span::new(50..56)),
+                    display_name: None,
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(58..67))),
+                        attributes: vec![Attribute {
+                            name: Spanned::new("fill", Span::new(68..72)),
+                            value: AttributeValue::String(Spanned::new(
+                                "blue".to_string(),
+                                Span::new(74..80),
+                            )),
+                        }],
+                    },
+                    nested_elements: vec![],
+                },
+                Element::Component {
+                    name: Spanned::new(Id::new("server"), Span::new(85..91)),
+                    display_name: None,
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(93..102))),
+                        attributes: vec![],
+                    },
+                    nested_elements: vec![],
+                },
+                Element::Activate {
+                    component: Spanned::new(Id::new("server"), Span::new(110..116)),
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Activation"), Span::new(118..128))),
+                        attributes: vec![Attribute {
+                            name: Spanned::new("fill", Span::new(129..133)),
+                            value: AttributeValue::String(Spanned::new(
+                                "yellow".to_string(),
+                                Span::new(135..143),
+                            )),
+                        }],
+                    },
+                },
+                Element::Relation {
+                    source: Spanned::new(Id::new("client"), Span::new(150..156)),
+                    target: Spanned::new(Id::new("server"), Span::new(160..166)),
+                    relation_type: Spanned::new("->", Span::new(157..159)),
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("CustomArrow"), Span::new(168..179))),
+                        attributes: vec![Attribute {
+                            name: Spanned::new("width", Span::new(180..185)),
+                            value: AttributeValue::Float(Spanned::new(2.0, Span::new(187..188))),
+                        }],
+                    },
+                    label: Some(Spanned::new("request".to_string(), Span::new(190..199))),
+                },
+                Element::Note(Note {
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Note"), Span::new(205..209))),
+                        attributes: vec![
+                            Attribute {
+                                name: Spanned::new("on", Span::new(210..212)),
+                                value: AttributeValue::Identifiers(vec![
+                                    Spanned::new(Id::new("client"), Span::new(214..220)),
+                                    Spanned::new(Id::new("server"), Span::new(222..228)),
+                                ]),
+                            },
+                            Attribute {
+                                name: Spanned::new("align", Span::new(230..235)),
+                                value: AttributeValue::String(Spanned::new(
+                                    "right".to_string(),
+                                    Span::new(237..245),
+                                )),
+                            },
+                        ],
+                    },
+                    content: Spanned::new("Processing".to_string(), Span::new(247..258)),
+                }),
+                Element::Deactivate {
+                    component: Spanned::new(Id::new("server"), Span::new(265..271)),
+                },
+            ],
+        };
+
+        let result = validate_diagram(&diagram);
+        assert!(
+            result.is_ok(),
+            "Diagram with comprehensive TypeSpec usage should pass validation"
+        );
     }
 }

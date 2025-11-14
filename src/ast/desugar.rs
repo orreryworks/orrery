@@ -18,7 +18,7 @@
 use super::{
     parser_types::{
         Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
-        RelationTypeSpec, TypeDefinition,
+        TypeDefinition, TypeSpec,
     },
     span::Spanned,
 };
@@ -159,8 +159,7 @@ trait Folder<'a> {
     fn fold_type_definition(&mut self, type_def: TypeDefinition<'a>) -> TypeDefinition<'a> {
         TypeDefinition {
             name: self.fold_type_name(type_def.name),
-            base_type: self.fold_base_type(type_def.base_type),
-            attributes: self.fold_attributes(type_def.attributes),
+            type_spec: self.fold_type_spec(type_def.type_spec),
         }
     }
 
@@ -169,9 +168,42 @@ trait Folder<'a> {
         name
     }
 
-    /// Fold a base type
-    fn fold_base_type(&mut self, base_type: Spanned<Id>) -> Spanned<Id> {
-        base_type
+    /// Fold a TypeSpec
+    fn fold_type_spec(&mut self, type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+        TypeSpec {
+            type_name: type_spec.type_name.map(|tn| self.fold_type_spec_name(tn)),
+            attributes: self.fold_attributes(type_spec.attributes),
+        }
+    }
+
+    /// Fold a type name within a TypeSpec
+    fn fold_type_spec_name(&mut self, name: Spanned<Id>) -> Spanned<Id> {
+        name
+    }
+
+    /// Fold a component's TypeSpec
+    fn fold_component_type_spec(&mut self, type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+        self.fold_type_spec(type_spec)
+    }
+
+    /// Fold a relation's TypeSpec
+    fn fold_relation_type_spec(&mut self, type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+        self.fold_type_spec(type_spec)
+    }
+
+    /// Fold a note's TypeSpec
+    fn fold_note_type_spec(&mut self, type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+        self.fold_type_spec(type_spec)
+    }
+
+    /// Fold a fragment's TypeSpec
+    fn fold_fragment_type_spec(&mut self, type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+        self.fold_type_spec(type_spec)
+    }
+
+    /// Fold an activate block's TypeSpec
+    fn fold_activate_type_spec(&mut self, type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+        self.fold_type_spec(type_spec)
     }
 
     /// Fold a list of elements
@@ -188,10 +220,9 @@ trait Folder<'a> {
             Element::Component {
                 name,
                 display_name,
-                type_name,
-                attributes,
+                type_spec,
                 nested_elements,
-            } => self.fold_component(name, display_name, type_name, attributes, nested_elements),
+            } => self.fold_component(name, display_name, type_spec, nested_elements),
             Element::Relation {
                 source,
                 target,
@@ -203,9 +234,14 @@ trait Folder<'a> {
             Element::ActivateBlock {
                 component,
                 elements,
-            } => self.fold_activate_block(component, elements),
-            Element::Activate { component } => Element::Activate {
+                type_spec,
+            } => self.fold_activate_block(component, elements, type_spec),
+            Element::Activate {
+                component,
+                type_spec,
+            } => Element::Activate {
                 component: self.fold_activate_component(component),
+                type_spec: self.fold_activate_type_spec(type_spec),
             },
             Element::Deactivate { component } => Element::Deactivate {
                 component: self.fold_activate_component(component),
@@ -216,62 +252,62 @@ trait Folder<'a> {
             Element::AltElseBlock {
                 keyword_span,
                 sections,
-                attributes,
+                type_spec,
             } => Element::AltElseBlock {
                 keyword_span,
+                type_spec: self.fold_fragment_type_spec(type_spec),
                 sections: sections
                     .into_iter()
                     .map(|s| self.fold_fragment_section(s))
                     .collect(),
-                attributes: self.fold_attributes(attributes),
             },
             Element::OptBlock {
                 keyword_span,
                 section,
-                attributes,
+                type_spec,
             } => Element::OptBlock {
                 keyword_span,
+                type_spec: self.fold_fragment_type_spec(type_spec),
                 section: self.fold_fragment_section(section),
-                attributes: self.fold_attributes(attributes),
             },
             Element::LoopBlock {
                 keyword_span,
                 section,
-                attributes,
+                type_spec,
             } => Element::LoopBlock {
                 keyword_span,
+                type_spec: self.fold_fragment_type_spec(type_spec),
                 section: self.fold_fragment_section(section),
-                attributes: self.fold_attributes(attributes),
             },
             Element::ParBlock {
                 keyword_span,
                 sections,
-                attributes,
+                type_spec,
             } => Element::ParBlock {
                 keyword_span,
+                type_spec: self.fold_fragment_type_spec(type_spec),
                 sections: sections
                     .into_iter()
                     .map(|s| self.fold_fragment_section(s))
                     .collect(),
-                attributes: self.fold_attributes(attributes),
             },
             Element::BreakBlock {
                 keyword_span,
                 section,
-                attributes,
+                type_spec,
             } => Element::BreakBlock {
                 keyword_span,
+                type_spec: self.fold_fragment_type_spec(type_spec),
                 section: self.fold_fragment_section(section),
-                attributes: self.fold_attributes(attributes),
             },
             Element::CriticalBlock {
                 keyword_span,
                 section,
-                attributes,
+                type_spec,
             } => Element::CriticalBlock {
                 keyword_span,
+                type_spec: self.fold_fragment_type_spec(type_spec),
                 section: self.fold_fragment_section(section),
-                attributes: self.fold_attributes(attributes),
             },
         }
     }
@@ -281,15 +317,13 @@ trait Folder<'a> {
         &mut self,
         name: Spanned<Id>,
         display_name: Option<Spanned<String>>,
-        type_name: Spanned<Id>,
-        attributes: Vec<Attribute<'a>>,
+        type_spec: TypeSpec<'a>,
         nested_elements: Vec<Element<'a>>,
     ) -> Element<'a> {
         Element::Component {
             name: self.fold_component_name(name),
             display_name: display_name.map(|dn| self.fold_display_name(dn)),
-            type_name: self.fold_component_type(type_name),
-            attributes: self.fold_attributes(attributes),
+            type_spec: self.fold_component_type_spec(type_spec),
             nested_elements: self.fold_elements(nested_elements),
         }
     }
@@ -304,25 +338,20 @@ trait Folder<'a> {
         display_name
     }
 
-    /// Fold a component type
-    fn fold_component_type(&mut self, type_name: Spanned<Id>) -> Spanned<Id> {
-        type_name
-    }
-
     /// Fold a relation element
     fn fold_relation(
         &mut self,
         source: Spanned<Id>,
         target: Spanned<Id>,
         relation_type: Spanned<&'a str>,
-        type_spec: Option<RelationTypeSpec<'a>>,
+        type_spec: TypeSpec<'a>,
         label: Option<Spanned<String>>,
     ) -> Element<'a> {
         Element::Relation {
             source: self.fold_relation_source(source),
             target: self.fold_relation_target(target),
             relation_type: self.fold_relation_type(relation_type),
-            type_spec: type_spec.map(|ts| self.fold_relation_type_spec(ts)),
+            type_spec: self.fold_relation_type_spec(type_spec),
             label: label.map(|l| self.fold_relation_label(l)),
         }
     }
@@ -342,21 +371,6 @@ trait Folder<'a> {
         relation_type
     }
 
-    /// Fold a relation type specification
-    fn fold_relation_type_spec(&mut self, type_spec: RelationTypeSpec<'a>) -> RelationTypeSpec<'a> {
-        RelationTypeSpec {
-            type_name: type_spec
-                .type_name
-                .map(|tn| self.fold_relation_type_name(tn)),
-            attributes: self.fold_attributes(type_spec.attributes),
-        }
-    }
-
-    /// Fold a relation type name
-    fn fold_relation_type_name(&mut self, type_name: Spanned<Id>) -> Spanned<Id> {
-        type_name
-    }
-
     /// Fold a relation label
     fn fold_relation_label(&mut self, label: Spanned<String>) -> Spanned<String> {
         label
@@ -367,10 +381,12 @@ trait Folder<'a> {
         &mut self,
         component: Spanned<Id>,
         elements: Vec<Element<'a>>,
+        type_spec: TypeSpec<'a>,
     ) -> Element<'a> {
         Element::ActivateBlock {
             component: self.fold_activate_component(component),
             elements: self.fold_elements(elements),
+            type_spec: self.fold_activate_type_spec(type_spec),
         }
     }
 
@@ -386,19 +402,19 @@ trait Folder<'a> {
     fn fold_fragment(&mut self, fragment: Fragment<'a>) -> Fragment<'a> {
         Fragment {
             operation: fragment.operation,
+            type_spec: self.fold_fragment_type_spec(fragment.type_spec),
             sections: fragment
                 .sections
                 .into_iter()
                 .map(|s| self.fold_fragment_section(s))
                 .collect(),
-            attributes: self.fold_attributes(fragment.attributes),
         }
     }
 
     /// Fold a note element
     fn fold_note(&mut self, note: Note<'a>) -> Note<'a> {
         Note {
-            attributes: self.fold_attributes(note.attributes),
+            type_spec: self.fold_note_type_spec(note.type_spec),
             content: self.fold_note_content(note.content),
         }
     }
@@ -452,8 +468,7 @@ impl<'a> Folder<'a> for Desugar {
         &mut self,
         name: Spanned<Id>,
         display_name: Option<Spanned<String>>,
-        type_name: Spanned<Id>,
-        attributes: Vec<Attribute<'a>>,
+        type_spec: TypeSpec<'a>,
         nested_elements: Vec<Element<'a>>,
     ) -> Element<'a> {
         // Enter this component's namespace
@@ -468,8 +483,7 @@ impl<'a> Folder<'a> for Desugar {
         Element::Component {
             name: self.fold_component_name(name),
             display_name: display_name.map(|dn| self.fold_display_name(dn)),
-            type_name: self.fold_component_type(type_name),
-            attributes: self.fold_attributes(attributes),
+            type_spec: self.fold_component_type_spec(type_spec),
             nested_elements: resolved_nested,
         }
     }
@@ -488,10 +502,12 @@ impl<'a> Folder<'a> for Desugar {
                 Element::ActivateBlock {
                     component,
                     elements: inner,
+                    type_spec,
                 } => {
                     let comp = self.fold_activate_component(component);
                     out.push(Element::Activate {
                         component: comp.clone(),
+                        type_spec: self.fold_activate_type_spec(type_spec),
                     });
                     let inner_folded = self.fold_elements(inner);
                     out.extend(inner_folded);
@@ -512,10 +528,9 @@ impl<'a> Folder<'a> for Desugar {
             Element::Component {
                 name,
                 display_name,
-                type_name,
-                attributes,
+                type_spec,
                 nested_elements,
-            } => self.fold_component(name, display_name, type_name, attributes, nested_elements),
+            } => self.fold_component(name, display_name, type_spec, nested_elements),
             Element::Relation {
                 source,
                 target,
@@ -527,10 +542,15 @@ impl<'a> Folder<'a> for Desugar {
             Element::ActivateBlock {
                 component,
                 elements,
-            } => self.fold_activate_block(component, elements),
+                type_spec,
+            } => self.fold_activate_block(component, elements, type_spec),
             Element::Fragment(fragment) => Element::Fragment(self.fold_fragment(fragment)),
-            Element::Activate { component } => Element::Activate {
+            Element::Activate {
+                component,
+                type_spec,
+            } => Element::Activate {
                 component: self.fold_activate_component(component),
+                type_spec: self.fold_activate_type_spec(type_spec),
             },
             Element::Deactivate { component } => Element::Deactivate {
                 component: self.fold_activate_component(component),
@@ -545,84 +565,84 @@ impl<'a> Folder<'a> for Desugar {
             Element::AltElseBlock {
                 keyword_span,
                 sections,
-                attributes,
+                type_spec,
             } => {
                 let operation = Spanned::new("alt".to_string(), keyword_span);
                 Element::Fragment(Fragment {
                     operation,
+                    type_spec: self.fold_fragment_type_spec(type_spec),
                     sections: sections
                         .into_iter()
                         .map(|s| self.fold_fragment_section(s))
                         .collect(),
-                    attributes: self.fold_attributes(attributes),
                 })
             }
             // Transform opt to fragment "opt"
             Element::OptBlock {
                 keyword_span,
                 section,
-                attributes,
+                type_spec,
             } => {
                 let operation = Spanned::new("opt".to_string(), keyword_span);
                 Element::Fragment(Fragment {
                     operation,
+                    type_spec: self.fold_fragment_type_spec(type_spec),
                     sections: vec![self.fold_fragment_section(section)],
-                    attributes: self.fold_attributes(attributes),
                 })
             }
             // Transform loop to fragment "loop"
             Element::LoopBlock {
                 keyword_span,
                 section,
-                attributes,
+                type_spec,
             } => {
                 let operation = Spanned::new("loop".to_string(), keyword_span);
                 Element::Fragment(Fragment {
                     operation,
+                    type_spec: self.fold_fragment_type_spec(type_spec),
                     sections: vec![self.fold_fragment_section(section)],
-                    attributes: self.fold_attributes(attributes),
                 })
             }
             // Transform par to fragment "par"
             Element::ParBlock {
                 keyword_span,
                 sections,
-                attributes,
+                type_spec,
             } => {
                 let operation = Spanned::new("par".to_string(), keyword_span);
                 Element::Fragment(Fragment {
                     operation,
+                    type_spec: self.fold_fragment_type_spec(type_spec),
                     sections: sections
                         .into_iter()
                         .map(|s| self.fold_fragment_section(s))
                         .collect(),
-                    attributes: self.fold_attributes(attributes),
                 })
             }
             // Transform break to fragment "break"
             Element::BreakBlock {
                 keyword_span,
                 section,
-                attributes,
+                type_spec,
             } => {
                 let operation = Spanned::new("break".to_string(), keyword_span);
                 Element::Fragment(Fragment {
                     operation,
+                    type_spec: self.fold_fragment_type_spec(type_spec),
                     sections: vec![self.fold_fragment_section(section)],
-                    attributes: self.fold_attributes(attributes),
                 })
             }
             // Transform critical to fragment "critical"
             Element::CriticalBlock {
                 keyword_span,
                 section,
-                attributes,
+                type_spec,
             } => {
                 let operation = Spanned::new("critical".to_string(), keyword_span);
                 Element::Fragment(Fragment {
                     operation,
+                    type_spec: self.fold_fragment_type_spec(type_spec),
                     sections: vec![self.fold_fragment_section(section)],
-                    attributes: self.fold_attributes(attributes),
                 })
             }
         }
@@ -758,11 +778,13 @@ mod tests {
             attributes: vec![],
             type_definitions: vec![TypeDefinition {
                 name: spanned(Id::new("Database")),
-                base_type: spanned(Id::new("Rectangle")),
-                attributes: vec![Attribute {
-                    name: spanned("fill_color"),
-                    value: AttributeValue::String(spanned("lightblue".to_string())),
-                }],
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Rectangle"))),
+                    attributes: vec![Attribute {
+                        name: spanned("fill_color"),
+                        value: AttributeValue::String(spanned("lightblue".to_string())),
+                    }],
+                },
             }],
             elements: vec![],
         });
@@ -777,8 +799,16 @@ mod tests {
             Element::Diagram(d) => {
                 assert_eq!(d.type_definitions.len(), 1);
                 assert_eq!(*d.type_definitions[0].name.inner(), "Database");
-                assert_eq!(*d.type_definitions[0].base_type.inner(), "Rectangle");
-                assert_eq!(d.type_definitions[0].attributes.len(), 1);
+                assert_eq!(
+                    *d.type_definitions[0]
+                        .type_spec
+                        .type_name
+                        .as_ref()
+                        .unwrap()
+                        .inner(),
+                    "Rectangle"
+                );
+                assert_eq!(d.type_definitions[0].type_spec.attributes.len(), 1);
             }
             _ => panic!("Expected diagram element"),
         }
@@ -794,11 +824,13 @@ mod tests {
             elements: vec![Element::Component {
                 name: spanned(Id::new("frontend")),
                 display_name: Some(spanned("Frontend App".to_string())),
-                type_name: spanned(Id::new("Rectangle")),
-                attributes: vec![Attribute {
-                    name: spanned("fill_color"),
-                    value: AttributeValue::String(spanned("blue".to_string())),
-                }],
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Rectangle"))),
+                    attributes: vec![Attribute {
+                        name: spanned("fill_color"),
+                        value: AttributeValue::String(spanned("blue".to_string())),
+                    }],
+                },
                 nested_elements: vec![],
             }],
         });
@@ -816,69 +848,16 @@ mod tests {
                     Element::Component {
                         name,
                         display_name,
-                        type_name,
-                        attributes,
+                        type_spec,
                         nested_elements,
                     } => {
                         assert_eq!(*name.inner(), "frontend");
                         assert_eq!(display_name.as_ref().unwrap().inner(), "Frontend App");
-                        assert_eq!(*type_name.inner(), "Rectangle");
-                        assert_eq!(attributes.len(), 1);
+                        assert_eq!(*type_spec.type_name.as_ref().unwrap().inner(), "Rectangle");
+                        assert_eq!(type_spec.attributes.len(), 1);
                         assert!(nested_elements.is_empty());
                     }
                     _ => panic!("Expected component element"),
-                }
-            }
-            _ => panic!("Expected diagram element"),
-        }
-    }
-
-    #[test]
-    fn test_identity_folder_preserves_relations() {
-        // Create a diagram with a relation element
-        let diagram = Element::Diagram(Diagram {
-            kind: spanned("component"),
-            attributes: vec![],
-            type_definitions: vec![],
-            elements: vec![Element::Relation {
-                source: spanned(Id::new("frontend")),
-                target: spanned(Id::new("backend")),
-                relation_type: spanned("->"),
-                type_spec: Some(RelationTypeSpec {
-                    type_name: Some(spanned(Id::new("Arrow"))),
-                    attributes: vec![Attribute {
-                        name: spanned("color"),
-                        value: AttributeValue::String(spanned("red".to_string())),
-                    }],
-                }),
-                label: Some(spanned("API Call".to_string())),
-            }],
-        });
-        let wrapped = spanned(diagram);
-
-        // Apply the identity folder
-        let mut folder = IdentityFolder;
-        let result_elem = folder.fold_element(wrapped.into_inner());
-
-        // Verify relation is preserved
-        match result_elem {
-            Element::Diagram(d) => {
-                assert_eq!(d.elements.len(), 1);
-                match &d.elements[0] {
-                    Element::Relation {
-                        source,
-                        target,
-                        relation_type,
-                        type_spec,
-                        label,
-                    } => {
-                        assert_eq!(source.inner(), "frontend");
-                        assert_eq!(target.inner(), "backend");
-                        assert_eq!(*relation_type.inner(), "->");
-                        assert!(type_spec.is_some());
-                        assert_eq!(label.as_ref().unwrap().inner(), "API Call");
-                    }
-                    _ => panic!("Expected relation element"),
                 }
             }
             _ => panic!("Expected diagram element"),
@@ -894,11 +873,12 @@ mod tests {
             type_definitions: vec![],
             elements: vec![Element::ActivateBlock {
                 component: spanned(Id::new("user")),
+                type_spec: TypeSpec::default(),
                 elements: vec![Element::Relation {
                     source: spanned(Id::new("user")),
                     target: spanned(Id::new("server")),
                     relation_type: spanned("->"),
-                    type_spec: None,
+                    type_spec: TypeSpec::default(),
                     label: Some(spanned("Request".to_string())),
                 }],
             }],
@@ -917,6 +897,7 @@ mod tests {
                     Element::ActivateBlock {
                         component,
                         elements,
+                        ..
                     } => {
                         assert_eq!(*component.inner(), "user");
                         assert_eq!(elements.len(), 1);
@@ -943,11 +924,12 @@ mod tests {
             type_definitions: vec![],
             elements: vec![Element::ActivateBlock {
                 component: spanned(Id::new("user")),
+                type_spec: TypeSpec::default(),
                 elements: vec![Element::Relation {
                     source: spanned(Id::new("user")),
                     target: spanned(Id::new("server")),
                     relation_type: spanned("->"),
-                    type_spec: None,
+                    type_spec: TypeSpec::default(),
                     label: Some(spanned("Request".to_string())),
                 }],
             }],
@@ -963,7 +945,7 @@ mod tests {
             Element::Diagram(d) => {
                 assert_eq!(d.elements.len(), 3, "Expected Activate, inner, Deactivate");
                 match &d.elements[0] {
-                    Element::Activate { component } => {
+                    Element::Activate { component, .. } => {
                         assert_eq!(*component.inner(), "user");
                     }
                     _ => panic!("Expected Activate element"),
@@ -995,11 +977,11 @@ mod tests {
                     source: spanned(Id::new("user")),
                     target: spanned(Id::new("profile")),
                     relation_type: spanned("->"),
-                    type_spec: None,
+                    type_spec: TypeSpec::default(),
                     label: Some(spanned("Load".to_string())),
                 }],
             },
-            attributes: vec![],
+            type_spec: TypeSpec::default(),
         };
 
         let mut folder = Desugar::new();
@@ -1029,11 +1011,11 @@ mod tests {
                     source: spanned(Id::new("client")),
                     target: spanned(Id::new("server")),
                     relation_type: spanned("->"),
-                    type_spec: None,
+                    type_spec: TypeSpec::default(),
                     label: Some(spanned("Process".to_string())),
                 }],
             },
-            attributes: vec![],
+            type_spec: TypeSpec::default(),
         };
 
         let mut folder = Desugar::new();
@@ -1062,11 +1044,11 @@ mod tests {
                     source: spanned(Id::new("client")),
                     target: spanned(Id::new("server")),
                     relation_type: spanned("->"),
-                    type_spec: None,
+                    type_spec: TypeSpec::default(),
                     label: Some(spanned("Cancel".to_string())),
                 }],
             },
-            attributes: vec![],
+            type_spec: TypeSpec::default(),
         };
 
         let mut folder = Desugar::new();
@@ -1095,11 +1077,11 @@ mod tests {
                     source: spanned(Id::new("app")),
                     target: spanned(Id::new("db")),
                     relation_type: spanned("->"),
-                    type_spec: None,
+                    type_spec: TypeSpec::default(),
                     label: Some(spanned("UPDATE".to_string())),
                 }],
             },
-            attributes: vec![],
+            type_spec: TypeSpec::default(),
         };
 
         let mut folder = Desugar::new();
@@ -1129,7 +1111,7 @@ mod tests {
                         source: spanned(Id::new("a")),
                         target: spanned(Id::new("b")),
                         relation_type: spanned("->"),
-                        type_spec: None,
+                        type_spec: TypeSpec::default(),
                         label: None,
                     }],
                 },
@@ -1139,7 +1121,7 @@ mod tests {
                         source: spanned(Id::new("b")),
                         target: spanned(Id::new("a")),
                         relation_type: spanned("->"),
-                        type_spec: None,
+                        type_spec: TypeSpec::default(),
                         label: None,
                     }],
                 },
@@ -1149,12 +1131,12 @@ mod tests {
                         source: spanned(Id::new("a")),
                         target: spanned(Id::new("a")),
                         relation_type: spanned("->"),
-                        type_spec: None,
+                        type_spec: TypeSpec::default(),
                         label: None,
                     }],
                 },
             ],
-            attributes: vec![],
+            type_spec: TypeSpec::default(),
         };
 
         let mut folder = Desugar::new();
@@ -1189,7 +1171,7 @@ mod tests {
                         source: spanned(Id::new("a")),
                         target: spanned(Id::new("b")),
                         relation_type: spanned("->"),
-                        type_spec: None,
+                        type_spec: TypeSpec::default(),
                         label: None,
                     }],
                 },
@@ -1199,12 +1181,12 @@ mod tests {
                         source: spanned(Id::new("c")),
                         target: spanned(Id::new("d")),
                         relation_type: spanned("->"),
-                        type_spec: None,
+                        type_spec: TypeSpec::default(),
                         label: None,
                     }],
                 },
             ],
-            attributes: vec![],
+            type_spec: TypeSpec::default(),
         };
 
         let mut folder = Desugar::new();
@@ -1235,16 +1217,19 @@ mod tests {
                 title: Some(spanned("condition".to_string())),
                 elements: vec![],
             },
-            attributes: vec![
-                Attribute {
-                    name: spanned("background_color"),
-                    value: AttributeValue::String(spanned("#f0f0f0".to_string())),
-                },
-                Attribute {
-                    name: spanned("border_style"),
-                    value: AttributeValue::String(spanned("dashed".to_string())),
-                },
-            ],
+            type_spec: TypeSpec {
+                type_name: None,
+                attributes: vec![
+                    Attribute {
+                        name: spanned("background_color"),
+                        value: AttributeValue::String(spanned("#f0f0f0".to_string())),
+                    },
+                    Attribute {
+                        name: spanned("border_style"),
+                        value: AttributeValue::String(spanned("dashed".to_string())),
+                    },
+                ],
+            },
         };
 
         let mut folder = Desugar::new();
@@ -1252,9 +1237,15 @@ mod tests {
 
         match result {
             Element::Fragment(fragment) => {
-                assert_eq!(fragment.attributes.len(), 2);
-                assert_eq!(*fragment.attributes[0].name.inner(), "background_color");
-                assert_eq!(*fragment.attributes[1].name.inner(), "border_style");
+                assert_eq!(fragment.type_spec.attributes.len(), 2);
+                assert_eq!(
+                    *fragment.type_spec.attributes[0].name.inner(),
+                    "background_color"
+                );
+                assert_eq!(
+                    *fragment.type_spec.attributes[1].name.inner(),
+                    "border_style"
+                );
             }
             _ => panic!("Expected Fragment element"),
         }
@@ -1275,7 +1266,7 @@ mod tests {
                     elements: vec![],
                 },
             ],
-            attributes: vec![],
+            type_spec: TypeSpec::default(),
         };
 
         let opt_block = Element::OptBlock {
@@ -1284,7 +1275,7 @@ mod tests {
                 title: Some(spanned("outer condition".to_string())),
                 elements: vec![nested_alt],
             },
-            attributes: vec![],
+            type_spec: TypeSpec::default(),
         };
 
         let mut folder = Desugar::new();
@@ -1317,7 +1308,7 @@ mod tests {
                 title: None,
                 elements: vec![],
             },
-            attributes: vec![],
+            type_spec: TypeSpec::default(),
         };
 
         let mut folder = Desugar::new();
@@ -1341,7 +1332,7 @@ mod tests {
                 title: None,
                 elements: vec![],
             },
-            attributes: vec![],
+            type_spec: TypeSpec::default(),
         };
 
         let mut folder = Desugar::new();
@@ -1360,7 +1351,7 @@ mod tests {
     #[test]
     fn test_desugar_preserves_note() {
         let note = Element::Note(Note {
-            attributes: vec![],
+            type_spec: TypeSpec::default(),
             content: spanned("Simple note".to_string()),
         });
 
@@ -1369,7 +1360,7 @@ mod tests {
 
         match result {
             Element::Note(note_result) => {
-                assert_eq!(note_result.attributes.len(), 0);
+                assert_eq!(note_result.type_spec.attributes.len(), 0);
                 assert_eq!(note_result.content.inner(), "Simple note");
             }
             _ => panic!("Expected Note element"),
@@ -1379,16 +1370,19 @@ mod tests {
     #[test]
     fn test_desugar_preserves_note_attributes() {
         let note = Element::Note(Note {
-            attributes: vec![
-                Attribute {
-                    name: spanned("align"),
-                    value: AttributeValue::String(spanned("left".to_string())),
-                },
-                Attribute {
-                    name: spanned("on"),
-                    value: AttributeValue::Identifiers(vec![spanned(Id::new("component"))]),
-                },
-            ],
+            type_spec: TypeSpec {
+                type_name: None,
+                attributes: vec![
+                    Attribute {
+                        name: spanned("align"),
+                        value: AttributeValue::String(spanned("left".to_string())),
+                    },
+                    Attribute {
+                        name: spanned("on"),
+                        value: AttributeValue::Identifiers(vec![spanned(Id::new("component"))]),
+                    },
+                ],
+            },
             content: spanned("Note with attributes".to_string()),
         });
 
@@ -1397,9 +1391,9 @@ mod tests {
 
         match result {
             Element::Note(note_result) => {
-                assert_eq!(note_result.attributes.len(), 2);
-                assert_eq!(*note_result.attributes[0].name.inner(), "align");
-                assert_eq!(*note_result.attributes[1].name.inner(), "on");
+                assert_eq!(note_result.type_spec.attributes.len(), 2);
+                assert_eq!(*note_result.type_spec.attributes[0].name.inner(), "align");
+                assert_eq!(*note_result.type_spec.attributes[1].name.inner(), "on");
                 assert_eq!(note_result.content.inner(), "Note with attributes");
             }
             _ => panic!("Expected Note element"),
@@ -1412,28 +1406,34 @@ mod tests {
         let parent_component = Element::Component {
             name: spanned(Id::new("parent")),
             display_name: None,
-            type_name: spanned(Id::new("Rectangle")),
-            attributes: vec![],
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![],
+            },
             nested_elements: vec![
                 Element::Component {
                     name: spanned(Id::new("child1")),
                     display_name: None,
-                    type_name: spanned(Id::new("Oval")),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(spanned(Id::new("Oval"))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Component {
                     name: spanned(Id::new("child2")),
                     display_name: None,
-                    type_name: spanned(Id::new("Rectangle")),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(spanned(Id::new("Rectangle"))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Relation {
                     source: spanned(Id::new("child1")),
                     target: spanned(Id::new("child2")),
                     relation_type: spanned("->"),
-                    type_spec: None,
+                    type_spec: TypeSpec::default(),
                     label: None,
                 },
             ],
@@ -1469,26 +1469,32 @@ mod tests {
         let level1 = Element::Component {
             name: spanned(Id::new("level1")),
             display_name: None,
-            type_name: spanned(Id::new("Rectangle")),
-            attributes: vec![],
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![],
+            },
             nested_elements: vec![Element::Component {
                 name: spanned(Id::new("level2")),
                 display_name: None,
-                type_name: spanned(Id::new("Rectangle")),
-                attributes: vec![],
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Rectangle"))),
+                    attributes: vec![],
+                },
                 nested_elements: vec![
                     Element::Component {
                         name: spanned(Id::new("level3")),
                         display_name: None,
-                        type_name: spanned(Id::new("Oval")),
-                        attributes: vec![],
+                        type_spec: TypeSpec {
+                            type_name: Some(spanned(Id::new("Oval"))),
+                            attributes: vec![],
+                        },
                         nested_elements: vec![],
                     },
                     Element::Relation {
                         source: spanned(Id::new("level3")),
                         target: spanned(Id::new("sibling")),
                         relation_type: spanned("->"),
-                        type_spec: None,
+                        type_spec: TypeSpec::default(),
                         label: None,
                     },
                 ],
@@ -1535,18 +1541,23 @@ mod tests {
         let parent_component = Element::Component {
             name: spanned(Id::new("parent")),
             display_name: None,
-            type_name: spanned(Id::new("Rectangle")),
-            attributes: vec![],
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![],
+            },
             nested_elements: vec![
                 Element::Component {
                     name: spanned(Id::new("child")),
                     display_name: None,
-                    type_name: spanned(Id::new("Oval")),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(spanned(Id::new("Oval"))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Activate {
                     component: spanned(Id::new("child")),
+                    type_spec: TypeSpec::default(),
                 },
             ],
         };
@@ -1559,7 +1570,7 @@ mod tests {
         } = result
         {
             let activate = nested_elements.iter().find_map(|e| match e {
-                Element::Activate { component } => Some(component),
+                Element::Activate { component, .. } => Some(component),
                 _ => None,
             });
 
@@ -1578,21 +1589,28 @@ mod tests {
         let parent_component = Element::Component {
             name: spanned(Id::new("parent")),
             display_name: None,
-            type_name: spanned(Id::new("Rectangle")),
-            attributes: vec![],
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![],
+            },
             nested_elements: vec![
                 Element::Component {
                     name: spanned(Id::new("child")),
                     display_name: None,
-                    type_name: spanned(Id::new("Oval")),
-                    attributes: vec![],
+                    type_spec: TypeSpec {
+                        type_name: Some(spanned(Id::new("Oval"))),
+                        attributes: vec![],
+                    },
                     nested_elements: vec![],
                 },
                 Element::Note(Note {
-                    attributes: vec![Attribute {
-                        name: spanned("on"),
-                        value: AttributeValue::Identifiers(vec![spanned(Id::new("child"))]),
-                    }],
+                    type_spec: TypeSpec {
+                        type_name: None,
+                        attributes: vec![Attribute {
+                            name: spanned("on"),
+                            value: AttributeValue::Identifiers(vec![spanned(Id::new("child"))]),
+                        }],
+                    },
                     content: spanned("Note about child".to_string()),
                 }),
             ],
@@ -1611,7 +1629,11 @@ mod tests {
             });
 
             if let Some(note) = note {
-                let on_attr = note.attributes.iter().find(|a| *a.name.inner() == "on");
+                let on_attr = note
+                    .type_spec
+                    .attributes
+                    .iter()
+                    .find(|a| *a.name.inner() == "on");
                 if let Some(attr) = on_attr {
                     if let AttributeValue::Identifiers(ids) = &attr.value {
                         assert_eq!(ids[0].inner(), "parent::child");
@@ -1636,7 +1658,7 @@ mod tests {
             source: spanned(Id::new("system1")),
             target: spanned(Id::new("system2")),
             relation_type: spanned("->"),
-            type_spec: None,
+            type_spec: TypeSpec::default(),
             label: None,
         };
 
@@ -1658,13 +1680,15 @@ mod tests {
         let parent_component = Element::Component {
             name: spanned(Id::new("parent")),
             display_name: None,
-            type_name: spanned(Id::new("Rectangle")),
-            attributes: vec![],
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![],
+            },
             nested_elements: vec![Element::Relation {
                 source: Spanned::new(Id::new("child"), original_span),
                 target: spanned(Id::new("other")),
                 relation_type: spanned("->"),
-                type_spec: None,
+                type_spec: TypeSpec::default(),
                 label: None,
             }],
         };
@@ -1685,6 +1709,156 @@ mod tests {
             }
         } else {
             panic!("Expected Component element");
+        }
+    }
+
+    #[test]
+    fn test_desugar_preserves_type_spec_in_relations() {
+        // Verify that TypeSpec in relations is preserved during desugaring
+        let relation = Element::Relation {
+            source: spanned(Id::new("a")),
+            target: spanned(Id::new("b")),
+            relation_type: spanned("->"),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Arrow"))),
+                attributes: vec![Attribute {
+                    name: spanned("color"),
+                    value: AttributeValue::String(spanned("red".to_string())),
+                }],
+            },
+            label: None,
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(relation);
+
+        match result {
+            Element::Relation { type_spec, .. } => {
+                assert_eq!(*type_spec.type_name.as_ref().unwrap().inner(), "Arrow");
+                assert_eq!(type_spec.attributes.len(), 1);
+                assert_eq!(*type_spec.attributes[0].name.inner(), "color");
+                match &type_spec.attributes[0].value {
+                    AttributeValue::String(s) => assert_eq!(s.inner(), "red"),
+                    _ => panic!("Expected string attribute value"),
+                }
+            }
+            _ => panic!("Expected Relation"),
+        }
+    }
+
+    #[test]
+    fn test_fragment_sugar_preserves_type_spec() {
+        // Verify opt/alt/loop blocks preserve TypeSpec when desugared to Fragment
+        let opt_block = Element::OptBlock {
+            keyword_span: Span::new(0..3),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("CustomFragment"))),
+                attributes: vec![Attribute {
+                    name: spanned("bg"),
+                    value: AttributeValue::String(spanned("yellow".to_string())),
+                }],
+            },
+            section: FragmentSection {
+                title: Some(spanned("condition".to_string())),
+                elements: vec![],
+            },
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(opt_block);
+
+        match result {
+            Element::Fragment(fragment) => {
+                assert_eq!(*fragment.operation.inner(), "opt");
+                assert_eq!(
+                    *fragment.type_spec.type_name.as_ref().unwrap().inner(),
+                    "CustomFragment"
+                );
+                assert_eq!(fragment.type_spec.attributes.len(), 1);
+                assert_eq!(*fragment.type_spec.attributes[0].name.inner(), "bg");
+                assert_eq!(fragment.sections.len(), 1);
+                assert_eq!(
+                    fragment.sections[0].title.as_ref().unwrap().inner(),
+                    "condition"
+                );
+            }
+            _ => panic!("Expected Fragment"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_preserves_type_spec_in_activate_statement() {
+        // Verify TypeSpec in activate statement is preserved
+        let activate = Element::Activate {
+            component: spanned(Id::new("user")),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("CustomActivation"))),
+                attributes: vec![Attribute {
+                    name: spanned("fill"),
+                    value: AttributeValue::String(spanned("green".to_string())),
+                }],
+            },
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(activate);
+
+        match result {
+            Element::Activate {
+                component,
+                type_spec,
+            } => {
+                assert_eq!(*component.inner(), "user");
+                assert_eq!(
+                    *type_spec.type_name.as_ref().unwrap().inner(),
+                    "CustomActivation"
+                );
+                assert_eq!(type_spec.attributes.len(), 1);
+                assert_eq!(*type_spec.attributes[0].name.inner(), "fill");
+            }
+            _ => panic!("Expected Activate"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_loop_block_preserves_type_spec() {
+        // Verify loop blocks preserve TypeSpec with attributes
+        let loop_block = Element::LoopBlock {
+            keyword_span: Span::new(0..4),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("RepeatFragment"))),
+                attributes: vec![
+                    Attribute {
+                        name: spanned("border"),
+                        value: AttributeValue::String(spanned("dashed".to_string())),
+                    },
+                    Attribute {
+                        name: spanned("color"),
+                        value: AttributeValue::String(spanned("blue".to_string())),
+                    },
+                ],
+            },
+            section: FragmentSection {
+                title: Some(spanned("retry".to_string())),
+                elements: vec![],
+            },
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(loop_block);
+
+        match result {
+            Element::Fragment(fragment) => {
+                assert_eq!(*fragment.operation.inner(), "loop");
+                assert_eq!(
+                    *fragment.type_spec.type_name.as_ref().unwrap().inner(),
+                    "RepeatFragment"
+                );
+                assert_eq!(fragment.type_spec.attributes.len(), 2);
+                assert_eq!(*fragment.type_spec.attributes[0].name.inner(), "border");
+                assert_eq!(*fragment.type_spec.attributes[1].name.inner(), "color");
+            }
+            _ => panic!("Expected Fragment"),
         }
     }
 }

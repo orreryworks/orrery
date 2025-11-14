@@ -40,6 +40,7 @@ pub enum Token<'src> {
     Equals,      // =
     Colon,       // :
     DoubleColon, // ::
+    At,          // @
 
     // Punctuation
     LeftBrace,    // {
@@ -139,6 +140,7 @@ impl fmt::Display for Token<'_> {
             Token::Equals => write!(f, "="),
             Token::Colon => write!(f, ":"),
             Token::DoubleColon => write!(f, "::"),
+            Token::At => write!(f, "@"),
 
             Token::LeftBrace => write!(f, "{{"),
             Token::RightBrace => write!(f, "}}"),

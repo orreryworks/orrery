@@ -85,8 +85,13 @@ fn string_literal<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
 
 /// Parse a float literal
 fn float_literal<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
-    float
-        .map(Token::FloatLiteral)
+    // Parse float but ensure it's not followed by identifier characters
+    // This prevents "inf" in "info_note" from being parsed as a float literal
+    (
+        float,
+        peek(not(one_of(|c: char| c.is_alphanumeric() || c == '_'))),
+    )
+        .map(|(f, _)| Token::FloatLiteral(f))
         .context(StrContext::Label("float literal"))
         .parse_next(input)
 }
@@ -184,6 +189,7 @@ fn single_char_token<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
         '-'.value(Token::Plain),
         '='.value(Token::Equals),
         ':'.value(Token::Colon),
+        '@'.value(Token::At),
         '{'.value(Token::LeftBrace),
         '}'.value(Token::RightBrace),
         '['.value(Token::LeftBracket),
@@ -330,6 +336,7 @@ mod tests {
         test_single_token("-", Token::Plain);
         test_single_token("=", Token::Equals);
         test_single_token(":", Token::Colon);
+        test_single_token("@", Token::At);
     }
 
     #[test]
@@ -384,6 +391,34 @@ mod tests {
         test_single_token("42", Token::FloatLiteral(42.0));
         test_single_token("0", Token::FloatLiteral(0.0));
         test_single_token("123", Token::FloatLiteral(123.0));
+    }
+
+    #[test]
+    fn test_float_inf_vs_identifiers() {
+        // Special float values when standalone (followed by non-identifier chars)
+        test_single_token("inf ", Token::FloatLiteral(f32::INFINITY));
+        test_single_token("infinity ", Token::FloatLiteral(f32::INFINITY));
+        test_single_token("-inf ", Token::FloatLiteral(f32::NEG_INFINITY)); // Negative infinity
+
+        // Identifiers that start with "inf" or "infinity" should NOT be parsed as floats
+        // These should be parsed as identifiers
+        test_single_token("InfoNote", Token::Identifier("InfoNote"));
+        test_single_token("info", Token::Identifier("info"));
+        test_single_token("information", Token::Identifier("information"));
+        test_single_token("infinite", Token::Identifier("infinite"));
+        test_single_token("infinity_pool", Token::Identifier("infinity_pool"));
+
+        // Test in context with other tokens
+        let tokens = tokenize("inf;").expect("Should tokenize");
+        assert_eq!(tokens.len(), 2);
+        assert!(matches!(tokens[0].token, Token::FloatLiteral(_)));
+        assert!(matches!(tokens[1].token, Token::Semicolon));
+
+        // Test identifier starting with inf in context
+        let tokens = tokenize("InfoNote;").expect("Should tokenize");
+        assert_eq!(tokens.len(), 2);
+        assert!(matches!(tokens[0].token, Token::Identifier("InfoNote")));
+        assert!(matches!(tokens[1].token, Token::Semicolon));
     }
 
     #[test]

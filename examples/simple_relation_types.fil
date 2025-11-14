@@ -19,8 +19,8 @@ app -> database;
 app -> [stroke=[color="green", width=2.0]] cache: "Cache data";
 
 // Relations using custom types
-database -> [ThickRedArrow] cache: "Sync";
-cache -> [ThickRedArrow] app: "Fast response";
+database -> @ThickRedArrow cache: "Sync";
+cache -> @ThickRedArrow app: "Fast response";
 
 // Custom type with additional attributes
-app -> [BlueArrow; style="curved"] database: "Main queries";
+app -> @BlueArrow[style="curved"] database: "Main queries";

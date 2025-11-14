@@ -12,21 +12,53 @@ use std::fmt;
 
 use super::span::{Span, Spanned};
 use crate::identifier::Id;
-#[derive(Debug)]
-pub struct TypeDefinition<'a> {
-    pub name: Spanned<Id>,
-    pub base_type: Spanned<Id>,
+
+/// Type Specifier - used in both declarations and invocations
+///
+/// Represents a type with optional attributes:
+/// - `TypeName[attrs]` - Named with attributes
+/// - `TypeName` - Named without attributes
+/// - `[attrs]` - Anonymous (no type name, just attributes)
+#[derive(Debug, Clone, Default)]
+pub struct TypeSpec<'a> {
+    pub type_name: Option<Spanned<Id>>,
     pub attributes: Vec<Attribute<'a>>,
 }
 
-impl TypeDefinition<'_> {
+impl<'a> TypeSpec<'a> {
     pub fn span(&self) -> Span {
-        let span = self.name.span().union(self.base_type.span());
+        match &self.type_name {
+            Some(name) => self
+                .attributes
+                .iter()
+                .map(|attr| attr.span())
+                .fold(name.span(), |acc, span| acc.union(span)),
+            None => self
+                .attributes
+                .iter()
+                .map(|attr| attr.span())
+                .reduce(|acc, span| acc.union(span))
+                .unwrap_or_default(),
+        }
+    }
+}
 
-        self.attributes
-            .iter()
-            .map(|attr| attr.span())
-            .fold(span, |acc, span| acc.union(span))
+impl<'a> fmt::Display for TypeSpec<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(name) = &self.type_name {
+            write!(f, "{}", name)?;
+        }
+        if !self.attributes.is_empty() {
+            write!(f, "[")?;
+            for (i, attr) in self.attributes.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", attr)?;
+            }
+            write!(f, "]")?;
+        }
+        Ok(())
     }
 }
 
@@ -201,6 +233,25 @@ pub struct Attribute<'a> {
     pub value: AttributeValue<'a>,
 }
 
+impl<'a> fmt::Display for Attribute<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}={}", self.name, self.value)
+    }
+}
+
+/// Type Definition - declares a new type name as an alias with attributes
+#[derive(Debug)]
+pub struct TypeDefinition<'a> {
+    pub name: Spanned<Id>,
+    pub type_spec: TypeSpec<'a>,
+}
+
+impl TypeDefinition<'_> {
+    pub fn span(&self) -> Span {
+        self.name.span().union(self.type_spec.span())
+    }
+}
+
 #[derive(Debug)]
 pub struct Diagram<'a> {
     pub kind: Spanned<&'a str>,
@@ -249,44 +300,43 @@ impl FragmentSection<'_> {
     }
 }
 
+/// Fragment block
+///
+/// **Fields:**
+/// - `operation` - The fragment operation/title as a string literal
+/// - `type_spec` - Optional type specification with attributes
+/// - `sections` - One or more fragment sections containing elements
 #[derive(Debug)]
 pub struct Fragment<'a> {
     pub operation: Spanned<String>,
+    pub type_spec: TypeSpec<'a>,
     pub sections: Vec<FragmentSection<'a>>,
-    pub attributes: Vec<Attribute<'a>>,
 }
 
 impl Fragment<'_> {
     pub fn span(&self) -> Span {
+        let span = self.operation.span().union(self.type_spec.span());
         self.sections
             .iter()
             .map(|section| section.span())
-            .fold(self.operation.span(), |acc, span| acc.union(span))
+            .fold(span, |acc, s| acc.union(s))
     }
 }
 
 /// AST node representing a note element
 ///
-/// **Syntax:**
-/// ```text
-/// note [attributes]: "content";
-/// ```
-///
 /// **Fields:**
-/// - `attributes` - Optional configuration for positioning, styling, and attachment
+/// - `type_spec` - Optional type specification with attributes for positioning, styling, and attachment
 /// - `content` - The note text as a string literal (supports escape sequences)
 #[derive(Debug)]
 pub struct Note<'a> {
-    pub attributes: Vec<Attribute<'a>>,
+    pub type_spec: TypeSpec<'a>,
     pub content: Spanned<String>,
 }
 
 impl Note<'_> {
     pub fn span(&self) -> Span {
-        self.attributes
-            .iter()
-            .map(|attr| attr.span())
-            .fold(self.content.span(), |acc, span| acc.union(span))
+        self.content.span().union(self.type_spec.span())
     }
 }
 
@@ -295,30 +345,26 @@ pub enum Element<'a> {
     Component {
         name: Spanned<Id>,
         display_name: Option<Spanned<String>>,
-        type_name: Spanned<Id>,
-        attributes: Vec<Attribute<'a>>,
+        type_spec: TypeSpec<'a>,
         nested_elements: Vec<Element<'a>>,
     },
-    /// Relation between two components
-    ///
-    /// Note: `source` and `target` are `String` instead of `&'a str` because they may be
-    /// nested identifiers (e.g., "frontend::app") created by joining multiple parts with "::".
     Relation {
         source: Spanned<Id>,
         target: Spanned<Id>,
         relation_type: Spanned<&'a str>,
-        type_spec: Option<RelationTypeSpec<'a>>,
+        type_spec: TypeSpec<'a>,
         label: Option<Spanned<String>>,
     },
     Diagram(Diagram<'a>),
     Fragment(Fragment<'a>),
     ActivateBlock {
         component: Spanned<Id>,
+        type_spec: TypeSpec<'a>,
         elements: Vec<Element<'a>>,
     },
-    /// Explicit activation of a component
     Activate {
         component: Spanned<Id>,
+        type_spec: TypeSpec<'a>,
     },
     /// Explicit deactivation of a component
     Deactivate {
@@ -327,38 +373,38 @@ pub enum Element<'a> {
     /// Alt/else block (sugar syntax for fragment with "alt" operation)
     AltElseBlock {
         keyword_span: Span,
+        type_spec: TypeSpec<'a>,
         sections: Vec<FragmentSection<'a>>,
-        attributes: Vec<Attribute<'a>>,
     },
     /// Opt block (sugar syntax for fragment with "opt" operation)
     OptBlock {
         keyword_span: Span,
+        type_spec: TypeSpec<'a>,
         section: FragmentSection<'a>,
-        attributes: Vec<Attribute<'a>>,
     },
     /// Loop block (sugar syntax for fragment with "loop" operation)
     LoopBlock {
         keyword_span: Span,
+        type_spec: TypeSpec<'a>,
         section: FragmentSection<'a>,
-        attributes: Vec<Attribute<'a>>,
     },
     /// Par block (sugar syntax for fragment with "par" operation)
     ParBlock {
         keyword_span: Span,
+        type_spec: TypeSpec<'a>,
         sections: Vec<FragmentSection<'a>>,
-        attributes: Vec<Attribute<'a>>,
     },
     /// Break block (sugar syntax for fragment with "break" operation)
     BreakBlock {
         keyword_span: Span,
+        type_spec: TypeSpec<'a>,
         section: FragmentSection<'a>,
-        attributes: Vec<Attribute<'a>>,
     },
     /// Critical block (sugar syntax for fragment with "critical" operation)
     CriticalBlock {
         keyword_span: Span,
+        type_spec: TypeSpec<'a>,
         section: FragmentSection<'a>,
-        attributes: Vec<Attribute<'a>>,
     },
     /// Note element with optional attributes and text content
     Note(Note<'a>),
@@ -370,16 +416,10 @@ impl Element<'_> {
             Element::Component {
                 name,
                 display_name,
-                type_name,
-                attributes,
+                type_spec,
                 nested_elements,
             } => {
-                let span = name.span().union(type_name.span());
-
-                let span = attributes
-                    .iter()
-                    .map(|attr| attr.span())
-                    .fold(span, |acc, span| acc.union(span));
+                let span = name.span().union(type_spec.span());
 
                 let mut span = nested_elements
                     .iter()
@@ -402,11 +442,8 @@ impl Element<'_> {
                 let mut span = source
                     .span()
                     .union(target.span())
-                    .union(relation_type.span());
-
-                if let Some(type_spec) = type_spec {
-                    span = span.union(type_spec.span());
-                }
+                    .union(relation_type.span())
+                    .union(type_spec.span());
 
                 if let Some(label) = label {
                     span = span.union(label.span());
@@ -418,31 +455,35 @@ impl Element<'_> {
             Element::Fragment(fragment) => fragment.span(),
             Element::ActivateBlock {
                 component,
+                type_spec,
                 elements,
-            } => elements
-                .iter()
-                .map(|elem| elem.span())
-                .fold(component.span(), |acc, span| acc.union(span)),
-            Element::Activate { component } => component.span(),
+            } => {
+                let span = component.span().union(type_spec.span());
+                elements
+                    .iter()
+                    .map(|elem| elem.span())
+                    .fold(span, |acc, s| acc.union(s))
+            }
+            Element::Activate {
+                component,
+                type_spec,
+            } => component.span().union(type_spec.span()),
             Element::Deactivate { component } => component.span(),
 
             // Fragment sugar syntax: multiple sections
             Element::AltElseBlock {
                 keyword_span,
+                type_spec,
                 sections,
-                attributes,
             }
             | Element::ParBlock {
                 keyword_span,
+                type_spec,
                 sections,
-                attributes,
             } => {
-                let mut span = *keyword_span;
+                let mut span = (*keyword_span).union(type_spec.span());
                 for section in sections {
                     span = span.union(section.span());
-                }
-                for attr in attributes {
-                    span = span.union(attr.span());
                 }
                 span
             }
@@ -450,53 +491,28 @@ impl Element<'_> {
             // Fragment sugar syntax: single section
             Element::OptBlock {
                 keyword_span,
+                type_spec,
                 section,
-                attributes,
             }
             | Element::LoopBlock {
                 keyword_span,
+                type_spec,
                 section,
-                attributes,
             }
             | Element::BreakBlock {
                 keyword_span,
+                type_spec,
                 section,
-                attributes,
             }
             | Element::CriticalBlock {
                 keyword_span,
+                type_spec,
                 section,
-                attributes,
-            } => attributes
-                .iter()
-                .map(|attr| attr.span())
-                .fold((*keyword_span).union(section.span()), |acc, span| {
-                    acc.union(span)
-                }),
+            } => (*keyword_span)
+                .union(type_spec.span())
+                .union(section.span()),
+
             Element::Note(note) => note.span(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct RelationTypeSpec<'a> {
-    pub type_name: Option<Spanned<Id>>,
-    pub attributes: Vec<Attribute<'a>>,
-}
-
-impl RelationTypeSpec<'_> {
-    pub fn span(&self) -> Span {
-        if let Some(type_name) = &self.type_name {
-            self.attributes
-                .iter()
-                .map(|attr| attr.span())
-                .fold(type_name.span(), |acc, span| acc.union(span))
-        } else {
-            self.attributes
-                .iter()
-                .map(|attr| attr.span())
-                .reduce(|acc, span| acc.union(span))
-                .unwrap_or_default()
         }
     }
 }

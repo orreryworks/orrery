@@ -1,6 +1,6 @@
 use winnow::{
     Parser as _,
-    combinator::{alt, delimited, not, opt, preceded, repeat, separated},
+    combinator::{alt, delimited, opt, preceded, repeat, separated},
     error::{ContextError, ErrMode, StrContext},
     stream::{Stream, TokenSlice},
     token::any,
@@ -309,7 +309,75 @@ fn wrapped_attributes<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types:
     .parse_next(input)
 }
 
+/// Parse a TypeSpec: TypeName[attrs] or TypeName
+///
+/// Returns a TypeSpec with:
+/// - type_name: Always Some(id) - identifier is required
+/// - attributes: parsed attributes if present, empty vec otherwise
+fn type_spec<'src>(input: &mut Input<'src>) -> IResult<'src, types::TypeSpec<'src>> {
+    // Parse REQUIRED identifier
+    let type_name = identifier.parse_next(input)?;
+
+    ws_comments0.parse_next(input)?;
+
+    let attributes = opt(wrapped_attributes)
+        .map(|attrs| attrs.unwrap_or_default())
+        .parse_next(input)?;
+
+    Ok(types::TypeSpec {
+        type_name: Some(type_name),
+        attributes,
+    })
+}
+
+/// Parse an invocation type spec: @TypeName[attrs]? or [attrs] or nothing
+///
+/// This is used for invocations
+/// Similar to `type_spec()` but with `@` prefix for the identifier.
+///
+/// Returns:
+/// - `@TypeName[attrs]` → TypeSpec { type_name: Some(TypeName), attributes: [...] }
+/// - `@TypeName` → TypeSpec { type_name: Some(TypeName), attributes: [] }
+/// - `[attrs]` → TypeSpec { type_name: None, attributes: [...] }
+/// - (nothing) → TypeSpec::default() (sugar syntax)
+fn invocation_type_spec<'src>(input: &mut Input<'src>) -> IResult<'src, types::TypeSpec<'src>> {
+    // Parse optional @TypeName
+    // If @ is present, identifier is REQUIRED (cut_err prevents backtracking)
+    // If @ is absent, we can still parse [attributes] or nothing (sugar)
+    let type_name = opt(|input: &mut Input<'src>| {
+        // Parse @ token
+        any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::At))
+            .parse_next(input)?;
+
+        // After @, identifier is REQUIRED
+        cut_err(input, |input| {
+            ws_comments0.parse_next(input)?;
+            identifier
+                .context(StrContext::Label("type name after @"))
+                .parse_next(input)
+        })
+    })
+    .parse_next(input)?;
+
+    ws_comments0.parse_next(input)?;
+
+    let attributes = opt(wrapped_attributes)
+        .map(|attrs| attrs.unwrap_or_default())
+        .parse_next(input)?;
+
+    Ok(types::TypeSpec {
+        type_name,
+        attributes,
+    })
+}
+
 /// Parse a type definition
+///
+/// Syntax: `type Name = TypeSpec;`
+///
+/// Examples:
+/// - `type Button = Rectangle;`
+/// - `type StyledBox = Rectangle[fill_color="blue", border_width="2"];`
 fn type_definition<'src>(input: &mut Input<'src>) -> IResult<'src, types::TypeDefinition<'src>> {
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Type))
         .parse_next(input)?;
@@ -324,20 +392,12 @@ fn type_definition<'src>(input: &mut Input<'src>) -> IResult<'src, types::TypeDe
     .parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
-    let base_type = identifier.parse_next(input)?;
 
-    ws_comments0.parse_next(input)?;
-    let attributes = opt(wrapped_attributes)
-        .map(|attrs| attrs.unwrap_or_default())
-        .parse_next(input)?;
+    let type_spec = type_spec.parse_next(input)?;
 
     semicolon.parse_next(input)?;
 
-    Ok(types::TypeDefinition {
-        name,
-        base_type,
-        attributes,
-    })
+    Ok(types::TypeDefinition { name, type_spec })
 }
 
 /// Parse type definitions section
@@ -345,47 +405,6 @@ fn type_definitions<'src>(
     input: &mut Input<'src>,
 ) -> IResult<'src, Vec<types::TypeDefinition<'src>>> {
     repeat(0.., preceded(ws_comments0, type_definition)).parse_next(input)
-}
-
-/// Parse relation type specification inside brackets
-fn relation_type_spec<'src>(
-    input: &mut Input<'src>,
-) -> IResult<'src, types::RelationTypeSpec<'src>> {
-    alt((
-        // [TypeName; attributes] - type name with semicolon followed by attributes
-        (
-            identifier,
-            ws_comments0,
-            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Semicolon)),
-            ws_comments0,
-            attributes,
-        )
-            .map(|(type_name, _, _, _, attributes)| types::RelationTypeSpec {
-                type_name: Some(type_name),
-                attributes,
-            }),
-        // [TypeName] (no attributes or semicolon) - identifier NOT followed by equals
-        (
-            identifier,
-            ws_comments0,
-            not(any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Equals))),
-        )
-            .map(|(type_name, _, _)| types::RelationTypeSpec {
-                type_name: Some(type_name),
-                attributes: Vec::new(),
-            }),
-        // [attributes] (no type name) - attributes only
-        attributes.map(|attributes| types::RelationTypeSpec {
-            type_name: None,
-            attributes,
-        }),
-        // [] (empty type spec)
-        ws_comments0.map(|_| types::RelationTypeSpec {
-            type_name: None,
-            attributes: Vec::new(),
-        }),
-    ))
-    .parse_next(input)
 }
 
 /// Parse relation type (arrow with optional type specification)
@@ -404,6 +423,13 @@ fn relation_type<'src>(input: &mut Input<'src>) -> IResult<'src, &'src str> {
 }
 
 /// Parse a component with optional nested elements
+///
+/// Syntax: `identifier as "display_name" : TypeSpec { nested_elements };`
+///
+/// Examples:
+/// - `user: Person;`
+/// - `server as "API Server": Rectangle[fill_color="blue"];`
+/// - `container: Box { nested_component: Circle; };`
 fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
     let name = identifier.parse_next(input)?;
 
@@ -423,12 +449,7 @@ fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<'src, types
         .parse_next(input)?;
     ws_comments0.parse_next(input)?;
 
-    let type_name = identifier.parse_next(input)?;
-
-    ws_comments0.parse_next(input)?;
-    let attributes = opt(wrapped_attributes)
-        .map(|attrs| attrs.unwrap_or_default())
-        .parse_next(input)?;
+    let type_spec = type_spec.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
 
@@ -453,13 +474,20 @@ fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<'src, types
     Ok(types::Element::Component {
         name,
         display_name,
-        type_name,
-        attributes,
+        type_spec,
         nested_elements,
     })
 }
 
 /// Parse a complete relation statement
+///
+/// Syntax: `source -> @TypeSpec target : "label";`
+///
+/// Examples:
+/// - `user -> server;`
+/// - `user -> @AsyncCall server: "Request";`
+/// - `user -> @AsyncCall[color="blue"] server: "Request";`
+/// - `user -> [color="red"] server;` (anonymous TypeSpec)
 fn relation<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
     let source = nested_identifier.parse_next(input)?;
 
@@ -467,19 +495,9 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>
     let relation_type = relation_type.parse_next(input)?;
     ws_comments0.parse_next(input)?;
 
-    // Optional relation type specification in brackets
-    let type_spec = opt(delimited(
-        (
-            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBracket)),
-            ws_comments0,
-        ),
-        relation_type_spec,
-        (
-            ws_comments0,
-            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBracket)),
-        ),
-    ))
-    .parse_next(input)?;
+    let type_spec = opt(invocation_type_spec)
+        .parse_next(input)?
+        .unwrap_or_default();
 
     ws_comments0.parse_next(input)?;
     let target = nested_identifier.parse_next(input)?;
@@ -507,7 +525,7 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>
 /// Parse an activate block
 ///
 /// ## Grammar:
-///   `activate <nested_identifier> { <elements> };`
+///   `activate @TypeSpec <nested_identifier> { <elements> };`
 ///
 /// ## Notes:
 /// - Accepts nested identifiers (e.g., `parent::child`) and returns [`Spanned<String>`]
@@ -526,6 +544,12 @@ fn activate_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
     ws_comments1
         .context(StrContext::Label("whitespace after activate"))
         .parse_next(input)?;
+
+    let type_spec = opt(invocation_type_spec)
+        .parse_next(input)?
+        .unwrap_or_default();
+
+    ws_comments0.parse_next(input)?;
 
     let component = nested_identifier
         .context(StrContext::Label("component nested identifier"))
@@ -561,6 +585,7 @@ fn activate_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
 
     Ok(types::Element::ActivateBlock {
         component,
+        type_spec,
         elements: nested_elements,
     })
 }
@@ -660,9 +685,9 @@ macro_rules! single_section_parser {
             cut_err(input, |input| {
                 ws_comments0.parse_next(input)?;
 
-                let attributes = opt(wrapped_attributes)
-                    .map(|attrs| attrs.unwrap_or_default())
-                    .parse_next(input)?;
+                let type_spec = opt(invocation_type_spec)
+                    .parse_next(input)?
+                    .unwrap_or_default();
 
                 let section = parse_section_content(input, $title_ctx)?;
 
@@ -677,8 +702,8 @@ macro_rules! single_section_parser {
 
                 Ok(types::Element::$element_variant {
                     keyword_span,
+                    type_spec,
                     section,
-                    attributes,
                 })
             })
         }
@@ -701,9 +726,9 @@ macro_rules! multi_section_parser {
             cut_err(input, |input| {
                 ws_comments0.parse_next(input)?;
 
-                let attributes = opt(wrapped_attributes)
-                    .map(|attrs| attrs.unwrap_or_default())
-                    .parse_next(input)?;
+                let type_spec = opt(invocation_type_spec)
+                    .parse_next(input)?
+                    .unwrap_or_default();
 
                 let first_section = parse_section_content(input, $first_ctx)?;
                 let mut sections = vec![first_section];
@@ -734,8 +759,8 @@ macro_rules! multi_section_parser {
 
                 Ok(types::Element::$element_variant {
                     keyword_span,
+                    type_spec,
                     sections,
-                    attributes,
                 })
             })
         }
@@ -759,7 +784,7 @@ multi_section_parser!(
 );
 multi_section_parser!(par_block, Par, Par, "par title", "par title", ParBlock);
 
-/// Parse a fragment block: `fragment [attributes] "operation" { section+ };`
+/// Parse a fragment block: `fragment @TypeSpec "operation" { section+ };`
 fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
     // Parse "fragment" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Fragment))
@@ -769,10 +794,9 @@ fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
     cut_err(input, |input| {
         ws_comments0.parse_next(input)?;
 
-        // Parse optional attributes
-        let attributes = opt(wrapped_attributes)
-            .map(|attrs| attrs.unwrap_or_default())
-            .parse_next(input)?;
+        let type_spec = opt(invocation_type_spec)
+            .parse_next(input)?
+            .unwrap_or_default();
 
         ws_comments0.parse_next(input)?;
 
@@ -811,65 +835,74 @@ fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
 
         Ok(types::Element::Fragment(types::Fragment {
             operation,
+            type_spec,
             sections,
-            attributes,
         }))
     })
 }
 
-/// Shared helper to parse an activation-style statement after a specific keyword.
+/// Parse an explicit activate statement
 ///
 /// ## Grammar:
-///   `<keyword> <nested_identifier> ;`
+///   `activate @TypeSpec <nested_identifier> ;`
 ///
 /// ## Where:
-/// - `<keyword>` is one of: `activate`, `deactivate` (passed as a Token)
-/// - `<nested_identifier>` supports `::`-qualified names and returns ([`String`], [`Span`])
+/// - `@TypeSpec` is optional invocation type spec: `@TypeName[attrs]`, `@TypeName`, or omitted (sugar)
+/// - `<nested_identifier>` supports `::`-qualified component names
 /// - Optional whitespace and line comments are permitted between tokens
-///
-/// ## Span guarantees:
-/// - The returned `Spanned<String>` covers only the nested identifier; the keyword
-///   and the trailing semicolon are excluded.
-/// - This aligns with `Element::span()` behavior that mirrors the identifier span.
-fn parse_keyword_then_nested_identifier_then_semicolon<'src>(
-    input: &mut Input<'src>,
-    keyword: Token,
-) -> IResult<'src, Spanned<Id>> {
-    any.verify(|token: &PositionedToken<'_>| token.token == keyword)
-        .void()
-        .context(StrContext::Label("keyword"))
+fn activate_statement<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+    // Parse "activate" keyword
+    any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Activate))
+        .context(StrContext::Label("activate keyword"))
         .parse_next(input)?;
-    // Require at least one whitespace/comment after the keyword
+
     ws_comments1
-        .context(StrContext::Label("whitespace after keyword"))
+        .context(StrContext::Label("whitespace after activate"))
         .parse_next(input)?;
+
+    let type_spec = opt(invocation_type_spec)
+        .parse_next(input)?
+        .unwrap_or_default();
+
+    ws_comments0.parse_next(input)?;
+
     let component = nested_identifier
         .context(StrContext::Label("component nested identifier"))
         .parse_next(input)?;
-    ws_comments0.parse_next(input)?;
-    semicolon
-        .context(StrContext::Label("semicolon after activation statement"))
-        .parse_next(input)?;
-    Ok(component)
-}
 
-/// Parse an explicit activate statement: `activate <nested_identifier>;`
-///
-/// Notes:
-/// - Produces `Element::Activate { component: Spanned<String> }`
-/// - The element span is the identifier span (see `Element::span()` in parser_types)
-fn activate_statement<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
-    let component = parse_keyword_then_nested_identifier_then_semicolon(input, Token::Activate)?;
-    Ok(types::Element::Activate { component })
+    ws_comments0.parse_next(input)?;
+
+    semicolon
+        .context(StrContext::Label("semicolon after activate statement"))
+        .parse_next(input)?;
+
+    Ok(types::Element::Activate {
+        component,
+        type_spec,
+    })
 }
 
 /// Parse an explicit deactivate statement: `deactivate <nested_identifier>;`
-///
-/// Notes:
-/// - Produces `Element::Deactivate { component: Spanned<String> }`
-/// - The element span is the identifier span (see `Element::span()` in parser_types)
 fn deactivate_statement<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
-    let component = parse_keyword_then_nested_identifier_then_semicolon(input, Token::Deactivate)?;
+    // Parse "deactivate" keyword
+    any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Deactivate))
+        .context(StrContext::Label("deactivate keyword"))
+        .parse_next(input)?;
+
+    ws_comments1
+        .context(StrContext::Label("whitespace after deactivate"))
+        .parse_next(input)?;
+
+    let component = nested_identifier
+        .context(StrContext::Label("component nested identifier"))
+        .parse_next(input)?;
+
+    ws_comments0.parse_next(input)?;
+
+    semicolon
+        .context(StrContext::Label("semicolon after deactivate statement"))
+        .parse_next(input)?;
+
     Ok(types::Element::Deactivate { component })
 }
 
@@ -890,19 +923,20 @@ fn activate_element<'src>(input: &mut Input<'src>) -> IResult<'src, types::Eleme
     }
 }
 
-/// Parse a note element: `note [attributes]: "content";`
+/// Parse a note element: `note @TypeSpec: "content";`
 ///
 /// Syntax:
 /// - `note` keyword
-/// - Optional `[attributes]` block
+/// - Optional `@TypeSpec` (invocation pattern with `@` prefix or sugar syntax)
 /// - `:` separator
 /// - String literal content
 /// - `;` terminator
 ///
 /// Examples:
 /// - `note: "Simple note";`
-/// - `note [on=[component]]: "Note attached to component";`
-/// - `note [on=[a, b], align="left"]: "Note spanning multiple elements";`
+/// - `note @NoteType: "Typed note";`
+/// - `note @NoteType[on=[component]]: "Note attached to component";`
+/// - `note [on=[a, b], align="left"]: "Note with anonymous TypeSpec";`
 fn note_element<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
     // Parse 'note' keyword
     let _ = any
@@ -912,10 +946,9 @@ fn note_element<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'
 
     ws_comments0.parse_next(input)?;
 
-    // Parse optional attributes
-    let attributes = opt(wrapped_attributes)
-        .map(|attrs| attrs.unwrap_or_default())
-        .parse_next(input)?;
+    let type_spec = opt(invocation_type_spec)
+        .parse_next(input)?
+        .unwrap_or_default();
 
     ws_comments0.parse_next(input)?;
 
@@ -933,10 +966,7 @@ fn note_element<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'
     // Parse semicolon
     semicolon.parse_next(input)?;
 
-    Ok(types::Element::Note(types::Note {
-        attributes,
-        content,
-    }))
+    Ok(types::Element::Note(types::Note { type_spec, content }))
 }
 /// Parse any element (component or relation)
 fn elements<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types::Element<'src>>> {
@@ -1182,6 +1212,87 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[test]
+    fn test_relation_with_named_type() {
+        let input = "a -> @Arrow b;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let result = relation(&mut slice);
+        assert!(result.is_ok(), "Relation with @TypeName should parse");
+
+        match result.unwrap() {
+            types::Element::Relation { type_spec, .. } => {
+                assert!(type_spec.type_name.is_some());
+                assert_eq!(*type_spec.type_name.unwrap().inner(), "Arrow");
+                assert!(type_spec.attributes.is_empty());
+            }
+            _ => panic!("Expected Relation element"),
+        }
+    }
+
+    #[test]
+    fn test_relation_with_named_type_and_attributes() {
+        let input = "a -> @Arrow[color=\"red\", width=2] b;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let result = relation(&mut slice);
+        assert!(
+            result.is_ok(),
+            "Relation with @TypeName[attrs] should parse"
+        );
+
+        match result.unwrap() {
+            types::Element::Relation { type_spec, .. } => {
+                assert!(type_spec.type_name.is_some());
+                assert_eq!(*type_spec.type_name.unwrap().inner(), "Arrow");
+                assert_eq!(type_spec.attributes.len(), 2);
+                assert_eq!(*type_spec.attributes[0].name.inner(), "color");
+                assert_eq!(*type_spec.attributes[1].name.inner(), "width");
+            }
+            _ => panic!("Expected Relation element"),
+        }
+    }
+
+    #[test]
+    fn test_relation_with_anonymous_attributes() {
+        let input = "a -> [style=\"dashed\", width=3] b;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let result = relation(&mut slice);
+        assert!(result.is_ok(), "Relation with [attrs] should parse");
+
+        match result.unwrap() {
+            types::Element::Relation { type_spec, .. } => {
+                assert!(type_spec.type_name.is_none(), "Anonymous type has no name");
+                assert_eq!(type_spec.attributes.len(), 2);
+                assert_eq!(*type_spec.attributes[0].name.inner(), "style");
+                assert_eq!(*type_spec.attributes[1].name.inner(), "width");
+            }
+            _ => panic!("Expected Relation element"),
+        }
+    }
+
+    #[test]
+    fn test_relation_with_sugar_syntax() {
+        let input = "a -> b;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let result = relation(&mut slice);
+        assert!(result.is_ok(), "Relation with sugar syntax should parse");
+
+        match result.unwrap() {
+            types::Element::Relation { type_spec, .. } => {
+                assert!(type_spec.type_name.is_none());
+                assert!(type_spec.attributes.is_empty());
+            }
+            _ => panic!("Expected Relation element"),
+        }
+    }
+
     // Activation statement tests
 
     #[test]
@@ -1194,7 +1305,7 @@ mod tests {
         assert!(elem.is_ok(), "activate statement should parse");
 
         match elem.unwrap() {
-            types::Element::Activate { component } => {
+            types::Element::Activate { component, .. } => {
                 assert_eq!(*component.inner(), "user");
                 let id_span = first_identifier_span(&tokens);
                 assert_eq!(
@@ -1242,7 +1353,7 @@ mod tests {
             "activate with comments/whitespace should parse"
         );
         match elem.unwrap() {
-            types::Element::Activate { component } => {
+            types::Element::Activate { component, .. } => {
                 assert_eq!(*component.inner(), "user");
             }
             other => panic!("expected Activate element, got {:?}", other),
@@ -1297,7 +1408,7 @@ mod tests {
         let elem = activate_statement.parse_next(&mut slice);
         assert!(elem.is_ok(), "activate with nested identifier should parse");
         match elem.unwrap() {
-            types::Element::Activate { component } => {
+            types::Element::Activate { component, .. } => {
                 assert_eq!(*component.inner(), "parent::child");
                 let expected_span = nested_identifier_span(&tokens);
                 assert_eq!(
@@ -1305,6 +1416,82 @@ mod tests {
                     expected_span,
                     "component span should cover from first to last identifier"
                 );
+            }
+            other => panic!("expected Activate element, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_activate_statement_with_type_spec() {
+        let input = "activate @MyType user;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let elem = activate_statement.parse_next(&mut slice);
+        assert!(elem.is_ok(), "activate with type_spec should parse");
+
+        match elem.unwrap() {
+            types::Element::Activate {
+                component,
+                type_spec,
+            } => {
+                assert_eq!(*component.inner(), "user");
+                assert_eq!(
+                    type_spec.type_name.as_ref().map(|id| *id.inner()),
+                    Some(Id::new("MyType"))
+                );
+                assert!(type_spec.attributes.is_empty());
+            }
+            other => panic!("expected Activate element, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_activate_statement_with_type_spec_and_attributes() {
+        let input = "activate @MyType[color=\"red\"] user;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let elem = activate_statement.parse_next(&mut slice);
+        assert!(
+            elem.is_ok(),
+            "activate with type_spec and attributes should parse"
+        );
+
+        match elem.unwrap() {
+            types::Element::Activate {
+                component,
+                type_spec,
+            } => {
+                assert_eq!(*component.inner(), "user");
+                assert_eq!(
+                    type_spec.type_name.as_ref().map(|id| *id.inner()),
+                    Some(Id::new("MyType"))
+                );
+                assert_eq!(type_spec.attributes.len(), 1);
+                assert_eq!(*type_spec.attributes[0].name.inner(), "color");
+            }
+            other => panic!("expected Activate element, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_activate_statement_without_type_spec() {
+        let input = "activate user;";
+        let tokens = parse_tokens(input);
+        let mut slice = TokenSlice::new(&tokens);
+
+        let elem = activate_statement.parse_next(&mut slice);
+        assert!(elem.is_ok(), "activate without type_spec should parse");
+
+        match elem.unwrap() {
+            types::Element::Activate {
+                component,
+                type_spec,
+            } => {
+                assert_eq!(*component.inner(), "user");
+                assert_eq!(type_spec.type_name, None);
+                assert!(type_spec.attributes.is_empty());
             }
             other => panic!("expected Activate element, got {:?}", other),
         }
@@ -1356,6 +1543,7 @@ mod tests {
         if let types::Element::ActivateBlock {
             component,
             elements,
+            type_spec: _type_spec,
         } = element
         {
             assert_eq!(*component.inner(), "user");
@@ -1874,12 +2062,224 @@ mod tests {
         assert!(result.is_ok());
         let typedef = result.unwrap();
         assert_eq!(*typedef.name.inner(), "MyType");
-        assert_eq!(*typedef.base_type.inner(), "Rectangle");
+        assert_eq!(
+            *typedef.type_spec.type_name.as_ref().unwrap().inner(),
+            "Rectangle"
+        );
 
         // Test failure cases
         let tokens = tokenize("MyType = Rectangle;").expect("Failed to tokenize");
         let mut input = FilamentTokenSlice::new(&tokens);
         assert!(type_definition(&mut input).is_err());
+    }
+
+    #[test]
+    fn test_type_spec_function() {
+        // Test: TypeName only
+        let tokens = tokenize("Rectangle").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = type_spec(&mut input);
+        assert!(result.is_ok(), "TypeName should parse");
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_some());
+        assert_eq!(*spec.type_name.unwrap().inner(), "Rectangle");
+        assert!(spec.attributes.is_empty());
+
+        // Test: TypeName[single attribute]
+        let tokens = tokenize("Rectangle[fill_color=\"blue\"]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = type_spec(&mut input);
+        assert!(result.is_ok(), "TypeName[single attribute] should parse");
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_some());
+        assert_eq!(*spec.type_name.unwrap().inner(), "Rectangle");
+        assert_eq!(spec.attributes.len(), 1);
+        assert_eq!(*spec.attributes[0].name.inner(), "fill_color");
+
+        // Test: TypeName[multiple attributes]
+        let tokens =
+            tokenize("Service[fill=\"blue\", size=100, active=1]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = type_spec(&mut input);
+        assert!(result.is_ok(), "TypeName[multiple attributes] should parse");
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_some());
+        assert_eq!(*spec.type_name.unwrap().inner(), "Service");
+        assert_eq!(spec.attributes.len(), 3);
+        assert_eq!(*spec.attributes[0].name.inner(), "fill");
+        assert_eq!(*spec.attributes[1].name.inner(), "size");
+        assert_eq!(*spec.attributes[2].name.inner(), "active");
+
+        // Test: TypeName[nested attributes]
+        let tokens =
+            tokenize("Rectangle[text=[font=\"Arial\", size=12]]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = type_spec(&mut input);
+        assert!(result.is_ok(), "TypeName[nested attributes] should parse");
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_some());
+        assert_eq!(*spec.type_name.unwrap().inner(), "Rectangle");
+        assert_eq!(spec.attributes.len(), 1);
+        assert_eq!(*spec.attributes[0].name.inner(), "text");
+        match &spec.attributes[0].value {
+            types::AttributeValue::Attributes(nested) => {
+                assert_eq!(nested.len(), 2);
+                assert_eq!(*nested[0].name.inner(), "font");
+                assert_eq!(*nested[1].name.inner(), "size");
+            }
+            _ => panic!("Expected nested attributes"),
+        }
+
+        // Test: TypeName[] (empty attributes)
+        let tokens = tokenize("Rectangle[]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = type_spec(&mut input);
+        assert!(result.is_ok(), "TypeName[] should parse");
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_some());
+        assert_eq!(*spec.type_name.unwrap().inner(), "Rectangle");
+        assert!(spec.attributes.is_empty());
+
+        // Test: Missing TypeName should FAIL (TypeName is required)
+        let tokens = tokenize("[fill_color=\"blue\"]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = type_spec(&mut input);
+        assert!(
+            result.is_err(),
+            "type_spec requires TypeName - [attributes] alone should fail"
+        );
+    }
+
+    #[test]
+    fn test_invocation_type_spec_function() {
+        // Test: @TypeName
+        let tokens = tokenize("@Arrow").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = invocation_type_spec(&mut input);
+        assert!(result.is_ok(), "@TypeName should parse");
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_some());
+        assert_eq!(*spec.type_name.unwrap().inner(), "Arrow");
+        assert!(spec.attributes.is_empty());
+
+        // Test: @TypeName[single attribute]
+        let tokens = tokenize("@Arrow[color=\"red\"]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = invocation_type_spec(&mut input);
+        assert!(result.is_ok(), "@TypeName[single attribute] should parse");
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_some());
+        assert_eq!(*spec.type_name.unwrap().inner(), "Arrow");
+        assert_eq!(spec.attributes.len(), 1);
+        assert_eq!(*spec.attributes[0].name.inner(), "color");
+
+        // Test: @TypeName[multiple attributes]
+        let tokens = tokenize("@Arrow[color=\"red\", width=2, style=\"dashed\"]")
+            .expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = invocation_type_spec(&mut input);
+        assert!(
+            result.is_ok(),
+            "@TypeName[multiple attributes] should parse"
+        );
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_some());
+        assert_eq!(*spec.type_name.unwrap().inner(), "Arrow");
+        assert_eq!(spec.attributes.len(), 3);
+        assert_eq!(*spec.attributes[0].name.inner(), "color");
+        assert_eq!(*spec.attributes[1].name.inner(), "width");
+        assert_eq!(*spec.attributes[2].name.inner(), "style");
+
+        // Test: @TypeName[nested attributes]
+        let tokens =
+            tokenize("@Arrow[stroke=[color=\"blue\", width=3]]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = invocation_type_spec(&mut input);
+        assert!(result.is_ok(), "@TypeName[nested attributes] should parse");
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_some());
+        assert_eq!(*spec.type_name.unwrap().inner(), "Arrow");
+        assert_eq!(spec.attributes.len(), 1);
+        assert_eq!(*spec.attributes[0].name.inner(), "stroke");
+        match &spec.attributes[0].value {
+            types::AttributeValue::Attributes(nested) => {
+                assert_eq!(nested.len(), 2);
+                assert_eq!(*nested[0].name.inner(), "color");
+                assert_eq!(*nested[1].name.inner(), "width");
+            }
+            _ => panic!("Expected nested attributes"),
+        }
+
+        // Test: [single attribute] without @ (anonymous)
+        let tokens = tokenize("[color=\"red\"]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = invocation_type_spec(&mut input);
+        assert!(
+            result.is_ok(),
+            "[single attribute] without @ should parse (anonymous)"
+        );
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_none());
+        assert_eq!(spec.attributes.len(), 1);
+        assert_eq!(*spec.attributes[0].name.inner(), "color");
+
+        // Test: [multiple attributes] without @ (anonymous)
+        let tokens =
+            tokenize("[style=\"dashed\", width=2, color=\"blue\"]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = invocation_type_spec(&mut input);
+        assert!(
+            result.is_ok(),
+            "[multiple attributes] without @ should parse"
+        );
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_none());
+        assert_eq!(spec.attributes.len(), 3);
+        assert_eq!(*spec.attributes[0].name.inner(), "style");
+        assert_eq!(*spec.attributes[1].name.inner(), "width");
+        assert_eq!(*spec.attributes[2].name.inner(), "color");
+
+        // Test: [nested attributes] without @ (anonymous)
+        let tokens = tokenize("[stroke=[color=\"green\", width=1.5]]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = invocation_type_spec(&mut input);
+        assert!(result.is_ok(), "[nested attributes] should parse");
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_none());
+        assert_eq!(spec.attributes.len(), 1);
+        match &spec.attributes[0].value {
+            types::AttributeValue::Attributes(nested) => {
+                assert_eq!(nested.len(), 2);
+            }
+            _ => panic!("Expected nested attributes"),
+        }
+
+        // Test: [] empty brackets (anonymous with no attributes)
+        let tokens = tokenize("[]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = invocation_type_spec(&mut input);
+        assert!(result.is_ok(), "[] should parse as empty anonymous type");
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_none());
+        assert!(spec.attributes.is_empty());
+
+        // Test: Nothing (sugar syntax) - returns empty TypeSpec
+        let tokens = tokenize("server").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = invocation_type_spec(&mut input);
+        assert!(result.is_ok(), "Nothing should return empty TypeSpec");
+        let spec = result.unwrap();
+        assert!(spec.type_name.is_none());
+        assert!(spec.attributes.is_empty());
+
+        // Test: @[attributes] SHOULD FAIL - TypeName required after @
+        let tokens = tokenize("@[color=\"red\"]").expect("Failed to tokenize");
+        let mut input = FilamentTokenSlice::new(&tokens);
+        let result = invocation_type_spec(&mut input);
+        assert!(
+            result.is_err(),
+            "@[attributes] should fail - TypeName required after @"
+        );
     }
 
     #[test]
@@ -1901,27 +2301,6 @@ mod tests {
         let tokens = tokenize("=").expect("Failed to tokenize");
         let mut input = FilamentTokenSlice::new(&tokens);
         assert!(relation_type(&mut input).is_err());
-    }
-
-    #[test]
-    fn test_relation_type_spec_functiontest_relation_type_spec_function() {
-        // Test empty type spec
-        let tokens = tokenize("").expect("Failed to tokenize");
-        let mut input = FilamentTokenSlice::new(&tokens);
-        let result = relation_type_spec(&mut input);
-        assert!(result.is_ok());
-        let spec = result.unwrap();
-        assert!(spec.type_name.is_none());
-        assert!(spec.attributes.is_empty());
-
-        // Test type name only
-        let tokens = tokenize("RedArrow").expect("Failed to tokenize");
-        let mut input = FilamentTokenSlice::new(&tokens);
-        let result = relation_type_spec(&mut input);
-        assert!(result.is_ok());
-        let spec = result.unwrap();
-        assert!(spec.type_name.is_some());
-        assert_eq!(*spec.type_name.as_ref().unwrap().inner(), "RedArrow");
     }
 
     #[test]
@@ -2007,6 +2386,7 @@ mod tests {
         if let types::Element::ActivateBlock {
             component,
             elements,
+            type_spec: _type_spec,
         } = element
         {
             assert_eq!(*component.inner(), "user");
@@ -2034,6 +2414,7 @@ mod tests {
         if let types::Element::ActivateBlock {
             component,
             elements,
+            type_spec: _type_spec,
         } = element
         {
             assert_eq!(*component.inner(), "user");
@@ -2068,6 +2449,7 @@ mod tests {
         if let types::Element::ActivateBlock {
             component,
             elements,
+            type_spec: _type_spec,
         } = element
         {
             assert_eq!(*component.inner(), "user");
@@ -2094,7 +2476,7 @@ mod tests {
         if let types::Element::OptBlock {
             keyword_span,
             section,
-            attributes,
+            type_spec,
         } = element
         {
             assert!(keyword_span.start() < keyword_span.end());
@@ -2102,8 +2484,8 @@ mod tests {
                 section.title.as_ref().unwrap().inner(),
                 "user authenticated"
             );
+            assert_eq!(type_spec.attributes.len(), 0);
             assert_eq!(section.elements.len(), 1);
-            assert!(attributes.is_empty());
         } else {
             panic!("Expected OptBlock element, got {:?}", element);
         }
@@ -2121,8 +2503,8 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse opt block with attributes");
 
         let element = result.unwrap();
-        if let types::Element::OptBlock { attributes, .. } = element {
-            assert_eq!(attributes.len(), 2);
+        if let types::Element::OptBlock { type_spec, .. } = element {
+            assert_eq!(type_spec.attributes.len(), 2);
         } else {
             panic!("Expected OptBlock element");
         }
@@ -2394,7 +2776,7 @@ mod tests {
 
         let element = result.unwrap();
         if let types::Element::Note(note) = element {
-            assert_eq!(note.attributes.len(), 0);
+            assert_eq!(note.type_spec.attributes.len(), 0);
             assert_eq!(note.content.inner(), "This is a simple note");
         } else {
             panic!("Expected Note element");
@@ -2412,9 +2794,51 @@ mod tests {
 
         let element = result.unwrap();
         if let types::Element::Note(note) = element {
-            assert_eq!(note.attributes.len(), 1);
-            assert_eq!(*note.attributes[0].name.inner(), "align");
+            assert_eq!(note.type_spec.attributes.len(), 1);
+            assert_eq!(*note.type_spec.attributes[0].name.inner(), "align");
             assert_eq!(note.content.inner(), "Note with attributes");
+        } else {
+            panic!("Expected Note element");
+        }
+    }
+
+    #[test]
+    fn test_note_element_with_named_type() {
+        let input = r#"note @WarningNote: "Alert message";"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = note_element(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse note with @TypeName");
+
+        let element = result.unwrap();
+        if let types::Element::Note(note) = element {
+            assert!(note.type_spec.type_name.is_some());
+            assert_eq!(*note.type_spec.type_name.unwrap().inner(), "WarningNote");
+            assert!(note.type_spec.attributes.is_empty());
+            assert_eq!(note.content.inner(), "Alert message");
+        } else {
+            panic!("Expected Note element");
+        }
+    }
+
+    #[test]
+    fn test_note_element_with_named_type_and_attributes() {
+        let input = r#"note @InfoNote[color="blue", size=12]: "Information";"#;
+        let tokens = parse_tokens(input);
+        let mut token_slice = TokenSlice::new(&tokens);
+
+        let result = note_element(&mut token_slice);
+        assert!(result.is_ok(), "Failed to parse note with @TypeName[attrs]");
+
+        let element = result.unwrap();
+        if let types::Element::Note(note) = element {
+            assert!(note.type_spec.type_name.is_some());
+            assert_eq!(*note.type_spec.type_name.unwrap().inner(), "InfoNote");
+            assert_eq!(note.type_spec.attributes.len(), 2);
+            assert_eq!(*note.type_spec.attributes[0].name.inner(), "color");
+            assert_eq!(*note.type_spec.attributes[1].name.inner(), "size");
+            assert_eq!(note.content.inner(), "Information");
         } else {
             panic!("Expected Note element");
         }
@@ -2457,8 +2881,9 @@ mod tests {
         );
 
         let element = result.unwrap();
-        if let types::Element::Note(note) = element {
-            assert_eq!(note.attributes.len(), 1);
+        if let types::Element::Note(note) = &element {
+            assert_eq!(note.type_spec.attributes.len(), 1);
+            assert_eq!(*note.type_spec.attributes[0].name.inner(), "align");
             assert_eq!(note.content.inner(), "Content with spacing");
         } else {
             panic!("Expected Note element");
@@ -2511,7 +2936,7 @@ mod tests {
             {
                 assert_eq!(note.content.inner(), "This is a margin note");
                 assert_eq!(
-                    note.attributes.len(),
+                    note.type_spec.attributes.len(),
                     0,
                     "Margin note should have no attributes"
                 );
@@ -2528,7 +2953,8 @@ mod tests {
                     _ => None,
                 })
                 .filter(|note| {
-                    note.attributes
+                    note.type_spec
+                        .attributes
                         .iter()
                         .any(|attr| *attr.name.inner() == "on")
                 })

@@ -8,8 +8,7 @@ use crate::ast::{lexer, parser};
 /// Helper function to parse a source string and return success/failure
 fn parse_source(source: &str) -> Result<(), String> {
     let tokens = lexer::tokenize(source).map_err(|e| format!("Lexer error: {}", e))?;
-    let _ast =
-        parser::build_diagram(&tokens).map_err(|e| format!("Parser error: {}", e))?;
+    let _ast = parser::build_diagram(&tokens).map_err(|e| format!("Parser error: {}", e))?;
     Ok(())
 }
 
@@ -479,10 +478,10 @@ mod relation_specification_tests {
     fn test_relation_with_type_reference() {
         let source = r#"
             diagram component;
-            type RedArrow = Arrow [stroke=[color="red"]];
+            type RedArrow = Arrow[stroke=[color="red"]];
             a: Rectangle;
             b: Rectangle;
-            a -> [RedArrow] b;
+            a -> @RedArrow b;
         "#;
         assert_parses_successfully(source);
     }
@@ -491,10 +490,28 @@ mod relation_specification_tests {
     fn test_relation_with_type_and_additional_attributes() {
         let source = r#"
             diagram component;
-            type BlueArrow = Arrow [stroke=[color="blue"]];
+            type BlueArrow = Arrow[stroke=[color="blue"]];
             source: Rectangle;
             target: Rectangle;
-            source -> [BlueArrow; stroke=[width=5], style="curved"] target: "Enhanced";
+            source -> @BlueArrow[stroke=[width=5], style="curved"] target: "Enhanced";
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_relation_mixed_type_specs() {
+        let source = r#"
+            diagram sequence;
+            type DashedArrow = Arrow[style="dashed"];
+            a: Rectangle;
+            b: Rectangle;
+            c: Rectangle;
+            d: Rectangle;
+
+            a -> b;
+            b -> @DashedArrow c;
+            c -> [color="red"] d;
+            d -> @Arrow[width=3] a: "labeled";
         "#;
         assert_parses_successfully(source);
     }
@@ -713,22 +730,22 @@ mod complex_integration_tests {
 
     #[test]
     fn test_comprehensive_diagram() {
-        let source = "
-            diagram component [layout_engine=\"force\", background_color=\"#f8f8f8\"];
+        let source = r##"
+            diagram component [layout_engine="force", background_color="#f8f8f8"];
 
             // Define custom types
-            type Database = Rectangle [fill_color=\"lightblue\", rounded=\"10\"];
-            type Service = Component [fill_color=\"#e6f3ff\"];
-            type Client = Oval [fill_color=\"#ffe6e6\"];
+            type Database = Rectangle[fill_color="lightblue", rounded="10"];
+            type Service = Component[fill_color="#e6f3ff"];
+            type Client = Oval[fill_color="#ffe6e6"];
 
             // Define relation types
-            type RedArrow = Arrow [stroke=[color=\"red\"]];
-            type BlueArrow = Arrow [stroke=[color=\"blue\", width=2]];
+            type RedArrow = Arrow[stroke=[color="red"]];
+            type BlueArrow = Arrow[stroke=[color="blue", width=2]];
 
             // Define components
-            end_user as \"End User\": Client;
-            backend_system as \"Backend System\": Service {
-                auth_service as \"Auth Service\": Service;
+            end_user as "End User": Client;
+            backend_system as "Backend System": Service {
+                auth_service as "Auth Service": Service;
                 user_db: Database;
                 auth_service -> user_db;
             };
@@ -736,9 +753,9 @@ mod complex_integration_tests {
 
             // Define relationships
             end_user -> api_gateway;
-            api_gateway -> [RedArrow] backend_system;
-            api_gateway -> [BlueArrow] end_user: \"Response\";
-        ";
+            api_gateway -> @RedArrow backend_system;
+            api_gateway -> @BlueArrow end_user: "Response";
+        "##;
         assert_parses_successfully(source);
     }
 
@@ -1169,7 +1186,7 @@ mod regression_tests {
         // This was the specific case that was failing before the fix
         let source = r#"
             diagram component;
-            type Database = Rectangle [fill_color="lightblue", rounded="10", stroke=[width=2]];
+            type Database = Rectangle[fill_color="lightblue", rounded=10, stroke=[width=2]];
             db: Database;
         "#;
         assert_parses_successfully(source);
@@ -1218,7 +1235,7 @@ mod regression_tests {
     fn test_shape_stroke_all_properties() {
         let source = r#"
             diagram component;
-            type StyledBox = Rectangle [
+            type StyledBox = Rectangle[
                 stroke=[color="blue", width=2.5, style="dashed", cap="round", join="bevel"]
             ];
             box: StyledBox;
@@ -1230,12 +1247,12 @@ mod regression_tests {
     fn test_arrow_stroke_all_properties() {
         let source = r#"
             diagram component;
-            type CustomArrow = Arrow [
+            type CustomArrow = Arrow[
                 stroke=[color="red", width=3.0, style="dotted", cap="square", join="round"]
             ];
             a: Rectangle;
             b: Rectangle;
-            a -> [CustomArrow] b;
+            a -> @CustomArrow b;
         "#;
         assert_parses_successfully(source);
     }
@@ -1298,5 +1315,163 @@ mod regression_tests {
             user -> server;
         ";
         assert_parses_successfully(source);
+    }
+}
+
+mod typespec_case_tests {
+    use super::*;
+
+    #[test]
+    fn test_type_spec_empty_attributes() {
+        // TypeName[] should parse successfully with empty attribute list
+        let source = r#"
+            diagram component;
+            app: Rectangle[];
+        "#;
+        assert_parses_successfully(source);
+
+        // Verify in type definitions too
+        let source = r#"
+            diagram component;
+            type MyType = Rectangle[];
+            app: MyType;
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_type_spec_deeply_nested_attributes() {
+        // Test deeply nested attributes in component declarations
+        let source = r#"
+            diagram component;
+            app: Service[
+                config=[
+                    server=[
+                        host="localhost",
+                        port=8080
+                    ],
+                    database=[
+                        name="mydb",
+                        pool=[
+                            min=5,
+                            max=20
+                        ]
+                    ]
+                ]
+            ];
+        "#;
+        assert_parses_successfully(source);
+
+        // Test in type definitions
+        let source = r#"
+            diagram component;
+            type ComplexService = Service[
+                settings=[
+                    network=[
+                        timeout=30,
+                        retry=[enabled=1, max=3]
+                    ]
+                ]
+            ];
+            app: ComplexService;
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_type_spec_with_identifiers_attribute() {
+        // Test identifier lists in attributes (e.g., note 'on' attribute)
+        let source = r#"
+            diagram sequence;
+            client: Rectangle;
+            server: Rectangle;
+            database: Rectangle;
+
+            note [on=[client, server]]: "Note spanning multiple components";
+        "#;
+        assert_parses_successfully(source);
+
+        // Test with named type
+        let source = r#"
+            diagram sequence;
+            user: Rectangle;
+            system: Rectangle;
+
+            note @Note[on=[user, system], align="center"]: "Information";
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_type_spec_with_mixed_attribute_types() {
+        // Test mixing strings, numbers, identifiers, and nested attributes
+        let source = r#"
+            diagram component;
+            app: Service[
+                name="MyService",
+                port=8080,
+                active=1,
+                endpoints=[api, web, admin],
+                config=[
+                    timeout=30,
+                    ssl="enabled"
+                ]
+            ];
+        "#;
+        assert_parses_successfully(source);
+    }
+
+    #[test]
+    fn test_error_at_without_type() {
+        // @ must be followed by a type name
+        let source = r#"
+            diagram sequence;
+            a: Rectangle;
+            b: Rectangle;
+            a -> @ b;
+        "#;
+        assert_parse_fails(source);
+    }
+
+    #[test]
+    fn test_error_component_colon_without_type() {
+        // Component declaration : must be followed by TypeSpec
+        let source = r#"
+            diagram component;
+            api: ;
+        "#;
+        assert_parse_fails(source);
+    }
+
+    #[test]
+    fn test_error_at_with_only_attributes() {
+        // @[attributes] is invalid - @ requires type name
+        let source = r#"
+            diagram sequence;
+            a: Rectangle;
+            b: Rectangle;
+            a -> @[color="red"] b;
+        "#;
+        assert_parse_fails(source);
+    }
+
+    #[test]
+    fn test_error_missing_type_after_colon() {
+        // Colon in component must be followed by type spec
+        let source = r#"
+            diagram component;
+            app:
+            db: Rectangle;
+        "#;
+        assert_parse_fails(source);
+    }
+
+    #[test]
+    fn test_error_unclosed_attribute_brackets() {
+        let source = r#"
+            diagram component;
+            app: Rectangle[color="blue";
+        "#;
+        assert_parse_fails(source);
     }
 }

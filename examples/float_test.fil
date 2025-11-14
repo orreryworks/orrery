@@ -42,8 +42,8 @@ frontend as "Frontend App": Oval [
 
 // Relations with float attributes
 frontend -> [stroke=[width=2.5, color="green"]] api_service: "API Calls";
-api_service -> [ThickArrow] database: "Queries";
-api_service -> [ThinArrow] cache_service: "Cache Check";
+api_service -> @ThickArrow database: "Queries";
+api_service -> @ThinArrow cache_service: "Cache Check";
 cache_service -> [stroke=[width=1, color="orange"]] database: "Cache Miss";
 
 // Scientific notation test
