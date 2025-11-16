@@ -16,6 +16,7 @@
 //! This enables the validation phase to perform comprehensive cross-reference checks.
 
 use super::{
+    builtin_types,
     parser_types::{
         Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
         TypeDefinition, TypeSpec,
@@ -517,6 +518,48 @@ impl<'a> Folder<'a> for Desugar {
             }
         }
         out
+    }
+
+    /// Override fold_relation_type_spec to inject default "Arrow" type for sugar syntax
+    fn fold_relation_type_spec(&mut self, mut type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+        if type_spec.type_name.is_none() {
+            type_spec.type_name = Some(Spanned::new(
+                Id::new(builtin_types::ARROW),
+                type_spec.span(),
+            ));
+        }
+        self.fold_type_spec(type_spec)
+    }
+
+    /// Override fold_note_type_spec to inject default "Note" type for sugar syntax
+    fn fold_note_type_spec(&mut self, mut type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+        if type_spec.type_name.is_none() {
+            type_spec.type_name =
+                Some(Spanned::new(Id::new(builtin_types::NOTE), type_spec.span()));
+        }
+        self.fold_type_spec(type_spec)
+    }
+
+    /// Override fold_fragment_type_spec to inject default "Fragment" type for sugar syntax
+    fn fold_fragment_type_spec(&mut self, mut type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+        if type_spec.type_name.is_none() {
+            type_spec.type_name = Some(Spanned::new(
+                Id::new(builtin_types::FRAGMENT),
+                type_spec.span(),
+            ));
+        }
+        self.fold_type_spec(type_spec)
+    }
+
+    /// Override fold_activate_type_spec to inject default "Activate" type for sugar syntax
+    fn fold_activate_type_spec(&mut self, mut type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+        if type_spec.type_name.is_none() {
+            type_spec.type_name = Some(Spanned::new(
+                Id::new(builtin_types::ACTIVATE),
+                type_spec.span(),
+            ));
+        }
+        self.fold_type_spec(type_spec)
     }
 
     /// Fold an Element node, performing transformations and recursive descent
@@ -1859,6 +1902,233 @@ mod tests {
                 assert_eq!(*fragment.type_spec.attributes[1].name.inner(), "color");
             }
             _ => panic!("Expected Fragment"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_relation_sugar_injects_arrow_type() {
+        // Verify relation without type_name gets "Arrow" injected
+        let relation = Element::Relation {
+            source: spanned(Id::new("client")),
+            target: spanned(Id::new("server")),
+            relation_type: spanned("->"),
+            type_spec: TypeSpec {
+                type_name: None,
+                attributes: vec![],
+            },
+            label: None,
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(relation);
+
+        match result {
+            Element::Relation { type_spec, .. } => {
+                assert!(type_spec.type_name.is_some());
+                assert_eq!(*type_spec.type_name.unwrap().inner(), builtin_types::ARROW);
+                assert_eq!(type_spec.attributes.len(), 0);
+            }
+            _ => panic!("Expected Relation"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_relation_sugar_with_attributes_injects_arrow() {
+        // Verify relation with attributes but no type_name gets "Arrow" injected
+        let relation = Element::Relation {
+            source: spanned(Id::new("api")),
+            target: spanned(Id::new("db")),
+            relation_type: spanned("->"),
+            type_spec: TypeSpec {
+                type_name: None,
+                attributes: vec![Attribute {
+                    name: spanned("color"),
+                    value: AttributeValue::String(spanned("red".to_string())),
+                }],
+            },
+            label: Some(spanned("query".to_string())),
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(relation);
+
+        match result {
+            Element::Relation { type_spec, .. } => {
+                assert!(type_spec.type_name.is_some());
+                assert_eq!(*type_spec.type_name.unwrap().inner(), builtin_types::ARROW);
+                assert_eq!(type_spec.attributes.len(), 1);
+                assert_eq!(*type_spec.attributes[0].name.inner(), "color");
+            }
+            _ => panic!("Expected Relation"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_relation_with_explicit_type_unchanged() {
+        // Verify relation with explicit type_name is not modified
+        let relation = Element::Relation {
+            source: spanned(Id::new("a")),
+            target: spanned(Id::new("b")),
+            relation_type: spanned("->"),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("DashedArrow"))),
+                attributes: vec![],
+            },
+            label: None,
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(relation);
+
+        match result {
+            Element::Relation { type_spec, .. } => {
+                assert_eq!(*type_spec.type_name.unwrap().inner(), "DashedArrow");
+            }
+            _ => panic!("Expected Relation"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_note_sugar_injects_note_type() {
+        // Verify note without type_name gets "Note" injected
+        let note = Element::Note(Note {
+            type_spec: TypeSpec {
+                type_name: None,
+                attributes: vec![],
+            },
+            content: spanned("Important message".to_string()),
+        });
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(note);
+
+        match result {
+            Element::Note(note) => {
+                assert!(note.type_spec.type_name.is_some());
+                assert_eq!(
+                    *note.type_spec.type_name.unwrap().inner(),
+                    builtin_types::NOTE
+                );
+                assert_eq!(note.type_spec.attributes.len(), 0);
+            }
+            _ => panic!("Expected Note"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_note_sugar_with_attributes_injects_note() {
+        // Verify note with attributes but no type_name gets "Note" injected
+        let note = Element::Note(Note {
+            type_spec: TypeSpec {
+                type_name: None,
+                attributes: vec![Attribute {
+                    name: spanned("align"),
+                    value: AttributeValue::String(spanned("left".to_string())),
+                }],
+            },
+            content: spanned("Side note".to_string()),
+        });
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(note);
+
+        match result {
+            Element::Note(note) => {
+                assert!(note.type_spec.type_name.is_some());
+                assert_eq!(
+                    *note.type_spec.type_name.unwrap().inner(),
+                    builtin_types::NOTE
+                );
+                assert_eq!(note.type_spec.attributes.len(), 1);
+                assert_eq!(*note.type_spec.attributes[0].name.inner(), "align");
+            }
+            _ => panic!("Expected Note"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_fragment_sugar_injects_fragment_type() {
+        // Verify opt block without type_name gets "Fragment" injected
+        let opt_block = Element::OptBlock {
+            keyword_span: Span::new(0..3),
+            type_spec: TypeSpec {
+                type_name: None,
+                attributes: vec![],
+            },
+            section: FragmentSection {
+                title: Some(spanned("condition".to_string())),
+                elements: vec![],
+            },
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(opt_block);
+
+        match result {
+            Element::Fragment(fragment) => {
+                assert_eq!(*fragment.operation.inner(), "opt");
+                assert!(fragment.type_spec.type_name.is_some());
+                assert_eq!(
+                    *fragment.type_spec.type_name.unwrap().inner(),
+                    builtin_types::FRAGMENT
+                );
+            }
+            _ => panic!("Expected Fragment"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_activate_block_sugar_injects_activate_type() {
+        // Verify activate block without type_name gets "Activate" injected
+        let activate_block = Element::ActivateBlock {
+            component: spanned(Id::new("service")),
+            type_spec: TypeSpec {
+                type_name: None,
+                attributes: vec![],
+            },
+            elements: vec![],
+        };
+
+        let mut folder = Desugar::new();
+        let result_elements = folder.fold_elements(vec![activate_block]);
+
+        // Should desugar to: Activate, Deactivate
+        assert_eq!(result_elements.len(), 2);
+        match &result_elements[0] {
+            Element::Activate { type_spec, .. } => {
+                assert!(type_spec.type_name.is_some());
+                assert_eq!(
+                    *type_spec.type_name.as_ref().unwrap().inner(),
+                    builtin_types::ACTIVATE
+                );
+            }
+            _ => panic!("Expected Activate"),
+        }
+    }
+
+    #[test]
+    fn test_desugar_activate_statement_sugar_injects_activate_type() {
+        // Verify activate statement without type_name gets "Activate" injected
+        let activate = Element::Activate {
+            component: spanned(Id::new("component")),
+            type_spec: TypeSpec {
+                type_name: None,
+                attributes: vec![],
+            },
+        };
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_element(activate);
+
+        match result {
+            Element::Activate { type_spec, .. } => {
+                assert!(type_spec.type_name.is_some());
+                assert_eq!(
+                    *type_spec.type_name.unwrap().inner(),
+                    builtin_types::ACTIVATE
+                );
+            }
+            _ => panic!("Expected Activate"),
         }
     }
 }

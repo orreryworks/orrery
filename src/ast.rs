@@ -24,6 +24,7 @@
 /// - `parser_types`: Contains spanned versions of parser types with source location tracking
 /// - `desugar`: Performs AST normalization between parsing and elaboration
 /// - `elaborate`: Handles AST elaboration with rich error diagnostics
+mod builtin_types;
 mod desugar;
 mod elaborate;
 mod elaborate_types;
