@@ -14,12 +14,9 @@ use crate::{
     color::Color,
     config::AppConfig,
     draw,
-    error::DiagnosticError,
+    error::diagnostic::{DiagnosticError, Result},
     identifier::Id,
 };
-
-/// Type alias for Result with DiagnosticError as the error type
-type EResult<T> = Result<T, DiagnosticError>;
 
 pub struct Builder<'a> {
     cfg: &'a AppConfig,
@@ -48,7 +45,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn build(mut self, diag: &Spanned<parser_types::Element<'a>>) -> EResult<types::Diagram> {
+    pub fn build(mut self, diag: &Spanned<parser_types::Element<'a>>) -> Result<types::Diagram> {
         debug!("Building elaborated diagram");
         match diag.inner() {
             parser_types::Element::Diagram(diag) => {
@@ -121,7 +118,7 @@ impl<'a> Builder<'a> {
         &mut self,
         type_def: types::TypeDefinition,
         span: Span,
-    ) -> EResult<Rc<types::TypeDefinition>> {
+    ) -> Result<Rc<types::TypeDefinition>> {
         let id = type_def.id();
         let type_def = Rc::new(type_def);
         self.type_definitions.push(Rc::clone(&type_def));
@@ -148,7 +145,7 @@ impl<'a> Builder<'a> {
     fn update_type_direct_definitions(
         &mut self,
         type_definitions: &Vec<parser_types::TypeDefinition<'a>>,
-    ) -> EResult<()> {
+    ) -> Result<()> {
         for type_def in type_definitions {
             let base_type_name = type_def
                 .type_spec
@@ -193,7 +190,7 @@ impl<'a> Builder<'a> {
     fn build_diagram_from_parser(
         &mut self,
         diag: &parser_types::Element<'a>,
-    ) -> EResult<types::Diagram> {
+    ) -> Result<types::Diagram> {
         match diag {
             parser_types::Element::Diagram(diag) => {
                 // Determine diagram kind for embedded diagram
@@ -242,7 +239,7 @@ impl<'a> Builder<'a> {
     fn build_diagram_from_embedded_diagram(
         &mut self,
         element: &parser_types::Element<'a>,
-    ) -> EResult<types::Diagram> {
+    ) -> Result<types::Diagram> {
         if let parser_types::Element::Diagram(diag) = element {
             // Determine diagram kind for embedded diagram
             let embedded_kind = self.determine_diagram_kind(&diag.kind)?;
@@ -287,7 +284,7 @@ impl<'a> Builder<'a> {
         &mut self,
         parser_elements: &[parser_types::Element<'a>],
         diagram_kind: types::DiagramKind,
-    ) -> EResult<types::Block> {
+    ) -> Result<types::Block> {
         if parser_elements.is_empty() {
             Ok(types::Block::None)
         } else if let parser_types::Element::Diagram { .. } = &parser_elements[0] {
@@ -324,7 +321,7 @@ impl<'a> Builder<'a> {
         &mut self,
         parser_elements: &[parser_types::Element<'a>],
         diagram_kind: types::DiagramKind,
-    ) -> EResult<types::Scope> {
+    ) -> Result<types::Scope> {
         let mut elements = Vec::new();
 
         for parser_elm in parser_elements {
@@ -403,7 +400,7 @@ impl<'a> Builder<'a> {
         nested_elements: &[parser_types::Element<'a>],
         parser_elm: &parser_types::Element,
         diagram_kind: types::DiagramKind,
-    ) -> EResult<types::Element> {
+    ) -> Result<types::Element> {
         let type_def = self
             .build_type_definition(type_name, attributes)
             .map_err(|_| {
@@ -461,7 +458,7 @@ impl<'a> Builder<'a> {
         relation_type: &Spanned<&str>,
         type_spec: &parser_types::TypeSpec<'a>,
         label: &Option<Spanned<String>>,
-    ) -> EResult<types::Element> {
+    ) -> Result<types::Element> {
         // Extract relation type definition from type_spec
         let relation_type_def = self.build_relation_type_definition_from_spec(type_spec)?;
 
@@ -488,7 +485,7 @@ impl<'a> Builder<'a> {
         &mut self,
         component: &Spanned<Id>,
         diagram_kind: types::DiagramKind,
-    ) -> EResult<types::Element> {
+    ) -> Result<types::Element> {
         // Only allow activate in sequence diagrams
         if diagram_kind != types::DiagramKind::Sequence {
             return Err(DiagnosticError::from_span(
@@ -510,7 +507,7 @@ impl<'a> Builder<'a> {
         &mut self,
         component: &Spanned<Id>,
         diagram_kind: types::DiagramKind,
-    ) -> EResult<types::Element> {
+    ) -> Result<types::Element> {
         // Only allow deactivate in sequence diagrams
         if diagram_kind != types::DiagramKind::Sequence {
             return Err(DiagnosticError::from_span(
@@ -532,7 +529,7 @@ impl<'a> Builder<'a> {
         &mut self,
         fragment: &parser_types::Fragment<'a>,
         diagram_kind: types::DiagramKind,
-    ) -> EResult<types::Element> {
+    ) -> Result<types::Element> {
         // Only allow fragments in sequence diagrams
         if diagram_kind != types::DiagramKind::Sequence {
             return Err(DiagnosticError::from_span(
@@ -585,7 +582,7 @@ impl<'a> Builder<'a> {
     fn build_relation_type_definition_from_spec(
         &mut self,
         type_spec: &parser_types::TypeSpec<'a>,
-    ) -> EResult<Rc<types::TypeDefinition>> {
+    ) -> Result<Rc<types::TypeDefinition>> {
         // Check if type_spec is empty (no type name and no attributes)
         if type_spec.type_name.is_none() && type_spec.attributes.is_empty() {
             // Empty type spec - use default arrow type
@@ -607,7 +604,7 @@ impl<'a> Builder<'a> {
         &mut self,
         type_name: &Spanned<Id>,
         attributes: &[parser_types::Attribute],
-    ) -> EResult<Rc<types::TypeDefinition>> {
+    ) -> Result<Rc<types::TypeDefinition>> {
         // Look up the base type
         let Some(base) = self.type_definition_map.get(type_name.inner()) else {
             return Err(
@@ -632,7 +629,7 @@ impl<'a> Builder<'a> {
     }
 
     /// Determines the diagram kind based on the input string.
-    fn determine_diagram_kind(&self, kind_str: &Spanned<&str>) -> EResult<types::DiagramKind> {
+    fn determine_diagram_kind(&self, kind_str: &Spanned<&str>) -> Result<types::DiagramKind> {
         match *kind_str.inner() {
             "sequence" => Ok(types::DiagramKind::Sequence),
             "component" => Ok(types::DiagramKind::Component),
@@ -662,7 +659,7 @@ impl<'a> Builder<'a> {
     fn create_arrow_definition_from_attributes(
         &self,
         attributes: &Vec<parser_types::Attribute<'_>>,
-    ) -> EResult<types::TypeDefinition> {
+    ) -> Result<types::TypeDefinition> {
         let id = Id::from_anonymous(self.type_definition_map.len());
         types::TypeDefinition::from_base(id, &self.default_arrow_type, attributes)
     }
@@ -672,7 +669,7 @@ impl<'a> Builder<'a> {
         &self,
         kind: types::DiagramKind,
         attrs: &Vec<parser_types::Attribute<'_>>,
-    ) -> EResult<(
+    ) -> Result<(
         types::LayoutEngine,
         Option<Color>,
         Option<Rc<draw::LifelineDefinition>>,
@@ -745,7 +742,7 @@ impl<'a> Builder<'a> {
     }
 
     /// Extract background color from an attribute
-    fn extract_background_color(color_attr: &parser_types::Attribute<'_>) -> EResult<Color> {
+    fn extract_background_color(color_attr: &parser_types::Attribute<'_>) -> Result<Color> {
         let color_str = color_attr.value.as_str().map_err(|err| {
             DiagnosticError::from_span(
                 err.to_string(),
@@ -767,7 +764,7 @@ impl<'a> Builder<'a> {
     /// Extract lifeline definition from an attribute
     fn extract_lifeline_definition(
         lifeline_attr: &parser_types::Attribute<'_>,
-    ) -> EResult<draw::LifelineDefinition> {
+    ) -> Result<draw::LifelineDefinition> {
         let nested_attrs = lifeline_attr.value.as_attributes().map_err(|err| {
             DiagnosticError::from_span(
                 err.to_string(),
@@ -814,7 +811,7 @@ impl<'a> Builder<'a> {
     /// Extract activation box definition from an attribute
     fn extract_activation_box_definition(
         activation_box_attr: &parser_types::Attribute<'_>,
-    ) -> EResult<draw::ActivationBoxDefinition> {
+    ) -> Result<draw::ActivationBoxDefinition> {
         let nested_attrs = activation_box_attr.value.as_attributes().map_err(|err| {
             DiagnosticError::from_span(
                 err.to_string(),
@@ -884,7 +881,7 @@ impl<'a> Builder<'a> {
     /// Determines the layout engine from an attribute
     fn determine_layout_engine(
         engine_attr: &parser_types::Attribute<'_>,
-    ) -> EResult<types::LayoutEngine> {
+    ) -> Result<types::LayoutEngine> {
         let engine_str = engine_attr.value.as_str().map_err(|err| {
             DiagnosticError::from_span(
                 err.to_string(),
@@ -923,7 +920,7 @@ impl<'a> Builder<'a> {
         &mut self,
         note: &parser_types::Note,
         diagram_kind: types::DiagramKind,
-    ) -> EResult<types::Element> {
+    ) -> Result<types::Element> {
         let type_id = Id::new("Note");
 
         let type_def = self
@@ -978,7 +975,7 @@ impl<'a> Builder<'a> {
         &mut self,
         attributes: &[parser_types::Attribute],
         diagram_kind: types::DiagramKind,
-    ) -> EResult<(Vec<Id>, types::NoteAlign)> {
+    ) -> Result<(Vec<Id>, types::NoteAlign)> {
         let mut on: Option<Vec<Id>> = None;
         let mut align: Option<types::NoteAlign> = None;
 

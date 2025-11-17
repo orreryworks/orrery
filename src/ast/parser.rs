@@ -12,12 +12,12 @@ use crate::{
         span::{Span, Spanned},
         tokens::{PositionedToken, Token},
     },
-    error::DiagnosticError,
+    error::diagnostic::DiagnosticError,
     identifier::Id,
 };
 
 type Input<'src> = FilamentTokenSlice<'src>;
-type IResult<'src, O> = Result<O, ErrMode<ContextError>>;
+type IResult<O> = std::result::Result<O, ErrMode<ContextError>>;
 /// Type alias for winnow TokenSlice with our positioned tokens
 type FilamentTokenSlice<'src> = TokenSlice<'src, PositionedToken<'src>>;
 
@@ -26,9 +26,9 @@ fn make_spanned<T>(value: T, span: Span) -> Spanned<T> {
     Spanned::new(value, span)
 }
 
-fn cut_err<'src, O, F>(input: &mut Input<'src>, f: F) -> IResult<'src, O>
+fn cut_err<'src, O, F>(input: &mut Input<'src>, f: F) -> IResult<O>
 where
-    F: FnOnce(&mut Input<'src>) -> IResult<'src, O>,
+    F: FnOnce(&mut Input<'src>) -> IResult<O>,
 {
     match f(input) {
         Ok(o) => Ok(o),
@@ -37,7 +37,7 @@ where
     }
 }
 /// Parse whitespace and comments
-fn ws_comment<'src>(input: &mut Input<'src>) -> IResult<'src, ()> {
+fn ws_comment<'src>(input: &mut Input<'src>) -> IResult<()> {
     any.verify(|token: &PositionedToken<'_>| {
         matches!(
             token.token,
@@ -49,17 +49,17 @@ fn ws_comment<'src>(input: &mut Input<'src>) -> IResult<'src, ()> {
 }
 
 /// Parse zero or more whitespace/comments
-fn ws_comments0<'src>(input: &mut Input<'src>) -> IResult<'src, ()> {
+fn ws_comments0<'src>(input: &mut Input<'src>) -> IResult<()> {
     repeat(0.., ws_comment).parse_next(input)
 }
 
 /// Parse one or more whitespace/comments
-fn ws_comments1<'src>(input: &mut Input<'src>) -> IResult<'src, ()> {
+fn ws_comments1<'src>(input: &mut Input<'src>) -> IResult<()> {
     repeat(1.., ws_comment).parse_next(input)
 }
 
 /// Parse semicolon with optional whitespace
-fn semicolon<'src>(input: &mut Input<'src>) -> IResult<'src, ()> {
+fn semicolon<'src>(input: &mut Input<'src>) -> IResult<()> {
     preceded(
         ws_comments0,
         any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Semicolon))
@@ -72,7 +72,7 @@ fn semicolon<'src>(input: &mut Input<'src>) -> IResult<'src, ()> {
 /// Parse a raw identifier string with span preservation (low-level)
 ///
 /// Returns the identifier as &str.
-fn raw_identifier<'src>(input: &mut Input<'src>) -> IResult<'src, Spanned<&'src str>> {
+fn raw_identifier<'src>(input: &mut Input<'src>) -> IResult<Spanned<&'src str>> {
     any.verify_map(|token: &PositionedToken<'_>| match &token.token {
         Token::Identifier(name) => Some(Spanned::new(*name, token.span)),
         // Allow keywords to be used as identifiers in appropriate contexts
@@ -91,13 +91,13 @@ fn raw_identifier<'src>(input: &mut Input<'src>) -> IResult<'src, Spanned<&'src 
 /// Parse a standard identifier with span preservation (high-level)
 ///
 /// Returns the identifier as an interned Id.
-fn identifier<'src>(input: &mut Input<'src>) -> IResult<'src, Spanned<Id>> {
+fn identifier<'src>(input: &mut Input<'src>) -> IResult<Spanned<Id>> {
     let raw = raw_identifier.parse_next(input)?;
     Ok(raw.map(|name| Id::new(name)))
 }
 
 /// Parse nested identifier with :: separators
-fn nested_identifier<'src>(input: &mut Input<'src>) -> IResult<'src, Spanned<Id>> {
+fn nested_identifier<'src>(input: &mut Input<'src>) -> IResult<Spanned<Id>> {
     let first = identifier.parse_next(input)?;
     let mut current_id = *first.inner();
     let mut unified_span = first.span();
@@ -128,7 +128,7 @@ fn nested_identifier<'src>(input: &mut Input<'src>) -> IResult<'src, Spanned<Id>
 }
 
 /// Parse string literal
-fn string_literal<'src>(input: &mut Input<'src>) -> IResult<'src, Spanned<String>> {
+fn string_literal<'src>(input: &mut Input<'src>) -> IResult<Spanned<String>> {
     any.verify_map(|token: &PositionedToken<'_>| match &token.token {
         Token::StringLiteral(s) => Some(Spanned::new(s.clone(), token.span)),
         _ => None,
@@ -148,7 +148,7 @@ fn string_literal<'src>(input: &mut Input<'src>) -> IResult<'src, Spanned<String
 /// - `[client, server::api, database]` - mixed simple and nested identifiers
 ///
 /// Note: Empty `[]` is handled by `empty_brackets` parser
-fn identifiers<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<Spanned<Id>>> {
+fn identifiers<'src>(input: &mut Input<'src>) -> IResult<Vec<Spanned<Id>>> {
     delimited(
         // Opening bracket with optional whitespace
         (
@@ -167,7 +167,7 @@ fn identifiers<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<Spanned<Id>>>
                 // Disambiguation: Check if next token is '='
                 // If so, this is nested attributes [name=value], not identifiers
                 let checkpoint = input.checkpoint();
-                let result: Result<_, ErrMode<ContextError>> = any
+                let result: IResult<_> = any
                     .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Equals))
                     .parse_next(input);
                 if result.is_ok() {
@@ -215,7 +215,7 @@ fn identifiers<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<Spanned<Id>>>
 ///
 /// Returns an Empty attribute value that can be interpreted as either
 /// empty identifiers or empty nested attributes depending on context.
-fn empty_brackets<'src>(input: &mut Input<'src>) -> IResult<'src, ()> {
+fn empty_brackets<'src>(input: &mut Input<'src>) -> IResult<()> {
     delimited(
         any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBracket)),
         ws_comments0,
@@ -235,7 +235,7 @@ fn empty_brackets<'src>(input: &mut Input<'src>) -> IResult<'src, ()> {
 /// 3. **Attributes** - `[attr=val, ...]` - Nested attribute key-value pairs (stroke, text)
 /// 4. **String** - `"value"` - Text values (colors, names, alignment)
 /// 5. **Float** - `2.5` or `10` - Numeric values (widths, sizes, dimensions)
-fn attribute_value<'src>(input: &mut Input<'src>) -> IResult<'src, types::AttributeValue<'src>> {
+fn attribute_value<'src>(input: &mut Input<'src>) -> IResult<types::AttributeValue<'src>> {
     alt((
         // Parse empty brackets [] first - can be interpreted as either empty identifiers or empty attributes
         empty_brackets.map(|_| types::AttributeValue::Empty),
@@ -261,7 +261,7 @@ fn attribute_value<'src>(input: &mut Input<'src>) -> IResult<'src, types::Attrib
 }
 
 /// Parse a single attribute
-fn attribute<'src>(input: &mut Input<'src>) -> IResult<'src, types::Attribute<'src>> {
+fn attribute<'src>(input: &mut Input<'src>) -> IResult<types::Attribute<'src>> {
     let name = raw_identifier.parse_next(input)?;
 
     preceded(
@@ -278,7 +278,7 @@ fn attribute<'src>(input: &mut Input<'src>) -> IResult<'src, types::Attribute<'s
 }
 
 /// Parse comma-separated attributes
-fn attributes<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types::Attribute<'src>>> {
+fn attributes<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Attribute<'src>>> {
     separated(
         0..,
         attribute,
@@ -293,7 +293,7 @@ fn attributes<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types::Attribu
 }
 
 /// Parse attributes wrapped in brackets
-fn wrapped_attributes<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types::Attribute<'src>>> {
+fn wrapped_attributes<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Attribute<'src>>> {
     delimited(
         (
             any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBracket)),
@@ -314,7 +314,7 @@ fn wrapped_attributes<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types:
 /// Returns a TypeSpec with:
 /// - type_name: Always Some(id) - identifier is required
 /// - attributes: parsed attributes if present, empty vec otherwise
-fn type_spec<'src>(input: &mut Input<'src>) -> IResult<'src, types::TypeSpec<'src>> {
+fn type_spec<'src>(input: &mut Input<'src>) -> IResult<types::TypeSpec<'src>> {
     // Parse REQUIRED identifier
     let type_name = identifier.parse_next(input)?;
 
@@ -340,7 +340,7 @@ fn type_spec<'src>(input: &mut Input<'src>) -> IResult<'src, types::TypeSpec<'sr
 /// - `@TypeName` → TypeSpec { type_name: Some(TypeName), attributes: [] }
 /// - `[attrs]` → TypeSpec { type_name: None, attributes: [...] }
 /// - (nothing) → TypeSpec::default() (sugar syntax)
-fn invocation_type_spec<'src>(input: &mut Input<'src>) -> IResult<'src, types::TypeSpec<'src>> {
+fn invocation_type_spec<'src>(input: &mut Input<'src>) -> IResult<types::TypeSpec<'src>> {
     // Parse optional @TypeName
     // If @ is present, identifier is REQUIRED (cut_err prevents backtracking)
     // If @ is absent, we can still parse [attributes] or nothing (sugar)
@@ -378,7 +378,7 @@ fn invocation_type_spec<'src>(input: &mut Input<'src>) -> IResult<'src, types::T
 /// Examples:
 /// - `type Button = Rectangle;`
 /// - `type StyledBox = Rectangle[fill_color="blue", border_width="2"];`
-fn type_definition<'src>(input: &mut Input<'src>) -> IResult<'src, types::TypeDefinition<'src>> {
+fn type_definition<'src>(input: &mut Input<'src>) -> IResult<types::TypeDefinition<'src>> {
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Type))
         .parse_next(input)?;
 
@@ -401,14 +401,12 @@ fn type_definition<'src>(input: &mut Input<'src>) -> IResult<'src, types::TypeDe
 }
 
 /// Parse type definitions section
-fn type_definitions<'src>(
-    input: &mut Input<'src>,
-) -> IResult<'src, Vec<types::TypeDefinition<'src>>> {
+fn type_definitions<'src>(input: &mut Input<'src>) -> IResult<Vec<types::TypeDefinition<'src>>> {
     repeat(0.., preceded(ws_comments0, type_definition)).parse_next(input)
 }
 
 /// Parse relation type (arrow with optional type specification)
-fn relation_type<'src>(input: &mut Input<'src>) -> IResult<'src, &'src str> {
+fn relation_type<'src>(input: &mut Input<'src>) -> IResult<&'src str> {
     let arrow = any
         .verify_map(|token: &PositionedToken<'_>| match &token.token {
             Token::Arrow_ => Some("->"),
@@ -430,7 +428,7 @@ fn relation_type<'src>(input: &mut Input<'src>) -> IResult<'src, &'src str> {
 /// - `user: Person;`
 /// - `server as "API Server": Rectangle[fill_color="blue"];`
 /// - `container: Box { nested_component: Circle; };`
-fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     let name = identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -488,7 +486,7 @@ fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<'src, types
 /// - `user -> @AsyncCall server: "Request";`
 /// - `user -> @AsyncCall[color="blue"] server: "Request";`
 /// - `user -> [color="red"] server;` (anonymous TypeSpec)
-fn relation<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+fn relation<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     let source = nested_identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -534,7 +532,7 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>
 ///   (consistent with `Element::span()` semantics using the inner `component` span).
 /// - Whitespace and line comments are allowed between tokens as handled by
 ///   `ws_comments0/1`.
-fn activate_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+fn activate_block<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     // Parse "activate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Activate))
         .context(StrContext::Label("activate keyword"))
@@ -591,7 +589,7 @@ fn activate_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
 }
 
 /// Parse a section block: `section "title" { elements };`
-fn section_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::FragmentSection<'src>> {
+fn section_block<'src>(input: &mut Input<'src>) -> IResult<types::FragmentSection<'src>> {
     // Parse "section" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Section))
         .context(StrContext::Label("section keyword"))
@@ -645,7 +643,7 @@ fn section_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Fragment
 fn parse_section_content<'src>(
     input: &mut Input<'src>,
     title_context: &'static str,
-) -> IResult<'src, types::FragmentSection<'src>> {
+) -> IResult<types::FragmentSection<'src>> {
     ws_comments0.parse_next(input)?;
 
     let title = opt(string_literal.context(StrContext::Label(title_context))).parse_next(input)?;
@@ -675,7 +673,7 @@ fn parse_section_content<'src>(
 /// Macro for generating single-section fragment keyword parsers
 macro_rules! single_section_parser {
     ($fn_name:ident, $token:ident, $title_ctx:expr, $element_variant:ident) => {
-        fn $fn_name<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+        fn $fn_name<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
             let keyword_token = any
                 .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::$token))
                 .context(StrContext::Label(concat!(stringify!($token), " keyword")))
@@ -713,7 +711,7 @@ macro_rules! single_section_parser {
 /// Macro for generating multi-section fragment keyword parsers
 macro_rules! multi_section_parser {
     ($fn_name:ident, $first_token:ident, $cont_token:ident, $first_ctx:expr, $cont_ctx:expr, $element_variant:ident) => {
-        fn $fn_name<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+        fn $fn_name<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
             let keyword_token = any
                 .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::$first_token))
                 .context(StrContext::Label(concat!(
@@ -785,7 +783,7 @@ multi_section_parser!(
 multi_section_parser!(par_block, Par, Par, "par title", "par title", ParBlock);
 
 /// Parse a fragment block: `fragment @TypeSpec "operation" { section+ };`
-fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     // Parse "fragment" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Fragment))
         .context(StrContext::Label("fragment keyword"))
@@ -850,7 +848,7 @@ fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element
 /// - `@TypeSpec` is optional invocation type spec: `@TypeName[attrs]`, `@TypeName`, or omitted (sugar)
 /// - `<nested_identifier>` supports `::`-qualified component names
 /// - Optional whitespace and line comments are permitted between tokens
-fn activate_statement<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+fn activate_statement<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     // Parse "activate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Activate))
         .context(StrContext::Label("activate keyword"))
@@ -883,7 +881,7 @@ fn activate_statement<'src>(input: &mut Input<'src>) -> IResult<'src, types::Ele
 }
 
 /// Parse an explicit deactivate statement: `deactivate <nested_identifier>;`
-fn deactivate_statement<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+fn deactivate_statement<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     // Parse "deactivate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Deactivate))
         .context(StrContext::Label("deactivate keyword"))
@@ -911,7 +909,7 @@ fn deactivate_statement<'src>(input: &mut Input<'src>) -> IResult<'src, types::E
 /// Behavior:
 /// - If an `activate {` block is present, parse the block
 /// - Otherwise, parse an explicit `activate <nested_identifier>;` statement
-fn activate_element<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+fn activate_element<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     // Try parsing an activate block first; if it fails, reset and parse explicit statement.
     let checkpoint = input.checkpoint();
     match activate_block.parse_next(input) {
@@ -937,7 +935,7 @@ fn activate_element<'src>(input: &mut Input<'src>) -> IResult<'src, types::Eleme
 /// - `note @NoteType: "Typed note";`
 /// - `note @NoteType[on=[component]]: "Note attached to component";`
 /// - `note [on=[a, b], align="left"]: "Note with anonymous TypeSpec";`
-fn note_element<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+fn note_element<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     // Parse 'note' keyword
     let _ = any
         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Note))
@@ -969,7 +967,7 @@ fn note_element<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'
     Ok(types::Element::Note(types::Note { type_spec, content }))
 }
 /// Parse any element (component or relation)
-fn elements<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types::Element<'src>>> {
+fn elements<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Element<'src>>> {
     repeat(
         0..,
         preceded(
@@ -996,7 +994,7 @@ fn elements<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<types::Element<'
 }
 
 /// Parse diagram type (component, sequence, etc.)
-fn diagram_type<'src>(input: &mut Input<'src>) -> IResult<'src, &'src str> {
+fn diagram_type<'src>(input: &mut Input<'src>) -> IResult<&'src str> {
     any.verify_map(|token: &PositionedToken<'_>| match &token.token {
         Token::Component => Some("component"),
         Token::Sequence => Some("sequence"),
@@ -1009,7 +1007,7 @@ fn diagram_type<'src>(input: &mut Input<'src>) -> IResult<'src, &'src str> {
 /// Parse diagram header with unwrapped attributes
 fn diagram_header<'src>(
     input: &mut Input<'src>,
-) -> IResult<'src, (&'src str, Vec<types::Attribute<'src>>)> {
+) -> IResult<(&'src str, Vec<types::Attribute<'src>>)> {
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Diagram))
         .parse_next(input)?;
     ws_comments1.parse_next(input)?;
@@ -1024,7 +1022,7 @@ fn diagram_header<'src>(
 /// Parse diagram header with semicolon
 pub fn diagram_header_with_semicolon<'src>(
     input: &mut Input<'src>,
-) -> IResult<'src, (Spanned<&'src str>, Vec<types::Attribute<'src>>)> {
+) -> IResult<(Spanned<&'src str>, Vec<types::Attribute<'src>>)> {
     let (kind, attributes) = diagram_header.parse_next(input)?;
     semicolon.parse_next(input)?;
     // For now, use a default span - in a real implementation we'd track this properly
@@ -1033,7 +1031,7 @@ pub fn diagram_header_with_semicolon<'src>(
 }
 
 /// Parse complete diagram
-fn diagram<'src>(input: &mut Input<'src>) -> IResult<'src, types::Element<'src>> {
+fn diagram<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     ws_comments0.parse_next(input)?;
     let (kind, attributes) = diagram_header_with_semicolon.parse_next(input)?;
     let type_definitions = type_definitions.parse_next(input)?;

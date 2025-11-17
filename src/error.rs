@@ -1,11 +1,11 @@
-mod diagnostic;
-
 use std::{io, path::PathBuf};
 
 use miette::Diagnostic;
 use thiserror::Error;
 
-pub use diagnostic::DiagnosticError;
+use diagnostic::DiagnosticError;
+
+pub mod diagnostic;
 
 /// The main error type for Filament operations
 #[derive(Debug, Error)]

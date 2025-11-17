@@ -21,7 +21,10 @@ use super::{
     },
     span::{Span, Spanned},
 };
-use crate::{error::DiagnosticError, identifier::Id};
+use crate::{
+    error::diagnostic::{DiagnosticError, Result},
+    identifier::Id,
+};
 
 /// Visitor trait for traversing/analyzing AST nodes.
 ///
@@ -556,7 +559,7 @@ impl<'a> Visitor<'a> for Validator<'a> {
 /// Returns:
 /// - Ok(()) when no validation issues are found
 /// - Err(DiagnosticError) with the first collected error otherwise
-pub fn validate_diagram(diagram: &Diagram<'_>) -> Result<(), DiagnosticError> {
+pub fn validate_diagram(diagram: &Diagram<'_>) -> Result<()> {
     let mut validator = Validator::new();
     visit_diagram(&mut validator, diagram);
     // TODO: Support multi error.
@@ -576,7 +579,7 @@ pub fn validate_diagram(diagram: &Diagram<'_>) -> Result<(), DiagnosticError> {
 /// - Err(DiagnosticError) with the first collected error otherwise
 #[allow(dead_code)]
 #[deprecated(since = "0.1.0", note = "Use validate_diagram instead")]
-pub fn validate_activation_pairs(diagram: &Diagram<'_>) -> Result<(), DiagnosticError> {
+pub fn validate_activation_pairs(diagram: &Diagram<'_>) -> Result<()> {
     validate_diagram(diagram)
 }
 
@@ -589,7 +592,7 @@ pub fn validate_activation_pairs(diagram: &Diagram<'_>) -> Result<(), Diagnostic
 /// - Err(DiagnosticError) with the first collected error otherwise
 #[allow(dead_code)]
 #[deprecated(since = "0.1.0", note = "Use validate_diagram instead")]
-pub fn validate_notes(diagram: &Diagram<'_>) -> Result<(), DiagnosticError> {
+pub fn validate_notes(diagram: &Diagram<'_>) -> Result<()> {
     validate_diagram(diagram)
 }
 

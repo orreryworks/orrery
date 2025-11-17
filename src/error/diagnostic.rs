@@ -73,3 +73,16 @@ impl DiagnosticError {
         }
     }
 }
+
+/// A type alias for `Result<T, DiagnosticError>`
+///
+/// # Usage
+///
+/// ```
+/// use crate::error::diagnostic::{DiagnosticError, Result};
+///
+/// fn elaborate_element(&self, input: &Element) -> Result<ElaboratedElement> {
+///     // ... elaboration logic that may return DiagnosticError
+/// }
+/// ```
+pub type Result<T> = std::result::Result<T, DiagnosticError>;

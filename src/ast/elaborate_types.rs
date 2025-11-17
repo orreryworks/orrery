@@ -8,7 +8,11 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ast::parser_types, color::Color, draw, error::DiagnosticError, geometry::Insets,
+    ast::parser_types,
+    color::Color,
+    draw,
+    error::diagnostic::{DiagnosticError, Result as DiagnosticResult},
+    geometry::Insets,
     identifier::Id,
 };
 
@@ -593,7 +597,7 @@ impl TextAttributeExtractor {
     fn extract_text_attributes(
         text_def: &mut draw::TextDefinition,
         attrs: &[parser_types::Attribute],
-    ) -> Result<(), DiagnosticError> {
+    ) -> DiagnosticResult<()> {
         for attr in attrs {
             Self::extract_single_attribute(text_def, attr)?;
         }
@@ -607,7 +611,7 @@ impl TextAttributeExtractor {
     fn extract_single_attribute(
         text_def: &mut draw::TextDefinition,
         attr: &parser_types::Attribute,
-    ) -> Result<(), DiagnosticError> {
+    ) -> DiagnosticResult<()> {
         let name = attr.name.inner();
         let value = &attr.value;
 
@@ -708,7 +712,7 @@ impl StrokeAttributeExtractor {
     pub fn extract_stroke_attributes(
         stroke_def: &mut draw::StrokeDefinition,
         attrs: &[parser_types::Attribute],
-    ) -> Result<(), DiagnosticError> {
+    ) -> DiagnosticResult<()> {
         for attr in attrs {
             Self::extract_single_attribute(stroke_def, attr)?;
         }
@@ -719,7 +723,7 @@ impl StrokeAttributeExtractor {
     fn extract_single_attribute(
         stroke_def: &mut draw::StrokeDefinition,
         attr: &parser_types::Attribute,
-    ) -> Result<(), DiagnosticError> {
+    ) -> DiagnosticResult<()> {
         let name = *attr.name.inner();
         let value = &attr.value;
 
@@ -835,7 +839,7 @@ impl TypeDefinition {
         id: Id,
         base: &Self,
         attributes: &[parser_types::Attribute],
-    ) -> Result<Self, DiagnosticError> {
+    ) -> DiagnosticResult<Self> {
         let mut text_def = base.text_definition.as_ref().clone();
 
         match &base.draw_definition {

@@ -39,7 +39,7 @@ mod validate;
 
 use crate::{
     config::AppConfig,
-    error::{DiagnosticError, FilamentError},
+    error::{FilamentError, diagnostic::DiagnosticError},
 };
 pub use elaborate_types::*;
 use span::Span;
