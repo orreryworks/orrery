@@ -20,7 +20,6 @@ use crate::{
 
 pub struct Builder<'a> {
     cfg: &'a AppConfig,
-    default_arrow_type: Rc<types::TypeDefinition>,
     type_definitions: Vec<Rc<types::TypeDefinition>>,
     type_definition_map: HashMap<Id, Rc<types::TypeDefinition>>,
     _phantom: std::marker::PhantomData<&'a str>, // Use PhantomData to maintain the lifetime parameter
@@ -28,9 +27,7 @@ pub struct Builder<'a> {
 
 impl<'a> Builder<'a> {
     pub fn new(cfg: &'a AppConfig, _source: &'a str) -> Self {
-        let default_arrow_type = types::TypeDefinition::default_arrow_definition();
-        // We keep the source parameter for backward compatibility but don't store it anymore
-        let type_definitions = types::TypeDefinition::defaults(&default_arrow_type);
+        let type_definitions = types::TypeDefinition::defaults();
         let type_definition_map = type_definitions
             .iter()
             .map(|def| (def.id(), Rc::clone(def)))
@@ -38,7 +35,6 @@ impl<'a> Builder<'a> {
 
         Self {
             cfg,
-            default_arrow_type,
             type_definitions,
             type_definition_map,
             _phantom: std::marker::PhantomData,
@@ -334,8 +330,7 @@ impl<'a> Builder<'a> {
                 } => self.build_component_element(
                     name,
                     display_name,
-                    type_spec.type_name.as_ref().unwrap(),
-                    &type_spec.attributes,
+                    type_spec,
                     nested_elements,
                     parser_elm,
                     diagram_kind,
@@ -395,20 +390,12 @@ impl<'a> Builder<'a> {
         &mut self,
         name: &Spanned<Id>,
         display_name: &Option<Spanned<String>>,
-        type_name: &Spanned<Id>,
-        attributes: &[parser_types::Attribute],
+        type_spec: &parser_types::TypeSpec,
         nested_elements: &[parser_types::Element<'a>],
         parser_elm: &parser_types::Element,
         diagram_kind: types::DiagramKind,
     ) -> Result<types::Element> {
-        let type_def = self
-            .build_type_definition(type_name, attributes)
-            .map_err(|_| {
-                self.create_undefined_type_error(
-                    type_name,
-                    &format!("Unknown type '{type_name}' for component '{name}'"),
-                )
-            })?;
+        let type_def = self.build_type_definition(type_spec)?;
 
         // Check if this shape supports content before processing nested elements
         if !nested_elements.is_empty()
@@ -416,8 +403,12 @@ impl<'a> Builder<'a> {
                 .shape_definition()
                 .is_ok_and(|s| s.supports_content())
         {
+            let type_name = type_spec
+                .type_name
+                .as_ref()
+                .map_or(type_def.id(), |name| *name.inner());
             return Err(DiagnosticError::from_span(
-                format!("Shape type '{type_name}' does not support nested content"),
+                format!("Shape type '{type_name}' does not support nested content",),
                 parser_elm.span(),
                 "content not supported",
                 Some(format!(
@@ -460,7 +451,7 @@ impl<'a> Builder<'a> {
         label: &Option<Spanned<String>>,
     ) -> Result<types::Element> {
         // Extract relation type definition from type_spec
-        let relation_type_def = self.build_relation_type_definition_from_spec(type_spec)?;
+        let relation_type_def = self.build_type_definition(type_spec)?;
 
         let arrow_direction = draw::ArrowDirection::from_str(relation_type).map_err(|_| {
             DiagnosticError::from_span(
@@ -544,10 +535,7 @@ impl<'a> Builder<'a> {
 
         // Build the type definition for this fragment
         let type_def = self
-            .build_type_definition(
-                &Spanned::new(type_id, fragment.operation.span()),
-                &fragment.type_spec.attributes,
-            )
+            .build_type_definition(&fragment.type_spec)
             .map_err(|_| {
                 DiagnosticError::from_span(
                     format!(
@@ -578,33 +566,18 @@ impl<'a> Builder<'a> {
         )))
     }
 
-    /// Build a relation type definition from a relation type specification
-    fn build_relation_type_definition_from_spec(
-        &mut self,
-        type_spec: &parser_types::TypeSpec<'a>,
-    ) -> Result<Rc<types::TypeDefinition>> {
-        // Check if type_spec is empty (no type name and no attributes)
-        if type_spec.type_name.is_none() && type_spec.attributes.is_empty() {
-            // Empty type spec - use default arrow type
-            Ok(Rc::clone(&self.default_arrow_type))
-        } else {
-            match (&type_spec.type_name, &type_spec.attributes) {
-                // Direct attributes without type name: [color="red", width="3"]
-                (None, attrs) => {
-                    let arrow_def = self.create_arrow_definition_from_attributes(attrs)?;
-                    Ok(Rc::new(arrow_def))
-                }
-                // Type reference with additional attributes: [RedArrow; width="5"]
-                (Some(type_name), attributes) => self.build_type_definition(type_name, attributes),
-            }
-        }
-    }
-
     fn build_type_definition(
         &mut self,
-        type_name: &Spanned<Id>,
-        attributes: &[parser_types::Attribute],
+        type_spec: &parser_types::TypeSpec,
     ) -> Result<Rc<types::TypeDefinition>> {
+        let type_name = type_spec.type_name.as_ref().ok_or_else(|| {
+            DiagnosticError::from_span(
+                "Base Type type_spec must have a type name".to_string(),
+                type_spec.span(),
+                "missing type name",
+                None,
+            )
+        })?;
         // Look up the base type
         let Some(base) = self.type_definition_map.get(type_name.inner()) else {
             return Err(
@@ -612,6 +585,7 @@ impl<'a> Builder<'a> {
             );
         };
 
+        let attributes = &type_spec.attributes;
         // If there are no attributes, just return the base type
         if attributes.is_empty() {
             return Ok(Rc::clone(base));
@@ -622,6 +596,7 @@ impl<'a> Builder<'a> {
         match types::TypeDefinition::from_base(id, base, attributes) {
             Ok(new_type) => self.insert_type_definition(new_type, type_name.span()),
             Err(err) => Err(self.create_undefined_type_error(
+                // TODO add missing span details
                 type_name,
                 &format!("Error creating type based on '{type_name}': {err}"),
             )),
@@ -653,15 +628,6 @@ impl<'a> Builder<'a> {
                 span.inner()
             )),
         )
-    }
-
-    /// Parses relation attributes and creates an ArrowDefinition
-    fn create_arrow_definition_from_attributes(
-        &self,
-        attributes: &Vec<parser_types::Attribute<'_>>,
-    ) -> Result<types::TypeDefinition> {
-        let id = Id::from_anonymous(self.type_definition_map.len());
-        types::TypeDefinition::from_base(id, &self.default_arrow_type, attributes)
     }
 
     /// Extract diagram attributes (layout engine, background color, lifeline definition, and activation box definition)
@@ -921,21 +887,7 @@ impl<'a> Builder<'a> {
         note: &parser_types::Note,
         diagram_kind: types::DiagramKind,
     ) -> Result<types::Element> {
-        let type_id = Id::new("Note");
-
-        let type_def = self
-            .build_type_definition(
-                &Spanned::new(type_id, note.content.span()),
-                &note.type_spec.attributes,
-            )
-            .map_err(|_| {
-                DiagnosticError::from_span(
-                    format!("Unknown type '{type_id}' for note"),
-                    note.content.span(),
-                    "unknown note type",
-                    Some("Note types must be defined in the type system".to_string()),
-                )
-            })?;
+        let type_def = self.build_type_definition(&note.type_spec)?;
 
         // Extract 'on' and 'align' attributes
         let (on, align) = self.extract_note_attributes(&note.type_spec.attributes, diagram_kind)?;
@@ -1065,20 +1017,29 @@ mod tests {
         let elements = vec![
             parser_types::Element::Activate {
                 component: Spanned::new(Id::new("user"), Span::new(0..4)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Activate"), Span::new(0..8))),
+                    attributes: vec![],
+                },
             },
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("user"), Span::new(0..4)),
                 target: Spanned::new(Id::new("server"), Span::new(0..6)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
+                    attributes: vec![],
+                },
                 label: Some(Spanned::new("Request".to_string(), Span::new(0..7))),
             },
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("server"), Span::new(0..6)),
                 target: Spanned::new(Id::new("database"), Span::new(0..8)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
+                    attributes: vec![],
+                },
                 label: Some(Spanned::new("Query".to_string(), Span::new(0..5))),
             },
             parser_types::Element::Deactivate {
@@ -1132,13 +1093,19 @@ mod tests {
         let elements = vec![
             parser_types::Element::Activate {
                 component: Spanned::new(Id::new("user"), Span::new(0..4)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Activate"), Span::new(0..8))),
+                    attributes: vec![],
+                },
             },
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("user"), Span::new(0..4)),
                 target: Spanned::new(Id::new("server"), Span::new(0..6)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
+                    attributes: vec![],
+                },
                 label: Some(Spanned::new(
                     "Initial request".to_string(),
                     Span::new(0..16),
@@ -1146,13 +1113,19 @@ mod tests {
             },
             parser_types::Element::Activate {
                 component: Spanned::new(Id::new("user"), Span::new(0..4)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Activate"), Span::new(0..8))),
+                    attributes: vec![],
+                },
             },
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("user"), Span::new(0..4)),
                 target: Spanned::new(Id::new("database"), Span::new(0..8)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
+                    attributes: vec![],
+                },
                 label: Some(Spanned::new("Direct query".to_string(), Span::new(0..12))),
             },
             parser_types::Element::Deactivate {
@@ -1160,13 +1133,19 @@ mod tests {
             },
             parser_types::Element::Activate {
                 component: Spanned::new(Id::new("server"), Span::new(0..6)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Activate"), Span::new(0..8))),
+                    attributes: vec![],
+                },
             },
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("server"), Span::new(0..6)),
                 target: Spanned::new(Id::new("cache"), Span::new(0..5)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
+                    attributes: vec![],
+                },
                 label: Some(Spanned::new("Cache lookup".to_string(), Span::new(0..12))),
             },
             parser_types::Element::Deactivate {
@@ -1423,31 +1402,46 @@ mod tests {
             // activations and relations
             parser_types::Element::Activate {
                 component: Spanned::new(Id::new("user"), Span::new(0..4)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Activate"), Span::new(0..8))),
+                    attributes: vec![],
+                },
             },
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("user"), Span::new(0..4)),
                 target: Spanned::new(Id::new("server"), Span::new(0..6)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
+                    attributes: vec![],
+                },
                 label: Some(Spanned::new("First request".to_string(), Span::new(0..13))),
             },
             parser_types::Element::Activate {
                 component: Spanned::new(Id::new("server"), Span::new(0..6)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Activate"), Span::new(0..8))),
+                    attributes: vec![],
+                },
             },
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("server"), Span::new(0..6)),
                 target: Spanned::new(Id::new("database"), Span::new(0..8)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
+                    attributes: vec![],
+                },
                 label: Some(Spanned::new("Nested query".to_string(), Span::new(0..12))),
             },
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("database"), Span::new(0..8)),
                 target: Spanned::new(Id::new("server"), Span::new(0..6)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
+                    attributes: vec![],
+                },
                 label: Some(Spanned::new(
                     "Nested response".to_string(),
                     Span::new(0..15),
@@ -1460,18 +1454,27 @@ mod tests {
                 source: Spanned::new(Id::new("server"), Span::new(0..6)),
                 target: Spanned::new(Id::new("user"), Span::new(0..4)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
+                    attributes: vec![],
+                },
                 label: Some(Spanned::new("First response".to_string(), Span::new(0..14))),
             },
             parser_types::Element::Activate {
                 component: Spanned::new(Id::new("user"), Span::new(0..4)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Activate"), Span::new(0..8))),
+                    attributes: vec![],
+                },
             },
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("user"), Span::new(0..4)),
                 target: Spanned::new(Id::new("server"), Span::new(0..6)),
                 relation_type: Spanned::new("->", Span::new(0..2)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
+                    attributes: vec![],
+                },
                 label: Some(Spanned::new("Second request".to_string(), Span::new(0..14))),
             },
             parser_types::Element::Deactivate {
@@ -1542,7 +1545,10 @@ mod tests {
         let mut builder = Builder::new(&cfg, "");
 
         let note = parser_types::Note {
-            type_spec: parser_types::TypeSpec::default(),
+            type_spec: parser_types::TypeSpec {
+                type_name: Some(Spanned::new(Id::new("Note"), Span::new(0..4))),
+                attributes: vec![],
+            },
             content: Spanned::new("Test note".to_string(), Span::new(0..9)),
         };
 
@@ -1566,7 +1572,10 @@ mod tests {
         let mut builder = Builder::new(&cfg, "");
 
         let note = parser_types::Note {
-            type_spec: parser_types::TypeSpec::default(),
+            type_spec: parser_types::TypeSpec {
+                type_name: Some(Spanned::new(Id::new("Note"), Span::new(0..4))),
+                attributes: vec![],
+            },
             content: Spanned::new("Test note".to_string(), Span::new(0..9)),
         };
 
@@ -1627,7 +1636,7 @@ mod tests {
 
         let note = parser_types::Note {
             type_spec: parser_types::TypeSpec {
-                type_name: None,
+                type_name: Some(Spanned::new(Id::new("Note"), Span::new(0..4))),
                 attributes,
             },
             content: Spanned::new("Styled note".to_string(), Span::new(0..11)),

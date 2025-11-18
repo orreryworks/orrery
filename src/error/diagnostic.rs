@@ -78,11 +78,10 @@ impl DiagnosticError {
 ///
 /// # Usage
 ///
-/// ```
-/// use crate::error::diagnostic::{DiagnosticError, Result};
-///
-/// fn elaborate_element(&self, input: &Element) -> Result<ElaboratedElement> {
-///     // ... elaboration logic that may return DiagnosticError
+/// ```text
+/// fn process() -> Result<ElaboratedElement> {
+///     // Function that may return DiagnosticError
+///     Ok(ElaboratedElement)
 /// }
 /// ```
 pub type Result<T> = std::result::Result<T, DiagnosticError>;

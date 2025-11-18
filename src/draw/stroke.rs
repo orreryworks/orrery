@@ -117,9 +117,10 @@ static DEFAULT_DOTTED_STROKE: OnceLock<StrokeDefinition> = OnceLock::new();
 /// - `DashDot`: "10,5,2,5"
 /// - `DashDotDot`: "10,5,2,5,2,5"
 /// - `Custom(pattern)`: Uses the provided pattern string
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub enum StrokeStyle {
     /// Solid continuous line (default)
+    #[default]
     Solid,
     /// Dashed line with equal dash and gap lengths (5px dash, 5px gap)
     Dashed,
@@ -133,12 +134,6 @@ pub enum StrokeStyle {
     /// Format: comma or space-separated list of dash/gap lengths
     /// Example: "10,5,2,3" = 10px dash, 5px gap, 2px dash, 3px gap (repeating)
     Custom(String),
-}
-
-impl Default for StrokeStyle {
-    fn default() -> Self {
-        Self::Solid
-    }
 }
 
 impl FromStr for StrokeStyle {
@@ -174,20 +169,15 @@ impl StrokeStyle {
 /// Defines how line endpoints are rendered.
 ///
 /// Maps directly to SVG `stroke-linecap` attribute values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum StrokeCap {
     /// Flat cap at the exact endpoint (SVG default)
+    #[default]
     Butt,
     /// Rounded cap extending beyond the endpoint by half the stroke width
     Round,
     /// Square cap extending beyond the endpoint by half the stroke width
     Square,
-}
-
-impl Default for StrokeCap {
-    fn default() -> Self {
-        Self::Butt
-    }
 }
 
 impl StrokeCap {
@@ -220,20 +210,15 @@ impl FromStr for StrokeCap {
 /// Defines how line corners (joins) are rendered.
 ///
 /// Maps directly to SVG `stroke-linejoin` attribute values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum StrokeJoin {
     /// Sharp corner with mitered point (SVG default)
+    #[default]
     Miter,
     /// Rounded corner
     Round,
     /// Beveled (cut-off) corner
     Bevel,
-}
-
-impl Default for StrokeJoin {
-    fn default() -> Self {
-        Self::Miter
-    }
 }
 
 impl StrokeJoin {

@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ast::parser_types,
+    ast::{builtin_types, parser_types},
     color::Color,
     draw,
     error::diagnostic::{DiagnosticError, Result as DiagnosticResult},
@@ -364,6 +364,7 @@ pub enum DrawDefinition {
     Arrow(draw::ArrowDefinition),
     Fragment(draw::FragmentDefinition),
     Note(draw::NoteDefinition),
+    ActivationBox(draw::ActivationBoxDefinition),
 }
 
 /// A concrete, elaborated type with text styling and drawing definition.
@@ -376,9 +377,10 @@ pub struct TypeDefinition {
 
 /// Available layout engines controlling automatic positioning for diagrams.
 /// Names match external configuration strings (snake_case).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LayoutEngine {
+    #[default]
     Basic,
     Force,
     Sugiyama,
@@ -404,12 +406,6 @@ impl From<LayoutEngine> for &'static str {
             LayoutEngine::Force => "force",
             LayoutEngine::Sugiyama => "sugiyama",
         }
-    }
-}
-
-impl Default for LayoutEngine {
-    fn default() -> Self {
-        Self::Basic
     }
 }
 
@@ -540,6 +536,18 @@ impl TypeDefinition {
             id,
             Cow::Borrowed(draw::TextDefinition::default_borrowed()),
             DrawDefinition::Note(note_definition),
+        )
+    }
+
+    /// Construct a concrete activation box type definition from a activation box definition.
+    pub fn new_activation_box(
+        id: Id,
+        activation_box_definition: draw::ActivationBoxDefinition,
+    ) -> Self {
+        Self::new(
+            id,
+            Cow::Borrowed(draw::TextDefinition::default_borrowed()),
+            DrawDefinition::ActivationBox(activation_box_definition),
         )
     }
 
@@ -1221,18 +1229,93 @@ impl TypeDefinition {
 
                 Ok(Self::new_note(id, new_note_def))
             }
+            DrawDefinition::ActivationBox(activation_box_def) => {
+                let mut new_stroke = activation_box_def.stroke().clone();
+                let mut new_activation_box_def = activation_box_def.clone();
+
+                for attr in attributes {
+                    let name = attr.name.inner();
+                    let value = &attr.value;
+
+                    match *name {
+                        "width" => {
+                            let val = value.as_float().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid width value",
+                                    Some("Width must be a positive number".to_string()),
+                                )
+                            })?;
+                            new_activation_box_def.set_width(val);
+                        }
+                        "nesting_offset" => {
+                            let val = value.as_float().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid nesting_offset value",
+                                    Some("Nesting offset must be a positive number".to_string()),
+                                )
+                            })?;
+                            new_activation_box_def.set_nesting_offset(val);
+                        }
+                        "fill_color" => {
+                            let val = Color::new(value.as_str().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid color value",
+                                    Some("Color values must be strings".to_string()),
+                                )
+                            })?)
+                            .map_err(|err| {
+                                DiagnosticError::from_span(
+                                    format!("Invalid fill_color '{value}': {err}"),
+                                    attr.span(),
+                                    "invalid color",
+                                    Some("Use a CSS color".to_string()),
+                                )
+                            })?;
+                            new_activation_box_def.set_fill_color(val);
+                        }
+                        "stroke" => {
+                            let nested_attrs = value.as_attributes().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid stroke attribute value",
+                                    Some("Stroke attribute must contain nested attributes like [color=\"blue\", width=2.0, style=\"dashed\"]".to_string()),
+                                )
+                            })?;
+
+                            StrokeAttributeExtractor::extract_stroke_attributes(
+                                &mut new_stroke,
+                                nested_attrs,
+                            )?;
+                        }
+                        name => {
+                            return Err(DiagnosticError::from_span(
+                                format!("Unknown activation box attribute '{name}'"),
+                                attr.span(),
+                                "unknown attribute",
+                                Some(
+                                    "Valid activation box attributes are: width, nesting_offset, fill_color, stroke=[...]"
+                                        .to_string(),
+                                ),
+                            ));
+                        }
+                    }
+                }
+
+                new_activation_box_def.set_stroke(Cow::Owned(new_stroke));
+
+                Ok(Self::new_activation_box(id, new_activation_box_def))
+            }
         }
     }
 
-    pub fn default_arrow_definition() -> Rc<Self> {
-        Rc::from(Self::new_arrow(
-            Id::new("Arrow"),
-            Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-            draw::ArrowDefinition::default(),
-        ))
-    }
-
-    pub fn defaults(default_arrow_definition: &Rc<Self>) -> Vec<Rc<Self>> {
+    pub fn defaults() -> Vec<Rc<Self>> {
         vec![
             Rc::new(Self::new_shape(
                 Id::new("Rectangle"),
@@ -1274,7 +1357,11 @@ impl TypeDefinition {
                 Cow::Borrowed(draw::TextDefinition::default_borrowed()),
                 Box::new(draw::InterfaceDefinition::new()),
             )),
-            Rc::clone(default_arrow_definition),
+            Rc::from(Self::new_arrow(
+                Id::new(builtin_types::ARROW),
+                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
+                draw::ArrowDefinition::default(),
+            )),
             // Fragment type definitions for common operations
             Rc::new(Self::new_fragment(
                 Id::new("FragmentAlt"),
@@ -1297,11 +1384,18 @@ impl TypeDefinition {
                 draw::FragmentDefinition::new(),
             )),
             Rc::new(Self::new_fragment(
-                Id::new("Fragment"),
+                Id::new(builtin_types::FRAGMENT),
                 Cow::Borrowed(draw::TextDefinition::default_borrowed()),
                 draw::FragmentDefinition::new(),
             )),
-            Rc::new(Self::new_note(Id::new("Note"), draw::NoteDefinition::new())),
+            Rc::new(Self::new_note(
+                Id::new(builtin_types::NOTE),
+                draw::NoteDefinition::new(),
+            )),
+            Rc::new(Self::new_activation_box(
+                Id::new(builtin_types::ACTIVATE),
+                draw::ActivationBoxDefinition::new(),
+            )),
         ]
     }
 }

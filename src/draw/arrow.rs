@@ -11,17 +11,12 @@ use crate::{color::Color, draw::StrokeDefinition, geometry::Point};
 /// - `Straight`: Creates direct line segments between points
 /// - `Curved`: Creates smooth bezier curves between points
 /// - `Orthogonal`: Creates only horizontal and vertical line segments
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum ArrowStyle {
+    #[default]
     Straight,
     Curved,
     Orthogonal,
-}
-
-impl Default for ArrowStyle {
-    fn default() -> Self {
-        Self::Straight
-    }
 }
 
 impl str::FromStr for ArrowStyle {
