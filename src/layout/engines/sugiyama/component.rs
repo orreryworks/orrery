@@ -169,7 +169,12 @@ impl Engine {
             );
             shape.set_padding(self.container_padding);
             let text = draw::Text::new(
-                Cow::Owned(node.type_definition().text_definition().clone()),
+                Cow::Owned(
+                    node.type_definition()
+                        .text_definition()
+                        .expect("Shape types must have text_definition")
+                        .clone(),
+                ),
                 node.display_text().to_string(),
             );
             let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));

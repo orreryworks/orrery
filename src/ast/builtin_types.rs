@@ -66,13 +66,17 @@ pub const NOTE: &str = "Note";
 /// Built-in base type for activations
 pub const ACTIVATE: &str = "Activate";
 
+/// Built-in base type for stroke attribute groups
+pub const STROKE: &str = "Stroke";
+
+/// Built-in base type for text attribute groups
+pub const TEXT: &str = "Text";
+
 /// Builder for creating built-in type definitions
 ///
 /// # Example
 ///
-/// ```
-/// # use crate::draw::*;
-/// #
+/// ```text
 /// let types = BuiltinTypeBuilder::new()
 ///     .add_shape(RECTANGLE, RectangleDefinition::new())
 ///     .add_arrow(ARROW, ArrowDefinition::default())
@@ -160,6 +164,28 @@ impl BuiltinTypeBuilder {
         self
     }
 
+    /// Add a stroke type definition
+    ///
+    /// Returns `self` for method chaining.
+    pub fn add_stroke(mut self, name: &str, stroke_definition: draw::StrokeDefinition) -> Self {
+        self.types.push(Rc::new(TypeDefinition::new_stroke(
+            Id::new(name),
+            stroke_definition,
+        )));
+        self
+    }
+
+    /// Add a text type definition
+    ///
+    /// Returns `self` for method chaining.
+    pub fn add_text(mut self, name: &str, text_definition: draw::TextDefinition) -> Self {
+        self.types.push(Rc::new(TypeDefinition::new_text(
+            Id::new(name),
+            text_definition,
+        )));
+        self
+    }
+
     /// Build and return all registered type definitions
     ///
     /// Consumes the builder and returns the accumulated type definitions.
@@ -175,6 +201,9 @@ impl BuiltinTypeBuilder {
 /// standard set of types.
 pub fn defaults() -> Vec<Rc<TypeDefinition>> {
     BuiltinTypeBuilder::new()
+        // Attribute group types
+        .add_stroke(STROKE, draw::StrokeDefinition::default())
+        .add_text(TEXT, draw::TextDefinition::default())
         // Shape types
         .add_shape(RECTANGLE, draw::RectangleDefinition::new())
         .add_shape(OVAL, draw::OvalDefinition::new())
@@ -224,9 +253,13 @@ mod tests {
     #[test]
     fn test_defaults_creates_all_types() {
         let types = defaults();
-        assert_eq!(types.len(), 16);
+        assert_eq!(types.len(), 18);
 
         let has_type = |name: &str| types.iter().any(|t| t.id() == name);
+
+        // Attribute groups
+        assert!(has_type(STROKE));
+        assert!(has_type(TEXT));
 
         // Shapes
         assert!(has_type(RECTANGLE));

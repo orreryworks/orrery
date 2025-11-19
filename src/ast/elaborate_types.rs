@@ -97,12 +97,9 @@ impl Relation {
 
     /// Build a Text drawable for the relation's label using its text definition, if a label exists.
     pub fn text(&self) -> Option<draw::Text> {
-        self.label.as_ref().map(|label| {
-            draw::Text::new(
-                Cow::Owned(self.type_definition.text_definition().clone()),
-                label.clone(),
-            )
-        })
+        let label = self.label.as_ref()?;
+        let text_def = self.type_definition.text_definition()?;
+        Some(draw::Text::new(Cow::Owned(text_def.clone()), label.clone()))
     }
 
     /// Clone the underlying ArrowDefinition Rc for rendering this relation.
@@ -365,13 +362,15 @@ pub enum DrawDefinition {
     Fragment(draw::FragmentDefinition),
     Note(draw::NoteDefinition),
     ActivationBox(draw::ActivationBoxDefinition),
+    Stroke(draw::StrokeDefinition),
+    Text(draw::TextDefinition),
 }
 
 /// A concrete, elaborated type with text styling and drawing definition.
 #[derive(Debug)]
 pub struct TypeDefinition {
     id: Id,
-    text_definition: Cow<'static, draw::TextDefinition>,
+    text_definition: Option<Cow<'static, draw::TextDefinition>>,
     draw_definition: DrawDefinition,
 }
 
@@ -489,7 +488,7 @@ pub enum Block {
 impl TypeDefinition {
     fn new(
         id: Id,
-        text_definition: Cow<'static, draw::TextDefinition>,
+        text_definition: Option<Cow<'static, draw::TextDefinition>>,
         draw_definition: DrawDefinition,
     ) -> Self {
         Self {
@@ -505,7 +504,11 @@ impl TypeDefinition {
         text_definition: Cow<'static, draw::TextDefinition>,
         shape_definition: Box<dyn draw::ShapeDefinition>,
     ) -> Self {
-        Self::new(id, text_definition, DrawDefinition::Shape(shape_definition))
+        Self::new(
+            id,
+            Some(text_definition),
+            DrawDefinition::Shape(shape_definition),
+        )
     }
 
     /// Construct a concrete arrow type definition from a text definition and an arrow definition.
@@ -514,7 +517,11 @@ impl TypeDefinition {
         text_definition: Cow<'static, draw::TextDefinition>,
         arrow_definition: draw::ArrowDefinition,
     ) -> Self {
-        Self::new(id, text_definition, DrawDefinition::Arrow(arrow_definition))
+        Self::new(
+            id,
+            Some(text_definition),
+            DrawDefinition::Arrow(arrow_definition),
+        )
     }
 
     /// Construct a concrete fragment type definition from a text definition and a fragment definition.
@@ -525,7 +532,7 @@ impl TypeDefinition {
     ) -> Self {
         Self::new(
             id,
-            text_definition,
+            Some(text_definition),
             DrawDefinition::Fragment(fragment_definition),
         )
     }
@@ -534,7 +541,7 @@ impl TypeDefinition {
     pub fn new_note(id: Id, note_definition: draw::NoteDefinition) -> Self {
         Self::new(
             id,
-            Cow::Borrowed(draw::TextDefinition::default_borrowed()),
+            Some(Cow::Borrowed(draw::TextDefinition::default_borrowed())),
             DrawDefinition::Note(note_definition),
         )
     }
@@ -546,9 +553,19 @@ impl TypeDefinition {
     ) -> Self {
         Self::new(
             id,
-            Cow::Borrowed(draw::TextDefinition::default_borrowed()),
+            Some(Cow::Borrowed(draw::TextDefinition::default_borrowed())),
             DrawDefinition::ActivationBox(activation_box_definition),
         )
+    }
+
+    /// Construct a concrete stroke type definition from a stroke definition.
+    pub fn new_stroke(id: Id, stroke_definition: draw::StrokeDefinition) -> Self {
+        Self::new(id, None, DrawDefinition::Stroke(stroke_definition))
+    }
+
+    /// Construct a concrete text type definition from a text definition.
+    pub fn new_text(id: Id, text_definition: draw::TextDefinition) -> Self {
+        Self::new(id, None, DrawDefinition::Text(text_definition))
     }
 
     /// Get the identifier for this type definition.
@@ -556,9 +573,9 @@ impl TypeDefinition {
         self.id
     }
 
-    /// Borrow the text definition.
-    pub fn text_definition(&self) -> &draw::TextDefinition {
-        self.text_definition.as_ref()
+    /// Borrow the text definition if present.
+    pub fn text_definition(&self) -> Option<&draw::TextDefinition> {
+        self.text_definition.as_ref().map(|cow| cow.as_ref())
     }
 
     /// Borrow the shape definition if this type is a shape; otherwise returns an error.
@@ -590,6 +607,22 @@ impl TypeDefinition {
         match &self.draw_definition {
             DrawDefinition::Note(note) => Ok(note),
             _ => Err(format!("Type '{}' is not a note type", self.id)),
+        }
+    }
+
+    /// Borrow the stroke definition if this type is a stroke; otherwise returns an error.
+    pub fn stroke_definition(&self) -> Result<&draw::StrokeDefinition, String> {
+        match &self.draw_definition {
+            DrawDefinition::Stroke(stroke) => Ok(stroke),
+            _ => Err(format!("Type '{}' is not a stroke type", self.id)),
+        }
+    }
+
+    /// Borrow the text definition if this type is a text; otherwise returns an error.
+    pub fn text_definition_from_draw(&self) -> Result<&draw::TextDefinition, String> {
+        match &self.draw_definition {
+            DrawDefinition::Text(text) => Ok(text),
+            _ => Err(format!("Type '{}' is not a text type", self.id)),
         }
     }
 }
@@ -848,7 +881,12 @@ impl TypeDefinition {
         base: &Self,
         attributes: &[parser_types::Attribute],
     ) -> DiagnosticResult<Self> {
-        let mut text_def = base.text_definition.as_ref().clone();
+        let mut text_def = base
+            .text_definition
+            .as_ref()
+            .expect("Base type must have text_definition")
+            .as_ref()
+            .clone();
 
         match &base.draw_definition {
             DrawDefinition::Shape(shape_def) => {
@@ -1312,6 +1350,10 @@ impl TypeDefinition {
 
                 Ok(Self::new_activation_box(id, new_activation_box_def))
             }
+            DrawDefinition::Stroke(_) => {
+                unreachable!("Extending Stroke types is not yet supported")
+            }
+            DrawDefinition::Text(_) => unreachable!("Extending Text types is not yet supported"),
         }
     }
 }
@@ -1320,6 +1362,37 @@ impl TypeDefinition {
 mod elaborate_tests {
     use super::*;
     use crate::ast::span::{Span, Spanned};
+
+    #[test]
+    fn test_new_stroke_type() {
+        let stroke = draw::StrokeDefinition::default();
+        let type_def = TypeDefinition::new_stroke(Id::new("TestStroke"), stroke);
+        assert_eq!(type_def.id(), "TestStroke");
+        assert!(type_def.text_definition().is_none());
+        assert!(type_def.stroke_definition().is_ok());
+        assert!(type_def.text_definition_from_draw().is_err());
+    }
+
+    #[test]
+    fn test_new_text_type() {
+        let text = draw::TextDefinition::default();
+        let type_def = TypeDefinition::new_text(Id::new("TestText"), text);
+        assert_eq!(type_def.id(), "TestText");
+        assert!(type_def.text_definition().is_none());
+        assert!(type_def.text_definition_from_draw().is_ok());
+        assert!(type_def.stroke_definition().is_err());
+    }
+
+    #[test]
+    fn test_shape_type_has_text_definition() {
+        let type_def = TypeDefinition::new_shape(
+            Id::new("Rect"),
+            Cow::Borrowed(draw::TextDefinition::default_borrowed()),
+            Box::new(draw::RectangleDefinition::new()),
+        );
+        assert!(type_def.text_definition().is_some());
+        assert!(type_def.stroke_definition().is_err());
+    }
 
     fn create_test_attribute(
         name: &'static str,
