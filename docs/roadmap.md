@@ -10,6 +10,9 @@ The roadmap is organized into major feature categories, each containing specific
 
 In sequence diagram, move max lifeline f32 to to lifeline property
 Full use of Cow in the elaborateTypes
+Extend PossitionedDrawable
+Lexer error type
+Move error types inside?!
 
 ### Core Components
 - **[Language Core](#language-core)** - Core language features, syntax, and semantics

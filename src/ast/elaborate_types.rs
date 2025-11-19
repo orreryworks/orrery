@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ast::{builtin_types, parser_types},
+    ast::parser_types,
     color::Color,
     draw,
     error::diagnostic::{DiagnosticError, Result as DiagnosticResult},
@@ -1313,90 +1313,6 @@ impl TypeDefinition {
                 Ok(Self::new_activation_box(id, new_activation_box_def))
             }
         }
-    }
-
-    pub fn defaults() -> Vec<Rc<Self>> {
-        vec![
-            Rc::new(Self::new_shape(
-                Id::new("Rectangle"),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                Box::new(draw::RectangleDefinition::new()),
-            )),
-            Rc::new(Self::new_shape(
-                Id::new("Oval"),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                Box::new(draw::OvalDefinition::new()),
-            )),
-            Rc::new(Self::new_shape(
-                Id::new("Component"),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                Box::new(draw::ComponentDefinition::new()),
-            )),
-            Rc::new(Self::new_shape(
-                Id::new("Boundary"),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                Box::new(draw::BoundaryDefinition::new()),
-            )),
-            Rc::new(Self::new_shape(
-                Id::new("Actor"),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                Box::new(draw::ActorDefinition::new()),
-            )),
-            Rc::new(Self::new_shape(
-                Id::new("Entity"),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                Box::new(draw::EntityDefinition::new()),
-            )),
-            Rc::new(Self::new_shape(
-                Id::new("Control"),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                Box::new(draw::ControlDefinition::new()),
-            )),
-            Rc::new(Self::new_shape(
-                Id::new("Interface"),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                Box::new(draw::InterfaceDefinition::new()),
-            )),
-            Rc::from(Self::new_arrow(
-                Id::new(builtin_types::ARROW),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                draw::ArrowDefinition::default(),
-            )),
-            // Fragment type definitions for common operations
-            Rc::new(Self::new_fragment(
-                Id::new("FragmentAlt"),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                draw::FragmentDefinition::new(),
-            )),
-            Rc::new(Self::new_fragment(
-                Id::new("FragmentOpt"),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                draw::FragmentDefinition::new(),
-            )),
-            Rc::new(Self::new_fragment(
-                Id::new("FragmentLoop"),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                draw::FragmentDefinition::new(),
-            )),
-            Rc::new(Self::new_fragment(
-                Id::new("FragmentPar"),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                draw::FragmentDefinition::new(),
-            )),
-            Rc::new(Self::new_fragment(
-                Id::new(builtin_types::FRAGMENT),
-                Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-                draw::FragmentDefinition::new(),
-            )),
-            Rc::new(Self::new_note(
-                Id::new(builtin_types::NOTE),
-                draw::NoteDefinition::new(),
-            )),
-            Rc::new(Self::new_activation_box(
-                Id::new(builtin_types::ACTIVATE),
-                draw::ActivationBoxDefinition::new(),
-            )),
-        ]
     }
 }
 

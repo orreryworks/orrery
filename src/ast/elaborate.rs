@@ -8,7 +8,7 @@ use std::{borrow::Cow, collections::HashMap, rc::Rc, str::FromStr};
 
 use log::{debug, info, trace};
 
-use super::{elaborate_types as types, parser_types};
+use super::{builtin_types, elaborate_types as types, parser_types};
 use crate::{
     ast::span::{Span, Spanned},
     color::Color,
@@ -27,7 +27,7 @@ pub struct Builder<'a> {
 
 impl<'a> Builder<'a> {
     pub fn new(cfg: &'a AppConfig, _source: &'a str) -> Self {
-        let type_definitions = types::TypeDefinition::defaults();
+        let type_definitions = builtin_types::defaults();
         let type_definition_map = type_definitions
             .iter()
             .map(|def| (def.id(), Rc::clone(def)))
