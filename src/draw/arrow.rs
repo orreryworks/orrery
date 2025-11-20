@@ -2,7 +2,11 @@ use std::{borrow::Cow, collections::HashMap, fmt, str};
 
 use svg::{self, node::element as svg_element};
 
-use crate::{color::Color, draw::StrokeDefinition, geometry::Point};
+use crate::{
+    color::Color,
+    draw::{StrokeDefinition, TextDefinition},
+    geometry::Point,
+};
 
 /// Defines the visual style of arrow paths.
 ///
@@ -40,6 +44,7 @@ impl str::FromStr for ArrowStyle {
 pub struct ArrowDefinition {
     stroke: Cow<'static, StrokeDefinition>,
     style: ArrowStyle,
+    text: Cow<'static, TextDefinition>,
 }
 
 impl ArrowDefinition {
@@ -49,6 +54,7 @@ impl ArrowDefinition {
         Self {
             stroke,
             style: ArrowStyle::default(),
+            text: Cow::Borrowed(TextDefinition::default_borrowed()),
         }
     }
 
@@ -66,6 +72,16 @@ impl ArrowDefinition {
     pub fn set_style(&mut self, style: ArrowStyle) {
         self.style = style;
     }
+
+    /// Gets the text definition for arrow labels
+    pub fn text(&self) -> &TextDefinition {
+        &self.text
+    }
+
+    /// Sets the text definition for arrow labels
+    pub fn set_text(&mut self, text: Cow<'static, TextDefinition>) {
+        self.text = text;
+    }
 }
 
 impl Default for ArrowDefinition {
@@ -73,6 +89,7 @@ impl Default for ArrowDefinition {
         Self {
             stroke: Cow::Borrowed(StrokeDefinition::default_borrowed()),
             style: ArrowStyle::default(),
+            text: Cow::Borrowed(TextDefinition::default_borrowed()),
         }
     }
 }

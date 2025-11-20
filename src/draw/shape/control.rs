@@ -5,7 +5,7 @@ use svg::{self, node::element as svg_element};
 use super::ShapeDefinition;
 use crate::{
     color::Color,
-    draw::StrokeDefinition,
+    draw::{StrokeDefinition, TextDefinition},
     geometry::{Insets, Point, Size},
 };
 
@@ -15,6 +15,7 @@ use crate::{
 pub struct ControlDefinition {
     fill_color: Option<Color>,
     stroke: Cow<'static, StrokeDefinition>,
+    text: Cow<'static, TextDefinition>,
 }
 
 impl ControlDefinition {
@@ -29,6 +30,7 @@ impl Default for ControlDefinition {
         Self {
             fill_color: Some(Color::new("white").expect("Failed to create white color")),
             stroke: Cow::Borrowed(StrokeDefinition::default_solid_borrowed()),
+            text: Cow::Borrowed(TextDefinition::default_borrowed()),
         }
     }
 }
@@ -76,6 +78,20 @@ impl ShapeDefinition for ControlDefinition {
         let mut cloned = self.clone();
         cloned.set_stroke(stroke)?;
         Ok(Box::new(cloned))
+    }
+
+    fn set_text(&mut self, text: Cow<'static, TextDefinition>) {
+        self.text = text;
+    }
+
+    fn text(&self) -> &TextDefinition {
+        &self.text
+    }
+
+    fn with_text(&self, text: Cow<'static, TextDefinition>) -> Box<dyn ShapeDefinition> {
+        let mut cloned = self.clone();
+        cloned.set_text(text);
+        Box::new(cloned)
     }
 
     fn render_to_svg(&self, _size: Size, position: Point) -> Box<dyn svg::Node> {

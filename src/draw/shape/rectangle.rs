@@ -5,7 +5,7 @@ use svg::{self, node::element as svg_element};
 use super::ShapeDefinition;
 use crate::{
     color::Color,
-    draw::{StrokeDefinition, text_positioning::TextPositioningStrategy},
+    draw::{StrokeDefinition, TextDefinition, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
 
@@ -15,6 +15,7 @@ pub struct RectangleDefinition {
     fill_color: Option<Color>,
     stroke: Cow<'static, StrokeDefinition>,
     rounded: usize,
+    text: Cow<'static, TextDefinition>,
 }
 
 impl RectangleDefinition {
@@ -30,6 +31,7 @@ impl Default for RectangleDefinition {
             fill_color: None,
             stroke: Cow::Borrowed(StrokeDefinition::default_solid_borrowed()),
             rounded: 0,
+            text: Cow::Borrowed(TextDefinition::default_borrowed()),
         }
     }
 }
@@ -97,6 +99,20 @@ impl ShapeDefinition for RectangleDefinition {
         let mut cloned = self.clone();
         cloned.set_stroke(stroke)?;
         Ok(Box::new(cloned))
+    }
+
+    fn set_text(&mut self, text: Cow<'static, TextDefinition>) {
+        self.text = text;
+    }
+
+    fn text(&self) -> &TextDefinition {
+        &self.text
+    }
+
+    fn with_text(&self, text: Cow<'static, TextDefinition>) -> Box<dyn ShapeDefinition> {
+        let mut cloned = self.clone();
+        cloned.set_text(text);
+        Box::new(cloned)
     }
 
     fn text_positioning_strategy(&self) -> TextPositioningStrategy {

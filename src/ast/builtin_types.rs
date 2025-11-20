@@ -13,7 +13,7 @@
 //! - **Annotations**: Note
 //! - **Activations**: Activate
 
-use std::{borrow::Cow, rc::Rc};
+use std::rc::Rc;
 
 use super::elaborate_types::TypeDefinition;
 use crate::{draw, identifier::Id};
@@ -104,7 +104,6 @@ impl BuiltinTypeBuilder {
     ) -> Self {
         self.types.push(Rc::new(TypeDefinition::new_shape(
             Id::new(name),
-            Cow::Borrowed(draw::TextDefinition::default_borrowed()),
             Box::new(shape_definition),
         )));
         self
@@ -116,7 +115,6 @@ impl BuiltinTypeBuilder {
     pub fn add_arrow(mut self, name: &str, arrow_definition: draw::ArrowDefinition) -> Self {
         self.types.push(Rc::new(TypeDefinition::new_arrow(
             Id::new(name),
-            Cow::Borrowed(draw::TextDefinition::default_borrowed()),
             arrow_definition,
         )));
         self
@@ -132,7 +130,6 @@ impl BuiltinTypeBuilder {
     ) -> Self {
         self.types.push(Rc::new(TypeDefinition::new_fragment(
             Id::new(name),
-            Cow::Borrowed(draw::TextDefinition::default_borrowed()),
             fragment_definition,
         )));
         self

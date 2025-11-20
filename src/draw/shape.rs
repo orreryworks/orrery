@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::{
     color::Color,
-    draw::{Drawable, StrokeDefinition, text_positioning::TextPositioningStrategy},
+    draw::{Drawable, StrokeDefinition, TextDefinition, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
 
@@ -72,8 +72,11 @@ pub trait ShapeDefinition: std::fmt::Debug {
 
     /// Set the stroke definition for the shape
     fn set_stroke(&mut self, _stroke: Cow<'static, StrokeDefinition>) -> Result<(), &'static str> {
-        Err("set_stroke is not supported for this shape")
+        Err("stroke is not supported for this shape")
     }
+
+    /// Set the text definition for the shape
+    fn set_text(&mut self, _text: Cow<'static, TextDefinition>);
 
     /// Create a new shape definition with the stroke changed
     /// Default implementation returns error - override in concrete implementations
@@ -84,6 +87,14 @@ pub trait ShapeDefinition: std::fmt::Debug {
         Err("with_stroke is not supported for this shape")
     }
 
+    /// Create a new shape definition with the text changed
+    /// Default implementation clones and sets text - override for optimization
+    fn with_text(&self, text: Cow<'static, TextDefinition>) -> Box<dyn ShapeDefinition> {
+        let mut cloned = self.clone_box();
+        cloned.set_text(text);
+        cloned
+    }
+
     /// Get the fill color of the rectangle
     fn fill_color(&self) -> Option<Color> {
         unimplemented!("fill_color is not supported for this shape")
@@ -92,6 +103,11 @@ pub trait ShapeDefinition: std::fmt::Debug {
     /// Get the stroke definition for the shape
     fn stroke(&self) -> &StrokeDefinition {
         unimplemented!("stroke is not supported for this shape")
+    }
+
+    /// Get the text definition for the shape
+    fn text(&self) -> &TextDefinition {
+        unimplemented!("text is not supported for this shape")
     }
 
     /// Get the corner rounding of the rectangle

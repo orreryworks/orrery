@@ -129,6 +129,10 @@ where
         self.rectangle_definition.stroke()
     }
 
+    fn text(&self) -> &crate::draw::TextDefinition {
+        self.rectangle_definition.text()
+    }
+
     fn rounded(&self) -> usize {
         self.rectangle_definition.rounded()
     }
@@ -143,6 +147,10 @@ where
 
     fn set_stroke(&mut self, stroke: Cow<'static, StrokeDefinition>) -> Result<(), &'static str> {
         self.rectangle_definition.set_stroke(stroke)
+    }
+
+    fn set_text(&mut self, text: Cow<'static, crate::draw::TextDefinition>) {
+        self.rectangle_definition.set_text(text)
     }
 
     fn with_fill_color(
@@ -167,6 +175,15 @@ where
         let mut cloned = self.clone();
         cloned.set_stroke(stroke)?;
         Ok(Box::new(cloned))
+    }
+
+    fn with_text(
+        &self,
+        text: Cow<'static, crate::draw::TextDefinition>,
+    ) -> Box<dyn ShapeDefinition> {
+        let mut cloned = self.clone();
+        cloned.set_text(text);
+        Box::new(cloned)
     }
 
     fn text_positioning_strategy(&self) -> TextPositioningStrategy {

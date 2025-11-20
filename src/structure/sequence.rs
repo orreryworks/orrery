@@ -259,14 +259,13 @@ mod tests {
         draw,
         identifier::Id,
     };
-    use std::{borrow::Cow, rc::Rc};
+    use std::rc::Rc;
 
     /// Helper function to create a minimal mock node for testing
     fn create_test_node(id_str: &str) -> Node {
         let id = Id::new(id_str);
-        let text_def = draw::TextDefinition::new();
         let shape_def = Box::new(draw::RectangleDefinition::new());
-        let type_def = TypeDefinition::new_shape(id, Cow::Owned(text_def), shape_def);
+        let type_def = TypeDefinition::new_shape(id, shape_def);
 
         Node::new(id, id_str.to_string(), None, Block::None, Rc::new(type_def))
     }

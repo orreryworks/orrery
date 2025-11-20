@@ -219,6 +219,11 @@ impl NoteDefinition {
     pub fn stroke(&self) -> &StrokeDefinition {
         &self.stroke
     }
+
+    /// Returns a reference to the text definition.
+    pub fn text(&self) -> &TextDefinition {
+        &self.text
+    }
 }
 
 impl Default for NoteDefinition {

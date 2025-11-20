@@ -762,7 +762,6 @@ mod tests {
         let fragment_def = draw::FragmentDefinition::default();
         let type_def = Rc::new(ast::TypeDefinition::new_fragment(
             Id::new("test_fragment"),
-            Cow::Borrowed(draw::TextDefinition::default_borrowed()),
             fragment_def,
         ));
 
@@ -807,7 +806,6 @@ mod tests {
         let fragment_def = draw::FragmentDefinition::default();
         let type_def = Rc::new(ast::TypeDefinition::new_fragment(
             Id::new("test_fragment"),
-            Cow::Borrowed(draw::TextDefinition::default_borrowed()),
             fragment_def,
         ));
 

@@ -370,7 +370,6 @@ pub enum DrawDefinition {
 #[derive(Debug)]
 pub struct TypeDefinition {
     id: Id,
-    text_definition: Option<Cow<'static, draw::TextDefinition>>,
     draw_definition: DrawDefinition,
 }
 
@@ -486,64 +485,31 @@ pub enum Block {
 }
 
 impl TypeDefinition {
-    fn new(
-        id: Id,
-        text_definition: Option<Cow<'static, draw::TextDefinition>>,
-        draw_definition: DrawDefinition,
-    ) -> Self {
+    fn new(id: Id, draw_definition: DrawDefinition) -> Self {
         Self {
             id,
-            text_definition,
             draw_definition,
         }
     }
 
-    /// Construct a concrete shape type definition from a text definition and a shape definition.
-    pub fn new_shape(
-        id: Id,
-        text_definition: Cow<'static, draw::TextDefinition>,
-        shape_definition: Box<dyn draw::ShapeDefinition>,
-    ) -> Self {
-        Self::new(
-            id,
-            Some(text_definition),
-            DrawDefinition::Shape(shape_definition),
-        )
+    /// Construct a concrete shape type definition from a shape definition.
+    pub fn new_shape(id: Id, shape_definition: Box<dyn draw::ShapeDefinition>) -> Self {
+        Self::new(id, DrawDefinition::Shape(shape_definition))
     }
 
-    /// Construct a concrete arrow type definition from a text definition and an arrow definition.
-    pub fn new_arrow(
-        id: Id,
-        text_definition: Cow<'static, draw::TextDefinition>,
-        arrow_definition: draw::ArrowDefinition,
-    ) -> Self {
-        Self::new(
-            id,
-            Some(text_definition),
-            DrawDefinition::Arrow(arrow_definition),
-        )
+    /// Construct a concrete arrow type definition from an arrow definition.
+    pub fn new_arrow(id: Id, arrow_definition: draw::ArrowDefinition) -> Self {
+        Self::new(id, DrawDefinition::Arrow(arrow_definition))
     }
 
-    /// Construct a concrete fragment type definition from a text definition and a fragment definition.
-    pub fn new_fragment(
-        id: Id,
-        text_definition: Cow<'static, draw::TextDefinition>,
-        fragment_definition: draw::FragmentDefinition,
-    ) -> Self {
-        Self::new(
-            id,
-            Some(text_definition),
-            DrawDefinition::Fragment(fragment_definition),
-        )
+    /// Construct a concrete fragment type definition from a fragment definition.
+    pub fn new_fragment(id: Id, fragment_definition: draw::FragmentDefinition) -> Self {
+        Self::new(id, DrawDefinition::Fragment(fragment_definition))
     }
 
     /// Construct a concrete note type definition from a note definition.
     pub fn new_note(id: Id, note_definition: draw::NoteDefinition) -> Self {
-        Self::new(
-            id,
-            Some(Cow::Borrowed(draw::TextDefinition::default_borrowed())),
-            DrawDefinition::Note(note_definition),
-        )
+        Self::new(id, DrawDefinition::Note(note_definition))
     }
 
     /// Construct a concrete activation box type definition from a activation box definition.
@@ -551,21 +517,17 @@ impl TypeDefinition {
         id: Id,
         activation_box_definition: draw::ActivationBoxDefinition,
     ) -> Self {
-        Self::new(
-            id,
-            Some(Cow::Borrowed(draw::TextDefinition::default_borrowed())),
-            DrawDefinition::ActivationBox(activation_box_definition),
-        )
+        Self::new(id, DrawDefinition::ActivationBox(activation_box_definition))
     }
 
     /// Construct a concrete stroke type definition from a stroke definition.
     pub fn new_stroke(id: Id, stroke_definition: draw::StrokeDefinition) -> Self {
-        Self::new(id, None, DrawDefinition::Stroke(stroke_definition))
+        Self::new(id, DrawDefinition::Stroke(stroke_definition))
     }
 
     /// Construct a concrete text type definition from a text definition.
     pub fn new_text(id: Id, text_definition: draw::TextDefinition) -> Self {
-        Self::new(id, None, DrawDefinition::Text(text_definition))
+        Self::new(id, DrawDefinition::Text(text_definition))
     }
 
     /// Get the identifier for this type definition.
@@ -574,8 +536,19 @@ impl TypeDefinition {
     }
 
     /// Borrow the text definition if present.
+    /// For shapes and arrows, returns the embedded text definition.
+    /// For notes, returns the note's text definition.
+    /// For fragments, activation boxes, strokes, and text types, returns None.
     pub fn text_definition(&self) -> Option<&draw::TextDefinition> {
-        self.text_definition.as_ref().map(|cow| cow.as_ref())
+        match &self.draw_definition {
+            DrawDefinition::Shape(shape) => Some(shape.text()),
+            DrawDefinition::Arrow(arrow) => Some(arrow.text()),
+            DrawDefinition::Note(note) => Some(note.text()),
+            DrawDefinition::Fragment(_) => None,
+            DrawDefinition::ActivationBox(_) => None,
+            DrawDefinition::Stroke(_) => None,
+            DrawDefinition::Text(_) => None,
+        }
     }
 
     /// Borrow the shape definition if this type is a shape; otherwise returns an error.
@@ -882,10 +855,8 @@ impl TypeDefinition {
         attributes: &[parser_types::Attribute],
     ) -> DiagnosticResult<Self> {
         let mut text_def = base
-            .text_definition
-            .as_ref()
+            .text_definition()
             .expect("Base type must have text_definition")
-            .as_ref()
             .clone();
 
         match &base.draw_definition {
@@ -997,7 +968,8 @@ impl TypeDefinition {
                     }
                 }
 
-                Ok(Self::new_shape(id, Cow::Owned(text_def), new_shape_def))
+                new_shape_def.set_text(Cow::Owned(text_def));
+                Ok(Self::new_shape(id, new_shape_def))
             }
             DrawDefinition::Arrow(arrow_def) => {
                 let mut new_stroke = arrow_def.stroke().clone();
@@ -1077,7 +1049,8 @@ impl TypeDefinition {
 
                 let mut new_arrow_def = draw::ArrowDefinition::new(Cow::Owned(new_stroke));
                 new_arrow_def.set_style(new_style);
-                Ok(Self::new_arrow(id, Cow::Owned(text_def), new_arrow_def))
+                new_arrow_def.set_text(Cow::Owned(text_def));
+                Ok(Self::new_arrow(id, new_arrow_def))
             }
             DrawDefinition::Fragment(fragment_def) => {
                 let mut new_border_stroke = fragment_def.border_stroke().clone();
@@ -1181,11 +1154,9 @@ impl TypeDefinition {
                 new_fragment_def.set_border_stroke(Cow::Owned(new_border_stroke));
                 new_fragment_def.set_separator_stroke(Cow::Owned(new_separator_stroke));
 
-                Ok(Self::new_fragment(
-                    id,
-                    Cow::Owned::<draw::TextDefinition>(text_def),
-                    new_fragment_def,
-                ))
+                // Note: Fragment text attributes apply to operation/section labels
+                // TODO: Apply text_def to fragment's text definitions if needed
+                Ok(Self::new_fragment(id, new_fragment_def))
             }
             DrawDefinition::Note(note_def) => {
                 let mut new_note_def = note_def.clone();
@@ -1385,11 +1356,8 @@ mod elaborate_tests {
 
     #[test]
     fn test_shape_type_has_text_definition() {
-        let type_def = TypeDefinition::new_shape(
-            Id::new("Rect"),
-            Cow::Borrowed(draw::TextDefinition::default_borrowed()),
-            Box::new(draw::RectangleDefinition::new()),
-        );
+        let type_def =
+            TypeDefinition::new_shape(Id::new("Rect"), Box::new(draw::RectangleDefinition::new()));
         assert!(type_def.text_definition().is_some());
         assert!(type_def.stroke_definition().is_err());
     }
@@ -1491,9 +1459,8 @@ mod elaborate_tests {
     fn test_type_definition_with_text_attributes() {
         // Create a base rectangle type
         let base_id = Id::new("Rectangle");
-        let base_text_def = Cow::Borrowed(draw::TextDefinition::default_borrowed());
         let base_shape_def = Box::new(draw::RectangleDefinition::new());
-        let base_type = TypeDefinition::new_shape(base_id, base_text_def, base_shape_def);
+        let base_type = TypeDefinition::new_shape(base_id, base_shape_def);
 
         // Create attributes including text group
         let text_attrs = vec![
@@ -1517,9 +1484,8 @@ mod elaborate_tests {
     fn test_type_definition_text_not_nested_attributes() {
         // Create a base rectangle type
         let base_id = Id::new("Rectangle");
-        let base_text_def = Cow::Borrowed(draw::TextDefinition::default_borrowed());
         let base_shape_def = Box::new(draw::RectangleDefinition::new());
-        let base_type = TypeDefinition::new_shape(base_id, base_text_def, base_shape_def);
+        let base_type = TypeDefinition::new_shape(base_id, base_shape_def);
 
         // Try to use text with string value instead of nested attributes
         let attributes = vec![
