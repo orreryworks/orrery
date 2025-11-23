@@ -225,14 +225,14 @@ fn empty_brackets<'src>(input: &mut Input<'src>) -> IResult<()> {
     .parse_next(input)
 }
 
-/// Parse an attribute value (string, float, identifier list, or nested attributes)
+/// Parse an attribute value (string, float, identifier list, or type spec)
 ///
 /// Attributes in Filament can have different value types depending on their purpose:
 ///
 /// **Value Types:**
-/// 1. **Empty** - `[]` - Ambiguous empty brackets (can be identifiers or attributes)
+/// 1. **Empty** - `[]` - Ambiguous empty brackets (can be identifiers or type specs)
 /// 2. **Identifiers** - `[id1, id2, ...]` - List of element identifiers (used in `on` attribute)
-/// 3. **Attributes** - `[attr=val, ...]` - Nested attribute key-value pairs (stroke, text)
+/// 3. **TypeSpec** - `TypeName[attr=val]`, `TypeName`, or `[attr=val]`
 /// 4. **String** - `"value"` - Text values (colors, names, alignment)
 /// 5. **Float** - `2.5` or `10` - Numeric values (widths, sizes, dimensions)
 fn attribute_value<'src>(input: &mut Input<'src>) -> IResult<types::AttributeValue<'src>> {
@@ -240,10 +240,10 @@ fn attribute_value<'src>(input: &mut Input<'src>) -> IResult<types::AttributeVal
         // Parse empty brackets [] first - can be interpreted as either empty identifiers or empty attributes
         empty_brackets.map(|_| types::AttributeValue::Empty),
         // Try identifiers: [id1, id2, ...]
-        // This needs to be before wrapped_attributes since both start with '['
+        // This needs to be before attribute_type_spec since both start with '['
         identifiers.map(types::AttributeValue::Identifiers),
-        // Parse nested attributes [attr1=val1, attr2=val2]
-        wrapped_attributes.map(types::AttributeValue::Attributes),
+        // Parse type spec: TypeName[attrs], TypeName, or [attrs]
+        attribute_type_spec.map(types::AttributeValue::TypeSpec),
         // Parse string or float literals
         any.verify_map(|token: &PositionedToken<'_>| match &token.token {
             Token::StringLiteral(s) => Some(types::AttributeValue::String(Spanned::new(
@@ -306,6 +306,35 @@ fn wrapped_attributes<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Attri
         ),
     )
     .context(StrContext::Label("wrapped attributes"))
+    .parse_next(input)
+}
+
+/// Parse a TypeSpec for attribute values: TypeName[attrs], TypeName, or [attrs]
+///
+/// This is used for attribute values that support type specifications.
+/// It handles three forms:
+/// - `TypeName[attrs]` → TypeSpec with both type_name and attributes
+/// - `TypeName` → TypeSpec with type_name but no attributes
+/// - `[attrs]` → TypeSpec with no type_name (anonymous)
+///
+/// Returns:
+/// - `TypeName[attrs]` → TypeSpec { type_name: Some(TypeName), attributes: [...] }
+/// - `TypeName` → TypeSpec { type_name: Some(TypeName), attributes: [] }
+/// - `[attrs]` → TypeSpec { type_name: None, attributes: [...] }
+fn attribute_type_spec<'src>(input: &mut Input<'src>) -> IResult<types::TypeSpec<'src>> {
+    alt((
+        // Try TypeName[attrs] or TypeName (reuse type_spec)
+        type_spec,
+        // Try [attrs] only (anonymous TypeSpec)
+        |input: &mut Input<'src>| {
+            let attributes = wrapped_attributes.parse_next(input)?;
+            Ok(types::TypeSpec {
+                type_name: None,
+                attributes,
+            })
+        },
+    ))
+    .context(StrContext::Label("attribute type spec"))
     .parse_next(input)
 }
 
@@ -1735,10 +1764,19 @@ mod tests {
         assert_eq!(*attr.name.inner(), "color");
         assert!(matches!(&attr.value, types::AttributeValue::String(s) if s.inner() == "red"));
 
-        // Test failure cases
-        let tokens = tokenize("color=unquoted").expect("Failed to tokenize");
+        // Test that unquoted identifiers are now valid as TypeSpec names
+        let tokens = tokenize("stroke=RedStroke").expect("Failed to tokenize");
         let mut input = FilamentTokenSlice::new(&tokens);
-        assert!(attribute(&mut input).is_err());
+        let result = attribute(&mut input);
+        assert!(result.is_ok());
+        let attr = result.unwrap();
+        assert_eq!(*attr.name.inner(), "stroke");
+        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+            assert_eq!(*type_spec.type_name.as_ref().unwrap().inner(), "RedStroke");
+            assert_eq!(type_spec.attributes.len(), 0);
+        } else {
+            panic!("Expected TypeSpec for stroke=RedStroke");
+        }
 
         // Test float attribute parsing
         let tokens = tokenize("width=2.5").expect("Failed to tokenize");
@@ -1760,7 +1798,8 @@ mod tests {
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "text");
 
-        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+            let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 2);
             assert_eq!(*nested_attrs[0].name.inner(), "font_size");
             assert!(
@@ -1784,7 +1823,7 @@ mod tests {
         // Empty brackets [] are parsed as Empty variant
         if let types::AttributeValue::Empty = &attr.value {
             // Verify it can be interpreted as empty attributes
-            assert_eq!(attr.value.as_attributes().unwrap().len(), 0);
+            assert_eq!(attr.value.as_type_spec().unwrap().attributes.len(), 0);
         } else {
             panic!("Expected Empty attribute value for text=[]");
         }
@@ -1795,7 +1834,8 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+            let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 1);
             assert_eq!(*nested_attrs[0].name.inner(), "font_size");
             assert!(
@@ -1812,7 +1852,8 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+            let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 2);
             assert_eq!(*nested_attrs[0].name.inner(), "font_family");
             assert!(
@@ -1836,7 +1877,8 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+            let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 2);
             assert_eq!(*nested_attrs[0].name.inner(), "font_size");
             assert!(
@@ -1883,11 +1925,11 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_err());
 
-        // Test nested brackets (should error - not supported)
+        // Test nested brackets - now supported as nested TypeSpec
         let tokens = tokenize("text=[style=[curved=true]]").expect("Failed to tokenize");
         let mut input = FilamentTokenSlice::new(&tokens);
         let result = attribute(&mut input);
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -1903,7 +1945,8 @@ mod tests {
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "text");
 
-        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+            let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 4);
 
             // Check font_size
@@ -1947,7 +1990,7 @@ mod tests {
         // Empty brackets [] are parsed as Empty variant
         if let types::AttributeValue::Empty = &attr.value {
             // Verify it can be interpreted as empty attributes
-            assert_eq!(attr.value.as_attributes().unwrap().len(), 0);
+            assert_eq!(attr.value.as_type_spec().unwrap().attributes.len(), 0);
         } else {
             panic!("Expected Empty attribute value for text=[]");
         }
@@ -1958,7 +2001,8 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+            let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 1);
             assert_eq!(*nested_attrs[0].name.inner(), "font_size");
             assert!(
@@ -1975,7 +2019,8 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+            let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 2);
             assert_eq!(*nested_attrs[0].name.inner(), "font_size");
             assert_eq!(*nested_attrs[1].name.inner(), "font_family");
@@ -1993,7 +2038,8 @@ mod tests {
         assert!(result.is_ok());
         let attr = result.unwrap();
 
-        if let types::AttributeValue::Attributes(nested_attrs) = &attr.value {
+        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+            let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 4);
 
             // Verify each attribute type
@@ -2120,7 +2166,8 @@ mod tests {
         assert_eq!(spec.attributes.len(), 1);
         assert_eq!(*spec.attributes[0].name.inner(), "text");
         match &spec.attributes[0].value {
-            types::AttributeValue::Attributes(nested) => {
+            types::AttributeValue::TypeSpec(type_spec) => {
+                let nested = &type_spec.attributes;
                 assert_eq!(nested.len(), 2);
                 assert_eq!(*nested[0].name.inner(), "font");
                 assert_eq!(*nested[1].name.inner(), "size");
@@ -2200,7 +2247,8 @@ mod tests {
         assert_eq!(spec.attributes.len(), 1);
         assert_eq!(*spec.attributes[0].name.inner(), "stroke");
         match &spec.attributes[0].value {
-            types::AttributeValue::Attributes(nested) => {
+            types::AttributeValue::TypeSpec(type_spec) => {
+                let nested = &type_spec.attributes;
                 assert_eq!(nested.len(), 2);
                 assert_eq!(*nested[0].name.inner(), "color");
                 assert_eq!(*nested[1].name.inner(), "width");
@@ -2246,7 +2294,8 @@ mod tests {
         assert!(spec.type_name.is_none());
         assert_eq!(spec.attributes.len(), 1);
         match &spec.attributes[0].value {
-            types::AttributeValue::Attributes(nested) => {
+            types::AttributeValue::TypeSpec(type_spec) => {
+                let nested = &type_spec.attributes;
                 assert_eq!(nested.len(), 2);
             }
             _ => panic!("Expected nested attributes"),

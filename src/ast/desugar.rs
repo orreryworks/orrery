@@ -112,8 +112,8 @@ trait Folder<'a> {
         match value {
             AttributeValue::String(s) => AttributeValue::String(self.fold_string_value(s)),
             AttributeValue::Float(f) => AttributeValue::Float(self.fold_float_value(f)),
-            AttributeValue::Attributes(attrs) => {
-                AttributeValue::Attributes(self.fold_attributes(attrs))
+            AttributeValue::TypeSpec(type_spec) => {
+                AttributeValue::TypeSpec(self.fold_type_spec(type_spec))
             }
             AttributeValue::Identifiers(ids) => {
                 AttributeValue::Identifiers(self.fold_identifiers(ids))

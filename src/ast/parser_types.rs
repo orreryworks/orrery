@@ -62,26 +62,32 @@ impl<'a> fmt::Display for TypeSpec<'a> {
     }
 }
 
+/// Empty TypeSpec constant for use with Empty variant
+static EMPTY_TYPE_SPEC: TypeSpec<'static> = TypeSpec {
+    type_name: None,
+    attributes: Vec::new(),
+};
+
 /// Attribute values can be strings, floats, nested attributes, identifier lists, or empty
 ///
 /// **Variants:**
 /// - `String` - Text values for colors, names, alignment, etc.
 /// - `Float` - Numeric values for dimensions, widths, sizes, etc.
-/// - `Attributes` - Nested key-value pairs for complex attributes (stroke, text)
+/// - `TypeSpec` - Type specifiers for complex attributes supporting named types
 /// - `Identifiers` - Lists of element identifiers (used in note `on` attribute)
 /// - `Empty` - Ambiguous empty brackets `[]` that can be interpreted as either
-///   empty identifiers or empty nested attributes depending on context
+///   empty identifiers or empty type specs depending on context
 ///
 /// **Empty Variant Design:**
 /// The `Empty` variant elegantly solves the `[]` ambiguity problem:
-/// - Both `as_identifiers()` and `as_attributes()` return success with empty slice
-/// - Allows `on=[]` (margin note) and `text=[]` (empty attributes) to parse correctly
+/// - Both `as_identifiers()` and `as_type_spec()` return success with empty/default value
+/// - Allows `on=[]` (margin note) and `text=[]` (empty type spec) to parse correctly
 /// - Parser doesn't need to know the semantic context during parsing
 #[derive(Debug, Clone)]
 pub enum AttributeValue<'a> {
     String(Spanned<String>),
     Float(Spanned<f32>),
-    Attributes(Vec<Attribute<'a>>),
+    TypeSpec(TypeSpec<'a>),
     Identifiers(Vec<Spanned<Id>>),
     Empty,
 }
@@ -91,7 +97,10 @@ impl<'a> PartialEq for AttributeValue<'a> {
         match (self, other) {
             (AttributeValue::String(s1), AttributeValue::String(s2)) => s1.inner() == s2.inner(),
             (AttributeValue::Float(f1), AttributeValue::Float(f2)) => f1.inner() == f2.inner(),
-            (AttributeValue::Attributes(a1), AttributeValue::Attributes(a2)) => a1 == a2,
+            (AttributeValue::TypeSpec(t1), AttributeValue::TypeSpec(t2)) => {
+                t1.type_name.as_ref().map(|s| s.inner()) == t2.type_name.as_ref().map(|s| s.inner())
+                    && t1.attributes == t2.attributes
+            }
             (AttributeValue::Identifiers(l1), AttributeValue::Identifiers(l2)) => l1
                 .iter()
                 .map(|s| s.inner())
@@ -107,15 +116,8 @@ impl<'a> fmt::Display for AttributeValue<'a> {
         match self {
             AttributeValue::String(s) => write!(f, "\"{}\"", s.inner()),
             AttributeValue::Float(n) => write!(f, "{}", n.inner()),
-            AttributeValue::Attributes(attrs) => {
-                write!(f, "[")?;
-                for (i, attr) in attrs.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}={}", attr.name.inner(), attr.value)?;
-                }
-                write!(f, "]")
+            AttributeValue::TypeSpec(type_spec) => {
+                write!(f, "{}", type_spec)
             }
             AttributeValue::Identifiers(ids) => {
                 write!(f, "[")?;
@@ -138,17 +140,7 @@ impl<'a> AttributeValue<'a> {
         match self {
             AttributeValue::String(spanned) => spanned.span(),
             AttributeValue::Float(spanned) => spanned.span(),
-            AttributeValue::Attributes(attrs) => {
-                if attrs.is_empty() {
-                    Span::default()
-                } else {
-                    attrs
-                        .iter()
-                        .map(|attr| attr.span())
-                        .reduce(|acc, span| acc.union(span))
-                        .unwrap_or_default()
-                }
-            }
+            AttributeValue::TypeSpec(type_spec) => type_spec.span(),
             AttributeValue::Identifiers(ids) => {
                 if ids.is_empty() {
                     Span::default()
@@ -208,12 +200,12 @@ impl<'a> AttributeValue<'a> {
         }
     }
 
-    /// Extract nested attributes, returning an error if this is an attributes value
-    pub fn as_attributes(&self) -> Result<&[Attribute<'a>], &'static str> {
+    /// Extract a type spec, returning an error if this is not a type spec value
+    pub fn as_type_spec(&self) -> Result<&TypeSpec<'a>, &'static str> {
         match self {
-            AttributeValue::Attributes(attrs) => Ok(attrs),
-            AttributeValue::Empty => Ok(&[]),
-            _ => Err("Expected nested attributes"),
+            AttributeValue::TypeSpec(type_spec) => Ok(type_spec),
+            AttributeValue::Empty => Ok(&EMPTY_TYPE_SPEC),
+            _ => Err("Expected type spec"),
         }
     }
 

@@ -932,11 +932,11 @@ db: Rectangle;"#;
     fn test_attribute_error_span_precision() {
         let source = r#"
             diagram component;
-            app: Rectangle [color="blue", invalid_attr=unquoted_value];
+            app: Rectangle [color="blue", invalid_attr=];
         "#;
 
         // Test precise span tracking for attribute parsing errors
-        assert_error_at_position(source, 3, 63);
+        assert_error_at_position(source, 3, 55);
     }
 
     #[test]

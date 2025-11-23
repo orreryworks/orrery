@@ -895,14 +895,20 @@ impl TypeDefinition {
                             })?;
                         }
                         "stroke" => {
-                            let nested_attrs = value.as_attributes().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid stroke attribute value",
-                                    Some("Stroke attribute must contain nested attributes like [color=\"blue\", width=2.0]".to_string()),
-                                )
-                            })?;
+                            let nested_attrs = &value
+                                .as_type_spec()
+                                .map_err(|err| {
+                                    DiagnosticError::from_span(
+                                        err.to_string(),
+                                        attr.span(),
+                                        "invalid stroke attribute value",
+                                        Some(
+                                            "Stroke attribute must contain type spec like"
+                                                .to_string(),
+                                        ),
+                                    )
+                                })?
+                                .attributes;
 
                             let mut new_stroke = (*new_shape_def.stroke()).clone();
                             StrokeAttributeExtractor::extract_stroke_attributes(
@@ -940,14 +946,20 @@ impl TypeDefinition {
                         }
                         "text" => {
                             // Handle nested text attributes
-                            let nested_attrs = value.as_attributes().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid text attribute value",
-                                    Some("Text attribute must contain nested attributes like [font_size=12, padding=6.5]".to_string()),
-                                )
-                            })?;
+                            let nested_attrs = &value
+                                .as_type_spec()
+                                .map_err(|err| {
+                                    DiagnosticError::from_span(
+                                        err.to_string(),
+                                        attr.span(),
+                                        "invalid text attribute value",
+                                        Some(
+                                            "Text attribute must contain type spec like"
+                                                .to_string(),
+                                        ),
+                                    )
+                                })?
+                                .attributes;
 
                             TextAttributeExtractor::extract_text_attributes(
                                 &mut text_def,
@@ -981,14 +993,17 @@ impl TypeDefinition {
 
                     match *name {
                         "stroke" => {
-                            let nested_attrs = value.as_attributes().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid stroke attribute value",
-                                    Some("Stroke attribute must contain nested attributes like [color=\"blue\", width=2.0]".to_string()),
-                                )
-                            })?;
+                            let nested_attrs = &value
+                                .as_type_spec()
+                                .map_err(|err| {
+                                    DiagnosticError::from_span(
+                                        err.to_string(),
+                                        attr.span(),
+                                        "invalid stroke attribute value",
+                                        Some("Stroke attribute must contain type spec".to_string()),
+                                    )
+                                })?
+                                .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
                                 &mut new_stroke,
@@ -1019,14 +1034,17 @@ impl TypeDefinition {
                             new_style = val;
                         }
                         "text" => {
-                            let nested_attrs = value.as_attributes().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid text attribute value",
-                                    Some("Text attribute must contain nested attributes like [font_size=12, padding=6.5]".to_string()),
-                                )
-                            })?;
+                            let nested_attrs = &value
+                                .as_type_spec()
+                                .map_err(|err| {
+                                    DiagnosticError::from_span(
+                                        err.to_string(),
+                                        attr.span(),
+                                        "invalid text attribute value",
+                                        Some("Text attribute must contain type spec".to_string()),
+                                    )
+                                })?
+                                .attributes;
 
                             TextAttributeExtractor::extract_text_attributes(
                                 &mut text_def,
@@ -1063,14 +1081,20 @@ impl TypeDefinition {
 
                     match *name {
                         "border_stroke" => {
-                            let nested_attrs = value.as_attributes().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid border_stroke attribute value",
-                                    Some("Border stroke attribute must contain nested attributes like [color=\"black\", width=1.5]".to_string()),
-                                )
-                            })?;
+                            let nested_attrs = &value
+                                .as_type_spec()
+                                .map_err(|err| {
+                                    DiagnosticError::from_span(
+                                        err.to_string(),
+                                        attr.span(),
+                                        "invalid border_stroke attribute value",
+                                        Some(
+                                            "Border stroke attribute must contain type spec"
+                                                .to_string(),
+                                        ),
+                                    )
+                                })?
+                                .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
                                 &mut new_border_stroke,
@@ -1097,14 +1121,20 @@ impl TypeDefinition {
                             new_fragment_def.set_background_color(Some(val));
                         }
                         "separator_stroke" => {
-                            let nested_attrs = value.as_attributes().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid separator_stroke attribute value",
-                                    Some("Separator stroke attribute must contain nested attributes like [color=\"gray\", width=1.0, style=\"dashed\"]".to_string()),
-                                )
-                            })?;
+                            let nested_attrs = &value
+                                .as_type_spec()
+                                .map_err(|err| {
+                                    DiagnosticError::from_span(
+                                        err.to_string(),
+                                        attr.span(),
+                                        "invalid separator_stroke attribute value",
+                                        Some(
+                                            "Separator stroke attribute must contain type spec"
+                                                .to_string(),
+                                        ),
+                                    )
+                                })?
+                                .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
                                 &mut new_separator_stroke,
@@ -1123,14 +1153,17 @@ impl TypeDefinition {
                             new_fragment_def.set_content_padding(Insets::uniform(val));
                         }
                         "text" => {
-                            let nested_attrs = value.as_attributes().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid text attribute value",
-                                    Some("Text attribute must contain nested attributes like [font_size=12, padding=6.5]".to_string()),
-                                )
-                            })?;
+                            let nested_attrs = &value
+                                .as_type_spec()
+                                .map_err(|err| {
+                                    DiagnosticError::from_span(
+                                        err.to_string(),
+                                        attr.span(),
+                                        "invalid text attribute value",
+                                        Some("Text attribute must contain type spec".to_string()),
+                                    )
+                                })?
+                                .attributes;
 
                             TextAttributeExtractor::extract_text_attributes(
                                 &mut text_def,
@@ -1187,14 +1220,17 @@ impl TypeDefinition {
                             new_note_def.set_background_color(Some(val));
                         }
                         "stroke" => {
-                            let nested_attrs = value.as_attributes().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid stroke attribute value",
-                                    Some("Stroke attribute must contain nested attributes like [color=\"blue\", width=2.0, style=\"dashed\"]".to_string()),
-                                )
-                            })?;
+                            let nested_attrs = &value
+                                .as_type_spec()
+                                .map_err(|err| {
+                                    DiagnosticError::from_span(
+                                        err.to_string(),
+                                        attr.span(),
+                                        "invalid stroke attribute value",
+                                        Some("Stroke attribute must contain type spec".to_string()),
+                                    )
+                                })?
+                                .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
                                 &mut new_stroke,
@@ -1202,14 +1238,17 @@ impl TypeDefinition {
                             )?;
                         }
                         "text" => {
-                            let nested_attrs = value.as_attributes().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid text attribute value",
-                                    Some("Text attribute must contain nested attributes like [font_size=12, color=\"blue\"]".to_string()),
-                                )
-                            })?;
+                            let nested_attrs = &value
+                                .as_type_spec()
+                                .map_err(|err| {
+                                    DiagnosticError::from_span(
+                                        err.to_string(),
+                                        attr.span(),
+                                        "invalid text attribute value",
+                                        Some("Text attribute must contain type spec".to_string()),
+                                    )
+                                })?
+                                .attributes;
 
                             TextAttributeExtractor::extract_text_attributes(
                                 &mut text_def,
@@ -1289,14 +1328,17 @@ impl TypeDefinition {
                             new_activation_box_def.set_fill_color(val);
                         }
                         "stroke" => {
-                            let nested_attrs = value.as_attributes().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid stroke attribute value",
-                                    Some("Stroke attribute must contain nested attributes like [color=\"blue\", width=2.0, style=\"dashed\"]".to_string()),
-                                )
-                            })?;
+                            let nested_attrs = &value
+                                .as_type_spec()
+                                .map_err(|err| {
+                                    DiagnosticError::from_span(
+                                        err.to_string(),
+                                        attr.span(),
+                                        "invalid stroke attribute value",
+                                        Some("Stroke attribute must contain type spec".to_string()),
+                                    )
+                                })?
+                                .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
                                 &mut new_stroke,
@@ -1470,7 +1512,13 @@ mod elaborate_tests {
 
         let attributes = vec![
             create_test_attribute("fill_color", create_string_value("blue")),
-            create_test_attribute("text", parser_types::AttributeValue::Attributes(text_attrs)),
+            create_test_attribute(
+                "text",
+                parser_types::AttributeValue::TypeSpec(parser_types::TypeSpec {
+                    type_name: None,
+                    attributes: text_attrs,
+                }),
+            ),
         ];
 
         // Create new type from base with text attributes
@@ -1503,7 +1551,7 @@ mod elaborate_tests {
         assert!(result.is_err());
         if let Err(error) = result {
             let error_message = format!("{}", error);
-            assert!(error_message.contains("Expected nested attributes"));
+            assert!(error_message.contains("Expected type spec"));
         }
     }
 

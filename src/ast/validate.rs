@@ -64,7 +64,7 @@ pub trait Visitor<'a> {
         match value {
             AttributeValue::String(s) => self.visit_string_value(s),
             AttributeValue::Float(f) => self.visit_float_value(f),
-            AttributeValue::Attributes(attrs) => self.visit_attributes(attrs),
+            AttributeValue::TypeSpec(type_spec) => self.visit_type_spec(type_spec),
             AttributeValue::Identifiers(ids) => self.visit_identifiers(ids),
             AttributeValue::Empty => {}
         }

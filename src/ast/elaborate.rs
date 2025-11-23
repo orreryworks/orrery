@@ -731,14 +731,18 @@ impl<'a> Builder<'a> {
     fn extract_lifeline_definition(
         lifeline_attr: &parser_types::Attribute<'_>,
     ) -> Result<draw::LifelineDefinition> {
-        let nested_attrs = lifeline_attr.value.as_attributes().map_err(|err| {
-            DiagnosticError::from_span(
-                err.to_string(),
-                lifeline_attr.value.span(),
-                "invalid lifeline attribute value",
-                Some("Lifeline attribute must contain nested attributes like [stroke=[color=\"gray\", width=1.5]]".to_string()),
-            )
-        })?;
+        let nested_attrs = &lifeline_attr
+            .value
+            .as_type_spec()
+            .map_err(|err| {
+                DiagnosticError::from_span(
+                    err.to_string(),
+                    lifeline_attr.value.span(),
+                    "invalid lifeline attribute value",
+                    Some("Lifeline attribute must contain type spec".to_string()),
+                )
+            })?
+            .attributes;
 
         // Start with default lifeline stroke
         let mut stroke_def = draw::StrokeDefinition::dashed(Color::default(), 1.0);
@@ -746,14 +750,18 @@ impl<'a> Builder<'a> {
         for attr in nested_attrs {
             match *attr.name {
                 "stroke" => {
-                    let stroke_attrs = attr.value.as_attributes().map_err(|err| {
-                        DiagnosticError::from_span(
-                            err.to_string(),
-                            attr.value.span(),
-                            "invalid stroke attribute value",
-                            Some("Stroke attribute must contain nested attributes like [color=\"gray\", width=1.5]".to_string()),
-                        )
-                    })?;
+                    let stroke_attrs = &attr
+                        .value
+                        .as_type_spec()
+                        .map_err(|err| {
+                            DiagnosticError::from_span(
+                                err.to_string(),
+                                attr.value.span(),
+                                "invalid stroke attribute value",
+                                Some("Stroke attribute must contain type spec".to_string()),
+                            )
+                        })?
+                        .attributes;
 
                     types::StrokeAttributeExtractor::extract_stroke_attributes(
                         &mut stroke_def,
@@ -778,28 +786,36 @@ impl<'a> Builder<'a> {
     fn extract_activation_box_definition(
         activation_box_attr: &parser_types::Attribute<'_>,
     ) -> Result<draw::ActivationBoxDefinition> {
-        let nested_attrs = activation_box_attr.value.as_attributes().map_err(|err| {
-            DiagnosticError::from_span(
-                err.to_string(),
-                activation_box_attr.value.span(),
-                "invalid activation_box attribute value",
-                Some("Activation box attribute must contain nested attributes like [stroke=[color=\"orange\", width=2.0], fill_color=\"lightyellow\"]".to_string()),
-            )
-        })?;
+        let nested_attrs = &activation_box_attr
+            .value
+            .as_type_spec()
+            .map_err(|err| {
+                DiagnosticError::from_span(
+                    err.to_string(),
+                    activation_box_attr.value.span(),
+                    "invalid activation_box attribute value",
+                    Some("Activation box attribute must contain type spec".to_string()),
+                )
+            })?
+            .attributes;
 
         let mut definition = draw::ActivationBoxDefinition::default();
 
         for attr in nested_attrs {
             match *attr.name {
                 "stroke" => {
-                    let stroke_attrs = attr.value.as_attributes().map_err(|err| {
-                        DiagnosticError::from_span(
-                            err.to_string(),
-                            attr.value.span(),
-                            "invalid stroke attribute value",
-                            Some("Stroke attribute must contain nested attributes like [color=\"orange\", width=2.0]".to_string()),
-                        )
-                    })?;
+                    let stroke_attrs = &attr
+                        .value
+                        .as_type_spec()
+                        .map_err(|err| {
+                            DiagnosticError::from_span(
+                                err.to_string(),
+                                attr.value.span(),
+                                "invalid stroke attribute value",
+                                Some("Stroke attribute must contain type spec".to_string()),
+                            )
+                        })?
+                        .attributes;
 
                     let mut stroke_def = (*definition.stroke()).clone();
                     types::StrokeAttributeExtractor::extract_stroke_attributes(
@@ -1608,29 +1624,38 @@ mod tests {
             },
             parser_types::Attribute {
                 name: Spanned::new("stroke", Span::new(0..6)),
-                value: parser_types::AttributeValue::Attributes(vec![
-                    parser_types::Attribute {
-                        name: Spanned::new("color", Span::new(0..5)),
-                        value: parser_types::AttributeValue::String(Spanned::new(
-                            "blue".to_string(),
-                            Span::new(0..4),
-                        )),
-                    },
-                    parser_types::Attribute {
-                        name: Spanned::new("width", Span::new(0..5)),
-                        value: parser_types::AttributeValue::Float(Spanned::new(
-                            2.0,
-                            Span::new(0..3),
-                        )),
-                    },
-                ]),
+                value: parser_types::AttributeValue::TypeSpec(parser_types::TypeSpec {
+                    type_name: None,
+                    attributes: vec![
+                        parser_types::Attribute {
+                            name: Spanned::new("color", Span::new(0..5)),
+                            value: parser_types::AttributeValue::String(Spanned::new(
+                                "blue".to_string(),
+                                Span::new(0..4),
+                            )),
+                        },
+                        parser_types::Attribute {
+                            name: Spanned::new("width", Span::new(0..5)),
+                            value: parser_types::AttributeValue::Float(Spanned::new(
+                                2.0,
+                                Span::new(0..3),
+                            )),
+                        },
+                    ],
+                }),
             },
             parser_types::Attribute {
                 name: Spanned::new("text", Span::new(0..4)),
-                value: parser_types::AttributeValue::Attributes(vec![parser_types::Attribute {
-                    name: Spanned::new("font_size", Span::new(0..9)),
-                    value: parser_types::AttributeValue::Float(Spanned::new(14.0, Span::new(0..2))),
-                }]),
+                value: parser_types::AttributeValue::TypeSpec(parser_types::TypeSpec {
+                    type_name: None,
+                    attributes: vec![parser_types::Attribute {
+                        name: Spanned::new("font_size", Span::new(0..9)),
+                        value: parser_types::AttributeValue::Float(Spanned::new(
+                            14.0,
+                            Span::new(0..2),
+                        )),
+                    }],
+                }),
             },
         ];
 
