@@ -854,13 +854,12 @@ impl TypeDefinition {
         base: &Self,
         attributes: &[parser_types::Attribute],
     ) -> DiagnosticResult<Self> {
-        let mut text_def = base
-            .text_definition()
-            .expect("Base type must have text_definition")
-            .clone();
-
         match &base.draw_definition {
             DrawDefinition::Shape(shape_def) => {
+                let mut text_def = base
+                    .text_definition()
+                    .expect("Shape type must have text_definition")
+                    .clone();
                 let mut new_shape_def = shape_def.clone_box();
 
                 for attr in attributes {
@@ -984,6 +983,10 @@ impl TypeDefinition {
                 Ok(Self::new_shape(id, new_shape_def))
             }
             DrawDefinition::Arrow(arrow_def) => {
+                let mut text_def = base
+                    .text_definition()
+                    .expect("Arrow type must have text_definition")
+                    .clone();
                 let mut new_stroke = arrow_def.stroke().clone();
                 let mut new_style = *arrow_def.style();
 
@@ -1071,6 +1074,10 @@ impl TypeDefinition {
                 Ok(Self::new_arrow(id, new_arrow_def))
             }
             DrawDefinition::Fragment(fragment_def) => {
+                let mut text_def = base
+                    .text_definition()
+                    .cloned()
+                    .unwrap_or_else(draw::TextDefinition::default);
                 let mut new_border_stroke = fragment_def.border_stroke().clone();
                 let mut new_separator_stroke = fragment_def.separator_stroke().clone();
                 let mut new_fragment_def = fragment_def.clone();
@@ -1192,6 +1199,10 @@ impl TypeDefinition {
                 Ok(Self::new_fragment(id, new_fragment_def))
             }
             DrawDefinition::Note(note_def) => {
+                let mut text_def = base
+                    .text_definition()
+                    .expect("Note type must have text_definition")
+                    .clone();
                 let mut new_note_def = note_def.clone();
                 let mut new_stroke = new_note_def.stroke().clone();
 
@@ -1363,10 +1374,16 @@ impl TypeDefinition {
 
                 Ok(Self::new_activation_box(id, new_activation_box_def))
             }
-            DrawDefinition::Stroke(_) => {
-                unreachable!("Extending Stroke types is not yet supported")
+            DrawDefinition::Stroke(stroke_def) => {
+                let mut new_stroke = stroke_def.clone();
+                StrokeAttributeExtractor::extract_stroke_attributes(&mut new_stroke, attributes)?;
+                Ok(Self::new_stroke(id, new_stroke))
             }
-            DrawDefinition::Text(_) => unreachable!("Extending Text types is not yet supported"),
+            DrawDefinition::Text(text_def) => {
+                let mut new_text_def = text_def.clone();
+                TextAttributeExtractor::extract_text_attributes(&mut new_text_def, attributes)?;
+                Ok(Self::new_text(id, new_text_def))
+            }
         }
     }
 }
