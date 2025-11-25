@@ -185,13 +185,13 @@ impl Default for TextDefinition {
 }
 
 #[derive(Debug, Clone)]
-pub struct Text {
-    definition: Cow<'static, TextDefinition>,
+pub struct Text<'a> {
+    definition: Cow<'a, TextDefinition>,
     content: String,
 }
 
-impl Text {
-    pub fn new(definition: Cow<'static, TextDefinition>, content: String) -> Self {
+impl<'a> Text<'a> {
+    pub fn new(definition: Cow<'a, TextDefinition>, content: String) -> Self {
         Self {
             definition,
             content,
@@ -216,7 +216,7 @@ impl Text {
     }
 }
 
-impl Drawable for Text {
+impl<'a> Drawable for Text<'a> {
     fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
         let text_size = self.calculate_size();
         let padding = self.definition.padding();

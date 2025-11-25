@@ -58,6 +58,10 @@ impl ShapeDefinition for RectangleDefinition {
         &self.stroke
     }
 
+    fn mut_stroke(&mut self) -> &mut StrokeDefinition {
+        self.stroke.to_mut()
+    }
+
     fn rounded(&self) -> usize {
         self.rounded
     }
@@ -107,6 +111,10 @@ impl ShapeDefinition for RectangleDefinition {
 
     fn text(&self) -> &TextDefinition {
         &self.text
+    }
+
+    fn mut_text(&mut self) -> &mut TextDefinition {
+        self.text.to_mut()
     }
 
     fn with_text(&self, text: Cow<'static, TextDefinition>) -> Box<dyn ShapeDefinition> {

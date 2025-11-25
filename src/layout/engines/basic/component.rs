@@ -62,9 +62,9 @@ impl Engine {
     pub fn calculate_layout<'a>(
         &self,
         graph: &'a ComponentGraph<'a, '_>,
-        embedded_layouts: &EmbeddedLayouts,
-    ) -> ContentStack<Layout> {
-        let mut content_stack = ContentStack::<Layout>::new();
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> ContentStack<Layout<'a>> {
+        let mut content_stack = ContentStack::<Layout<'a>>::new();
         let mut positioned_content_sizes = HashMap::<Id, Size>::new();
 
         for containment_scope in graph.containment_scopes() {
@@ -136,12 +136,12 @@ impl Engine {
     /// Calculate component shapes with proper content size and padding
     fn calculate_component_shapes<'a>(
         &self,
-        graph: &ComponentGraph<'a, '_>,
+        graph: &'a ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<Id, Size>,
-        embedded_layouts: &EmbeddedLayouts,
-    ) -> HashMap<Id, draw::ShapeWithText> {
-        let mut component_shapes: HashMap<Id, draw::ShapeWithText> = HashMap::new();
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> HashMap<Id, draw::ShapeWithText<'a>> {
+        let mut component_shapes: HashMap<Id, draw::ShapeWithText<'a>> = HashMap::new();
 
         // TODO: move it to the best place.
         for node in graph.scope_nodes(containment_scope) {
@@ -153,11 +153,11 @@ impl Engine {
             );
             shape.set_padding(self.padding);
             let text = draw::Text::new(
-                Cow::Owned(
+                Cow::Borrowed(
                     node.type_definition()
-                        .text_definition()
-                        .expect("Shape types must have text_definition")
-                        .clone(),
+                        .shape_definition()
+                        .expect("Node type must be a shape")
+                        .text(),
                 ),
                 node.display_text().to_string(),
             );
@@ -197,9 +197,9 @@ impl Engine {
     /// Calculate positions for components in a containment scope
     fn positions<'a>(
         &self,
-        graph: &ComponentGraph<'a, '_>,
+        graph: &'a ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
-        component_shapes: &HashMap<Id, draw::ShapeWithText>,
+        component_shapes: &HashMap<Id, draw::ShapeWithText<'a>>,
     ) -> HashMap<Id, Point> {
         // Step 1: Assign layers for the top-level nodes
         let layers = Self::assign_layers_for_containment_scope_graph(graph, containment_scope);
@@ -213,12 +213,12 @@ impl Engine {
     }
 
     /// Calculate metrics for each layer: widths and spacings between layers
-    fn calculate_layer_metrics(
+    fn calculate_layer_metrics<'a>(
         &self,
-        graph: &ComponentGraph,
+        graph: &'a ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
         layers: &[Vec<Id>],
-        component_shapes: &HashMap<Id, draw::ShapeWithText>,
+        component_shapes: &HashMap<Id, draw::ShapeWithText<'a>>,
     ) -> (Vec<f32>, Vec<f32>) {
         // Calculate max width for each layer
         let layer_widths: Vec<f32> = layers
@@ -311,11 +311,11 @@ impl Engine {
     }
 
     /// Position nodes within their layers
-    fn position_nodes_in_layers(
+    fn position_nodes_in_layers<'a>(
         &self,
         layers: &[Vec<Id>],
         layer_x_positions: &[f32],
-        component_shapes: &HashMap<Id, draw::ShapeWithText>,
+        component_shapes: &HashMap<Id, draw::ShapeWithText<'a>>,
     ) -> HashMap<Id, Point> {
         let mut positions = HashMap::new();
 
@@ -424,8 +424,8 @@ impl ComponentEngine for Engine {
     fn calculate<'a>(
         &self,
         graph: &'a ComponentGraph<'a, '_>,
-        embedded_layouts: &EmbeddedLayouts,
-    ) -> ContentStack<Layout> {
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> ContentStack<Layout<'a>> {
         self.calculate_layout(graph, embedded_layouts)
     }
 }

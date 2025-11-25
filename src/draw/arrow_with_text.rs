@@ -10,19 +10,19 @@ use crate::{
 /// This struct provides a way to render arrows with optional text labels
 /// positioned at the center of the arrow line.
 #[derive(Debug, Clone)]
-pub struct ArrowWithText {
+pub struct ArrowWithText<'a> {
     arrow: Arrow,
-    text: Option<Text>,
+    text: Option<Text<'a>>,
 }
 
-impl ArrowWithText {
+impl<'a> ArrowWithText<'a> {
     /// Creates a new ArrowWithText with the given arrow and no text.
     pub fn new(arrow: Arrow) -> Self {
         Self { arrow, text: None }
     }
 
     /// Creates a new ArrowWithText with the given arrow and text.
-    pub fn with_text(arrow: Arrow, text: Text) -> Self {
+    pub fn with_text(arrow: Arrow, text: Text<'a>) -> Self {
         Self {
             arrow,
             text: Some(text),
@@ -30,7 +30,7 @@ impl ArrowWithText {
     }
 
     /// Sets the text for this arrow.
-    pub fn set_text(&mut self, text: Text) {
+    pub fn set_text(&mut self, text: Text<'a>) {
         self.text = Some(text);
     }
 
@@ -40,7 +40,7 @@ impl ArrowWithText {
     }
 
     /// Returns a reference to the text, if any.
-    pub fn text(&self) -> Option<&Text> {
+    pub fn text(&self) -> Option<&Text<'a>> {
         self.text.as_ref()
     }
 

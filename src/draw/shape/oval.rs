@@ -105,6 +105,10 @@ impl ShapeDefinition for OvalDefinition {
         &self.stroke
     }
 
+    fn mut_stroke(&mut self) -> &mut StrokeDefinition {
+        self.stroke.to_mut()
+    }
+
     fn set_fill_color(&mut self, color: Option<Color>) -> Result<(), &'static str> {
         self.fill_color = color;
         Ok(())
@@ -139,6 +143,10 @@ impl ShapeDefinition for OvalDefinition {
 
     fn text(&self) -> &TextDefinition {
         &self.text
+    }
+
+    fn mut_text(&mut self) -> &mut TextDefinition {
+        self.text.to_mut()
     }
 
     fn with_text(&self, text: Cow<'static, TextDefinition>) -> Box<dyn ShapeDefinition> {

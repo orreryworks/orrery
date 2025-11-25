@@ -96,10 +96,11 @@ impl Relation {
     }
 
     /// Build a Text drawable for the relation's label using its text definition, if a label exists.
-    pub fn text(&self) -> Option<draw::Text> {
+    pub fn text(&self) -> Option<draw::Text<'_>> {
         let label = self.label.as_ref()?;
-        let text_def = self.type_definition.text_definition()?;
-        Some(draw::Text::new(Cow::Owned(text_def.clone()), label.clone()))
+        let arrow_def = self.type_definition.arrow_definition().ok()?;
+        let text_def = arrow_def.text();
+        Some(draw::Text::new(Cow::Borrowed(text_def), label.clone()))
     }
 
     /// Clone the underlying ArrowDefinition Rc for rendering this relation.
@@ -535,22 +536,6 @@ impl TypeDefinition {
         self.id
     }
 
-    /// Borrow the text definition if present.
-    /// For shapes and arrows, returns the embedded text definition.
-    /// For notes, returns the note's text definition.
-    /// For fragments, activation boxes, strokes, and text types, returns None.
-    pub fn text_definition(&self) -> Option<&draw::TextDefinition> {
-        match &self.draw_definition {
-            DrawDefinition::Shape(shape) => Some(shape.text()),
-            DrawDefinition::Arrow(arrow) => Some(arrow.text()),
-            DrawDefinition::Note(note) => Some(note.text()),
-            DrawDefinition::Fragment(_) => None,
-            DrawDefinition::ActivationBox(_) => None,
-            DrawDefinition::Stroke(_) => None,
-            DrawDefinition::Text(_) => None,
-        }
-    }
-
     /// Borrow the shape definition if this type is a shape; otherwise returns an error.
     pub fn shape_definition(&self) -> Result<&dyn draw::ShapeDefinition, String> {
         match &self.draw_definition {
@@ -856,10 +841,6 @@ impl TypeDefinition {
     ) -> DiagnosticResult<Self> {
         match &base.draw_definition {
             DrawDefinition::Shape(shape_def) => {
-                let mut text_def = base
-                    .text_definition()
-                    .expect("Shape type must have text_definition")
-                    .clone();
                 let mut new_shape_def = shape_def.clone_box();
 
                 for attr in attributes {
@@ -909,21 +890,10 @@ impl TypeDefinition {
                                 })?
                                 .attributes;
 
-                            let mut new_stroke = (*new_shape_def.stroke()).clone();
                             StrokeAttributeExtractor::extract_stroke_attributes(
-                                &mut new_stroke,
+                                new_shape_def.mut_stroke(),
                                 nested_attrs,
                             )?;
-                            new_shape_def
-                                .set_stroke(Cow::Owned(new_stroke))
-                                .map_err(|err| {
-                                    DiagnosticError::from_span(
-                                        err.to_string(),
-                                        attr.span(),
-                                        "unsupported attribute",
-                                        None,
-                                    )
-                                })?;
                         }
                         "rounded" => {
                             let val = value.as_usize().map_err(|err| {
@@ -961,7 +931,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             TextAttributeExtractor::extract_text_attributes(
-                                &mut text_def,
+                                new_shape_def.mut_text(),
                                 nested_attrs,
                             )?;
                         }
@@ -979,16 +949,10 @@ impl TypeDefinition {
                     }
                 }
 
-                new_shape_def.set_text(Cow::Owned(text_def));
                 Ok(Self::new_shape(id, new_shape_def))
             }
             DrawDefinition::Arrow(arrow_def) => {
-                let mut text_def = base
-                    .text_definition()
-                    .expect("Arrow type must have text_definition")
-                    .clone();
-                let mut new_stroke = arrow_def.stroke().clone();
-                let mut new_style = *arrow_def.style();
+                let mut new_arrow_def = arrow_def.clone();
 
                 for attr in attributes {
                     let name = attr.name.inner();
@@ -1009,7 +973,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
-                                &mut new_stroke,
+                                new_arrow_def.mut_stroke(),
                                 nested_attrs,
                             )?;
                         }
@@ -1034,7 +998,7 @@ impl TypeDefinition {
                                     ),
                                 )
                                 })?;
-                            new_style = val;
+                            new_arrow_def.set_style(val);
                         }
                         "text" => {
                             let nested_attrs = &value
@@ -1050,7 +1014,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             TextAttributeExtractor::extract_text_attributes(
-                                &mut text_def,
+                                new_arrow_def.mut_text(),
                                 nested_attrs,
                             )?;
                         }
@@ -1068,18 +1032,9 @@ impl TypeDefinition {
                     }
                 }
 
-                let mut new_arrow_def = draw::ArrowDefinition::new(Cow::Owned(new_stroke));
-                new_arrow_def.set_style(new_style);
-                new_arrow_def.set_text(Cow::Owned(text_def));
                 Ok(Self::new_arrow(id, new_arrow_def))
             }
             DrawDefinition::Fragment(fragment_def) => {
-                let mut text_def = base
-                    .text_definition()
-                    .cloned()
-                    .unwrap_or_else(draw::TextDefinition::default);
-                let mut new_border_stroke = fragment_def.border_stroke().clone();
-                let mut new_separator_stroke = fragment_def.separator_stroke().clone();
                 let mut new_fragment_def = fragment_def.clone();
 
                 for attr in attributes {
@@ -1104,7 +1059,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
-                                &mut new_border_stroke,
+                                new_fragment_def.mut_border_stroke(),
                                 nested_attrs,
                             )?;
                         }
@@ -1144,7 +1099,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
-                                &mut new_separator_stroke,
+                                new_fragment_def.mut_separator_stroke(),
                                 nested_attrs,
                             )?;
                         }
@@ -1173,7 +1128,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             TextAttributeExtractor::extract_text_attributes(
-                                &mut text_def,
+                                new_fragment_def.mut_operation_label_text(),
                                 nested_attrs,
                             )?;
                         }
@@ -1191,20 +1146,10 @@ impl TypeDefinition {
                     }
                 }
 
-                new_fragment_def.set_border_stroke(Cow::Owned(new_border_stroke));
-                new_fragment_def.set_separator_stroke(Cow::Owned(new_separator_stroke));
-
-                // Note: Fragment text attributes apply to operation/section labels
-                // TODO: Apply text_def to fragment's text definitions if needed
                 Ok(Self::new_fragment(id, new_fragment_def))
             }
             DrawDefinition::Note(note_def) => {
-                let mut text_def = base
-                    .text_definition()
-                    .expect("Note type must have text_definition")
-                    .clone();
                 let mut new_note_def = note_def.clone();
-                let mut new_stroke = new_note_def.stroke().clone();
 
                 for attr in attributes {
                     let name = attr.name.inner();
@@ -1244,7 +1189,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
-                                &mut new_stroke,
+                                new_note_def.mut_stroke(),
                                 nested_attrs,
                             )?;
                         }
@@ -1262,7 +1207,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             TextAttributeExtractor::extract_text_attributes(
-                                &mut text_def,
+                                new_note_def.mut_text(),
                                 nested_attrs,
                             )?;
                         }
@@ -1284,12 +1229,9 @@ impl TypeDefinition {
                     }
                 }
 
-                new_note_def.set_stroke(Cow::Owned(new_stroke));
-
                 Ok(Self::new_note(id, new_note_def))
             }
             DrawDefinition::ActivationBox(activation_box_def) => {
-                let mut new_stroke = activation_box_def.stroke().clone();
                 let mut new_activation_box_def = activation_box_def.clone();
 
                 for attr in attributes {
@@ -1352,7 +1294,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
-                                &mut new_stroke,
+                                new_activation_box_def.mut_stroke(),
                                 nested_attrs,
                             )?;
                         }
@@ -1369,8 +1311,6 @@ impl TypeDefinition {
                         }
                     }
                 }
-
-                new_activation_box_def.set_stroke(Cow::Owned(new_stroke));
 
                 Ok(Self::new_activation_box(id, new_activation_box_def))
             }
@@ -1398,7 +1338,6 @@ mod elaborate_tests {
         let stroke = draw::StrokeDefinition::default();
         let type_def = TypeDefinition::new_stroke(Id::new("TestStroke"), stroke);
         assert_eq!(type_def.id(), "TestStroke");
-        assert!(type_def.text_definition().is_none());
         assert!(type_def.stroke_definition().is_ok());
         assert!(type_def.text_definition_from_draw().is_err());
     }
@@ -1408,7 +1347,6 @@ mod elaborate_tests {
         let text = draw::TextDefinition::default();
         let type_def = TypeDefinition::new_text(Id::new("TestText"), text);
         assert_eq!(type_def.id(), "TestText");
-        assert!(type_def.text_definition().is_none());
         assert!(type_def.text_definition_from_draw().is_ok());
         assert!(type_def.stroke_definition().is_err());
     }
@@ -1417,7 +1355,10 @@ mod elaborate_tests {
     fn test_shape_type_has_text_definition() {
         let type_def =
             TypeDefinition::new_shape(Id::new("Rect"), Box::new(draw::RectangleDefinition::new()));
-        assert!(type_def.text_definition().is_some());
+        // Verify shape has embedded text
+        assert!(type_def.shape_definition().is_ok());
+        let shape_def = type_def.shape_definition().unwrap();
+        let _text = shape_def.text(); // Should not panic
         assert!(type_def.stroke_definition().is_err());
     }
 

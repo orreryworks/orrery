@@ -14,18 +14,18 @@ use crate::{
 /// TODO: Do I need Clone?!
 /// Find a better name and location for this struct.
 #[derive(Debug, Clone)]
-pub struct Component {
+pub struct Component<'a> {
     node_id: Id, // TODO: Can I get rid of this?
-    drawable: Rc<draw::PositionedDrawable<draw::ShapeWithText>>, // TODO: Consider removing Rc.
+    drawable: Rc<draw::PositionedDrawable<draw::ShapeWithText<'a>>>, // TODO: Consider removing Rc.
 }
 
-impl Component {
+impl<'a> Component<'a> {
     /// Creates a new component with the specified properties.
     pub fn new(
         node: &ast::Node,
-        shape_with_text: draw::ShapeWithText,
+        shape_with_text: draw::ShapeWithText<'a>,
         position: geometry::Point,
-    ) -> Component {
+    ) -> Component<'a> {
         let drawable =
             Rc::new(draw::PositionedDrawable::new(shape_with_text).with_position(position));
         Component {
@@ -35,7 +35,7 @@ impl Component {
     }
 
     /// Returns a reference to the component's shape.
-    pub fn drawable(&self) -> &draw::PositionedDrawable<draw::ShapeWithText> {
+    pub fn drawable(&self) -> &draw::PositionedDrawable<draw::ShapeWithText<'_>> {
         &self.drawable
     }
 
@@ -69,13 +69,13 @@ impl Component {
 /// This allows the layout system to efficiently reference components when
 /// positioning and rendering relations.
 #[derive(Debug, Clone)]
-pub struct LayoutRelation {
+pub struct LayoutRelation<'a> {
     source_index: usize,
     target_index: usize,
-    arrow_with_text: draw::ArrowWithText,
+    arrow_with_text: draw::ArrowWithText<'a>,
 }
 
-impl LayoutRelation {
+impl<'a> LayoutRelation<'a> {
     /// Creates a new LayoutRelation from an AST relation and component indices.
     ///
     /// This method extracts the arrow definition and text from the AST relation
@@ -89,7 +89,7 @@ impl LayoutRelation {
     ///
     /// # Returns
     /// A new LayoutRelation containing all necessary rendering information
-    pub fn from_ast(relation: &ast::Relation, source_index: usize, target_index: usize) -> Self {
+    pub fn from_ast(relation: &'a ast::Relation, source_index: usize, target_index: usize) -> Self {
         let arrow_def = relation.clone_arrow_definition();
         let arrow = draw::Arrow::new(Cow::Owned(arrow_def), relation.arrow_direction());
         let mut arrow_with_text = draw::ArrowWithText::new(arrow);
@@ -104,7 +104,7 @@ impl LayoutRelation {
     }
 
     /// Returns a reference to the arrow with text for this relation.
-    pub fn arrow_with_text(&self) -> &draw::ArrowWithText {
+    pub fn arrow_with_text(&self) -> &draw::ArrowWithText<'_> {
         &self.arrow_with_text
     }
 }
@@ -115,14 +115,14 @@ impl LayoutRelation {
 /// for a diagram. It provides methods to access related components and calculate
 /// overall layout dimensions.
 #[derive(Debug, Clone)]
-pub struct Layout {
-    components: Vec<Component>,
-    relations: Vec<LayoutRelation>,
+pub struct Layout<'a> {
+    components: Vec<Component<'a>>,
+    relations: Vec<LayoutRelation<'a>>,
 }
 
-impl Layout {
+impl<'a> Layout<'a> {
     /// Creates a new layout with the given components and relations.
-    pub fn new(components: Vec<Component>, relations: Vec<LayoutRelation>) -> Self {
+    pub fn new(components: Vec<Component<'a>>, relations: Vec<LayoutRelation<'a>>) -> Self {
         Self {
             components,
             relations,
@@ -130,12 +130,12 @@ impl Layout {
     }
 
     /// Returns a reference to the components in this layout.
-    pub fn components(&self) -> &[Component] {
+    pub fn components(&self) -> &[Component<'a>] {
         &self.components
     }
 
     /// Returns a reference to the relations in this layout.
-    pub fn relations(&self) -> &[LayoutRelation] {
+    pub fn relations(&self) -> &[LayoutRelation<'a>] {
         &self.relations
     }
 
@@ -143,7 +143,7 @@ impl Layout {
     ///
     /// # Panics
     /// Panics if the source index is out of bounds.
-    pub fn source(&self, lr: &LayoutRelation) -> &Component {
+    pub fn source(&self, lr: &LayoutRelation) -> &Component<'_> {
         &self.components[lr.source_index]
     }
 
@@ -151,12 +151,12 @@ impl Layout {
     ///
     /// # Panics
     /// Panics if the target index is out of bounds.
-    pub fn target(&self, lr: &LayoutRelation) -> &Component {
+    pub fn target(&self, lr: &LayoutRelation) -> &Component<'_> {
         &self.components[lr.target_index]
     }
 }
 
-impl LayoutSizing for Layout {
+impl<'a> LayoutSizing for Layout<'a> {
     fn layout_size(&self) -> Size {
         // For component layouts, get the bounding box of all components
         if self.components.is_empty() {

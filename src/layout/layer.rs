@@ -8,26 +8,26 @@ use crate::{
 
 /// Content types that can be laid out in a layer
 #[derive(Debug)]
-pub enum LayoutContent {
-    Component(ContentStack<component::Layout>),
-    Sequence(ContentStack<sequence::Layout>),
+pub enum LayoutContent<'a> {
+    Component(ContentStack<component::Layout<'a>>),
+    Sequence(ContentStack<sequence::Layout<'a>>),
 }
 
 /// A rendering layer containing either component or sequence diagram content
 #[derive(Debug)]
-pub struct Layer {
+pub struct Layer<'a> {
     z_index: usize,
     /// Global coordinate offset for this layer
     offset: Point,
     /// Optional clipping boundary to keep content within parent
     clip_bounds: Option<Bounds>,
     /// The content of this layer
-    content: LayoutContent, // TODO: Remove this one.
+    content: LayoutContent<'a>, // TODO: Remove this one.
 }
 
-impl Layer {
+impl<'a> Layer<'a> {
     /// Create a new layer with the given z-index and content.
-    fn new(z_index: usize, content: LayoutContent) -> Self {
+    fn new(z_index: usize, content: LayoutContent<'a>) -> Self {
         Self {
             z_index,
             offset: Point::default(),
@@ -52,7 +52,7 @@ impl Layer {
     }
 
     /// Access the content for this layer.
-    pub fn content(&self) -> &LayoutContent {
+    pub fn content(&self) -> &LayoutContent<'_> {
         &self.content
     }
 
@@ -69,16 +69,16 @@ impl Layer {
 
 /// Collection of all diagram layers for rendering
 #[derive(Debug)]
-pub struct LayeredLayout {
+pub struct LayeredLayout<'a> {
     /// Ordered layers from bottom (0) to top
     /// Layers are rendered from bottom to top, with higher indices appearing on top
-    layers: Vec<Layer>,
+    layers: Vec<Layer<'a>>,
 }
 
 // LayerContent implementation was simplified by removing unused conversion methods
 // If conversion methods are needed in the future, they can be re-added here
 
-impl<'a> LayeredLayout {
+impl<'a> LayeredLayout<'a> {
     /// Creates a new empty layered layout
     pub fn new() -> Self {
         Self { layers: Vec::new() }
@@ -88,7 +88,7 @@ impl<'a> LayeredLayout {
     ///
     /// The z_index is assigned based on the layer's position in the stack,
     /// with higher indices (newer layers) appearing on top.
-    pub fn add_layer(&mut self, content: LayoutContent) -> usize {
+    pub fn add_layer(&mut self, content: LayoutContent<'a>) -> usize {
         let z_index = self.layers.len();
 
         self.layers.push(Layer::new(z_index, content));
@@ -165,7 +165,7 @@ impl<'a> LayeredLayout {
 
     /// Returns an iterator over the layers, starting from the bottom (background) layer
     /// This ordering is appropriate for rendering, where bottom layers should be drawn first
-    pub fn iter_from_bottom(&'a self) -> impl Iterator<Item = &'a Layer> {
+    pub fn iter_from_bottom(&'a self) -> impl Iterator<Item = &'a Layer<'a>> {
         self.layers.iter().rev()
     }
 }

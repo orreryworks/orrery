@@ -9,18 +9,18 @@ use crate::{
 /// text positioned at the top. The text is automatically factored into the overall size
 /// calculations and positioning.
 #[derive(Debug, Clone)]
-pub struct ShapeWithText {
+pub struct ShapeWithText<'a> {
     shape: Shape,
-    text: Option<Text>,
+    text: Option<Text<'a>>,
     text_positioning_strategy: TextPositioningStrategy,
 }
 
-impl ShapeWithText {
+impl<'a> ShapeWithText<'a> {
     /// Creates a new ShapeWithText with the given shape and optional text.
     ///
     /// If text is provided, the shape's content size is automatically updated
     /// to accommodate the text dimensions.
-    pub fn new(shape: Shape, text: Option<Text>) -> Self {
+    pub fn new(shape: Shape, text: Option<Text<'a>>) -> Self {
         let text_positioning_strategy = shape.text_positioning_strategy();
         let mut instance = Self {
             shape,
@@ -126,7 +126,7 @@ impl ShapeWithText {
     }
 }
 
-impl Drawable for ShapeWithText {
+impl<'a> Drawable for ShapeWithText<'a> {
     fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
         let mut group = Group::new();
 

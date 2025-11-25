@@ -20,7 +20,7 @@ use log::trace;
 use super::layer::ContentStack;
 use crate::{
     ast::LayoutEngine,
-    draw, geometry,
+    geometry,
     identifier::Id,
     layout::{
         component,
@@ -33,13 +33,13 @@ use crate::{
 /// Enum to store different layout results based on diagram type
 /// Contains the direct layout information without any embedded diagram data
 #[derive(Debug, Clone)]
-pub enum LayoutResult {
+pub enum LayoutResult<'a> {
     // TODO: Do I need this?
-    Component(ContentStack<component::Layout>),
-    Sequence(ContentStack<sequence::Layout>),
+    Component(ContentStack<component::Layout<'a>>),
+    Sequence(ContentStack<sequence::Layout<'a>>),
 }
 
-impl LayoutResult {
+impl<'a> LayoutResult<'a> {
     /// Calculate the size of this layout, using the appropriate sizing implementation
     fn calculate_size(&self) -> geometry::Size {
         match self {
@@ -51,7 +51,7 @@ impl LayoutResult {
 
 /// Map type containing pre-calculated layout information for embedded diagrams,
 /// indexed by the Id of the node containing the embedded diagram
-pub type EmbeddedLayouts = HashMap<Id, LayoutResult>;
+pub type EmbeddedLayouts<'a> = HashMap<Id, LayoutResult<'a>>;
 
 // Trait defining the interface for component diagram layout engines
 pub trait ComponentEngine {
@@ -65,8 +65,8 @@ pub trait ComponentEngine {
     fn calculate<'a>(
         &self,
         graph: &'a structure::ComponentGraph<'a, '_>,
-        embedded_layouts: &EmbeddedLayouts,
-    ) -> ContentStack<component::Layout>;
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> ContentStack<component::Layout<'a>>;
 }
 
 /// Trait defining the interface for sequence diagram layout engines
@@ -81,8 +81,8 @@ pub trait SequenceEngine {
     fn calculate<'a>(
         &self,
         graph: &'a structure::SequenceGraph<'a>,
-        embedded_layouts: &EmbeddedLayouts,
-    ) -> ContentStack<sequence::Layout>;
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> ContentStack<sequence::Layout<'a>>;
 }
 
 /// Builder for creating and configuring layout engines.
@@ -191,21 +191,18 @@ impl EngineBuilder {
     pub fn build<'a>(
         mut self,
         collection: &'a structure::DiagramHierarchy<'a, '_>,
-    ) -> LayeredLayout {
+    ) -> LayeredLayout<'a> {
         let mut layered_layout = LayeredLayout::new();
 
-        let mut layout_info: HashMap<Id, LayoutResult> = HashMap::new();
+        let mut layout_info: HashMap<Id, LayoutResult<'a>> = HashMap::new();
 
         // Map from container ID to its layer index in the layered_layout
         let mut container_element_to_layer: HashMap<Id, usize> = HashMap::new();
 
         // Track container-embedded diagram relationships for position adjustment in the second phase
-        // Format: (container_layer_idx, container_position, container_shape, embedded_layer_idx)
-        let mut embedded_diagrams: Vec<(
-            usize,
-            draw::PositionedDrawable<draw::ShapeWithText>,
-            usize,
-        )> = Vec::new();
+        // Format: (container_layer_idx, reference to container drawable, embedded_layer_idx)
+        // Note: Using type inference for the reference lifetime - it borrows from layout_info
+        let mut embedded_diagrams = Vec::new();
 
         // First phase: calculate all layouts
         for (container_id, graphed_diagram) in collection.iter_post_order() {
@@ -227,7 +224,7 @@ impl EngineBuilder {
             };
 
             // Create and add the layer with the calculated layout
-            // PERFORMANCE: Get rid of clone() if possible.
+            // PERF: Get rid of clone() if possible.
             let layer_content = match &layout_result {
                 LayoutResult::Component(layout) => LayoutContent::Component(layout.clone()),
                 LayoutResult::Sequence(layout) => LayoutContent::Sequence(layout.clone()),
@@ -241,60 +238,58 @@ impl EngineBuilder {
                 container_element_to_layer.insert(id, layer_idx);
             }
 
-            if !container_element_to_layer.is_empty() {
-                match &layout_result {
-                    LayoutResult::Component(layout) => {
-                        // Check for embedded diagrams in each positioned content
-                        for positioned_content in layout.iter() {
-                            // Check for embedded diagrams in each positioned content
-                            for component in positioned_content.content().components() {
-                                if let Some(embedded_idx) =
-                                    container_element_to_layer.get(&component.node_id())
-                                {
-                                    // Store information needed to position the embedded diagram within its container:
-                                    // (container layer index, container position, container shape, embedded diagram layer index)
-                                    embedded_diagrams.push((
-                                        layer_idx,
-                                        component.drawable().clone(),
-                                        *embedded_idx,
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                    LayoutResult::Sequence(layout) => {
-                        // Check for embedded diagrams in sequence layout
-                        for positioned_content in layout.iter() {
-                            for participant in positioned_content.content().participants().values()
-                            {
-                                if let Some(embedded_idx) = container_element_to_layer
-                                    .get(&participant.component().node_id())
-                                {
-                                    // Store information needed to position the embedded diagram within a sequence participant:
-                                    // (container layer index, participant position, participant shape, embedded diagram layer index)
-                                    embedded_diagrams.push((
-                                        layer_idx,
-                                        participant.component().drawable().clone(), // Get rid of the clone()
-                                        *embedded_idx,
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                }
-            };
-
-            // Store the layout for embedded diagram references
+            // Store the layout for future engine.calculate() calls and for borrowing references
             if let Some(id) = container_id {
                 layout_info.insert(id, layout_result);
             }
         }
 
-        // Second phase: Apply position adjustments and set up clipping bounds for embedded diagrams
+        // Second phase: populate embedded_diagrams by borrowing from layout_info
+        // We need this separate loop because we can't borrow from layout_result and then move it
+        for (&container_id, layout_result) in &layout_info {
+            let layer_idx = container_element_to_layer[&container_id];
+
+            match layout_result {
+                LayoutResult::Component(layout) => {
+                    for positioned_content in layout.iter() {
+                        for component in positioned_content.content().components() {
+                            if let Some(&embedded_idx) =
+                                container_element_to_layer.get(&component.node_id())
+                            {
+                                // Store reference to drawable (no clone needed!)
+                                embedded_diagrams.push((
+                                    layer_idx,
+                                    component.drawable(),
+                                    embedded_idx,
+                                ));
+                            }
+                        }
+                    }
+                }
+                LayoutResult::Sequence(layout) => {
+                    for positioned_content in layout.iter() {
+                        for participant in positioned_content.content().participants().values() {
+                            if let Some(&embedded_idx) =
+                                container_element_to_layer.get(&participant.component().node_id())
+                            {
+                                // Store reference to drawable (no clone needed!)
+                                embedded_diagrams.push((
+                                    layer_idx,
+                                    participant.component().drawable(),
+                                    embedded_idx,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Third phase: Apply position adjustments and set up clipping bounds for embedded diagrams
         for (container_idx, positioned_shape, embedded_idx) in embedded_diagrams.into_iter().rev() {
             layered_layout.adjust_relative_position(
                 container_idx,
-                &positioned_shape,
+                positioned_shape,
                 embedded_idx,
                 self.component_padding,
             );

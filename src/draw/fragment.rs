@@ -82,6 +82,16 @@ impl FragmentDefinition {
         self.section_title_text_definition = text_def;
     }
 
+    /// Gets mutable access to the operation label text definition
+    pub fn mut_operation_label_text(&mut self) -> &mut TextDefinition {
+        self.operation_label_text_definition.to_mut()
+    }
+
+    /// Gets mutable access to the section title text definition
+    pub fn mut_section_title_text(&mut self) -> &mut TextDefinition {
+        self.section_title_text_definition.to_mut()
+    }
+
     /// Sets the content padding
     pub fn set_content_padding(&mut self, padding: Insets) {
         self.content_padding = padding;
@@ -107,6 +117,11 @@ impl FragmentDefinition {
         &self.border_stroke
     }
 
+    /// Gets mutable access to the border stroke definition
+    pub fn mut_border_stroke(&mut self) -> &mut StrokeDefinition {
+        self.border_stroke.to_mut()
+    }
+
     /// Gets the background color
     fn background_color(&self) -> Option<&Color> {
         self.background_color.as_ref()
@@ -115,6 +130,11 @@ impl FragmentDefinition {
     /// Returns the separator stroke definition
     pub fn separator_stroke(&self) -> &StrokeDefinition {
         &self.separator_stroke
+    }
+
+    /// Gets mutable access to the separator stroke definition
+    pub fn mut_separator_stroke(&mut self) -> &mut StrokeDefinition {
+        self.separator_stroke.to_mut()
     }
 
     /// Gets the content padding

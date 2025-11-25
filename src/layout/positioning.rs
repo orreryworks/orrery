@@ -24,9 +24,9 @@ pub trait LayoutSizing {
 ///
 /// # Returns
 /// The width needed for the widest label plus padding, or 0 if no labels
-pub fn calculate_label_spacing<I>(texts: I, padding: f32) -> f32
+pub fn calculate_label_spacing<'a, I>(texts: I, padding: f32) -> f32
 where
-    I: IntoIterator<Item = Option<draw::Text>>,
+    I: IntoIterator<Item = Option<draw::Text<'a>>>,
 {
     // HACK: This is hacky, fix it.
     texts

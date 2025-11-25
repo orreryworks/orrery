@@ -105,9 +105,19 @@ pub trait ShapeDefinition: std::fmt::Debug {
         unimplemented!("stroke is not supported for this shape")
     }
 
+    /// Get mutable access to the stroke definition for the shape
+    fn mut_stroke(&mut self) -> &mut StrokeDefinition {
+        unimplemented!("mut_stroke is not supported for this shape")
+    }
+
     /// Get the text definition for the shape
     fn text(&self) -> &TextDefinition {
         unimplemented!("text is not supported for this shape")
+    }
+
+    /// Get mutable access to the text definition for the shape
+    fn mut_text(&mut self) -> &mut TextDefinition {
+        unimplemented!("mut_text is not supported for this shape")
     }
 
     /// Get the corner rounding of the rectangle

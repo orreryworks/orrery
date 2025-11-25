@@ -129,8 +129,16 @@ where
         self.rectangle_definition.stroke()
     }
 
+    fn mut_stroke(&mut self) -> &mut StrokeDefinition {
+        self.rectangle_definition.mut_stroke()
+    }
+
     fn text(&self) -> &crate::draw::TextDefinition {
         self.rectangle_definition.text()
+    }
+
+    fn mut_text(&mut self) -> &mut crate::draw::TextDefinition {
+        self.rectangle_definition.mut_text()
     }
 
     fn rounded(&self) -> usize {

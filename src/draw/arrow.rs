@@ -63,6 +63,11 @@ impl ArrowDefinition {
         &self.stroke
     }
 
+    /// Gets mutable access to the arrow stroke definition
+    pub fn mut_stroke(&mut self) -> &mut StrokeDefinition {
+        self.stroke.to_mut()
+    }
+
     /// Gets the arrow style
     pub fn style(&self) -> &ArrowStyle {
         &self.style
@@ -76,6 +81,11 @@ impl ArrowDefinition {
     /// Gets the text definition for arrow labels
     pub fn text(&self) -> &TextDefinition {
         &self.text
+    }
+
+    /// Gets mutable access to the text definition for arrow labels
+    pub fn mut_text(&mut self) -> &mut TextDefinition {
+        self.text.to_mut()
     }
 
     /// Sets the text definition for arrow labels

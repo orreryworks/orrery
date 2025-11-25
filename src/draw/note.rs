@@ -220,9 +220,19 @@ impl NoteDefinition {
         &self.stroke
     }
 
+    /// Gets mutable access to the stroke definition
+    pub fn mut_stroke(&mut self) -> &mut StrokeDefinition {
+        self.stroke.to_mut()
+    }
+
     /// Returns a reference to the text definition.
     pub fn text(&self) -> &TextDefinition {
         &self.text
+    }
+
+    /// Gets mutable access to the text definition
+    pub fn mut_text(&mut self) -> &mut TextDefinition {
+        self.text.to_mut()
     }
 }
 

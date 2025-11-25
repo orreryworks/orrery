@@ -92,11 +92,11 @@ impl Engine {
     }
 
     /// Calculate layout for a sequence diagram
-    pub fn calculate_layout(
+    pub fn calculate_layout<'a>(
         &self,
-        graph: &SequenceGraph,
-        embedded_layouts: &EmbeddedLayouts,
-    ) -> ContentStack<Layout> {
+        graph: &'a SequenceGraph<'a>,
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> ContentStack<Layout<'a>> {
         // Create shapes with text for participants
         let mut participant_shapes: HashMap<_, _> = graph
             .nodes()
@@ -109,11 +109,11 @@ impl Engine {
                 );
                 shape.set_padding(self.padding);
                 let text = draw::Text::new(
-                    Cow::Owned(
+                    Cow::Borrowed(
                         node.type_definition()
-                            .text_definition()
-                            .expect("Shape types must have text_definition")
-                            .clone(),
+                            .shape_definition()
+                            .expect("Node type must be a shape")
+                            .text(),
                     ),
                     node.display_text().to_string(),
                 );
@@ -195,7 +195,7 @@ impl Engine {
             self.process_events(graph, participants_height, &components);
 
         // Update lifeline ends to match diagram height and finalize lifelines
-        let participants: HashMap<Id, Participant> = components
+        let participants: HashMap<Id, Participant<'a>> = components
             .into_iter()
             .map(|(id, component)| {
                 // Rebuild the positioned lifeline with the final height
@@ -250,24 +250,24 @@ impl Engine {
     ///
     /// # Returns
     /// A tuple containing:
-    /// * `Vec<Message>` - All messages with their positions and arrow information
+    /// * `Vec<Message<'a>>` - All messages with their positions and arrow information
     /// * `Vec<ActivationBox>` - All activation boxes with precise positioning and nesting levels
     /// * `Vec<draw::PositionedDrawable<draw::Fragment>>` - All fragments with their sections and bounds
     /// * `Vec<draw::PositionedDrawable<draw::Note>>` - All notes with their positions and content
     /// * `f32` - The final Y coordinate (lifeline end position)
-    fn process_events(
+    fn process_events<'a>(
         &self,
-        graph: &SequenceGraph,
+        graph: &SequenceGraph<'a>,
         participants_height: f32,
-        components: &HashMap<Id, Component>,
+        components: &HashMap<Id, Component<'a>>,
     ) -> (
-        Vec<Message>,
+        Vec<Message<'a>>,
         Vec<ActivationBox>,
         Vec<draw::PositionedDrawable<draw::Fragment>>,
         Vec<draw::PositionedDrawable<draw::Note>>,
         f32,
     ) {
-        let mut messages: Vec<Message> = Vec::new();
+        let mut messages: Vec<Message<'a>> = Vec::new();
         let mut activation_boxes: Vec<ActivationBox> = Vec::new();
         let mut fragments: Vec<draw::PositionedDrawable<draw::Fragment>> = Vec::new();
         let mut notes: Vec<draw::PositionedDrawable<draw::Note>> = Vec::new();
@@ -386,10 +386,10 @@ impl Engine {
     /// # Returns
     ///
     /// A `PositionedDrawable<Note>` ready to be added to the layout
-    fn create_positioned_note(
+    fn create_positioned_note<'a>(
         &self,
         note: &ast::Note,
-        components: &HashMap<Id, Component>,
+        components: &HashMap<Id, Component<'a>>,
         current_y: f32,
     ) -> draw::PositionedDrawable<draw::Note> {
         const NOTE_SPACING: f32 = 20.0; // Spacing between note and participant lifeline
@@ -452,8 +452,8 @@ impl SequenceEngine for Engine {
     fn calculate<'a>(
         &self,
         graph: &'a SequenceGraph<'a>,
-        embedded_layouts: &EmbeddedLayouts,
-    ) -> ContentStack<Layout> {
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> ContentStack<Layout<'a>> {
         self.calculate_layout(graph, embedded_layouts)
     }
 }

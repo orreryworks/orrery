@@ -93,6 +93,11 @@ impl ActivationBoxDefinition {
     pub fn stroke(&self) -> &StrokeDefinition {
         &self.stroke
     }
+
+    /// Gets mutable access to the stroke definition
+    pub fn mut_stroke(&mut self) -> &mut StrokeDefinition {
+        self.stroke.to_mut()
+    }
 }
 
 impl Default for ActivationBoxDefinition {

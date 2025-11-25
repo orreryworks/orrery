@@ -11,15 +11,15 @@ use crate::{
 
 /// Sequence diagram participant that holds its drawable component and lifeline.
 #[derive(Debug, Clone)]
-pub struct Participant {
-    component: component::Component,
+pub struct Participant<'a> {
+    component: component::Component<'a>,
     lifeline: draw::PositionedDrawable<draw::Lifeline>,
 }
 
-impl Participant {
+impl<'a> Participant<'a> {
     /// Create a participant from its component and lifeline.
     pub fn new(
-        component: component::Component,
+        component: component::Component<'a>,
         lifeline: draw::PositionedDrawable<draw::Lifeline>,
     ) -> Self {
         Self {
@@ -29,7 +29,7 @@ impl Participant {
     }
 
     /// Borrow the underlying component for this participant.
-    pub fn component(&self) -> &component::Component {
+    pub fn component(&self) -> &component::Component<'_> {
         &self.component
     }
 
@@ -41,14 +41,14 @@ impl Participant {
 
 #[derive(Debug, Clone)]
 /// A rendered message between two participants at a specific Y position.
-pub struct Message {
+pub struct Message<'a> {
     source: Id,
     target: Id,
     y_position: f32,
-    arrow_with_text: draw::ArrowWithText,
+    arrow_with_text: draw::ArrowWithText<'a>,
 }
 
-impl Message {
+impl<'a> Message<'a> {
     /// Creates a new Message from an AST relation and participant IDs.
     ///
     /// This method extracts the arrow definition and text from the AST relation
@@ -63,7 +63,7 @@ impl Message {
     ///
     /// # Returns
     /// A new Message containing all necessary rendering information
-    pub fn from_ast(relation: &ast::Relation, source: Id, target: Id, y_position: f32) -> Self {
+    pub fn from_ast(relation: &'a ast::Relation, source: Id, target: Id, y_position: f32) -> Self {
         let arrow_def = relation.clone_arrow_definition();
         let arrow = draw::Arrow::new(Cow::Owned(arrow_def), relation.arrow_direction());
         let mut arrow_with_text = draw::ArrowWithText::new(arrow);
@@ -79,7 +79,7 @@ impl Message {
     }
 
     /// Returns a reference to the arrow with text for this message.
-    pub fn arrow_with_text(&self) -> &draw::ArrowWithText {
+    pub fn arrow_with_text(&self) -> &draw::ArrowWithText<'a> {
         &self.arrow_with_text
     }
 
@@ -436,20 +436,20 @@ pub fn calculate_message_endpoint_x(
 
 /// Sequence layout containing participants, messages, activation boxes, notes and metrics.
 #[derive(Debug, Clone)]
-pub struct Layout {
-    participants: HashMap<Id, Participant>,
-    messages: Vec<Message>,
+pub struct Layout<'a> {
+    participants: HashMap<Id, Participant<'a>>,
+    messages: Vec<Message<'a>>,
     activations: Vec<ActivationBox>,
     fragments: Vec<draw::PositionedDrawable<draw::Fragment>>,
     notes: Vec<draw::PositionedDrawable<draw::Note>>,
     max_lifeline_end: f32, // TODO: Consider calculating on the fly.
 }
 
-impl Layout {
+impl<'a> Layout<'a> {
     /// Construct a new sequence layout.
     pub fn new(
-        participants: HashMap<Id, Participant>,
-        messages: Vec<Message>,
+        participants: HashMap<Id, Participant<'a>>,
+        messages: Vec<Message<'a>>,
         activations: Vec<ActivationBox>,
         fragments: Vec<draw::PositionedDrawable<draw::Fragment>>,
         notes: Vec<draw::PositionedDrawable<draw::Note>>,
@@ -466,12 +466,12 @@ impl Layout {
     }
 
     /// Borrow all participants in this sequence layout.
-    pub fn participants(&self) -> &HashMap<Id, Participant> {
+    pub fn participants(&self) -> &HashMap<Id, Participant<'a>> {
         &self.participants
     }
 
     /// Borrow all messages in this sequence layout.
-    pub fn messages(&self) -> &[Message] {
+    pub fn messages(&self) -> &[Message<'a>] {
         &self.messages
     }
 
@@ -496,7 +496,7 @@ impl Layout {
     }
 }
 
-impl LayoutSizing for Layout {
+impl<'a> LayoutSizing for Layout<'a> {
     /// Calculate the overall size of this sequence layout.
     fn layout_size(&self) -> Size {
         // For sequence layouts, calculate bounds based on participants and messages
