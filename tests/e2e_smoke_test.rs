@@ -4,19 +4,14 @@ use tempfile::tempdir;
 
 use filament::Config;
 
-/// Collects all .fil files from a directory, optionally excluding specific filenames
-fn collect_fil_files(dir: PathBuf, exclusions: &[&str]) -> Vec<PathBuf> {
+/// Collects all .fil files from a directory
+fn collect_fil_files(dir: PathBuf) -> Vec<PathBuf> {
     let mut files = if let Ok(entries) = fs::read_dir(&dir) {
         entries
             .flatten()
             .map(|entry| entry.path())
             .filter(|path| {
-                if !path.is_file() || path.extension().and_then(|s| s.to_str()) != Some("fil") {
-                    return false;
-                }
-                // Check if this file should be excluded
-                let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                !exclusions.contains(&filename)
+                path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("fil")
             })
             .collect()
     } else {
@@ -33,15 +28,7 @@ fn e2e_smoke_test_valid_examples() {
     // Create a temporary directory for test outputs
     let temp_dir = tempdir().expect("Failed to create temp directory");
 
-    // Exclude examples that are intentionally broken or demonstrate errors
-    let exclusions = &[
-        "embedded_diagram.fil",
-        "cross_level_relations.fil",
-        "multi_level_nested.fil",
-        "nested_component.fil",
-    ];
-
-    let valid_examples = collect_fil_files(PathBuf::from("examples"), exclusions);
+    let valid_examples = collect_fil_files(PathBuf::from("examples"));
 
     assert!(
         !valid_examples.is_empty(),
@@ -88,7 +75,7 @@ fn e2e_smoke_test_error_examples() {
     // Create a temporary directory for test outputs
     let temp_dir = tempdir().expect("Failed to create temp directory");
 
-    let error_examples = collect_fil_files(PathBuf::from("examples/errors"), &[]);
+    let error_examples = collect_fil_files(PathBuf::from("examples/errors"));
 
     assert!(
         !error_examples.is_empty(),

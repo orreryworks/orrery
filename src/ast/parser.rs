@@ -480,18 +480,23 @@ fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<types::Elem
 
     ws_comments0.parse_next(input)?;
 
-    // Optional nested block: parse nested elements inside braces
-    let nested_elements = opt(delimited(
-        (
-            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace)),
-            ws_comments0,
+    // Optional nested content: either embedded diagram or nested elements in braces
+    let nested_elements = opt(alt((
+        // Try parsing embedded diagram first (starts with 'embed' keyword)
+        embedded_diagram.map(|diag| vec![diag]),
+        // Fall back to nested elements in braces
+        delimited(
+            (
+                any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace)),
+                ws_comments0,
+            ),
+            elements,
+            (
+                ws_comments0,
+                any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace)),
+            ),
         ),
-        elements,
-        (
-            ws_comments0,
-            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace)),
-        ),
-    ))
+    )))
     .map(|nested| nested.unwrap_or_default())
     .parse_next(input)?;
 
@@ -1023,10 +1028,10 @@ fn elements<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Element<'src>>>
 }
 
 /// Parse diagram type (component, sequence, etc.)
-fn diagram_type<'src>(input: &mut Input<'src>) -> IResult<&'src str> {
+fn diagram_type<'src>(input: &mut Input<'src>) -> IResult<Spanned<&'src str>> {
     any.verify_map(|token: &PositionedToken<'_>| match &token.token {
-        Token::Component => Some("component"),
-        Token::Sequence => Some("sequence"),
+        Token::Component => Some(make_spanned("component", token.span)),
+        Token::Sequence => Some(make_spanned("sequence", token.span)),
         _ => None,
     })
     .context(StrContext::Label("diagram type"))
@@ -1036,7 +1041,7 @@ fn diagram_type<'src>(input: &mut Input<'src>) -> IResult<&'src str> {
 /// Parse diagram header with unwrapped attributes
 fn diagram_header<'src>(
     input: &mut Input<'src>,
-) -> IResult<(&'src str, Vec<types::Attribute<'src>>)> {
+) -> IResult<(Spanned<&'src str>, Vec<types::Attribute<'src>>)> {
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Diagram))
         .parse_next(input)?;
     ws_comments1.parse_next(input)?;
@@ -1054,9 +1059,7 @@ pub fn diagram_header_with_semicolon<'src>(
 ) -> IResult<(Spanned<&'src str>, Vec<types::Attribute<'src>>)> {
     let (kind, attributes) = diagram_header.parse_next(input)?;
     semicolon.parse_next(input)?;
-    // For now, use a default span - in a real implementation we'd track this properly
-    let kind_spanned = make_spanned(kind, Span::new(0..0));
-    Ok((kind_spanned, attributes))
+    Ok((kind, attributes))
 }
 
 /// Parse complete diagram
@@ -1078,6 +1081,42 @@ fn diagram<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
         type_definitions,
         elements,
     }))
+}
+
+/// Parse an embedded diagram within a component
+///
+/// Syntax: `embed diagram [diagram_type] [[attributes]]? { type_definitions? elements }`
+fn embedded_diagram<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
+    // Parse: embed
+    any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Embed))
+        .parse_next(input)?;
+
+    cut_err(input, |input| {
+        ws_comments1.parse_next(input)?;
+
+        // Parse: diagram [type] [attributes]?
+        let (kind, attributes) = diagram_header.parse_next(input)?;
+        ws_comments0.parse_next(input)?;
+
+        // Parse: { type_definitions? elements }
+        any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace))
+            .parse_next(input)?;
+        ws_comments0.parse_next(input)?;
+
+        let type_definitions = type_definitions.parse_next(input)?;
+        let elements = elements.parse_next(input)?;
+
+        ws_comments0.parse_next(input)?;
+        any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace))
+            .parse_next(input)?;
+
+        Ok(types::Element::Diagram(types::Diagram {
+            kind,
+            attributes,
+            type_definitions,
+            elements,
+        }))
+    })
 }
 
 /// Utility function to convert winnow errors to our custom error format
@@ -3085,9 +3124,45 @@ mod tests {
         let mut token_slice = TokenSlice::new(&tokens);
 
         let result = identifiers(&mut token_slice);
-        assert!(result.is_ok(), "Failed to parse with whitespace");
+        assert!(
+            result.is_ok(),
+            "Failed to parse identifiers with whitespace"
+        );
 
         let ids = result.unwrap();
         assert_eq!(ids.len(), 2);
+        assert_eq!(*ids[0].inner(), "client");
+        assert_eq!(*ids[1].inner(), "server");
+    }
+
+    #[test]
+    fn test_embedded_diagram_empty() {
+        let input = r#"diagram component;
+type Service = Rectangle;
+auth_service: Service embed diagram sequence {};"#;
+        let tokens = parse_tokens(input);
+        let result = build_diagram(&tokens);
+        assert!(
+            result.is_ok(),
+            "Failed to parse embedded diagram: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_embedded_diagram_with_elements() {
+        let input = r#"diagram component;
+auth_service: Rectangle embed diagram sequence {
+    client: Rectangle;
+    server: Rectangle;
+    client -> server;
+};"#;
+        let tokens = parse_tokens(input);
+        let result = build_diagram(&tokens);
+        assert!(
+            result.is_ok(),
+            "Failed to parse embedded diagram: {:?}",
+            result.err()
+        );
     }
 }

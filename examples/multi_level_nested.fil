@@ -49,18 +49,18 @@ browser -> cdn;
 
 // Cross-level relations using the hierarchical ID syntax (parent::child)
 // Browser directly accessing specific components inside cloud_server
-browser -> [color = "#E91E63"] cloud_server::web_server::api_gateway;
+browser -> [stroke=[color = "#E91E63"]] cloud_server::web_server::api_gateway;
 
 // External auth service connecting to internal components
-auth_service -> [color = "#673AB7"] cloud_server::web_server::app_logic;
+auth_service -> [stroke=[color = "#673AB7"]] cloud_server::web_server::app_logic;
 
 // Direct connection from nested component to external service
 cloud_server::web_server::api_gateway -> auth_service;
 
 // Connection between deeply nested components across different parent containers
-cloud_server::web_server::app_logic -> [color = "#009688"] cloud_server::db_server::primary_db;
+cloud_server::web_server::app_logic -> [stroke=[color = "#009688"]] cloud_server::db_server::primary_db;
 
 // External monitoring connected to multiple internal components
-monitoring -> [color = "#FF9800"] cloud_server::web_server;
+monitoring -> [stroke=[color = "#FF9800"]] cloud_server::web_server;
 monitoring -> cloud_server::db_server::primary_db;
-cloud_server::db_server::cache -> [color = "#4CAF50"] cdn;
+cloud_server::db_server::cache -> [stroke=[color = "#4CAF50"]] cdn;

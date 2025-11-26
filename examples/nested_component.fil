@@ -32,16 +32,16 @@ web_app -> logging_service;
 
 // Cross-level relations connecting across different nesting levels
 // Access from top-level component directly to nested component
-api -> [color = "#E91E63"] db_server::primary_db;
+api -> [stroke=[color = "#E91E63"]] db_server::primary_db;
 
 // Direct connection from web app to the replica database
-web_app -> [color = "#9C27B0"] db_server::replica_db;
+web_app -> [stroke=[color = "#9C27B0"]] db_server::replica_db;
 
 // Connection from nested component to top-level component
-db_server::cache -> [color = "#009688"] logging_service;
+db_server::cache -> [stroke=[color = "#009688"]] logging_service;
 
 // External logging service connected to internal component
-metrics -> [color = "#FF9800"] db_server::primary_db;
+metrics -> [stroke=[color = "#FF9800"]] db_server::primary_db;
 
 // Commentary on cross-level relations:
 // - These relations demonstrate how components at different nesting levels

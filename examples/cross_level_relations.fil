@@ -87,23 +87,23 @@ monitoring -> main_system;
 // =========================================================
 
 // Direct access from top-level to deeply nested components
-auth_provider -> [color = "#E91E63"] main_system::backend::services::user_service;
+auth_provider -> [stroke=[color = "#E91E63"]] main_system::backend::services::user_service;
 
 // Frontend component accessing backend database directly (architectural bypass)
-main_system::frontend::state_manager -> [color = "#9C27B0"] main_system::backend::data_layer::redis_cache;
+main_system::frontend::state_manager -> [stroke=[color = "#9C27B0"]] main_system::backend::data_layer::redis_cache;
 
 // UI component calling service directly (skipping API gateway)
-main_system::frontend::ui::components::form -> [color = "#FF5722"] main_system::backend::services::user_service;
+main_system::frontend::ui::components::form -> [stroke=[color = "#FF5722"]] main_system::backend::services::user_service;
 
 // External monitoring connected to specific internal components
-monitoring -> [color = "#795548"] main_system::backend::data_layer::primary_db;
-monitoring -> [color = "#795548"] main_system::backend::api_gateway;
+monitoring -> [stroke=[color = "#795548"]] main_system::backend::data_layer::primary_db;
+monitoring -> [stroke=[color = "#795548"]] main_system::backend::api_gateway;
 
 // Backend service talking directly to external service
-main_system::backend::services::notification_service -> [color = "#607D8B"] auth_provider;
+main_system::backend::services::notification_service -> [stroke=[color = "#607D8B"]] auth_provider;
 
 // Deeply nested component accessing other deeply nested component in another subsystem
-main_system::frontend::ui::router -> [color = "#009688"] main_system::backend::services::data_service;
+main_system::frontend::ui::router -> [stroke=[color = "#009688"]] main_system::backend::services::data_service;
 
 // Notification service pushing to frontend component
-main_system::backend::services::notification_service -> [color = "#673AB7"] main_system::frontend::ui::components::modal;
+main_system::backend::services::notification_service -> [stroke=[color = "#673AB7"]] main_system::frontend::ui::components::modal;
