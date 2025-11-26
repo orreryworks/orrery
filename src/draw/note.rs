@@ -33,9 +33,8 @@
 //! # Customization
 //!
 //! ```
-//! # use filament::draw::{NoteDefinition, StrokeDefinition};
+//! # use filament::draw::{NoteDefinition, StrokeStyle};
 //! # use filament::color::Color;
-//! # use std::borrow::Cow;
 //! #
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut definition = NoteDefinition::new();
@@ -43,9 +42,11 @@
 //! // Customize background color
 //! definition.set_background_color(Some(Color::new("#ffebcd")?));
 //!
-//! // Customize border
-//! let stroke = StrokeDefinition::dashed(Color::new("blue")?, 2.0);
-//! definition.set_stroke(Cow::Owned(stroke));
+//! // Customize border stroke
+//! let stroke = definition.mut_stroke();
+//! stroke.set_color(Color::new("blue")?);
+//! stroke.set_width(2.0);
+//! stroke.set_style(StrokeStyle::Dashed);
 //! # Ok(())
 //! # }
 //! ```
@@ -82,9 +83,8 @@ const CORNER_FOLD_SIZE: f32 = 12.0;
 /// # Examples
 ///
 /// ```
-/// # use filament::draw::{NoteDefinition, StrokeDefinition};
+/// # use filament::draw::NoteDefinition;
 /// # use filament::color::Color;
-/// # use std::borrow::Cow;
 /// #
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create with defaults
@@ -92,8 +92,9 @@ const CORNER_FOLD_SIZE: f32 = 12.0;
 ///
 /// // Customize
 /// definition.set_background_color(Some(Color::new("lightblue")?));
-/// let stroke = StrokeDefinition::new(Color::new("navy")?, 2.0);
-/// definition.set_stroke(Cow::Owned(stroke));
+/// let stroke = definition.mut_stroke();
+/// stroke.set_color(Color::new("navy")?);
+/// stroke.set_width(2.0);
 /// # Ok(())
 /// # }
 /// ```
@@ -142,60 +143,6 @@ impl NoteDefinition {
     /// ```
     pub fn set_background_color(&mut self, color: Option<Color>) {
         self.background_color = color;
-    }
-
-    /// Sets the stroke definition for the note border.
-    ///
-    /// The stroke is applied to the main note body, the fold triangle, and the fold line,
-    /// creating a consistent border around all elements of the note.
-    ///
-    /// # Arguments
-    ///
-    /// * `stroke` - The stroke definition to apply to the note's border.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use filament::draw::{NoteDefinition, StrokeDefinition};
-    /// # use filament::color::Color;
-    /// # use std::borrow::Cow;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut definition = NoteDefinition::new();
-    /// let stroke = StrokeDefinition::dashed(Color::new("blue")?, 1.5);
-    /// definition.set_stroke(Cow::Owned(stroke));
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn set_stroke(&mut self, stroke: Cow<'static, StrokeDefinition>) {
-        self.stroke = stroke;
-    }
-
-    /// Sets the text definition for the note content.
-    ///
-    /// This controls the styling of the text rendered inside the note, including
-    /// font family, size, color, and other text properties.
-    ///
-    /// # Arguments
-    ///
-    /// * `text` - The text definition to use for rendering the note's content.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use filament::draw::{NoteDefinition, TextDefinition};
-    /// # use filament::color::Color;
-    /// # use std::borrow::Cow;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut definition = NoteDefinition::new();
-    /// let mut text_def = TextDefinition::new();
-    /// text_def.set_font_size(16);
-    /// text_def.set_color(Some(Color::new("darkblue")?));
-    /// definition.set_text_definition(Cow::Owned(text_def));
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn set_text_definition(&mut self, text: Cow<'static, TextDefinition>) {
-        self.text = text;
     }
 
     /// Sets the minimum width for the note.

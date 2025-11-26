@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt};
+use std::fmt;
 
 use svg::{self, node::element as svg_element};
 
@@ -151,47 +151,6 @@ where
 
     fn set_rounded(&mut self, radius: usize) -> Result<(), &'static str> {
         self.rectangle_definition.set_rounded(radius)
-    }
-
-    fn set_stroke(&mut self, stroke: Cow<'static, StrokeDefinition>) -> Result<(), &'static str> {
-        self.rectangle_definition.set_stroke(stroke)
-    }
-
-    fn set_text(&mut self, text: Cow<'static, crate::draw::TextDefinition>) {
-        self.rectangle_definition.set_text(text)
-    }
-
-    fn with_fill_color(
-        &self,
-        color: Option<Color>,
-    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
-        let mut cloned = self.clone();
-        cloned.set_fill_color(color)?;
-        Ok(Box::new(cloned))
-    }
-
-    fn with_rounded(&self, radius: usize) -> Result<Box<dyn ShapeDefinition>, &'static str> {
-        let mut cloned = self.clone();
-        cloned.set_rounded(radius)?;
-        Ok(Box::new(cloned))
-    }
-
-    fn with_stroke(
-        &self,
-        stroke: Cow<'static, StrokeDefinition>,
-    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
-        let mut cloned = self.clone();
-        cloned.set_stroke(stroke)?;
-        Ok(Box::new(cloned))
-    }
-
-    fn with_text(
-        &self,
-        text: Cow<'static, crate::draw::TextDefinition>,
-    ) -> Box<dyn ShapeDefinition> {
-        let mut cloned = self.clone();
-        cloned.set_text(text);
-        Box::new(cloned)
     }
 
     fn text_positioning_strategy(&self) -> TextPositioningStrategy {

@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use crate::{
     color::Color,
     draw::{Drawable, StrokeDefinition, TextDefinition, text_positioning::TextPositioningStrategy},
@@ -24,7 +22,7 @@ pub use interface::InterfaceDefinition;
 pub use oval::OvalDefinition;
 pub use rectangle::RectangleDefinition;
 
-/// A trait for shape definitions that provide stateless calculations
+/// A trait for shape definitions that provide stateless calculations.
 pub trait ShapeDefinition: std::fmt::Debug {
     /// Returns true if this shape supports containing content
     /// Default implementation returns false for safety
@@ -45,21 +43,6 @@ pub trait ShapeDefinition: std::fmt::Debug {
 
     fn clone_box(&self) -> Box<dyn ShapeDefinition>;
 
-    /// Create a new shape definition with the fill color changed
-    /// Default implementation returns error - override in concrete implementations
-    fn with_fill_color(
-        &self,
-        _color: Option<Color>,
-    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
-        Err("with_fill_color is not supported for this shape")
-    }
-
-    /// Create a new shape definition with the corner rounding changed
-    /// Default implementation returns error - override in concrete implementations
-    fn with_rounded(&self, _radius: usize) -> Result<Box<dyn ShapeDefinition>, &'static str> {
-        Err("with_rounded is not supported for this shape")
-    }
-
     /// Set the fill color for the rectangle
     fn set_fill_color(&mut self, _color: Option<Color>) -> Result<(), &'static str> {
         Err("fill_color is not supported for this shape")
@@ -68,31 +51,6 @@ pub trait ShapeDefinition: std::fmt::Debug {
     /// Set the corner rounding for the rectangle
     fn set_rounded(&mut self, _radius: usize) -> Result<(), &'static str> {
         Err("rounded corners are not supported for this shape")
-    }
-
-    /// Set the stroke definition for the shape
-    fn set_stroke(&mut self, _stroke: Cow<'static, StrokeDefinition>) -> Result<(), &'static str> {
-        Err("stroke is not supported for this shape")
-    }
-
-    /// Set the text definition for the shape
-    fn set_text(&mut self, _text: Cow<'static, TextDefinition>);
-
-    /// Create a new shape definition with the stroke changed
-    /// Default implementation returns error - override in concrete implementations
-    fn with_stroke(
-        &self,
-        _stroke: Cow<'static, StrokeDefinition>,
-    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
-        Err("with_stroke is not supported for this shape")
-    }
-
-    /// Create a new shape definition with the text changed
-    /// Default implementation clones and sets text - override for optimization
-    fn with_text(&self, text: Cow<'static, TextDefinition>) -> Box<dyn ShapeDefinition> {
-        let mut cloned = self.clone_box();
-        cloned.set_text(text);
-        cloned
     }
 
     /// Get the fill color of the rectangle
@@ -105,20 +63,38 @@ pub trait ShapeDefinition: std::fmt::Debug {
         unimplemented!("stroke is not supported for this shape")
     }
 
-    /// Get mutable access to the stroke definition for the shape
-    fn mut_stroke(&mut self) -> &mut StrokeDefinition {
-        unimplemented!("mut_stroke is not supported for this shape")
-    }
+    /// Get mutable access to the stroke definition for the shape.
+    ///
+    /// This is the canonical way to modify stroke properties.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use filament::draw::{RectangleDefinition, ShapeDefinition};
+    /// let mut shape = RectangleDefinition::default();
+    /// let stroke = shape.mut_stroke();
+    /// stroke.set_width(3.0);
+    /// ```
+    fn mut_stroke(&mut self) -> &mut StrokeDefinition;
 
     /// Get the text definition for the shape
     fn text(&self) -> &TextDefinition {
         unimplemented!("text is not supported for this shape")
     }
 
-    /// Get mutable access to the text definition for the shape
-    fn mut_text(&mut self) -> &mut TextDefinition {
-        unimplemented!("mut_text is not supported for this shape")
-    }
+    /// Get mutable access to the text definition for the shape.
+    ///
+    /// This is the canonical way to modify text properties.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use filament::draw::{RectangleDefinition, ShapeDefinition};
+    /// let mut shape = RectangleDefinition::default();
+    /// let text = shape.mut_text();
+    /// text.set_font_size(18);
+    /// ```
+    fn mut_text(&mut self) -> &mut TextDefinition;
 
     /// Get the corner rounding of the rectangle
     fn rounded(&self) -> usize {

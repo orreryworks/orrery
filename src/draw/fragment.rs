@@ -72,16 +72,6 @@ impl FragmentDefinition {
         self.background_color = color;
     }
 
-    /// Sets the operation label text definition
-    pub fn set_operation_label_text_definition(&mut self, text_def: Cow<'static, TextDefinition>) {
-        self.operation_label_text_definition = text_def;
-    }
-
-    /// Sets the section title text definition
-    pub fn set_section_title_text_definition(&mut self, text_def: Cow<'static, TextDefinition>) {
-        self.section_title_text_definition = text_def;
-    }
-
     /// Gets mutable access to the operation label text definition
     pub fn mut_operation_label_text(&mut self) -> &mut TextDefinition {
         self.operation_label_text_definition.to_mut()
@@ -100,16 +90,6 @@ impl FragmentDefinition {
     /// Sets the bounds padding
     pub fn set_bounds_padding(&mut self, padding: Insets) {
         self.bounds_padding = padding;
-    }
-
-    /// Sets the border stroke definition
-    pub fn set_border_stroke(&mut self, stroke: Cow<'static, StrokeDefinition>) {
-        self.border_stroke = stroke;
-    }
-
-    /// Sets the separator stroke definition
-    pub fn set_separator_stroke(&mut self, stroke: Cow<'static, StrokeDefinition>) {
-        self.separator_stroke = stroke;
     }
 
     /// Returns the border stroke definition

@@ -817,12 +817,10 @@ impl<'a> Builder<'a> {
                         })?
                         .attributes;
 
-                    let mut stroke_def = (*definition.stroke()).clone();
                     types::StrokeAttributeExtractor::extract_stroke_attributes(
-                        &mut stroke_def,
+                        definition.mut_stroke(),
                         stroke_attrs,
                     )?;
-                    definition.set_stroke(Cow::Owned(stroke_def));
                 }
                 "fill_color" => {
                     let color_str = attr.value.as_str().map_err(|err| {

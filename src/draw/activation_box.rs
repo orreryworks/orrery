@@ -69,11 +69,6 @@ impl ActivationBoxDefinition {
         self.fill_color = color;
     }
 
-    /// Sets the stroke definition
-    pub fn set_stroke(&mut self, stroke: Cow<'static, StrokeDefinition>) {
-        self.stroke = stroke;
-    }
-
     /// Gets the activation box width
     fn width(&self) -> f32 {
         self.width

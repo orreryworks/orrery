@@ -63,7 +63,19 @@ impl ArrowDefinition {
         &self.stroke
     }
 
-    /// Gets mutable access to the arrow stroke definition
+    /// Gets mutable access to the arrow stroke definition.
+    ///
+    /// This is the canonical way to modify stroke properties for arrows.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use filament::draw::{ArrowDefinition, StrokeStyle};
+    /// let mut arrow = ArrowDefinition::default();
+    /// let stroke = arrow.mut_stroke();
+    /// stroke.set_width(2.5);
+    /// stroke.set_style(StrokeStyle::Dashed);
+    /// ```
     pub fn mut_stroke(&mut self) -> &mut StrokeDefinition {
         self.stroke.to_mut()
     }
@@ -83,14 +95,20 @@ impl ArrowDefinition {
         &self.text
     }
 
-    /// Gets mutable access to the text definition for arrow labels
+    /// Gets mutable access to the text definition for arrow labels.
+    ///
+    /// This is the canonical way to modify text properties for arrow labels.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use filament::draw::ArrowDefinition;
+    /// let mut arrow = ArrowDefinition::default();
+    /// let text = arrow.mut_text();
+    /// text.set_font_size(14);
+    /// ```
     pub fn mut_text(&mut self) -> &mut TextDefinition {
         self.text.to_mut()
-    }
-
-    /// Sets the text definition for arrow labels
-    pub fn set_text(&mut self, text: Cow<'static, TextDefinition>) {
-        self.text = text;
     }
 }
 

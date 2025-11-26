@@ -61,45 +61,12 @@ impl ShapeDefinition for ActorDefinition {
         Ok(())
     }
 
-    fn set_stroke(&mut self, stroke: Cow<'static, StrokeDefinition>) -> Result<(), &'static str> {
-        self.stroke = stroke;
-        Ok(())
-    }
-
-    fn with_fill_color(
-        &self,
-        color: Option<Color>,
-    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
-        let mut cloned = self.clone();
-        cloned.set_fill_color(color)?;
-        Ok(Box::new(cloned))
-    }
-
-    fn with_stroke(
-        &self,
-        stroke: Cow<'static, StrokeDefinition>,
-    ) -> Result<Box<dyn ShapeDefinition>, &'static str> {
-        let mut cloned = self.clone();
-        cloned.set_stroke(stroke)?;
-        Ok(Box::new(cloned))
-    }
-
-    fn set_text(&mut self, text: Cow<'static, TextDefinition>) {
-        self.text = text;
-    }
-
     fn text(&self) -> &TextDefinition {
         &self.text
     }
 
     fn mut_text(&mut self) -> &mut TextDefinition {
         self.text.to_mut()
-    }
-
-    fn with_text(&self, text: Cow<'static, TextDefinition>) -> Box<dyn ShapeDefinition> {
-        let mut cloned = self.clone();
-        cloned.set_text(text);
-        Box::new(cloned)
     }
 
     fn render_to_svg(&self, _size: Size, position: Point) -> Box<dyn svg::Node> {
