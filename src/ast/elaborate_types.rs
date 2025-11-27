@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     fmt::{self, Display},
     rc::Rc,
     str::FromStr,
@@ -100,7 +99,7 @@ impl Relation {
         let label = self.label.as_ref()?;
         let arrow_def = self.type_definition.arrow_definition().ok()?;
         let text_def = arrow_def.text();
-        Some(draw::Text::new(Cow::Borrowed(text_def), label.clone()))
+        Some(draw::Text::new(text_def, label))
     }
 
     /// Clone the underlying ArrowDefinition Rc for rendering this relation.

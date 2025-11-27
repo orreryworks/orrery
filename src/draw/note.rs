@@ -260,7 +260,7 @@ impl Note {
         if self.content.is_empty() {
             return Size::default();
         }
-        let text = Text::new(self.definition.text.clone(), self.content.clone());
+        let text = Text::new(&self.definition.text, &self.content);
         text.size()
     }
 
@@ -401,7 +401,7 @@ impl Drawable for Note {
 
         // Render the text content if present
         if !self.content.is_empty() {
-            let text = Text::new(self.definition.text.clone(), self.content.clone());
+            let text = Text::new(&self.definition.text, &self.content);
             let text_node = text.render_to_svg(position);
             group = group.add(text_node);
         }

@@ -353,8 +353,8 @@ impl Drawable for Fragment {
         // 3. Render operation label in upper-left corner as pentagonal tab
         // First, measure the text to determine pentagon size
         let operation_text = Text::new(
-            self.definition.operation_label_text_definition.clone(),
-            self.operation.clone(),
+            &self.definition.operation_label_text_definition,
+            &self.operation,
         );
         let pentagon_content_size = operation_text.size();
         let pentagon_content_bounds = Bounds::new_from_top_left(top_left, pentagon_content_size);
@@ -386,9 +386,10 @@ impl Drawable for Fragment {
 
             // Render section title if present (wrapped in square brackets per UML 2.5)
             if let Some(title) = section.title() {
+                let formatted_title = format!("[{}]", title);
                 let title_text = Text::new(
-                    self.definition.section_title_text_definition.clone(),
-                    format!("[{}]", title),
+                    &self.definition.section_title_text_definition,
+                    &formatted_title,
                 );
                 let title_size = title_text.size();
 

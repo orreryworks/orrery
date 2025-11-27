@@ -3,7 +3,7 @@
 //! This module implements a force-directed graph layout algorithm
 //! for component diagrams.
 
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
 use log::debug;
 
@@ -119,13 +119,11 @@ impl Engine {
             );
             shape.set_padding(self.padding);
             let text = draw::Text::new(
-                Cow::Borrowed(
-                    node.type_definition()
-                        .shape_definition()
-                        .expect("Node type must be a shape")
-                        .text(),
-                ),
-                node.display_text().to_string(),
+                node.type_definition()
+                    .shape_definition()
+                    .expect("Node type must be a shape")
+                    .text(),
+                node.display_text(),
             );
             let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 

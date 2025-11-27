@@ -1,7 +1,4 @@
-use std::{
-    borrow::Cow,
-    sync::{Arc, Mutex, OnceLock},
-};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
 use log::info;
@@ -186,12 +183,12 @@ impl Default for TextDefinition {
 
 #[derive(Debug, Clone)]
 pub struct Text<'a> {
-    definition: Cow<'a, TextDefinition>,
-    content: String,
+    definition: &'a TextDefinition,
+    content: &'a str,
 }
 
 impl<'a> Text<'a> {
-    pub fn new(definition: Cow<'a, TextDefinition>, content: String) -> Self {
+    pub fn new(definition: &'a TextDefinition, content: &'a str) -> Self {
         Self {
             definition,
             content,
@@ -199,7 +196,7 @@ impl<'a> Text<'a> {
     }
 
     pub fn content(&self) -> &str {
-        &self.content
+        self.content
     }
 
     /// Calculate the total size required to display this text, including padding.
@@ -212,7 +209,7 @@ impl<'a> Text<'a> {
     fn calculate_size_without_padding(&self) -> Size {
         TEXT_MANAGER
             .get_or_init(TextManager::new)
-            .calculate_text_size(&self.content, &self.definition)
+            .calculate_text_size(self.content, self.definition)
     }
 }
 

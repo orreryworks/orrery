@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
 use log::debug;
 use rust_sugiyama::configure::Config;
@@ -169,13 +169,11 @@ impl Engine {
             );
             shape.set_padding(self.container_padding);
             let text = draw::Text::new(
-                Cow::Borrowed(
-                    node.type_definition()
-                        .shape_definition()
-                        .expect("Node type must be a shape")
-                        .text(),
-                ),
-                node.display_text().to_string(),
+                node.type_definition()
+                    .shape_definition()
+                    .expect("Node type must be a shape")
+                    .text(),
+                node.display_text(),
             );
             let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 

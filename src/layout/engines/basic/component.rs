@@ -4,7 +4,6 @@
 //! using a simple, deterministic algorithm.
 
 use std::{
-    borrow::Cow,
     cmp::Ordering,
     collections::{HashMap, HashSet, VecDeque},
 };
@@ -153,13 +152,11 @@ impl Engine {
             );
             shape.set_padding(self.padding);
             let text = draw::Text::new(
-                Cow::Borrowed(
-                    node.type_definition()
-                        .shape_definition()
-                        .expect("Node type must be a shape")
-                        .text(),
-                ),
-                node.display_text().to_string(),
+                node.type_definition()
+                    .shape_definition()
+                    .expect("Node type must be a shape")
+                    .text(),
+                node.display_text(),
             );
             let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
