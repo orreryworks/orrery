@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, fmt, str};
+use std::{collections::HashMap, fmt, rc::Rc, str};
 
 use svg::{self, node::element as svg_element};
 
@@ -42,19 +42,19 @@ impl str::FromStr for ArrowStyle {
 /// an arrow, including stroke properties and path style.
 #[derive(Debug, Clone)]
 pub struct ArrowDefinition {
-    stroke: Cow<'static, StrokeDefinition>,
+    stroke: Rc<StrokeDefinition>,
     style: ArrowStyle,
-    text: Cow<'static, TextDefinition>,
+    text: Rc<TextDefinition>,
 }
 
 impl ArrowDefinition {
     /// Creates a new ArrowDefinition with the given stroke
     /// Style defaults to Straight and can be changed with set_style()
-    pub fn new(stroke: Cow<'static, StrokeDefinition>) -> Self {
+    pub fn new(stroke: Rc<StrokeDefinition>) -> Self {
         Self {
             stroke,
             style: ArrowStyle::default(),
-            text: Cow::Borrowed(TextDefinition::default_borrowed()),
+            text: Rc::new(TextDefinition::default()),
         }
     }
 
@@ -77,7 +77,7 @@ impl ArrowDefinition {
     /// stroke.set_style(StrokeStyle::Dashed);
     /// ```
     pub fn mut_stroke(&mut self) -> &mut StrokeDefinition {
-        self.stroke.to_mut()
+        Rc::make_mut(&mut self.stroke)
     }
 
     /// Gets the arrow style
@@ -108,16 +108,26 @@ impl ArrowDefinition {
     /// text.set_font_size(14);
     /// ```
     pub fn mut_text(&mut self) -> &mut TextDefinition {
-        self.text.to_mut()
+        Rc::make_mut(&mut self.text)
+    }
+
+    /// Set text definition using Rc.
+    pub fn set_text(&mut self, text: Rc<TextDefinition>) {
+        self.text = text;
+    }
+
+    /// Set stroke definition using Rc.
+    pub fn set_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
+        self.stroke = stroke;
     }
 }
 
 impl Default for ArrowDefinition {
     fn default() -> Self {
         Self {
-            stroke: Cow::Borrowed(StrokeDefinition::default_borrowed()),
+            stroke: Rc::new(StrokeDefinition::default()),
             style: ArrowStyle::default(),
-            text: Cow::Borrowed(TextDefinition::default_borrowed()),
+            text: Rc::new(TextDefinition::default()),
         }
     }
 }
@@ -174,7 +184,7 @@ impl fmt::Display for ArrowDirection {
 /// which markers to display and where.
 #[derive(Debug, Clone)]
 pub struct Arrow {
-    definition: Cow<'static, ArrowDefinition>,
+    definition: Rc<ArrowDefinition>,
     direction: ArrowDirection,
 }
 
@@ -232,7 +242,7 @@ impl ArrowDrawer {
 
 impl Arrow {
     /// Creates a new Arrow
-    pub fn new(definition: Cow<'static, ArrowDefinition>, direction: ArrowDirection) -> Self {
+    pub fn new(definition: Rc<ArrowDefinition>, direction: ArrowDirection) -> Self {
         Self {
             definition,
             direction,

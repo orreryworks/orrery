@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::rc::Rc;
 
 use svg::{self, node::element as svg_element};
 
@@ -14,8 +14,8 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct ControlDefinition {
     fill_color: Option<Color>,
-    stroke: Cow<'static, StrokeDefinition>,
-    text: Cow<'static, TextDefinition>,
+    stroke: Rc<StrokeDefinition>,
+    text: Rc<TextDefinition>,
 }
 
 impl ControlDefinition {
@@ -29,8 +29,8 @@ impl Default for ControlDefinition {
     fn default() -> Self {
         Self {
             fill_color: Some(Color::new("white").expect("Failed to create white color")),
-            stroke: Cow::Borrowed(StrokeDefinition::default_solid_borrowed()),
-            text: Cow::Borrowed(TextDefinition::default_borrowed()),
+            stroke: Rc::new(StrokeDefinition::default_solid()),
+            text: Rc::new(TextDefinition::default()),
         }
     }
 }
@@ -53,7 +53,7 @@ impl ShapeDefinition for ControlDefinition {
     }
 
     fn mut_stroke(&mut self) -> &mut StrokeDefinition {
-        self.stroke.to_mut()
+        Rc::make_mut(&mut self.stroke)
     }
 
     fn set_fill_color(&mut self, color: Option<Color>) -> Result<(), &'static str> {
@@ -66,7 +66,15 @@ impl ShapeDefinition for ControlDefinition {
     }
 
     fn mut_text(&mut self) -> &mut TextDefinition {
-        self.text.to_mut()
+        Rc::make_mut(&mut self.text)
+    }
+
+    fn set_text(&mut self, text: Rc<TextDefinition>) {
+        self.text = text;
+    }
+
+    fn set_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
+        self.stroke = stroke;
     }
 
     fn render_to_svg(&self, _size: Size, position: Point) -> Box<dyn svg::Node> {

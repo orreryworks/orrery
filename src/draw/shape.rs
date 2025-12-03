@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::{
     color::Color,
     draw::{Drawable, StrokeDefinition, TextDefinition, text_positioning::TextPositioningStrategy},
@@ -95,6 +97,12 @@ pub trait ShapeDefinition: std::fmt::Debug {
     /// text.set_font_size(18);
     /// ```
     fn mut_text(&mut self) -> &mut TextDefinition;
+
+    /// Set text definition using Rc.
+    fn set_text(&mut self, text: Rc<TextDefinition>);
+
+    /// Set stroke definition using Rc.
+    fn set_stroke(&mut self, stroke: Rc<StrokeDefinition>);
 
     /// Get the corner rounding of the rectangle
     fn rounded(&self) -> usize {

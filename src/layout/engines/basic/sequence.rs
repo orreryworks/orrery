@@ -3,7 +3,7 @@
 //! This module provides a layout engine for sequence diagrams
 //! using a simple, deterministic algorithm.
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     ast,
@@ -424,12 +424,13 @@ impl Engine {
             .reduce(|(min_x, max_x), (left_x, right_x)| (min_x.min(left_x), max_x.max(right_x)))
             .expect("note should have at least one participant");
 
-        let mut note_def = note.definition().clone();
+        let mut new_note_def = Rc::clone(note.definition());
+        let note_def_mut = Rc::make_mut(&mut new_note_def);
         if note.align() == ast::NoteAlign::Over {
-            note_def.set_min_width(Some(max_x - min_x));
+            note_def_mut.set_min_width(Some(max_x - min_x));
         }
 
-        let note_drawable = draw::Note::new(Cow::Owned(note_def), note.content().to_string());
+        let note_drawable = draw::Note::new(new_note_def, note.content().to_string());
 
         let note_size = note_drawable.size();
         let center_x = match note.align() {

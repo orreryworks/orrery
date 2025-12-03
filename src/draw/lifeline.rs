@@ -18,7 +18,7 @@
 //! 2. Positioning is handled by wrapping with PositionedDrawable
 //! 3. The lifeline renders as a vertical line from (0,0) to (0,height)
 
-use std::borrow::Cow;
+use std::rc::Rc;
 
 use svg::{self, node::element as svg_element};
 
@@ -39,12 +39,12 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct LifelineDefinition {
     /// The stroke styling for the lifeline
-    stroke: Cow<'static, StrokeDefinition>,
+    stroke: Rc<StrokeDefinition>,
 }
 
 impl LifelineDefinition {
     /// Creates a new LifelineDefinition with the given stroke definition
-    pub fn new(stroke: Cow<'static, StrokeDefinition>) -> Self {
+    pub fn new(stroke: Rc<StrokeDefinition>) -> Self {
         Self { stroke }
     }
 
@@ -52,12 +52,17 @@ impl LifelineDefinition {
     pub fn stroke(&self) -> &StrokeDefinition {
         &self.stroke
     }
+
+    /// Set stroke definition using Rc.
+    pub fn set_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
+        self.stroke = stroke;
+    }
 }
 
 impl Default for LifelineDefinition {
     fn default() -> Self {
         Self {
-            stroke: Cow::Borrowed(StrokeDefinition::default_dashed_borrowed()),
+            stroke: Rc::new(StrokeDefinition::default_dashed()),
         }
     }
 }
@@ -71,20 +76,20 @@ impl Default for LifelineDefinition {
 #[derive(Debug, Clone)]
 pub struct Lifeline {
     /// The styling definition for this lifeline
-    definition: Cow<'static, LifelineDefinition>,
+    definition: Rc<LifelineDefinition>,
     /// The height of the lifeline
     height: f32,
 }
 
 impl Lifeline {
-    /// Creates a new Lifeline with the given definition and height
-    pub fn new(definition: Cow<'static, LifelineDefinition>, height: f32) -> Self {
+    /// Creates a new Lifeline with the given definition and height.
+    pub fn new(definition: Rc<LifelineDefinition>, height: f32) -> Self {
         Self { definition, height }
     }
 
-    /// Creates a new Lifeline with default styling and specified height
+    /// Creates a new Lifeline with default style and given height
     pub fn with_default_style(height: f32) -> Self {
-        Self::new(Cow::Owned(LifelineDefinition::default()), height)
+        Self::new(Rc::new(LifelineDefinition::default()), height)
     }
 
     /// Returns the height of the lifeline

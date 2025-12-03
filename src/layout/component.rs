@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 use log::{debug, error};
 
@@ -90,8 +90,8 @@ impl<'a> LayoutRelation<'a> {
     /// # Returns
     /// A new LayoutRelation containing all necessary rendering information
     pub fn from_ast(relation: &'a ast::Relation, source_index: usize, target_index: usize) -> Self {
-        let arrow_def = relation.clone_arrow_definition();
-        let arrow = draw::Arrow::new(Cow::Owned(arrow_def), relation.arrow_direction());
+        let arrow_def = Rc::clone(relation.arrow_definition());
+        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
         let mut arrow_with_text = draw::ArrowWithText::new(arrow);
         if let Some(text) = relation.text() {
             arrow_with_text.set_text(text);

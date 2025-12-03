@@ -4,7 +4,7 @@
 //! types ready for layout and rendering. It performs type resolution, validates
 //! semantic correctness, and builds the final representation.
 
-use std::{borrow::Cow, collections::HashMap, rc::Rc, str::FromStr};
+use std::{collections::HashMap, rc::Rc, str::FromStr};
 
 use log::{debug, info, trace};
 
@@ -140,7 +140,7 @@ impl<'a> Builder<'a> {
 
     fn update_type_direct_definitions(
         &mut self,
-        type_definitions: &Vec<parser_types::TypeDefinition<'a>>,
+        type_definitions: &Vec<parser_types::TypeDefinition>,
     ) -> Result<()> {
         for type_def in type_definitions {
             let base_type_name = type_def
@@ -779,7 +779,7 @@ impl<'a> Builder<'a> {
             }
         }
 
-        Ok(draw::LifelineDefinition::new(Cow::Owned(stroke_def)))
+        Ok(draw::LifelineDefinition::new(Rc::new(stroke_def)))
     }
 
     /// Extract activation box definition from an attribute
@@ -909,12 +909,9 @@ impl<'a> Builder<'a> {
         let content = note.content.inner().to_string();
 
         // Extract NoteDefinition from TypeDefinition
-        let note_def = type_def
-            .note_definition()
-            .map_err(|err| {
-                DiagnosticError::from_span(err, note.content.span(), "invalid note type", None)
-            })?
-            .clone();
+        let note_def = Rc::clone(type_def.note_definition().map_err(|err| {
+            DiagnosticError::from_span(err, note.content.span(), "invalid note type", None)
+        })?);
 
         Ok(types::Element::Note(types::Note::new(
             on, align, content, note_def,

@@ -18,7 +18,7 @@
 //! - Dashed horizontal separators between sections
 //! - Content area with padding for nested elements
 
-use std::borrow::Cow;
+use std::rc::Rc;
 
 use svg::{self, node::element as svg_element};
 
@@ -40,17 +40,17 @@ use crate::draw::StrokeStyle;
 #[derive(Debug, Clone)]
 pub struct FragmentDefinition {
     /// The stroke styling for the fragment border
-    border_stroke: Cow<'static, StrokeDefinition>,
+    border_stroke: Rc<StrokeDefinition>,
     /// Optional background color for the entire fragment
     background_color: Option<Color>,
 
     /// Text definition for the operation label (e.g., "alt", "loop")
-    operation_label_text_definition: Cow<'static, TextDefinition>,
+    operation_label_text_definition: Rc<TextDefinition>,
     /// Text definition for section titles
-    section_title_text_definition: Cow<'static, TextDefinition>,
+    section_title_text_definition: Rc<TextDefinition>,
 
     /// The stroke styling for section separator lines
-    separator_stroke: Cow<'static, StrokeDefinition>,
+    separator_stroke: Rc<StrokeDefinition>,
 
     /// Fill color for the pentagonal operation label tab
     pentagon_fill_color: Color,
@@ -74,12 +74,32 @@ impl FragmentDefinition {
 
     /// Gets mutable access to the operation label text definition
     pub fn mut_operation_label_text(&mut self) -> &mut TextDefinition {
-        self.operation_label_text_definition.to_mut()
+        Rc::make_mut(&mut self.operation_label_text_definition)
     }
 
     /// Gets mutable access to the section title text definition
     pub fn mut_section_title_text(&mut self) -> &mut TextDefinition {
-        self.section_title_text_definition.to_mut()
+        Rc::make_mut(&mut self.section_title_text_definition)
+    }
+
+    /// Set operation label text definition using Rc.
+    pub fn set_operation_label_text(&mut self, text: Rc<TextDefinition>) {
+        self.operation_label_text_definition = text;
+    }
+
+    /// Set section title text definition using Rc.
+    pub fn set_section_title_text(&mut self, text: Rc<TextDefinition>) {
+        self.section_title_text_definition = text;
+    }
+
+    /// Set border stroke definition using Rc.
+    pub fn set_border_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
+        self.border_stroke = stroke;
+    }
+
+    /// Set separator stroke definition using Rc.
+    pub fn set_separator_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
+        self.separator_stroke = stroke;
     }
 
     /// Sets the content padding
@@ -99,7 +119,7 @@ impl FragmentDefinition {
 
     /// Gets mutable access to the border stroke definition
     pub fn mut_border_stroke(&mut self) -> &mut StrokeDefinition {
-        self.border_stroke.to_mut()
+        Rc::make_mut(&mut self.border_stroke)
     }
 
     /// Gets the background color
@@ -114,7 +134,7 @@ impl FragmentDefinition {
 
     /// Gets mutable access to the separator stroke definition
     pub fn mut_separator_stroke(&mut self) -> &mut StrokeDefinition {
-        self.separator_stroke.to_mut()
+        Rc::make_mut(&mut self.separator_stroke)
     }
 
     /// Gets the content padding
@@ -206,13 +226,13 @@ impl Default for FragmentDefinition {
         section_title_text_definition.set_padding(Insets::new(2.0, 4.0, 2.0, 4.0));
 
         Self {
-            border_stroke: Cow::Borrowed(StrokeDefinition::default_borrowed()),
+            border_stroke: Rc::new(StrokeDefinition::default()),
             background_color: None,
 
-            operation_label_text_definition: Cow::Owned(operation_label_text_definition),
-            section_title_text_definition: Cow::Owned(section_title_text_definition),
+            operation_label_text_definition: Rc::new(operation_label_text_definition),
+            section_title_text_definition: Rc::new(section_title_text_definition),
 
-            separator_stroke: Cow::Borrowed(StrokeDefinition::default_dashed_borrowed()),
+            separator_stroke: Rc::new(StrokeDefinition::default_dashed()),
 
             pentagon_fill_color: Color::new("white").expect("Invalid color"),
 
@@ -268,7 +288,7 @@ impl FragmentSection {
 #[derive(Debug, Clone)]
 pub struct Fragment {
     /// The styling definition for this fragment
-    definition: Cow<'static, FragmentDefinition>,
+    definition: Rc<FragmentDefinition>,
     /// The operation type (e.g., "alt", "loop", "opt", "par")
     operation: String,
     /// The sections within this fragment
@@ -287,7 +307,7 @@ impl Fragment {
     /// * `sections` - Vector of sections within the fragment
     /// * `size` - Total size of the fragment box (calculated externally by layout)
     pub fn new(
-        definition: Cow<'static, FragmentDefinition>,
+        definition: Rc<FragmentDefinition>,
         operation: String,
         sections: Vec<FragmentSection>,
         size: Size,
@@ -479,7 +499,7 @@ mod tests {
             FragmentSection::new(None, 40.0),
         ];
         let fragment = Fragment::new(
-            Cow::Owned(definition),
+            Rc::new(definition),
             "alt".to_string(),
             sections.clone(),
             Size::new(200.0, 180.0),
@@ -498,7 +518,7 @@ mod tests {
             FragmentSection::new(Some("failed".to_string()), 80.0),
         ];
         let fragment = Fragment::new(
-            Cow::Owned(definition),
+            Rc::new(definition),
             "alt".to_string(),
             sections,
             Size::new(300.0, 200.0),

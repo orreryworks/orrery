@@ -102,12 +102,11 @@ impl Relation {
         Some(draw::Text::new(text_def, label))
     }
 
-    /// Clone the underlying ArrowDefinition Rc for rendering this relation.
-    pub fn clone_arrow_definition(&self) -> draw::ArrowDefinition {
+    /// Get the underlying ArrowDefinition Rc for rendering this relation.
+    pub fn arrow_definition(&self) -> &Rc<draw::ArrowDefinition> {
         self.type_definition
             .arrow_definition()
             .expect("Type definition must have an arrow definition")
-            .clone()
     }
 
     /// Get the source node Id of this relation.
@@ -166,13 +165,14 @@ impl FromStr for NoteAlign {
 /// # use filament::ast::{Note, NoteAlign};
 /// # use filament::identifier::Id;
 /// # use filament::draw::NoteDefinition;
+/// # use std::rc::Rc;
 /// #
 /// // Create a margin note (not attached to any elements)
 /// let note = Note::new(
 ///     vec![],  // Empty vec = margin note
 ///     NoteAlign::Over,
 ///     "This is a note".to_string(),
-///     NoteDefinition::new(),
+///     Rc::new(NoteDefinition::new()),
 /// );
 /// assert_eq!(note.on().len(), 0);
 /// assert_eq!(note.content(), "This is a note");
@@ -182,7 +182,7 @@ impl FromStr for NoteAlign {
 ///     vec![Id::new("server")],
 ///     NoteAlign::Right,
 ///     "Server note".to_string(),
-///     NoteDefinition::new(),
+///     Rc::new(NoteDefinition::new()),
 /// );
 /// assert_eq!(attached_note.on().len(), 1);
 /// ```
@@ -195,7 +195,7 @@ pub struct Note {
     /// Text content of the note
     content: String,
     /// Styling definition for the note
-    definition: draw::NoteDefinition,
+    definition: Rc<draw::NoteDefinition>,
 }
 
 impl Note {
@@ -204,7 +204,7 @@ impl Note {
         on: Vec<Id>,
         align: NoteAlign,
         content: String,
-        definition: draw::NoteDefinition,
+        definition: Rc<draw::NoteDefinition>,
     ) -> Self {
         Self {
             on,
@@ -230,7 +230,7 @@ impl Note {
     }
 
     /// Borrow the note's styling definition.
-    pub fn definition(&self) -> &draw::NoteDefinition {
+    pub fn definition(&self) -> &Rc<draw::NoteDefinition> {
         &self.definition
     }
 }
@@ -262,7 +262,7 @@ pub struct Fragment {
 }
 
 impl Fragment {
-    /// Create a new Fragment with the given operation, sections, and type definition.
+    /// Create a new Fragment.
     pub fn new(
         operation: String,
         sections: Vec<FragmentSection>,
@@ -280,7 +280,7 @@ impl Fragment {
         &self.operation
     }
 
-    /// Get the sections in this fragment.
+    /// Get the sections of this fragment
     pub fn sections(&self) -> &[FragmentSection] {
         &self.sections
     }
@@ -292,11 +292,10 @@ impl Fragment {
     ///
     /// # Panics
     /// Panics if the type definition does not have a fragment definition.
-    pub fn clone_fragment_definition(&self) -> draw::FragmentDefinition {
+    pub fn fragment_definition(&self) -> &Rc<draw::FragmentDefinition> {
         self.type_definition
             .fragment_definition()
             .expect("Type definition must have a fragment definition")
-            .clone()
     }
 }
 
@@ -358,10 +357,10 @@ pub enum DiagramKind {
 #[derive(Debug)]
 pub enum DrawDefinition {
     Shape(Box<dyn draw::ShapeDefinition>),
-    Arrow(draw::ArrowDefinition),
-    Fragment(draw::FragmentDefinition),
-    Note(draw::NoteDefinition),
-    ActivationBox(draw::ActivationBoxDefinition),
+    Arrow(Rc<draw::ArrowDefinition>),
+    Fragment(Rc<draw::FragmentDefinition>),
+    Note(Rc<draw::NoteDefinition>),
+    ActivationBox(Rc<draw::ActivationBoxDefinition>),
     Stroke(draw::StrokeDefinition),
     Text(draw::TextDefinition),
 }
@@ -498,24 +497,24 @@ impl TypeDefinition {
     }
 
     /// Construct a concrete arrow type definition from an arrow definition.
-    pub fn new_arrow(id: Id, arrow_definition: draw::ArrowDefinition) -> Self {
+    pub fn new_arrow(id: Id, arrow_definition: Rc<draw::ArrowDefinition>) -> Self {
         Self::new(id, DrawDefinition::Arrow(arrow_definition))
     }
 
     /// Construct a concrete fragment type definition from a fragment definition.
-    pub fn new_fragment(id: Id, fragment_definition: draw::FragmentDefinition) -> Self {
+    pub fn new_fragment(id: Id, fragment_definition: Rc<draw::FragmentDefinition>) -> Self {
         Self::new(id, DrawDefinition::Fragment(fragment_definition))
     }
 
     /// Construct a concrete note type definition from a note definition.
-    pub fn new_note(id: Id, note_definition: draw::NoteDefinition) -> Self {
+    pub fn new_note(id: Id, note_definition: Rc<draw::NoteDefinition>) -> Self {
         Self::new(id, DrawDefinition::Note(note_definition))
     }
 
     /// Construct a concrete activation box type definition from a activation box definition.
     pub fn new_activation_box(
         id: Id,
-        activation_box_definition: draw::ActivationBoxDefinition,
+        activation_box_definition: Rc<draw::ActivationBoxDefinition>,
     ) -> Self {
         Self::new(id, DrawDefinition::ActivationBox(activation_box_definition))
     }
@@ -544,7 +543,7 @@ impl TypeDefinition {
     }
 
     /// Borrow the arrow definition if this type is an arrow; otherwise returns an error.
-    pub fn arrow_definition(&self) -> Result<&draw::ArrowDefinition, String> {
+    pub fn arrow_definition(&self) -> Result<&Rc<draw::ArrowDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Arrow(arrow) => Ok(arrow),
             _ => Err(format!("Type '{}' is not an arrow type", self.id)),
@@ -552,7 +551,7 @@ impl TypeDefinition {
     }
 
     /// Borrow the fragment definition if this type is a fragment; otherwise returns an error.
-    pub fn fragment_definition(&self) -> Result<&draw::FragmentDefinition, String> {
+    pub fn fragment_definition(&self) -> Result<&Rc<draw::FragmentDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Fragment(fragment) => Ok(fragment),
             _ => Err(format!("Type '{}' is not a fragment type", self.id)),
@@ -560,7 +559,7 @@ impl TypeDefinition {
     }
 
     /// Borrow the note definition if this type is a note; otherwise returns an error.
-    pub fn note_definition(&self) -> Result<&draw::NoteDefinition, String> {
+    pub fn note_definition(&self) -> Result<&Rc<draw::NoteDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Note(note) => Ok(note),
             _ => Err(format!("Type '{}' is not a note type", self.id)),
@@ -951,7 +950,8 @@ impl TypeDefinition {
                 Ok(Self::new_shape(id, new_shape_def))
             }
             DrawDefinition::Arrow(arrow_def) => {
-                let mut new_arrow_def = arrow_def.clone();
+                let mut new_arrow_def = Rc::clone(arrow_def);
+                let arrow_def_mut = Rc::make_mut(&mut new_arrow_def);
 
                 for attr in attributes {
                     let name = attr.name.inner();
@@ -972,7 +972,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
-                                new_arrow_def.mut_stroke(),
+                                arrow_def_mut.mut_stroke(),
                                 nested_attrs,
                             )?;
                         }
@@ -997,7 +997,7 @@ impl TypeDefinition {
                                     ),
                                 )
                                 })?;
-                            new_arrow_def.set_style(val);
+                            arrow_def_mut.set_style(val);
                         }
                         "text" => {
                             let nested_attrs = &value
@@ -1013,7 +1013,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             TextAttributeExtractor::extract_text_attributes(
-                                new_arrow_def.mut_text(),
+                                arrow_def_mut.mut_text(),
                                 nested_attrs,
                             )?;
                         }
@@ -1034,7 +1034,8 @@ impl TypeDefinition {
                 Ok(Self::new_arrow(id, new_arrow_def))
             }
             DrawDefinition::Fragment(fragment_def) => {
-                let mut new_fragment_def = fragment_def.clone();
+                let mut new_fragment_def = Rc::clone(fragment_def);
+                let fragment_def_mut = Rc::make_mut(&mut new_fragment_def);
 
                 for attr in attributes {
                     let name = attr.name.inner();
@@ -1058,7 +1059,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
-                                new_fragment_def.mut_border_stroke(),
+                                fragment_def_mut.mut_border_stroke(),
                                 nested_attrs,
                             )?;
                         }
@@ -1079,7 +1080,7 @@ impl TypeDefinition {
                                     Some("Use a CSS color".to_string()),
                                 )
                             })?;
-                            new_fragment_def.set_background_color(Some(val));
+                            fragment_def_mut.set_background_color(Some(val));
                         }
                         "separator_stroke" => {
                             let nested_attrs = &value
@@ -1098,7 +1099,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
-                                new_fragment_def.mut_separator_stroke(),
+                                fragment_def_mut.mut_separator_stroke(),
                                 nested_attrs,
                             )?;
                         }
@@ -1111,7 +1112,7 @@ impl TypeDefinition {
                                     Some("Content padding must be a positive number".to_string()),
                                 )
                             })?;
-                            new_fragment_def.set_content_padding(Insets::uniform(val));
+                            fragment_def_mut.set_content_padding(Insets::uniform(val));
                         }
                         "text" => {
                             let nested_attrs = &value
@@ -1127,7 +1128,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             TextAttributeExtractor::extract_text_attributes(
-                                new_fragment_def.mut_operation_label_text(),
+                                fragment_def_mut.mut_operation_label_text(),
                                 nested_attrs,
                             )?;
                         }
@@ -1148,7 +1149,8 @@ impl TypeDefinition {
                 Ok(Self::new_fragment(id, new_fragment_def))
             }
             DrawDefinition::Note(note_def) => {
-                let mut new_note_def = note_def.clone();
+                let mut new_note_def = Rc::clone(note_def);
+                let note_def_mut = Rc::make_mut(&mut new_note_def);
 
                 for attr in attributes {
                     let name = attr.name.inner();
@@ -1172,7 +1174,7 @@ impl TypeDefinition {
                                     Some("Use a CSS color".to_string()),
                                 )
                             })?;
-                            new_note_def.set_background_color(Some(val));
+                            note_def_mut.set_background_color(Some(val));
                         }
                         "stroke" => {
                             let nested_attrs = &value
@@ -1188,7 +1190,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
-                                new_note_def.mut_stroke(),
+                                note_def_mut.mut_stroke(),
                                 nested_attrs,
                             )?;
                         }
@@ -1206,7 +1208,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             TextAttributeExtractor::extract_text_attributes(
-                                new_note_def.mut_text(),
+                                note_def_mut.mut_text(),
                                 nested_attrs,
                             )?;
                         }
@@ -1231,7 +1233,8 @@ impl TypeDefinition {
                 Ok(Self::new_note(id, new_note_def))
             }
             DrawDefinition::ActivationBox(activation_box_def) => {
-                let mut new_activation_box_def = activation_box_def.clone();
+                let mut new_activation_box_def = Rc::clone(activation_box_def);
+                let activation_box_def_mut = Rc::make_mut(&mut new_activation_box_def);
 
                 for attr in attributes {
                     let name = attr.name.inner();
@@ -1247,7 +1250,7 @@ impl TypeDefinition {
                                     Some("Width must be a positive number".to_string()),
                                 )
                             })?;
-                            new_activation_box_def.set_width(val);
+                            activation_box_def_mut.set_width(val);
                         }
                         "nesting_offset" => {
                             let val = value.as_float().map_err(|err| {
@@ -1258,7 +1261,7 @@ impl TypeDefinition {
                                     Some("Nesting offset must be a positive number".to_string()),
                                 )
                             })?;
-                            new_activation_box_def.set_nesting_offset(val);
+                            activation_box_def_mut.set_nesting_offset(val);
                         }
                         "fill_color" => {
                             let val = Color::new(value.as_str().map_err(|err| {
@@ -1277,7 +1280,7 @@ impl TypeDefinition {
                                     Some("Use a CSS color".to_string()),
                                 )
                             })?;
-                            new_activation_box_def.set_fill_color(val);
+                            activation_box_def_mut.set_fill_color(val);
                         }
                         "stroke" => {
                             let nested_attrs = &value
@@ -1293,7 +1296,7 @@ impl TypeDefinition {
                                 .attributes;
 
                             StrokeAttributeExtractor::extract_stroke_attributes(
-                                new_activation_box_def.mut_stroke(),
+                                activation_box_def_mut.mut_stroke(),
                                 nested_attrs,
                             )?;
                         }

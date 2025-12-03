@@ -1,11 +1,11 @@
-use std::fmt;
+use std::{fmt, rc::Rc};
 
 use svg::{self, node::element as svg_element};
 
 use super::{RectangleDefinition, ShapeDefinition, rectangle};
 use crate::{
     color::Color,
-    draw::{StrokeDefinition, text_positioning::TextPositioningStrategy},
+    draw::{StrokeDefinition, TextDefinition, text_positioning::TextPositioningStrategy},
     geometry::{Insets, Point, Size},
 };
 
@@ -15,7 +15,10 @@ pub type ComponentDefinition = RectangleWithIconDefinition<ComponentIcon>;
 impl ComponentDefinition {
     /// Create a new component definition with default values
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            rectangle_definition: rectangle::RectangleDefinition::default(),
+            icon: ComponentIcon,
+        }
     }
 
     // fn render_icon(&self) -> svg_element::Group {
@@ -139,6 +142,14 @@ where
 
     fn mut_text(&mut self) -> &mut crate::draw::TextDefinition {
         self.rectangle_definition.mut_text()
+    }
+
+    fn set_text(&mut self, text: Rc<TextDefinition>) {
+        self.rectangle_definition.set_text(text);
+    }
+
+    fn set_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
+        self.rectangle_definition.set_stroke(stroke);
     }
 
     fn rounded(&self) -> usize {

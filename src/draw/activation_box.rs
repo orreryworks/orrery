@@ -18,7 +18,7 @@
 //! 2. The activation box applies its nesting offset: `position.x() + (nesting_level * nesting_offset)`
 //! 3. The box is centered on the adjusted position
 
-use std::borrow::Cow;
+use std::rc::Rc;
 
 use svg::{self, node::element as svg_element};
 
@@ -45,7 +45,7 @@ pub struct ActivationBoxDefinition {
     width: f32,
     nesting_offset: f32,
     fill_color: Color,
-    stroke: Cow<'static, StrokeDefinition>,
+    stroke: Rc<StrokeDefinition>,
 }
 
 impl ActivationBoxDefinition {
@@ -91,7 +91,12 @@ impl ActivationBoxDefinition {
 
     /// Gets mutable access to the stroke definition
     pub fn mut_stroke(&mut self) -> &mut StrokeDefinition {
-        self.stroke.to_mut()
+        Rc::make_mut(&mut self.stroke)
+    }
+
+    /// Set stroke definition using Rc.
+    pub fn set_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
+        self.stroke = stroke;
     }
 }
 
@@ -101,7 +106,7 @@ impl Default for ActivationBoxDefinition {
             width: 8.0,
             nesting_offset: 4.0,
             fill_color: Color::new("white").expect("Invalid default fill color"),
-            stroke: Cow::Borrowed(StrokeDefinition::default_borrowed()),
+            stroke: Rc::new(StrokeDefinition::default()),
         }
     }
 }
@@ -120,7 +125,7 @@ impl Default for ActivationBoxDefinition {
 /// 3. The rectangle is centered on the adjusted position
 #[derive(Debug, Clone)]
 pub struct ActivationBox {
-    definition: Cow<'static, ActivationBoxDefinition>,
+    definition: Rc<ActivationBoxDefinition>,
     height: f32,
     nesting_level: u32,
 }
@@ -133,11 +138,7 @@ impl ActivationBox {
     /// * `definition` - Shared styling configuration for the activation box
     /// * `height` - The height of the activation box (typically end_y - start_y)
     /// * `nesting_level` - The nesting level for horizontal offset calculation (0 = no nesting)
-    pub fn new(
-        definition: Cow<'static, ActivationBoxDefinition>,
-        height: f32,
-        nesting_level: u32,
-    ) -> Self {
+    pub fn new(definition: Rc<ActivationBoxDefinition>, height: f32, nesting_level: u32) -> Self {
         Self {
             definition,
             height,
@@ -229,7 +230,7 @@ mod tests {
         let height = 50.0;
         let nesting_level = 2;
 
-        let activation_box = ActivationBox::new(Cow::Owned(definition), height, nesting_level);
+        let activation_box = ActivationBox::new(Rc::new(definition), height, nesting_level);
 
         assert_eq!(activation_box.height, 50.0);
         assert_eq!(activation_box.nesting_level, 2);
@@ -239,7 +240,7 @@ mod tests {
     #[test]
     fn test_nesting_position_calculation() {
         let definition = ActivationBoxDefinition::default();
-        let activation_box = ActivationBox::new(Cow::Owned(definition), 20.0, 2);
+        let activation_box = ActivationBox::new(Rc::new(definition), 20.0, 2);
 
         // Test that nesting level 2 with offset 4.0 creates 8.0 total offset
         let base_position = Point::new(100.0, 200.0);
@@ -254,7 +255,7 @@ mod tests {
     #[test]
     fn test_render_to_svg_returns_valid_node() {
         let activation_box =
-            ActivationBox::new(Cow::Owned(ActivationBoxDefinition::default()), 100.0, 0);
+            ActivationBox::new(Rc::new(ActivationBoxDefinition::default()), 100.0, 0);
         let position = Point::new(50.0, 75.0);
 
         let svg_node = activation_box.render_to_svg(position);
@@ -271,7 +272,7 @@ mod tests {
         definition.set_width(12.0);
         definition.set_nesting_offset(6.0);
 
-        let activation_box = ActivationBox::new(Cow::Owned(definition), 40.0, 1);
+        let activation_box = ActivationBox::new(Rc::new(definition), 40.0, 1);
         let position = Point::new(150.0, 300.0);
 
         let bounds = activation_box.calculate_bounds(position);

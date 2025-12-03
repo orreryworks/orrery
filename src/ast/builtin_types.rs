@@ -115,7 +115,7 @@ impl BuiltinTypeBuilder {
     pub fn add_arrow(mut self, name: &str, arrow_definition: draw::ArrowDefinition) -> Self {
         self.types.push(Rc::new(TypeDefinition::new_arrow(
             Id::new(name),
-            arrow_definition,
+            Rc::new(arrow_definition),
         )));
         self
     }
@@ -130,7 +130,7 @@ impl BuiltinTypeBuilder {
     ) -> Self {
         self.types.push(Rc::new(TypeDefinition::new_fragment(
             Id::new(name),
-            fragment_definition,
+            Rc::new(fragment_definition),
         )));
         self
     }
@@ -141,7 +141,7 @@ impl BuiltinTypeBuilder {
     pub fn add_note(mut self, name: &str, note_definition: draw::NoteDefinition) -> Self {
         self.types.push(Rc::new(TypeDefinition::new_note(
             Id::new(name),
-            note_definition,
+            Rc::new(note_definition),
         )));
         self
     }
@@ -156,7 +156,7 @@ impl BuiltinTypeBuilder {
     ) -> Self {
         self.types.push(Rc::new(TypeDefinition::new_activation_box(
             Id::new(name),
-            activation_box_definition,
+            Rc::new(activation_box_definition),
         )));
         self
     }
