@@ -15,6 +15,7 @@ use crate::{
     config::AppConfig,
     draw,
     error::diagnostic::{DiagnosticError, Result},
+    geometry::Insets,
     identifier::Id,
 };
 
@@ -161,7 +162,7 @@ impl<'a> Builder<'a> {
                 })?;
 
             // Try to create the type definition
-            match types::TypeDefinition::from_base(
+            match self.build_type_from_base(
                 *type_def.name.inner(),
                 base,
                 &type_def.type_spec.attributes,
@@ -593,13 +594,575 @@ impl<'a> Builder<'a> {
 
         // Otherwise, create a new anonymous type based on the base type
         let id = Id::from_anonymous(self.type_definition_map.len());
-        match types::TypeDefinition::from_base(id, base, attributes) {
+        match self.build_type_from_base(id, base, attributes) {
             Ok(new_type) => self.insert_type_definition(new_type, type_name.span()),
             Err(err) => Err(self.create_undefined_type_error(
                 // TODO add missing span details
                 type_name,
                 &format!("Error creating type based on '{type_name}': {err}"),
             )),
+        }
+    }
+
+    /// Resolve a text type reference and apply inline attribute overrides.
+    ///
+    /// # Arguments
+    /// * `type_spec` - The type specification with optional type name and attributes
+    /// * `current_text` - The current text definition reference from the host shape
+    fn resolve_text_type_reference(
+        &self,
+        type_spec: &parser_types::TypeSpec,
+        current_text_rc: &Rc<draw::TextDefinition>,
+    ) -> Result<Rc<draw::TextDefinition>> {
+        // Step 1: Determine which Rc to use (current or resolved)
+        let mut text_rc = if let Some(type_name) = &type_spec.type_name {
+            let base_type = self
+                .type_definition_map
+                .get(type_name.inner())
+                .ok_or_else(|| {
+                    DiagnosticError::from_span(
+                        format!("Undefined text type '{}'", type_name.inner()),
+                        type_spec.span(),
+                        "undefined type",
+                        Some("Type must be defined with 'type' statement before use".to_string()),
+                    )
+                })?;
+
+            let base_text_rc = base_type.text_definition_from_draw().map_err(|err| {
+                DiagnosticError::from_span(
+                    format!("Type '{}' is not a text type: {}", type_name.inner(), err),
+                    type_spec.span(),
+                    "invalid type reference",
+                    Some("Only Text types can be used for text attributes".to_string()),
+                )
+            })?;
+
+            Rc::clone(base_text_rc)
+        } else {
+            Rc::clone(current_text_rc)
+        };
+
+        // Step 2: If attributes exist, make mutable and apply them
+        if !type_spec.attributes.is_empty() {
+            let text_def_mut = Rc::make_mut(&mut text_rc);
+            types::TextAttributeExtractor::extract_text_attributes(
+                text_def_mut,
+                &type_spec.attributes,
+            )?;
+        }
+
+        Ok(text_rc)
+    }
+
+    /// Resolve a stroke type reference and apply inline attribute overrides.
+    ///
+    /// # Arguments
+    /// * `type_spec` - The type specification with optional type name and attributes
+    /// * `current_stroke` - The current stroke definition reference from the host shape
+    fn resolve_stroke_type_reference(
+        &self,
+        type_spec: &parser_types::TypeSpec,
+        current_stroke_rc: &Rc<draw::StrokeDefinition>,
+    ) -> Result<Rc<draw::StrokeDefinition>> {
+        // Step 1: Determine which Rc to use (current or resolved)
+        let mut stroke_rc = if let Some(type_name) = &type_spec.type_name {
+            let base_type = self
+                .type_definition_map
+                .get(type_name.inner())
+                .ok_or_else(|| {
+                    DiagnosticError::from_span(
+                        format!("Undefined stroke type '{}'", type_name.inner()),
+                        type_spec.span(),
+                        "undefined type",
+                        Some("Type must be defined with 'type' statement before use".to_string()),
+                    )
+                })?;
+
+            let base_stroke_rc = base_type.stroke_definition().map_err(|err| {
+                DiagnosticError::from_span(
+                    format!("Type '{}' is not a stroke type: {}", type_name.inner(), err),
+                    type_spec.span(),
+                    "invalid type reference",
+                    Some("Only Stroke types can be used for stroke attributes".to_string()),
+                )
+            })?;
+
+            Rc::clone(base_stroke_rc)
+        } else {
+            Rc::clone(current_stroke_rc)
+        };
+
+        // Step 2: If attributes exist, make mutable and apply them
+        if !type_spec.attributes.is_empty() {
+            let stroke_def_mut = Rc::make_mut(&mut stroke_rc);
+            types::StrokeAttributeExtractor::extract_stroke_attributes(
+                stroke_def_mut,
+                &type_spec.attributes,
+            )?;
+        }
+
+        Ok(stroke_rc)
+    }
+
+    /// Build a new type definition from a base type with additional attributes.
+    /// This method handles type composition and attribute inheritance with integrated
+    /// type reference resolution for text and stroke attributes.
+    fn build_type_from_base(
+        &self,
+        id: Id,
+        base: &types::TypeDefinition,
+        attributes: &[parser_types::Attribute],
+    ) -> Result<types::TypeDefinition> {
+        match base.draw_definition() {
+            types::DrawDefinition::Shape(shape_def) => {
+                let mut new_shape_def = shape_def.clone_box();
+
+                for attr in attributes {
+                    let name = attr.name.inner();
+                    let value = &attr.value;
+
+                    match *name {
+                        "fill_color" => {
+                            let val = Color::new(value.as_str().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid color value",
+                                    Some("Color values must be strings".to_string()),
+                                )
+                            })?)
+                            .map_err(|err| {
+                                DiagnosticError::from_span(
+                                    format!("Invalid fill_color '{value}': {err}"),
+                                    attr.span(),
+                                    "invalid color",
+                                    Some("Use a CSS color".to_string()),
+                                )
+                            })?;
+                            new_shape_def.set_fill_color(Some(val)).map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "unsupported attribute",
+                                    None,
+                                )
+                            })?;
+                        }
+                        "stroke" => {
+                            let type_spec = value.as_type_spec().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid stroke attribute value",
+                                    Some(
+                                        "Stroke attribute must be a type reference or inline attributes"
+                                            .to_string(),
+                                    ),
+                                )
+                            })?;
+
+                            let stroke_rc = self
+                                .resolve_stroke_type_reference(type_spec, new_shape_def.stroke())?;
+                            new_shape_def.set_stroke(stroke_rc);
+                        }
+                        "rounded" => {
+                            let val = value.as_usize().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    format!("Invalid rounded value: {err}"),
+                                    attr.span(),
+                                    "invalid number",
+                                    Some("Rounded must be a positive number".to_string()),
+                                )
+                            })?;
+                            new_shape_def.set_rounded(val).map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "unsupported attribute",
+                                    None,
+                                )
+                            })?;
+                        }
+                        "text" => {
+                            let type_spec = value.as_type_spec().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid text attribute value",
+                                    Some(
+                                        "Text attribute must be a type reference or inline attributes"
+                                            .to_string(),
+                                    ),
+                                )
+                            })?;
+
+                            let text_rc =
+                                self.resolve_text_type_reference(type_spec, new_shape_def.text())?;
+                            new_shape_def.set_text(text_rc);
+                        }
+                        name => {
+                            return Err(DiagnosticError::from_span(
+                                format!("Unknown shape attribute '{name}'"),
+                                attr.span(),
+                                "unknown attribute",
+                                Some(
+                                    "Valid shape attributes are: fill_color, stroke=[...], rounded, text=[...]"
+                                        .to_string(),
+                                ),
+                            ));
+                        }
+                    }
+                }
+
+                Ok(types::TypeDefinition::new_shape(id, new_shape_def))
+            }
+            types::DrawDefinition::Arrow(arrow_def) => {
+                let mut new_arrow_def = Rc::clone(arrow_def);
+                let arrow_def_mut = Rc::make_mut(&mut new_arrow_def);
+
+                for attr in attributes {
+                    let name = attr.name.inner();
+                    let value = &attr.value;
+
+                    match *name {
+                        "stroke" => {
+                            let type_spec = value.as_type_spec().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid stroke attribute value",
+                                    Some("Stroke attribute must be a type reference or inline attributes".to_string()),
+                                )
+                            })?;
+
+                            let stroke_rc = self
+                                .resolve_stroke_type_reference(type_spec, arrow_def_mut.stroke())?;
+                            arrow_def_mut.set_stroke(stroke_rc);
+                        }
+                        "style" => {
+                            let val =
+                                draw::ArrowStyle::from_str(value.as_str().map_err(|err| {
+                                    DiagnosticError::from_span(
+                                        err.to_string(),
+                                        attr.span(),
+                                        "invalid style value",
+                                        Some("Style values must be strings".to_string()),
+                                    )
+                                })?)
+                                .map_err(|_| {
+                                    DiagnosticError::from_span(
+                                    "Invalid arrow style".to_string(),
+                                    attr.span(),
+                                    "invalid style",
+                                    Some(
+                                        "Arrow style must be 'straight', 'curved', or 'orthogonal'"
+                                            .to_string(),
+                                    ),
+                                )
+                                })?;
+                            arrow_def_mut.set_style(val);
+                        }
+                        "text" => {
+                            let type_spec = value.as_type_spec().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid text attribute value",
+                                    Some("Text attribute must be a type reference or inline attributes".to_string()),
+                                )
+                            })?;
+
+                            let text_rc =
+                                self.resolve_text_type_reference(type_spec, arrow_def_mut.text())?;
+                            arrow_def_mut.set_text(text_rc);
+                        }
+                        name => {
+                            return Err(DiagnosticError::from_span(
+                                format!("Unknown arrow attribute '{name}'"),
+                                attr.span(),
+                                "unknown attribute",
+                                Some(
+                                    "Valid arrow attributes are: stroke=[...], style, text=[...]"
+                                        .to_string(),
+                                ),
+                            ));
+                        }
+                    }
+                }
+
+                Ok(types::TypeDefinition::new_arrow(id, new_arrow_def))
+            }
+            types::DrawDefinition::Fragment(fragment_def) => {
+                let mut new_fragment_def = Rc::clone(fragment_def);
+                let fragment_def_mut = Rc::make_mut(&mut new_fragment_def);
+
+                for attr in attributes {
+                    let name = attr.name.inner();
+                    let value = &attr.value;
+
+                    match *name {
+                        "border_stroke" => {
+                            let type_spec = value.as_type_spec().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid border_stroke attribute value",
+                                    Some("Border stroke attribute must be a type reference or inline attributes".to_string()),
+                                )
+                            })?;
+
+                            let stroke_rc = self.resolve_stroke_type_reference(
+                                type_spec,
+                                fragment_def_mut.border_stroke(),
+                            )?;
+                            fragment_def_mut.set_border_stroke(stroke_rc);
+                        }
+                        "background_color" => {
+                            let val = Color::new(value.as_str().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid color value",
+                                    Some("Color values must be strings".to_string()),
+                                )
+                            })?)
+                            .map_err(|err| {
+                                DiagnosticError::from_span(
+                                    format!("Invalid background_color '{value}': {err}"),
+                                    attr.span(),
+                                    "invalid color",
+                                    Some("Use a CSS color".to_string()),
+                                )
+                            })?;
+                            fragment_def_mut.set_background_color(Some(val));
+                        }
+                        "separator_stroke" => {
+                            let type_spec = value.as_type_spec().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid separator_stroke attribute value",
+                                    Some("Separator stroke attribute must be a type reference or inline attributes".to_string()),
+                                )
+                            })?;
+
+                            let stroke_rc = self.resolve_stroke_type_reference(
+                                type_spec,
+                                fragment_def_mut.separator_stroke(),
+                            )?;
+                            fragment_def_mut.set_separator_stroke(stroke_rc);
+                        }
+                        "content_padding" => {
+                            let val = value.as_float().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid padding value",
+                                    Some("Content padding must be a positive number".to_string()),
+                                )
+                            })?;
+                            fragment_def_mut.set_content_padding(Insets::uniform(val));
+                        }
+                        "text" => {
+                            let type_spec = value.as_type_spec().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid text attribute value",
+                                    Some("Text attribute must be a type reference or inline attributes".to_string()),
+                                )
+                            })?;
+
+                            let text_rc = self.resolve_text_type_reference(
+                                type_spec,
+                                fragment_def_mut.operation_label_text(),
+                            )?;
+                            fragment_def_mut.set_operation_label_text(text_rc);
+                        }
+                        name => {
+                            return Err(DiagnosticError::from_span(
+                                format!("Unknown fragment attribute '{name}'"),
+                                attr.span(),
+                                "unknown attribute",
+                                Some("Valid fragment attributes are: border_stroke=[...], separator_stroke=[...], background_color, content_padding, text=[...]".to_string()),
+                            ));
+                        }
+                    }
+                }
+
+                Ok(types::TypeDefinition::new_fragment(id, new_fragment_def))
+            }
+            types::DrawDefinition::Note(note_def) => {
+                let mut new_note_def = Rc::clone(note_def);
+                let note_def_mut = Rc::make_mut(&mut new_note_def);
+
+                for attr in attributes {
+                    let name = attr.name.inner();
+                    let value = &attr.value;
+
+                    match *name {
+                        "background_color" => {
+                            let val = Color::new(value.as_str().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid color value",
+                                    Some("Color values must be strings".to_string()),
+                                )
+                            })?)
+                            .map_err(|err| {
+                                DiagnosticError::from_span(
+                                    format!("Invalid background_color '{value}': {err}"),
+                                    attr.span(),
+                                    "invalid color",
+                                    Some("Use a CSS color".to_string()),
+                                )
+                            })?;
+                            note_def_mut.set_background_color(Some(val));
+                        }
+                        "stroke" => {
+                            let type_spec = value.as_type_spec().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid stroke attribute value",
+                                    Some("Stroke attribute must be a type reference or inline attributes".to_string()),
+                                )
+                            })?;
+
+                            let stroke_rc = self
+                                .resolve_stroke_type_reference(type_spec, note_def_mut.stroke())?;
+                            note_def_mut.set_stroke(stroke_rc);
+                        }
+                        "text" => {
+                            let type_spec = value.as_type_spec().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid text attribute value",
+                                    Some("Text attribute must be a type reference or inline attributes".to_string()),
+                                )
+                            })?;
+
+                            let text_rc =
+                                self.resolve_text_type_reference(type_spec, note_def_mut.text())?;
+                            note_def_mut.set_text(text_rc);
+                        }
+                        "on" | "align" => {
+                            // Skip positioning attributes - these are handled by build_note_element
+                            // and are not part of the note's styling definition
+                        }
+                        name => {
+                            return Err(DiagnosticError::from_span(
+                                format!("Unknown note attribute '{name}'"),
+                                attr.span(),
+                                "unknown attribute",
+                                Some("Valid note attributes are: background_color, stroke=[...], text=[...]".to_string()),
+                            ));
+                        }
+                    }
+                }
+
+                Ok(types::TypeDefinition::new_note(id, new_note_def))
+            }
+            types::DrawDefinition::ActivationBox(activation_box_def) => {
+                let mut new_activation_box_def = Rc::clone(activation_box_def);
+                let activation_box_def_mut = Rc::make_mut(&mut new_activation_box_def);
+
+                for attr in attributes {
+                    let name = attr.name.inner();
+                    let value = &attr.value;
+
+                    match *name {
+                        "width" => {
+                            let val = value.as_float().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid width value",
+                                    Some("Width must be a positive number".to_string()),
+                                )
+                            })?;
+                            activation_box_def_mut.set_width(val);
+                        }
+                        "nesting_offset" => {
+                            let val = value.as_float().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid nesting_offset value",
+                                    Some("Nesting offset must be a positive number".to_string()),
+                                )
+                            })?;
+                            activation_box_def_mut.set_nesting_offset(val);
+                        }
+                        "fill_color" => {
+                            let val = Color::new(value.as_str().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid color value",
+                                    Some("Color values must be strings".to_string()),
+                                )
+                            })?)
+                            .map_err(|err| {
+                                DiagnosticError::from_span(
+                                    format!("Invalid fill_color '{value}': {err}"),
+                                    attr.span(),
+                                    "invalid color",
+                                    Some("Use a CSS color".to_string()),
+                                )
+                            })?;
+                            activation_box_def_mut.set_fill_color(val);
+                        }
+                        "stroke" => {
+                            let type_spec = value.as_type_spec().map_err(|err| {
+                                DiagnosticError::from_span(
+                                    err.to_string(),
+                                    attr.span(),
+                                    "invalid stroke attribute value",
+                                    Some("Stroke attribute must be a type reference or inline attributes".to_string()),
+                                )
+                            })?;
+
+                            let stroke_rc = self.resolve_stroke_type_reference(
+                                type_spec,
+                                activation_box_def_mut.stroke(),
+                            )?;
+                            activation_box_def_mut.set_stroke(stroke_rc);
+                        }
+                        name => {
+                            return Err(DiagnosticError::from_span(
+                                format!("Unknown activation box attribute '{name}'"),
+                                attr.span(),
+                                "unknown attribute",
+                                Some("Valid activation box attributes are: width, nesting_offset, fill_color, stroke=[...]".to_string()),
+                            ));
+                        }
+                    }
+                }
+
+                Ok(types::TypeDefinition::new_activation_box(
+                    id,
+                    new_activation_box_def,
+                ))
+            }
+            types::DrawDefinition::Stroke(stroke_def) => {
+                let mut new_stroke = (**stroke_def).clone();
+                types::StrokeAttributeExtractor::extract_stroke_attributes(
+                    &mut new_stroke,
+                    attributes,
+                )?;
+                Ok(types::TypeDefinition::new_stroke(id, new_stroke))
+            }
+            types::DrawDefinition::Text(text_def) => {
+                let mut new_text_def = (**text_def).clone();
+                types::TextAttributeExtractor::extract_text_attributes(
+                    &mut new_text_def,
+                    attributes,
+                )?;
+                Ok(types::TypeDefinition::new_text(id, new_text_def))
+            }
         }
     }
 
@@ -671,7 +1234,7 @@ impl<'a> Builder<'a> {
                             None,
                         ));
                     }
-                    let definition = Self::extract_lifeline_definition(attr)?;
+                    let definition = self.extract_lifeline_definition(attr)?;
                     lifeline_definition = Some(Rc::new(definition));
                 }
                 "activation_box" => {
@@ -685,7 +1248,7 @@ impl<'a> Builder<'a> {
                             None,
                         ));
                     }
-                    let definition = Self::extract_activation_box_definition(attr)?;
+                    let definition = self.extract_activation_box_definition(attr)?;
                     activation_box_definition = Some(Rc::new(definition));
                 }
                 _ => {
@@ -729,98 +1292,93 @@ impl<'a> Builder<'a> {
 
     /// Extract lifeline definition from an attribute
     fn extract_lifeline_definition(
+        &self,
         lifeline_attr: &parser_types::Attribute<'_>,
     ) -> Result<draw::LifelineDefinition> {
-        let nested_attrs = &lifeline_attr
-            .value
-            .as_type_spec()
-            .map_err(|err| {
-                DiagnosticError::from_span(
-                    err.to_string(),
-                    lifeline_attr.value.span(),
-                    "invalid lifeline attribute value",
-                    Some("Lifeline attribute must contain type spec".to_string()),
-                )
-            })?
-            .attributes;
+        let type_spec = lifeline_attr.value.as_type_spec().map_err(|err| {
+            DiagnosticError::from_span(
+                err.to_string(),
+                lifeline_attr.value.span(),
+                "invalid lifeline attribute value",
+                Some(
+                    "Lifeline attribute must be a type reference or inline attributes".to_string(),
+                ),
+            )
+        })?;
 
         // Start with default lifeline stroke
-        let mut stroke_def = draw::StrokeDefinition::dashed(Color::default(), 1.0);
+        let default_stroke_rc = Rc::new(draw::StrokeDefinition::dashed(Color::default(), 1.0));
 
-        for attr in nested_attrs {
-            match *attr.name {
-                "stroke" => {
-                    let stroke_attrs = &attr
-                        .value
-                        .as_type_spec()
-                        .map_err(|err| {
-                            DiagnosticError::from_span(
-                                err.to_string(),
-                                attr.value.span(),
-                                "invalid stroke attribute value",
-                                Some("Stroke attribute must contain type spec".to_string()),
-                            )
-                        })?
-                        .attributes;
+        // Look for stroke attribute
+        let stroke_rc =
+            if let Some(stroke_attr) = type_spec.attributes.iter().find(|a| *a.name == "stroke") {
+                let stroke_type_spec = stroke_attr.value.as_type_spec().map_err(|err| {
+                    DiagnosticError::from_span(
+                        err.to_string(),
+                        stroke_attr.value.span(),
+                        "invalid stroke attribute value",
+                        Some(
+                            "Stroke attribute must be a type reference or inline attributes"
+                                .to_string(),
+                        ),
+                    )
+                })?;
 
-                    types::StrokeAttributeExtractor::extract_stroke_attributes(
-                        &mut stroke_def,
-                        stroke_attrs,
-                    )?;
-                }
-                _ => {
-                    return Err(DiagnosticError::from_span(
-                        format!("Unknown lifeline attribute '{}'", attr.name),
-                        attr.span(),
-                        "unknown attribute",
-                        Some("Valid lifeline attributes are: stroke=[...]".to_string()),
-                    ));
-                }
-            }
-        }
+                self.resolve_stroke_type_reference(stroke_type_spec, &default_stroke_rc)?
+            } else if !type_spec.attributes.is_empty() {
+                return Err(DiagnosticError::from_span(
+                    format!(
+                        "Unknown lifeline attribute '{}'",
+                        type_spec.attributes[0].name
+                    ),
+                    type_spec.attributes[0].span(),
+                    "unknown attribute",
+                    Some("Valid lifeline attributes are: stroke=[...]".to_string()),
+                ));
+            } else {
+                default_stroke_rc
+            };
 
-        Ok(draw::LifelineDefinition::new(Rc::new(stroke_def)))
+        Ok(draw::LifelineDefinition::new(stroke_rc))
     }
 
     /// Extract activation box definition from an attribute
     fn extract_activation_box_definition(
+        &self,
         activation_box_attr: &parser_types::Attribute<'_>,
     ) -> Result<draw::ActivationBoxDefinition> {
-        let nested_attrs = &activation_box_attr
-            .value
-            .as_type_spec()
-            .map_err(|err| {
-                DiagnosticError::from_span(
-                    err.to_string(),
-                    activation_box_attr.value.span(),
-                    "invalid activation_box attribute value",
-                    Some("Activation box attribute must contain type spec".to_string()),
-                )
-            })?
-            .attributes;
+        let type_spec = activation_box_attr.value.as_type_spec().map_err(|err| {
+            DiagnosticError::from_span(
+                err.to_string(),
+                activation_box_attr.value.span(),
+                "invalid activation_box attribute value",
+                Some(
+                    "Activation box attribute must be a type reference or inline attributes"
+                        .to_string(),
+                ),
+            )
+        })?;
 
         let mut definition = draw::ActivationBoxDefinition::default();
 
-        for attr in nested_attrs {
+        for attr in &type_spec.attributes {
             match *attr.name {
                 "stroke" => {
-                    let stroke_attrs = &attr
-                        .value
-                        .as_type_spec()
-                        .map_err(|err| {
-                            DiagnosticError::from_span(
-                                err.to_string(),
-                                attr.value.span(),
-                                "invalid stroke attribute value",
-                                Some("Stroke attribute must contain type spec".to_string()),
-                            )
-                        })?
-                        .attributes;
+                    let stroke_type_spec = attr.value.as_type_spec().map_err(|err| {
+                        DiagnosticError::from_span(
+                            err.to_string(),
+                            attr.value.span(),
+                            "invalid stroke attribute value",
+                            Some(
+                                "Stroke attribute must be a type reference or inline attributes"
+                                    .to_string(),
+                            ),
+                        )
+                    })?;
 
-                    types::StrokeAttributeExtractor::extract_stroke_attributes(
-                        definition.mut_stroke(),
-                        stroke_attrs,
-                    )?;
+                    let stroke_rc =
+                        self.resolve_stroke_type_reference(stroke_type_spec, definition.stroke())?;
+                    definition.set_stroke(stroke_rc);
                 }
                 "fill_color" => {
                     let color_str = attr.value.as_str().map_err(|err| {

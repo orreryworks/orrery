@@ -60,43 +60,11 @@ pub trait ShapeDefinition: std::fmt::Debug {
         unimplemented!("fill_color is not supported for this shape")
     }
 
-    /// Get the stroke definition for the shape
-    fn stroke(&self) -> &StrokeDefinition {
-        unimplemented!("stroke is not supported for this shape")
-    }
+    /// Get the stroke definition for the shape.
+    fn stroke(&self) -> &Rc<StrokeDefinition>;
 
-    /// Get mutable access to the stroke definition for the shape.
-    ///
-    /// This is the canonical way to modify stroke properties.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use filament::draw::{RectangleDefinition, ShapeDefinition};
-    /// let mut shape = RectangleDefinition::default();
-    /// let stroke = shape.mut_stroke();
-    /// stroke.set_width(3.0);
-    /// ```
-    fn mut_stroke(&mut self) -> &mut StrokeDefinition;
-
-    /// Get the text definition for the shape
-    fn text(&self) -> &TextDefinition {
-        unimplemented!("text is not supported for this shape")
-    }
-
-    /// Get mutable access to the text definition for the shape.
-    ///
-    /// This is the canonical way to modify text properties.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use filament::draw::{RectangleDefinition, ShapeDefinition};
-    /// let mut shape = RectangleDefinition::default();
-    /// let text = shape.mut_text();
-    /// text.set_font_size(18);
-    /// ```
-    fn mut_text(&mut self) -> &mut TextDefinition;
+    /// Get the text definition for the shape.
+    fn text(&self) -> &Rc<TextDefinition>;
 
     /// Set text definition using Rc.
     fn set_text(&mut self, text: Rc<TextDefinition>);

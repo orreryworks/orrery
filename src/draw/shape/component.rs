@@ -128,21 +128,15 @@ where
         self.rectangle_definition.fill_color()
     }
 
-    fn stroke(&self) -> &StrokeDefinition {
+    fn stroke(&self) -> &Rc<StrokeDefinition> {
         self.rectangle_definition.stroke()
     }
 
-    fn mut_stroke(&mut self) -> &mut StrokeDefinition {
-        self.rectangle_definition.mut_stroke()
-    }
 
-    fn text(&self) -> &crate::draw::TextDefinition {
+    fn text(&self) -> &Rc<TextDefinition> {
         self.rectangle_definition.text()
     }
 
-    fn mut_text(&mut self) -> &mut crate::draw::TextDefinition {
-        self.rectangle_definition.mut_text()
-    }
 
     fn set_text(&mut self, text: Rc<TextDefinition>) {
         self.rectangle_definition.set_text(text);

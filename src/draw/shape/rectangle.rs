@@ -54,13 +54,10 @@ impl ShapeDefinition for RectangleDefinition {
         self.fill_color
     }
 
-    fn stroke(&self) -> &StrokeDefinition {
+    fn stroke(&self) -> &Rc<StrokeDefinition> {
         &self.stroke
     }
 
-    fn mut_stroke(&mut self) -> &mut StrokeDefinition {
-        Rc::make_mut(&mut self.stroke)
-    }
 
     fn rounded(&self) -> usize {
         self.rounded
@@ -76,13 +73,10 @@ impl ShapeDefinition for RectangleDefinition {
         Ok(())
     }
 
-    fn text(&self) -> &TextDefinition {
+    fn text(&self) -> &Rc<TextDefinition> {
         &self.text
     }
 
-    fn mut_text(&mut self) -> &mut TextDefinition {
-        Rc::make_mut(&mut self.text)
-    }
 
     fn set_text(&mut self, text: Rc<TextDefinition>) {
         self.text = text;

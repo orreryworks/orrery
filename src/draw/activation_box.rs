@@ -84,14 +84,9 @@ impl ActivationBoxDefinition {
         self.fill_color
     }
 
-    /// Returns the stroke definition
-    pub fn stroke(&self) -> &StrokeDefinition {
+    /// Gets the stroke definition
+    pub fn stroke(&self) -> &Rc<StrokeDefinition> {
         &self.stroke
-    }
-
-    /// Gets mutable access to the stroke definition
-    pub fn mut_stroke(&mut self) -> &mut StrokeDefinition {
-        Rc::make_mut(&mut self.stroke)
     }
 
     /// Set stroke definition using Rc.

@@ -33,6 +33,8 @@
 //! # Customization
 //!
 //! ```
+//! # use std::rc::Rc;
+//! #
 //! # use filament::draw::{NoteDefinition, StrokeStyle};
 //! # use filament::color::Color;
 //! #
@@ -43,10 +45,12 @@
 //! definition.set_background_color(Some(Color::new("#ffebcd")?));
 //!
 //! // Customize border stroke
-//! let stroke = definition.mut_stroke();
-//! stroke.set_color(Color::new("blue")?);
-//! stroke.set_width(2.0);
-//! stroke.set_style(StrokeStyle::Dashed);
+//! let mut stroke = Rc::clone(&definition.stroke());
+//! let mut stroke_mut = Rc::make_mut(&mut stroke);
+//! stroke_mut.set_color(Color::new("blue")?);
+//! stroke_mut.set_width(2.0);
+//! stroke_mut.set_style(StrokeStyle::Dashed);
+//! definition.set_stroke(stroke);
 //! # Ok(())
 //! # }
 //! ```
@@ -83,7 +87,9 @@ const CORNER_FOLD_SIZE: f32 = 12.0;
 /// # Examples
 ///
 /// ```
-/// # use filament::draw::NoteDefinition;
+/// # use std::rc::Rc;
+/// #
+/// # use filament::draw::{NoteDefinition, StrokeDefinition};
 /// # use filament::color::Color;
 /// #
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -92,9 +98,11 @@ const CORNER_FOLD_SIZE: f32 = 12.0;
 ///
 /// // Customize
 /// definition.set_background_color(Some(Color::new("lightblue")?));
-/// let stroke = definition.mut_stroke();
-/// stroke.set_color(Color::new("navy")?);
-/// stroke.set_width(2.0);
+/// let mut stroke = Rc::clone(&definition.stroke());
+/// let stroke_mut = Rc::make_mut(&mut stroke);
+/// stroke_mut.set_color(Color::new("navy")?);
+/// stroke_mut.set_width(2.0);
+/// definition.set_stroke(stroke);
 /// # Ok(())
 /// # }
 /// ```
@@ -162,24 +170,14 @@ impl NoteDefinition {
         self.background_color
     }
 
-    /// Returns a reference to the stroke definition.
-    pub fn stroke(&self) -> &StrokeDefinition {
+    /// Gets the stroke definition
+    pub fn stroke(&self) -> &Rc<StrokeDefinition> {
         &self.stroke
     }
 
-    /// Gets mutable access to the stroke definition
-    pub fn mut_stroke(&mut self) -> &mut StrokeDefinition {
-        Rc::make_mut(&mut self.stroke)
-    }
-
-    /// Returns a reference to the text definition.
-    pub fn text(&self) -> &TextDefinition {
+    /// Gets the text definition
+    pub fn text(&self) -> &Rc<TextDefinition> {
         &self.text
-    }
-
-    /// Gets mutable access to the text definition
-    pub fn mut_text(&mut self) -> &mut TextDefinition {
-        Rc::make_mut(&mut self.text)
     }
 
     /// Set text definition using Rc.

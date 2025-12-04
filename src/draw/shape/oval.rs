@@ -101,26 +101,20 @@ impl ShapeDefinition for OvalDefinition {
         self.fill_color
     }
 
-    fn stroke(&self) -> &StrokeDefinition {
+    fn stroke(&self) -> &Rc<StrokeDefinition> {
         &self.stroke
     }
 
-    fn mut_stroke(&mut self) -> &mut StrokeDefinition {
-        Rc::make_mut(&mut self.stroke)
-    }
 
     fn set_fill_color(&mut self, color: Option<Color>) -> Result<(), &'static str> {
         self.fill_color = color;
         Ok(())
     }
 
-    fn text(&self) -> &TextDefinition {
+    fn text(&self) -> &Rc<TextDefinition> {
         &self.text
     }
 
-    fn mut_text(&mut self) -> &mut TextDefinition {
-        Rc::make_mut(&mut self.text)
-    }
 
     fn set_text(&mut self, text: Rc<TextDefinition>) {
         self.text = text;

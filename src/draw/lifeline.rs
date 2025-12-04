@@ -49,7 +49,7 @@ impl LifelineDefinition {
     }
 
     /// Returns the stroke definition
-    pub fn stroke(&self) -> &StrokeDefinition {
+    pub fn stroke(&self) -> &Rc<StrokeDefinition> {
         &self.stroke
     }
 

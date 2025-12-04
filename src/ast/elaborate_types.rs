@@ -361,8 +361,8 @@ pub enum DrawDefinition {
     Fragment(Rc<draw::FragmentDefinition>),
     Note(Rc<draw::NoteDefinition>),
     ActivationBox(Rc<draw::ActivationBoxDefinition>),
-    Stroke(draw::StrokeDefinition),
-    Text(draw::TextDefinition),
+    Stroke(Rc<draw::StrokeDefinition>),
+    Text(Rc<draw::TextDefinition>),
 }
 
 /// A concrete, elaborated type with text styling and drawing definition.
@@ -521,17 +521,22 @@ impl TypeDefinition {
 
     /// Construct a concrete stroke type definition from a stroke definition.
     pub fn new_stroke(id: Id, stroke_definition: draw::StrokeDefinition) -> Self {
-        Self::new(id, DrawDefinition::Stroke(stroke_definition))
+        Self::new(id, DrawDefinition::Stroke(Rc::new(stroke_definition)))
     }
 
     /// Construct a concrete text type definition from a text definition.
     pub fn new_text(id: Id, text_definition: draw::TextDefinition) -> Self {
-        Self::new(id, DrawDefinition::Text(text_definition))
+        Self::new(id, DrawDefinition::Text(Rc::new(text_definition)))
     }
 
     /// Get the identifier for this type definition.
     pub fn id(&self) -> Id {
         self.id
+    }
+
+    /// Get a reference to the underlying DrawDefinition.
+    pub fn draw_definition(&self) -> &DrawDefinition {
+        &self.draw_definition
     }
 
     /// Borrow the shape definition if this type is a shape; otherwise returns an error.
@@ -566,16 +571,16 @@ impl TypeDefinition {
         }
     }
 
-    /// Borrow the stroke definition if this type is a stroke; otherwise returns an error.
-    pub fn stroke_definition(&self) -> Result<&draw::StrokeDefinition, String> {
+    /// Get the stroke definition Rc if this type is a stroke; otherwise returns an error.
+    pub fn stroke_definition(&self) -> Result<&Rc<draw::StrokeDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Stroke(stroke) => Ok(stroke),
             _ => Err(format!("Type '{}' is not a stroke type", self.id)),
         }
     }
 
-    /// Borrow the text definition if this type is a text; otherwise returns an error.
-    pub fn text_definition_from_draw(&self) -> Result<&draw::TextDefinition, String> {
+    /// Get the text definition Rc if this type is a text; otherwise returns an error.
+    pub fn text_definition_from_draw(&self) -> Result<&Rc<draw::TextDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Text(text) => Ok(text),
             _ => Err(format!("Type '{}' is not a text type", self.id)),
@@ -591,7 +596,7 @@ impl TextAttributeExtractor {
     ///
     /// Returns `Ok(())` if all attributes were processed successfully,
     /// `Err(...)` if any attribute has an invalid value or is not a valid text attribute.
-    fn extract_text_attributes(
+    pub fn extract_text_attributes(
         text_def: &mut draw::TextDefinition,
         attrs: &[parser_types::Attribute],
     ) -> DiagnosticResult<()> {
@@ -831,505 +836,6 @@ impl StrokeAttributeExtractor {
     }
 }
 
-impl TypeDefinition {
-    pub fn from_base(
-        id: Id,
-        base: &Self,
-        attributes: &[parser_types::Attribute],
-    ) -> DiagnosticResult<Self> {
-        match &base.draw_definition {
-            DrawDefinition::Shape(shape_def) => {
-                let mut new_shape_def = shape_def.clone_box();
-
-                for attr in attributes {
-                    let name = attr.name.inner();
-                    let value = &attr.value;
-
-                    match *name {
-                        "fill_color" => {
-                            let val = Color::new(value.as_str().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid color value",
-                                    Some("Color values must be strings".to_string()),
-                                )
-                            })?)
-                            .map_err(|err| {
-                                DiagnosticError::from_span(
-                                    format!("Invalid fill_color '{value}': {err}"),
-                                    attr.span(),
-                                    "invalid color",
-                                    Some("Use a CSS color".to_string()),
-                                )
-                            })?;
-                            new_shape_def.set_fill_color(Some(val)).map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "unsupported attribute",
-                                    None,
-                                )
-                            })?;
-                        }
-                        "stroke" => {
-                            let nested_attrs = &value
-                                .as_type_spec()
-                                .map_err(|err| {
-                                    DiagnosticError::from_span(
-                                        err.to_string(),
-                                        attr.span(),
-                                        "invalid stroke attribute value",
-                                        Some(
-                                            "Stroke attribute must contain type spec like"
-                                                .to_string(),
-                                        ),
-                                    )
-                                })?
-                                .attributes;
-
-                            StrokeAttributeExtractor::extract_stroke_attributes(
-                                new_shape_def.mut_stroke(),
-                                nested_attrs,
-                            )?;
-                        }
-                        "rounded" => {
-                            let val = value.as_usize().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    format!("Invalid rounded value: {err}"),
-                                    attr.span(),
-                                    "invalid number",
-                                    Some("Rounded must be a positive number".to_string()),
-                                )
-                            })?;
-                            new_shape_def.set_rounded(val).map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "unsupported attribute",
-                                    None,
-                                )
-                            })?;
-                        }
-                        "text" => {
-                            // Handle nested text attributes
-                            let nested_attrs = &value
-                                .as_type_spec()
-                                .map_err(|err| {
-                                    DiagnosticError::from_span(
-                                        err.to_string(),
-                                        attr.span(),
-                                        "invalid text attribute value",
-                                        Some(
-                                            "Text attribute must contain type spec like"
-                                                .to_string(),
-                                        ),
-                                    )
-                                })?
-                                .attributes;
-
-                            TextAttributeExtractor::extract_text_attributes(
-                                new_shape_def.mut_text(),
-                                nested_attrs,
-                            )?;
-                        }
-                        name => {
-                            return Err(DiagnosticError::from_span(
-                                format!("Unknown shape attribute '{name}'"),
-                                attr.span(),
-                                "unknown attribute",
-                                Some(
-                                    "Valid shape attributes are: fill_color, stroke=[...], rounded, text=[...]"
-                                        .to_string(),
-                                ),
-                            ));
-                        }
-                    }
-                }
-
-                Ok(Self::new_shape(id, new_shape_def))
-            }
-            DrawDefinition::Arrow(arrow_def) => {
-                let mut new_arrow_def = Rc::clone(arrow_def);
-                let arrow_def_mut = Rc::make_mut(&mut new_arrow_def);
-
-                for attr in attributes {
-                    let name = attr.name.inner();
-                    let value = &attr.value;
-
-                    match *name {
-                        "stroke" => {
-                            let nested_attrs = &value
-                                .as_type_spec()
-                                .map_err(|err| {
-                                    DiagnosticError::from_span(
-                                        err.to_string(),
-                                        attr.span(),
-                                        "invalid stroke attribute value",
-                                        Some("Stroke attribute must contain type spec".to_string()),
-                                    )
-                                })?
-                                .attributes;
-
-                            StrokeAttributeExtractor::extract_stroke_attributes(
-                                arrow_def_mut.mut_stroke(),
-                                nested_attrs,
-                            )?;
-                        }
-                        "style" => {
-                            let val =
-                                draw::ArrowStyle::from_str(value.as_str().map_err(|err| {
-                                    DiagnosticError::from_span(
-                                        err.to_string(),
-                                        attr.span(),
-                                        "invalid style value",
-                                        Some("Style values must be strings".to_string()),
-                                    )
-                                })?)
-                                .map_err(|_| {
-                                    DiagnosticError::from_span(
-                                    "Invalid arrow style".to_string(),
-                                    attr.span(),
-                                    "invalid style",
-                                    Some(
-                                        "Arrow style must be 'straight', 'curved', or 'orthogonal'"
-                                            .to_string(),
-                                    ),
-                                )
-                                })?;
-                            arrow_def_mut.set_style(val);
-                        }
-                        "text" => {
-                            let nested_attrs = &value
-                                .as_type_spec()
-                                .map_err(|err| {
-                                    DiagnosticError::from_span(
-                                        err.to_string(),
-                                        attr.span(),
-                                        "invalid text attribute value",
-                                        Some("Text attribute must contain type spec".to_string()),
-                                    )
-                                })?
-                                .attributes;
-
-                            TextAttributeExtractor::extract_text_attributes(
-                                arrow_def_mut.mut_text(),
-                                nested_attrs,
-                            )?;
-                        }
-                        name => {
-                            return Err(DiagnosticError::from_span(
-                                format!("Unknown arrow attribute '{name}'"),
-                                attr.span(),
-                                "unknown attribute",
-                                Some(
-                                    "Valid arrow attributes are: stroke=[...], style, text=[...]"
-                                        .to_string(),
-                                ),
-                            ));
-                        }
-                    }
-                }
-
-                Ok(Self::new_arrow(id, new_arrow_def))
-            }
-            DrawDefinition::Fragment(fragment_def) => {
-                let mut new_fragment_def = Rc::clone(fragment_def);
-                let fragment_def_mut = Rc::make_mut(&mut new_fragment_def);
-
-                for attr in attributes {
-                    let name = attr.name.inner();
-                    let value = &attr.value;
-
-                    match *name {
-                        "border_stroke" => {
-                            let nested_attrs = &value
-                                .as_type_spec()
-                                .map_err(|err| {
-                                    DiagnosticError::from_span(
-                                        err.to_string(),
-                                        attr.span(),
-                                        "invalid border_stroke attribute value",
-                                        Some(
-                                            "Border stroke attribute must contain type spec"
-                                                .to_string(),
-                                        ),
-                                    )
-                                })?
-                                .attributes;
-
-                            StrokeAttributeExtractor::extract_stroke_attributes(
-                                fragment_def_mut.mut_border_stroke(),
-                                nested_attrs,
-                            )?;
-                        }
-                        "background_color" => {
-                            let val = Color::new(value.as_str().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid color value",
-                                    Some("Color values must be strings".to_string()),
-                                )
-                            })?)
-                            .map_err(|err| {
-                                DiagnosticError::from_span(
-                                    format!("Invalid background_color '{value}': {err}"),
-                                    attr.span(),
-                                    "invalid color",
-                                    Some("Use a CSS color".to_string()),
-                                )
-                            })?;
-                            fragment_def_mut.set_background_color(Some(val));
-                        }
-                        "separator_stroke" => {
-                            let nested_attrs = &value
-                                .as_type_spec()
-                                .map_err(|err| {
-                                    DiagnosticError::from_span(
-                                        err.to_string(),
-                                        attr.span(),
-                                        "invalid separator_stroke attribute value",
-                                        Some(
-                                            "Separator stroke attribute must contain type spec"
-                                                .to_string(),
-                                        ),
-                                    )
-                                })?
-                                .attributes;
-
-                            StrokeAttributeExtractor::extract_stroke_attributes(
-                                fragment_def_mut.mut_separator_stroke(),
-                                nested_attrs,
-                            )?;
-                        }
-                        "content_padding" => {
-                            let val = value.as_float().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid padding value",
-                                    Some("Content padding must be a positive number".to_string()),
-                                )
-                            })?;
-                            fragment_def_mut.set_content_padding(Insets::uniform(val));
-                        }
-                        "text" => {
-                            let nested_attrs = &value
-                                .as_type_spec()
-                                .map_err(|err| {
-                                    DiagnosticError::from_span(
-                                        err.to_string(),
-                                        attr.span(),
-                                        "invalid text attribute value",
-                                        Some("Text attribute must contain type spec".to_string()),
-                                    )
-                                })?
-                                .attributes;
-
-                            TextAttributeExtractor::extract_text_attributes(
-                                fragment_def_mut.mut_operation_label_text(),
-                                nested_attrs,
-                            )?;
-                        }
-                        name => {
-                            return Err(DiagnosticError::from_span(
-                                format!("Unknown fragment attribute '{name}'"),
-                                attr.span(),
-                                "unknown attribute",
-                                Some(
-                                    "Valid fragment attributes are: border_stroke=[...], separator_stroke=[...], background_color, content_padding, text=[...]"
-                                        .to_string(),
-                                ),
-                            ));
-                        }
-                    }
-                }
-
-                Ok(Self::new_fragment(id, new_fragment_def))
-            }
-            DrawDefinition::Note(note_def) => {
-                let mut new_note_def = Rc::clone(note_def);
-                let note_def_mut = Rc::make_mut(&mut new_note_def);
-
-                for attr in attributes {
-                    let name = attr.name.inner();
-                    let value = &attr.value;
-
-                    match *name {
-                        "background_color" => {
-                            let val = Color::new(value.as_str().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid color value",
-                                    Some("Color values must be strings".to_string()),
-                                )
-                            })?)
-                            .map_err(|err| {
-                                DiagnosticError::from_span(
-                                    format!("Invalid background_color '{value}': {err}"),
-                                    attr.span(),
-                                    "invalid color",
-                                    Some("Use a CSS color".to_string()),
-                                )
-                            })?;
-                            note_def_mut.set_background_color(Some(val));
-                        }
-                        "stroke" => {
-                            let nested_attrs = &value
-                                .as_type_spec()
-                                .map_err(|err| {
-                                    DiagnosticError::from_span(
-                                        err.to_string(),
-                                        attr.span(),
-                                        "invalid stroke attribute value",
-                                        Some("Stroke attribute must contain type spec".to_string()),
-                                    )
-                                })?
-                                .attributes;
-
-                            StrokeAttributeExtractor::extract_stroke_attributes(
-                                note_def_mut.mut_stroke(),
-                                nested_attrs,
-                            )?;
-                        }
-                        "text" => {
-                            let nested_attrs = &value
-                                .as_type_spec()
-                                .map_err(|err| {
-                                    DiagnosticError::from_span(
-                                        err.to_string(),
-                                        attr.span(),
-                                        "invalid text attribute value",
-                                        Some("Text attribute must contain type spec".to_string()),
-                                    )
-                                })?
-                                .attributes;
-
-                            TextAttributeExtractor::extract_text_attributes(
-                                note_def_mut.mut_text(),
-                                nested_attrs,
-                            )?;
-                        }
-                        "on" | "align" => {
-                            // Skip positioning attributes - these are handled by build_note_element
-                            // and are not part of the note's styling definition
-                        }
-                        name => {
-                            return Err(DiagnosticError::from_span(
-                                format!("Unknown note attribute '{name}'"),
-                                attr.span(),
-                                "unknown attribute",
-                                Some(
-                                    "Valid note attributes are: background_color, stroke=[...], text=[...]"
-                                        .to_string(),
-                                ),
-                            ));
-                        }
-                    }
-                }
-
-                Ok(Self::new_note(id, new_note_def))
-            }
-            DrawDefinition::ActivationBox(activation_box_def) => {
-                let mut new_activation_box_def = Rc::clone(activation_box_def);
-                let activation_box_def_mut = Rc::make_mut(&mut new_activation_box_def);
-
-                for attr in attributes {
-                    let name = attr.name.inner();
-                    let value = &attr.value;
-
-                    match *name {
-                        "width" => {
-                            let val = value.as_float().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid width value",
-                                    Some("Width must be a positive number".to_string()),
-                                )
-                            })?;
-                            activation_box_def_mut.set_width(val);
-                        }
-                        "nesting_offset" => {
-                            let val = value.as_float().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid nesting_offset value",
-                                    Some("Nesting offset must be a positive number".to_string()),
-                                )
-                            })?;
-                            activation_box_def_mut.set_nesting_offset(val);
-                        }
-                        "fill_color" => {
-                            let val = Color::new(value.as_str().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid color value",
-                                    Some("Color values must be strings".to_string()),
-                                )
-                            })?)
-                            .map_err(|err| {
-                                DiagnosticError::from_span(
-                                    format!("Invalid fill_color '{value}': {err}"),
-                                    attr.span(),
-                                    "invalid color",
-                                    Some("Use a CSS color".to_string()),
-                                )
-                            })?;
-                            activation_box_def_mut.set_fill_color(val);
-                        }
-                        "stroke" => {
-                            let nested_attrs = &value
-                                .as_type_spec()
-                                .map_err(|err| {
-                                    DiagnosticError::from_span(
-                                        err.to_string(),
-                                        attr.span(),
-                                        "invalid stroke attribute value",
-                                        Some("Stroke attribute must contain type spec".to_string()),
-                                    )
-                                })?
-                                .attributes;
-
-                            StrokeAttributeExtractor::extract_stroke_attributes(
-                                activation_box_def_mut.mut_stroke(),
-                                nested_attrs,
-                            )?;
-                        }
-                        name => {
-                            return Err(DiagnosticError::from_span(
-                                format!("Unknown activation box attribute '{name}'"),
-                                attr.span(),
-                                "unknown attribute",
-                                Some(
-                                    "Valid activation box attributes are: width, nesting_offset, fill_color, stroke=[...]"
-                                        .to_string(),
-                                ),
-                            ));
-                        }
-                    }
-                }
-
-                Ok(Self::new_activation_box(id, new_activation_box_def))
-            }
-            DrawDefinition::Stroke(stroke_def) => {
-                let mut new_stroke = stroke_def.clone();
-                StrokeAttributeExtractor::extract_stroke_attributes(&mut new_stroke, attributes)?;
-                Ok(Self::new_stroke(id, new_stroke))
-            }
-            DrawDefinition::Text(text_def) => {
-                let mut new_text_def = text_def.clone();
-                TextAttributeExtractor::extract_text_attributes(&mut new_text_def, attributes)?;
-                Ok(Self::new_text(id, new_text_def))
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod elaborate_tests {
     use super::*;
@@ -1455,64 +961,6 @@ mod elaborate_tests {
         )];
         let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_type_definition_with_text_attributes() {
-        // Create a base rectangle type
-        let base_id = Id::new("Rectangle");
-        let base_shape_def = Box::new(draw::RectangleDefinition::new());
-        let base_type = TypeDefinition::new_shape(base_id, base_shape_def);
-
-        // Create attributes including text group
-        let text_attrs = vec![
-            create_test_attribute("font_size", create_float_value(14.0)),
-            create_test_attribute("font_family", create_string_value("Arial")),
-        ];
-
-        let attributes = vec![
-            create_test_attribute("fill_color", create_string_value("blue")),
-            create_test_attribute(
-                "text",
-                parser_types::AttributeValue::TypeSpec(parser_types::TypeSpec {
-                    type_name: None,
-                    attributes: text_attrs,
-                }),
-            ),
-        ];
-
-        // Create new type from base with text attributes
-        let new_id = Id::new("StyledRectangle");
-        let result = TypeDefinition::from_base(new_id, &base_type, &attributes);
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_type_definition_text_not_nested_attributes() {
-        // Create a base rectangle type
-        let base_id = Id::new("Rectangle");
-        let base_shape_def = Box::new(draw::RectangleDefinition::new());
-        let base_type = TypeDefinition::new_shape(base_id, base_shape_def);
-
-        // Try to use text with string value instead of nested attributes
-        let attributes = vec![
-            create_test_attribute("fill_color", create_string_value("blue")),
-            create_test_attribute(
-                "text",
-                create_string_value("this_should_be_nested_attributes"),
-            ),
-        ];
-
-        // This should fail because text must contain nested attributes
-        let new_id = Id::new("InvalidTextType");
-        let result = TypeDefinition::from_base(new_id, &base_type, &attributes);
-
-        assert!(result.is_err());
-        if let Err(error) = result {
-            let error_message = format!("{}", error);
-            assert!(error_message.contains("Expected type spec"));
-        }
     }
 
     #[test]
