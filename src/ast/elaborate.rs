@@ -42,6 +42,10 @@ impl<'a> Builder<'a> {
         }
     }
 
+    // ============================================================================
+    // Main Entry Methods
+    // ============================================================================
+
     pub fn build(mut self, diag: &Spanned<parser_types::Element<'a>>) -> Result<types::Diagram> {
         debug!("Building elaborated diagram");
         match diag.inner() {
@@ -109,6 +113,112 @@ impl<'a> Builder<'a> {
             )),
         }
     }
+
+    // ============================================================================
+    // Attribute Value Extraction Helpers
+    // ============================================================================
+    // These associated functions provide a way to extract
+    // and validate attribute values with consistent error messages.
+
+    /// Extract a TypeSpec from an attribute value with contextual error.
+    ///
+    /// # Arguments
+    /// * `attr` - The attribute containing the value
+    /// * `key` - Display name for error messages (e.g., "stroke", "text")
+    fn extract_type_spec<'b>(
+        attr: &'b parser_types::Attribute<'b>,
+        key: &str,
+    ) -> Result<&'b parser_types::TypeSpec<'b>> {
+        attr.value.as_type_spec().map_err(|err| {
+            DiagnosticError::from_span(
+                err.to_string(),
+                attr.span(),
+                format!("invalid {key} attribute value"),
+                Some(format!(
+                    "{key} attribute must be a type reference or inline attributes"
+                )),
+            )
+        })
+    }
+
+    /// Extract a string from an attribute value with contextual error.
+    ///
+    /// # Arguments
+    /// * `attr` - The attribute containing the value
+    /// * `key` - Display name for error messages (e.g., "style", "layout_engine")
+    fn extract_string<'b>(attr: &'b parser_types::Attribute<'b>, key: &str) -> Result<&'b str> {
+        attr.value.as_str().map_err(|err| {
+            DiagnosticError::from_span(
+                err.to_string(),
+                attr.span(),
+                format!("invalid {key} value"),
+                Some(format!("{key} values must be strings")),
+            )
+        })
+    }
+
+    /// Extract and parse a color from an attribute value with contextual error.
+    /// This performs both string extraction and color parsing in one step.
+    ///
+    /// # Arguments
+    /// * `attr` - The attribute containing the value
+    /// * `key` - Display name for error messages (e.g., "fill_color", "background_color")
+    fn extract_color(attr: &parser_types::Attribute<'_>, key: &str) -> Result<Color> {
+        let color_str = attr.value.as_str().map_err(|err| {
+            DiagnosticError::from_span(
+                err.to_string(),
+                attr.span(),
+                "invalid color value",
+                Some("Color values must be strings".to_string()),
+            )
+        })?;
+
+        Color::new(color_str).map_err(|err| {
+            DiagnosticError::from_span(
+                format!("Invalid {key} '{color_str}': {err}"),
+                attr.span(),
+                "invalid color",
+                Some("Use a valid CSS color".to_string()),
+            )
+        })
+    }
+
+    /// Extract a positive float from an attribute value with contextual error.
+    ///
+    /// # Arguments
+    /// * `attr` - The attribute containing the value
+    /// * `key` - Display name for error messages (e.g., "width", "padding")
+    fn extract_positive_float(attr: &parser_types::Attribute<'_>, key: &str) -> Result<f32> {
+        attr.value.as_float().map_err(|err| {
+            DiagnosticError::from_span(
+                err.to_string(),
+                attr.span(),
+                format!("invalid {key} value"),
+                Some(format!("{key} must be a positive number")),
+            )
+        })
+    }
+
+    /// Extract a usize from an attribute value with contextual error.
+    ///
+    /// # Arguments
+    /// * `attr` - The attribute containing the value
+    /// * `key` - Display name for error messages (e.g., "rounded")
+    /// * `hint` - Additional hint for the error message (e.g., "must be a positive number")
+    fn extract_usize(attr: &parser_types::Attribute<'_>, key: &str, hint: &str) -> Result<usize> {
+        attr.value.as_usize().map_err(|err| {
+            DiagnosticError::from_span(
+                err.to_string(),
+                attr.span(),
+                format!("invalid {key} value"),
+                Some(format!("{key} {hint}")),
+            )
+        })
+    }
+
+    // ============================================================================
+    // Type Definition Methods
+    // ============================================================================
 
     // TODO: Change error type so it would not accept a span.
     fn insert_type_definition(
@@ -719,27 +829,11 @@ impl<'a> Builder<'a> {
 
                 for attr in attributes {
                     let name = attr.name.inner();
-                    let value = &attr.value;
 
                     match *name {
                         "fill_color" => {
-                            let val = Color::new(value.as_str().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid color value",
-                                    Some("Color values must be strings".to_string()),
-                                )
-                            })?)
-                            .map_err(|err| {
-                                DiagnosticError::from_span(
-                                    format!("Invalid fill_color '{value}': {err}"),
-                                    attr.span(),
-                                    "invalid color",
-                                    Some("Use a CSS color".to_string()),
-                                )
-                            })?;
-                            new_shape_def.set_fill_color(Some(val)).map_err(|err| {
+                            let color = Self::extract_color(attr, "fill_color")?;
+                            new_shape_def.set_fill_color(Some(color)).map_err(|err| {
                                 DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
@@ -749,31 +843,14 @@ impl<'a> Builder<'a> {
                             })?;
                         }
                         "stroke" => {
-                            let type_spec = value.as_type_spec().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid stroke attribute value",
-                                    Some(
-                                        "Stroke attribute must be a type reference or inline attributes"
-                                            .to_string(),
-                                    ),
-                                )
-                            })?;
-
+                            let type_spec = Self::extract_type_spec(attr, "stroke")?;
                             let stroke_rc = self
                                 .resolve_stroke_type_reference(type_spec, new_shape_def.stroke())?;
                             new_shape_def.set_stroke(stroke_rc);
                         }
                         "rounded" => {
-                            let val = value.as_usize().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    format!("Invalid rounded value: {err}"),
-                                    attr.span(),
-                                    "invalid number",
-                                    Some("Rounded must be a positive number".to_string()),
-                                )
-                            })?;
+                            let val =
+                                Self::extract_usize(attr, "rounded", "must be a positive number")?;
                             new_shape_def.set_rounded(val).map_err(|err| {
                                 DiagnosticError::from_span(
                                     err.to_string(),
@@ -784,18 +861,7 @@ impl<'a> Builder<'a> {
                             })?;
                         }
                         "text" => {
-                            let type_spec = value.as_type_spec().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid text attribute value",
-                                    Some(
-                                        "Text attribute must be a type reference or inline attributes"
-                                            .to_string(),
-                                    ),
-                                )
-                            })?;
-
+                            let type_spec = Self::extract_type_spec(attr, "text")?;
                             let text_rc =
                                 self.resolve_text_type_reference(type_spec, new_shape_def.text())?;
                             new_shape_def.set_text(text_rc);
@@ -822,35 +888,18 @@ impl<'a> Builder<'a> {
 
                 for attr in attributes {
                     let name = attr.name.inner();
-                    let value = &attr.value;
 
                     match *name {
                         "stroke" => {
-                            let type_spec = value.as_type_spec().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid stroke attribute value",
-                                    Some("Stroke attribute must be a type reference or inline attributes".to_string()),
-                                )
-                            })?;
-
+                            let type_spec = Self::extract_type_spec(attr, "stroke")?;
                             let stroke_rc = self
                                 .resolve_stroke_type_reference(type_spec, arrow_def_mut.stroke())?;
                             arrow_def_mut.set_stroke(stroke_rc);
                         }
                         "style" => {
-                            let val =
-                                draw::ArrowStyle::from_str(value.as_str().map_err(|err| {
-                                    DiagnosticError::from_span(
-                                        err.to_string(),
-                                        attr.span(),
-                                        "invalid style value",
-                                        Some("Style values must be strings".to_string()),
-                                    )
-                                })?)
-                                .map_err(|_| {
-                                    DiagnosticError::from_span(
+                            let style_str = Self::extract_string(attr, "style")?;
+                            let val = draw::ArrowStyle::from_str(style_str).map_err(|_| {
+                                DiagnosticError::from_span(
                                     "Invalid arrow style".to_string(),
                                     attr.span(),
                                     "invalid style",
@@ -859,19 +908,11 @@ impl<'a> Builder<'a> {
                                             .to_string(),
                                     ),
                                 )
-                                })?;
+                            })?;
                             arrow_def_mut.set_style(val);
                         }
                         "text" => {
-                            let type_spec = value.as_type_spec().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid text attribute value",
-                                    Some("Text attribute must be a type reference or inline attributes".to_string()),
-                                )
-                            })?;
-
+                            let type_spec = Self::extract_type_spec(attr, "text")?;
                             let text_rc =
                                 self.resolve_text_type_reference(type_spec, arrow_def_mut.text())?;
                             arrow_def_mut.set_text(text_rc);
@@ -898,19 +939,10 @@ impl<'a> Builder<'a> {
 
                 for attr in attributes {
                     let name = attr.name.inner();
-                    let value = &attr.value;
 
                     match *name {
                         "border_stroke" => {
-                            let type_spec = value.as_type_spec().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid border_stroke attribute value",
-                                    Some("Border stroke attribute must be a type reference or inline attributes".to_string()),
-                                )
-                            })?;
-
+                            let type_spec = Self::extract_type_spec(attr, "border_stroke")?;
                             let stroke_rc = self.resolve_stroke_type_reference(
                                 type_spec,
                                 fragment_def_mut.border_stroke(),
@@ -918,34 +950,11 @@ impl<'a> Builder<'a> {
                             fragment_def_mut.set_border_stroke(stroke_rc);
                         }
                         "background_color" => {
-                            let val = Color::new(value.as_str().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid color value",
-                                    Some("Color values must be strings".to_string()),
-                                )
-                            })?)
-                            .map_err(|err| {
-                                DiagnosticError::from_span(
-                                    format!("Invalid background_color '{value}': {err}"),
-                                    attr.span(),
-                                    "invalid color",
-                                    Some("Use a CSS color".to_string()),
-                                )
-                            })?;
-                            fragment_def_mut.set_background_color(Some(val));
+                            let color = Self::extract_color(attr, "background_color")?;
+                            fragment_def_mut.set_background_color(Some(color));
                         }
                         "separator_stroke" => {
-                            let type_spec = value.as_type_spec().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid separator_stroke attribute value",
-                                    Some("Separator stroke attribute must be a type reference or inline attributes".to_string()),
-                                )
-                            })?;
-
+                            let type_spec = Self::extract_type_spec(attr, "separator_stroke")?;
                             let stroke_rc = self.resolve_stroke_type_reference(
                                 type_spec,
                                 fragment_def_mut.separator_stroke(),
@@ -953,26 +962,11 @@ impl<'a> Builder<'a> {
                             fragment_def_mut.set_separator_stroke(stroke_rc);
                         }
                         "content_padding" => {
-                            let val = value.as_float().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid padding value",
-                                    Some("Content padding must be a positive number".to_string()),
-                                )
-                            })?;
+                            let val = Self::extract_positive_float(attr, "content_padding")?;
                             fragment_def_mut.set_content_padding(Insets::uniform(val));
                         }
                         "text" => {
-                            let type_spec = value.as_type_spec().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid text attribute value",
-                                    Some("Text attribute must be a type reference or inline attributes".to_string()),
-                                )
-                            })?;
-
+                            let type_spec = Self::extract_type_spec(attr, "text")?;
                             let text_rc = self.resolve_text_type_reference(
                                 type_spec,
                                 fragment_def_mut.operation_label_text(),
@@ -998,52 +992,20 @@ impl<'a> Builder<'a> {
 
                 for attr in attributes {
                     let name = attr.name.inner();
-                    let value = &attr.value;
 
                     match *name {
                         "background_color" => {
-                            let val = Color::new(value.as_str().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid color value",
-                                    Some("Color values must be strings".to_string()),
-                                )
-                            })?)
-                            .map_err(|err| {
-                                DiagnosticError::from_span(
-                                    format!("Invalid background_color '{value}': {err}"),
-                                    attr.span(),
-                                    "invalid color",
-                                    Some("Use a CSS color".to_string()),
-                                )
-                            })?;
-                            note_def_mut.set_background_color(Some(val));
+                            let color = Self::extract_color(attr, "background_color")?;
+                            note_def_mut.set_background_color(Some(color));
                         }
                         "stroke" => {
-                            let type_spec = value.as_type_spec().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid stroke attribute value",
-                                    Some("Stroke attribute must be a type reference or inline attributes".to_string()),
-                                )
-                            })?;
-
+                            let type_spec = Self::extract_type_spec(attr, "stroke")?;
                             let stroke_rc = self
                                 .resolve_stroke_type_reference(type_spec, note_def_mut.stroke())?;
                             note_def_mut.set_stroke(stroke_rc);
                         }
                         "text" => {
-                            let type_spec = value.as_type_spec().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid text attribute value",
-                                    Some("Text attribute must be a type reference or inline attributes".to_string()),
-                                )
-                            })?;
-
+                            let type_spec = Self::extract_type_spec(attr, "text")?;
                             let text_rc =
                                 self.resolve_text_type_reference(type_spec, note_def_mut.text())?;
                             note_def_mut.set_text(text_rc);
@@ -1071,60 +1033,22 @@ impl<'a> Builder<'a> {
 
                 for attr in attributes {
                     let name = attr.name.inner();
-                    let value = &attr.value;
 
                     match *name {
                         "width" => {
-                            let val = value.as_float().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid width value",
-                                    Some("Width must be a positive number".to_string()),
-                                )
-                            })?;
+                            let val = Self::extract_positive_float(attr, "width")?;
                             activation_box_def_mut.set_width(val);
                         }
                         "nesting_offset" => {
-                            let val = value.as_float().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid nesting_offset value",
-                                    Some("Nesting offset must be a positive number".to_string()),
-                                )
-                            })?;
+                            let val = Self::extract_positive_float(attr, "nesting_offset")?;
                             activation_box_def_mut.set_nesting_offset(val);
                         }
                         "fill_color" => {
-                            let val = Color::new(value.as_str().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid color value",
-                                    Some("Color values must be strings".to_string()),
-                                )
-                            })?)
-                            .map_err(|err| {
-                                DiagnosticError::from_span(
-                                    format!("Invalid fill_color '{value}': {err}"),
-                                    attr.span(),
-                                    "invalid color",
-                                    Some("Use a CSS color".to_string()),
-                                )
-                            })?;
-                            activation_box_def_mut.set_fill_color(val);
+                            let color = Self::extract_color(attr, "fill_color")?;
+                            activation_box_def_mut.set_fill_color(color);
                         }
                         "stroke" => {
-                            let type_spec = value.as_type_spec().map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "invalid stroke attribute value",
-                                    Some("Stroke attribute must be a type reference or inline attributes".to_string()),
-                                )
-                            })?;
-
+                            let type_spec = Self::extract_type_spec(attr, "stroke")?;
                             let stroke_rc = self.resolve_stroke_type_reference(
                                 type_spec,
                                 activation_box_def_mut.stroke(),
@@ -1272,22 +1196,7 @@ impl<'a> Builder<'a> {
 
     /// Extract background color from an attribute
     fn extract_background_color(color_attr: &parser_types::Attribute<'_>) -> Result<Color> {
-        let color_str = color_attr.value.as_str().map_err(|err| {
-            DiagnosticError::from_span(
-                err.to_string(),
-                color_attr.value.span(),
-                "invalid color value",
-                Some("Color values must be strings".to_string()),
-            )
-        })?;
-        Color::new(color_str).map_err(|err| {
-            DiagnosticError::from_span(
-                format!("Invalid background_color: {err}"),
-                color_attr.value.span(),
-                "invalid color",
-                Some("Use a valid CSS color".to_string()),
-            )
-        })
+        Self::extract_color(color_attr, "background_color")
     }
 
     /// Extract lifeline definition from an attribute
@@ -1295,16 +1204,7 @@ impl<'a> Builder<'a> {
         &self,
         lifeline_attr: &parser_types::Attribute<'_>,
     ) -> Result<draw::LifelineDefinition> {
-        let type_spec = lifeline_attr.value.as_type_spec().map_err(|err| {
-            DiagnosticError::from_span(
-                err.to_string(),
-                lifeline_attr.value.span(),
-                "invalid lifeline attribute value",
-                Some(
-                    "Lifeline attribute must be a type reference or inline attributes".to_string(),
-                ),
-            )
-        })?;
+        let type_spec = Self::extract_type_spec(lifeline_attr, "lifeline")?;
 
         // Start with default lifeline stroke
         let default_stroke_rc = Rc::new(draw::StrokeDefinition::dashed(Color::default(), 1.0));
@@ -1312,17 +1212,7 @@ impl<'a> Builder<'a> {
         // Look for stroke attribute
         let stroke_rc =
             if let Some(stroke_attr) = type_spec.attributes.iter().find(|a| *a.name == "stroke") {
-                let stroke_type_spec = stroke_attr.value.as_type_spec().map_err(|err| {
-                    DiagnosticError::from_span(
-                        err.to_string(),
-                        stroke_attr.value.span(),
-                        "invalid stroke attribute value",
-                        Some(
-                            "Stroke attribute must be a type reference or inline attributes"
-                                .to_string(),
-                        ),
-                    )
-                })?;
+                let stroke_type_spec = Self::extract_type_spec(stroke_attr, "stroke")?;
 
                 self.resolve_stroke_type_reference(stroke_type_spec, &default_stroke_rc)?
             } else if !type_spec.attributes.is_empty() {
@@ -1347,56 +1237,21 @@ impl<'a> Builder<'a> {
         &self,
         activation_box_attr: &parser_types::Attribute<'_>,
     ) -> Result<draw::ActivationBoxDefinition> {
-        let type_spec = activation_box_attr.value.as_type_spec().map_err(|err| {
-            DiagnosticError::from_span(
-                err.to_string(),
-                activation_box_attr.value.span(),
-                "invalid activation_box attribute value",
-                Some(
-                    "Activation box attribute must be a type reference or inline attributes"
-                        .to_string(),
-                ),
-            )
-        })?;
+        let type_spec = Self::extract_type_spec(activation_box_attr, "activation_box")?;
 
         let mut definition = draw::ActivationBoxDefinition::default();
 
         for attr in &type_spec.attributes {
             match *attr.name {
                 "stroke" => {
-                    let stroke_type_spec = attr.value.as_type_spec().map_err(|err| {
-                        DiagnosticError::from_span(
-                            err.to_string(),
-                            attr.value.span(),
-                            "invalid stroke attribute value",
-                            Some(
-                                "Stroke attribute must be a type reference or inline attributes"
-                                    .to_string(),
-                            ),
-                        )
-                    })?;
+                    let stroke_type_spec = Self::extract_type_spec(attr, "stroke")?;
 
                     let stroke_rc =
                         self.resolve_stroke_type_reference(stroke_type_spec, definition.stroke())?;
                     definition.set_stroke(stroke_rc);
                 }
                 "fill_color" => {
-                    let color_str = attr.value.as_str().map_err(|err| {
-                        DiagnosticError::from_span(
-                            err.to_string(),
-                            attr.value.span(),
-                            "invalid color value",
-                            Some("Color values must be strings".to_string()),
-                        )
-                    })?;
-                    let color = Color::new(color_str).map_err(|err| {
-                        DiagnosticError::from_span(
-                            format!("Invalid fill_color: {err}"),
-                            attr.value.span(),
-                            "invalid color",
-                            Some("Use a valid CSS color".to_string()),
-                        )
-                    })?;
+                    let color = Self::extract_color(attr, "fill_color")?;
                     definition.set_fill_color(color);
                 }
                 _ => {
@@ -1420,14 +1275,7 @@ impl<'a> Builder<'a> {
     fn determine_layout_engine(
         engine_attr: &parser_types::Attribute<'_>,
     ) -> Result<types::LayoutEngine> {
-        let engine_str = engine_attr.value.as_str().map_err(|err| {
-            DiagnosticError::from_span(
-                err.to_string(),
-                engine_attr.value.span(),
-                "invalid layout engine",
-                Some("Layout engine must be a string".to_string()),
-            )
-        })?;
+        let engine_str = Self::extract_string(engine_attr, "layout_engine")?;
         types::LayoutEngine::from_str(engine_str).map_err(|_| {
             DiagnosticError::from_span(
                 format!("Invalid layout_engine value: '{engine_str}'"),
@@ -1515,14 +1363,7 @@ impl<'a> Builder<'a> {
                     on = Some(ids.iter().map(|id| *id.inner()).collect());
                 }
                 "align" => {
-                    let align_str = attr.value.as_str().map_err(|_| {
-                        DiagnosticError::from_span(
-                            "'align' attribute must be a string".to_string(),
-                            attr.value.span(),
-                            "invalid align value",
-                            Some("Use one of: over, left, right, top, bottom".to_string()),
-                        )
-                    })?;
+                    let align_str = Self::extract_string(attr, "align")?;
 
                     let alignment = align_str.parse::<types::NoteAlign>().map_err(|_| {
                         DiagnosticError::from_span(
@@ -2232,5 +2073,183 @@ mod tests {
         } else {
             panic!("Expected Note element");
         }
+    }
+
+    // ============================================================================
+    // Extraction Helper Tests
+    // ============================================================================
+
+    #[test]
+    fn test_extract_type_spec_success() {
+        use crate::ast::parser_types::{Attribute, AttributeValue, TypeSpec};
+
+        let type_spec = TypeSpec {
+            type_name: Some(Spanned::new(Id::new("BoldText"), Span::new(0..8))),
+            attributes: vec![],
+        };
+        let attr = Attribute {
+            name: Spanned::new("text", Span::new(0..4)),
+            value: AttributeValue::TypeSpec(type_spec),
+        };
+
+        let result = Builder::extract_type_spec(&attr, "text");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_extract_type_spec_error() {
+        use crate::ast::parser_types::{Attribute, AttributeValue};
+
+        let attr = Attribute {
+            name: Spanned::new("text", Span::new(0..4)),
+            value: AttributeValue::String(Spanned::new(
+                "not a type spec".to_string(),
+                Span::new(5..20),
+            )),
+        };
+
+        let result = Builder::extract_type_spec(&attr, "text");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Expected type spec"));
+    }
+
+    #[test]
+    fn test_extract_string_success() {
+        use crate::ast::parser_types::{Attribute, AttributeValue};
+
+        let attr = Attribute {
+            name: Spanned::new("style", Span::new(0..5)),
+            value: AttributeValue::String(Spanned::new("curved".to_string(), Span::new(6..14))),
+        };
+
+        let result = Builder::extract_string(&attr, "style");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "curved");
+    }
+
+    #[test]
+    fn test_extract_string_error() {
+        use crate::ast::parser_types::{Attribute, AttributeValue};
+
+        let attr = Attribute {
+            name: Spanned::new("style", Span::new(0..5)),
+            value: AttributeValue::Float(Spanned::new(42.0, Span::new(6..8))),
+        };
+
+        let result = Builder::extract_string(&attr, "style");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Expected string value"));
+    }
+
+    #[test]
+    fn test_extract_color_success() {
+        use crate::ast::parser_types::{Attribute, AttributeValue};
+
+        let attr = Attribute {
+            name: Spanned::new("fill_color", Span::new(0..10)),
+            value: AttributeValue::String(Spanned::new("red".to_string(), Span::new(11..16))),
+        };
+
+        let result = Builder::extract_color(&attr, "fill_color");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_extract_color_invalid_string() {
+        use crate::ast::parser_types::{Attribute, AttributeValue};
+
+        let attr = Attribute {
+            name: Spanned::new("fill_color", Span::new(0..10)),
+            value: AttributeValue::Float(Spanned::new(42.0, Span::new(11..13))),
+        };
+
+        let result = Builder::extract_color(&attr, "fill_color");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Expected string value"));
+    }
+
+    #[test]
+    fn test_extract_color_invalid_color() {
+        use crate::ast::parser_types::{Attribute, AttributeValue};
+
+        let attr = Attribute {
+            name: Spanned::new("fill_color", Span::new(0..10)),
+            value: AttributeValue::String(Spanned::new(
+                "not-a-color-xyz".to_string(),
+                Span::new(11..28),
+            )),
+        };
+
+        let result = Builder::extract_color(&attr, "fill_color");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Invalid fill_color"));
+    }
+
+    #[test]
+    fn test_extract_positive_float_success() {
+        use crate::ast::parser_types::{Attribute, AttributeValue};
+
+        let attr = Attribute {
+            name: Spanned::new("width", Span::new(0..5)),
+            value: AttributeValue::Float(Spanned::new(42.5, Span::new(6..10))),
+        };
+
+        let result = Builder::extract_positive_float(&attr, "width");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 42.5);
+    }
+
+    #[test]
+    fn test_extract_positive_float_error() {
+        use crate::ast::parser_types::{Attribute, AttributeValue};
+
+        let attr = Attribute {
+            name: Spanned::new("width", Span::new(0..5)),
+            value: AttributeValue::String(Spanned::new(
+                "not a number".to_string(),
+                Span::new(6..20),
+            )),
+        };
+
+        let result = Builder::extract_positive_float(&attr, "width");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Expected"));
+    }
+
+    #[test]
+    fn test_extract_usize_success() {
+        use crate::ast::parser_types::{Attribute, AttributeValue};
+
+        let attr = Attribute {
+            name: Spanned::new("rounded", Span::new(0..7)),
+            value: AttributeValue::Float(Spanned::new(10.0, Span::new(8..10))),
+        };
+
+        let result = Builder::extract_usize(&attr, "rounded", "must be a positive number");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 10);
+    }
+
+    #[test]
+    fn test_extract_usize_error() {
+        use crate::ast::parser_types::{Attribute, AttributeValue};
+
+        let attr = Attribute {
+            name: Spanned::new("rounded", Span::new(0..7)),
+            value: AttributeValue::String(Spanned::new(
+                "not a number".to_string(),
+                Span::new(8..22),
+            )),
+        };
+
+        let result = Builder::extract_usize(&attr, "rounded", "must be a positive number");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Expected"));
     }
 }
