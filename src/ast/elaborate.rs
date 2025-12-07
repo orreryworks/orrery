@@ -21,8 +21,7 @@ use crate::{
 
 pub struct Builder<'a> {
     cfg: &'a AppConfig,
-    type_definitions: Vec<Rc<types::TypeDefinition>>,
-    type_definition_map: HashMap<Id, Rc<types::TypeDefinition>>,
+    type_definitions: HashMap<Id, Rc<types::TypeDefinition>>,
     _phantom: std::marker::PhantomData<&'a str>, // Use PhantomData to maintain the lifetime parameter
 }
 
@@ -36,8 +35,7 @@ impl<'a> Builder<'a> {
 
         Self {
             cfg,
-            type_definitions,
-            type_definition_map,
+            type_definitions: type_definition_map,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -223,11 +221,10 @@ impl<'a> Builder<'a> {
     ) -> Result<Rc<types::TypeDefinition>> {
         let id = type_def.id();
         let type_def = Rc::new(type_def);
-        self.type_definitions.push(Rc::clone(&type_def));
 
         // Check if the type already exists
         if self
-            .type_definition_map
+            .type_definitions
             .insert(id, Rc::clone(&type_def))
             .is_none()
         {
@@ -236,7 +233,7 @@ impl<'a> Builder<'a> {
             // We could use a span here if we tracked where the duplicate was defined
             // For now, we use a simple error since we don't store that information
             Err(DiagnosticError::from_span(
-                format!("Type definition '{}' already exists", type_def.id()),
+                format!("Type definition '{id}' already exists"),
                 span,
                 "duplicate type definition",
                 None,
@@ -256,7 +253,7 @@ impl<'a> Builder<'a> {
                 .expect("TypeDefinition should always have a type_name in TypeSpec");
 
             let base = self
-                .type_definition_map
+                .type_definitions
                 .get(base_type_name.inner())
                 .ok_or_else(|| {
                     // Create a rich diagnostic error with source location information
@@ -679,7 +676,7 @@ impl<'a> Builder<'a> {
             )
         })?;
         // Look up the base type
-        let Some(base) = self.type_definition_map.get(type_name.inner()) else {
+        let Some(base) = self.type_definitions.get(type_name.inner()) else {
             return Err(
                 self.create_undefined_type_error(type_name, &format!("Unknown type '{type_name}'"))
             );
@@ -692,7 +689,7 @@ impl<'a> Builder<'a> {
         }
 
         // Otherwise, create a new anonymous type based on the base type
-        let id = Id::from_anonymous(self.type_definition_map.len());
+        let id = Id::from_anonymous(self.type_definitions.len());
         match self.build_type_from_base(id, base, attributes) {
             Ok(new_type) => self.insert_type_definition(new_type, type_name.span()),
             Err(err) => Err(self.create_undefined_type_error(
@@ -716,7 +713,7 @@ impl<'a> Builder<'a> {
         // Step 1: Determine which Rc to use (current or resolved)
         let mut text_rc = if let Some(type_name) = &type_spec.type_name {
             let base_type = self
-                .type_definition_map
+                .type_definitions
                 .get(type_name.inner())
                 .ok_or_else(|| {
                     DiagnosticError::from_span(
@@ -766,7 +763,7 @@ impl<'a> Builder<'a> {
         // Step 1: Determine which Rc to use (current or resolved)
         let mut stroke_rc = if let Some(type_name) = &type_spec.type_name {
             let base_type = self
-                .type_definition_map
+                .type_definitions
                 .get(type_name.inner())
                 .ok_or_else(|| {
                     DiagnosticError::from_span(
