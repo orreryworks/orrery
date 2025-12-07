@@ -278,12 +278,11 @@ type Complete = Rectangle [
 ];
 ```
 
-**Sequence Diagrams (Lifelines/Activation Boxes):**
+**Sequence Diagrams (Lifelines):**
 
 ```filament
 diagram sequence [
-    lifeline=[color="black", width=1.0, style="dashed"],
-    activation_box=[color="blue", width=2.0, style="solid"]
+    lifeline=[color="black", width=1.0, style="dashed"]
 ];
 ```
 

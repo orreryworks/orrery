@@ -1190,13 +1190,6 @@ style = "dashed"
 line_cap = "butt"
 line_join = "miter"
 
-# Activation box stroke configuration for sequence diagrams
-[activation_box]
-color = "blue"
-width = 2.0
-style = "solid"
-line_cap = "butt"
-line_join = "miter"
 ```
 
 Layout engine values are case-sensitive and must match the supported enum values exactly.
@@ -1232,15 +1225,7 @@ The `[lifeline]` section configures the appearance of lifelines in sequence diag
 - `line_cap`: Line cap style (string: `"butt"`, `"round"`, `"square"`)
 - `line_join`: Line join style (string: `"miter"`, `"round"`, `"bevel"`)
 
-**Activation Box Stroke Configuration:**
 
-The `[activation_box]` section configures the appearance of activation boxes in sequence diagrams:
-
-- `color`: Activation box stroke color (string, e.g., `"blue"`, `"#0000ff"`)
-- `width`: Activation box stroke width (float, e.g., `2.0`, `1.5`)
-- `style`: Activation box stroke style (string: `"solid"`, `"dashed"`, `"dotted"`, or custom pattern)
-- `line_cap`: Line cap style (string: `"butt"`, `"round"`, `"square"`)
-- `line_join`: Line join style (string: `"miter"`, `"round"`, `"bevel"`)
 
 ### 14.6 Configuration Priority
 

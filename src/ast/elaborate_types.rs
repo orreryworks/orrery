@@ -421,7 +421,6 @@ pub struct Diagram {
     layout_engine: LayoutEngine,
     background_color: Option<Color>,
     lifeline_definition: Option<Rc<draw::LifelineDefinition>>,
-    activation_box_definition: Option<Rc<draw::ActivationBoxDefinition>>,
 }
 
 impl Diagram {
@@ -432,7 +431,6 @@ impl Diagram {
         layout_engine: LayoutEngine,
         background_color: Option<Color>,
         lifeline_definition: Option<Rc<draw::LifelineDefinition>>,
-        activation_box_definition: Option<Rc<draw::ActivationBoxDefinition>>,
     ) -> Self {
         Self {
             kind,
@@ -440,7 +438,6 @@ impl Diagram {
             layout_engine,
             background_color,
             lifeline_definition,
-            activation_box_definition,
         }
     }
 
@@ -467,11 +464,6 @@ impl Diagram {
     /// Get the lifeline definition if specified (for sequence diagrams).
     pub fn lifeline_definition(&self) -> Option<&Rc<draw::LifelineDefinition>> {
         self.lifeline_definition.as_ref()
-    }
-
-    /// Get the activation box definition if specified (for sequence diagrams).
-    pub fn activation_box_definition(&self) -> Option<&Rc<draw::ActivationBoxDefinition>> {
-        self.activation_box_definition.as_ref()
     }
 }
 

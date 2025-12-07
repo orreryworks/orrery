@@ -88,12 +88,8 @@ impl<'a> Builder<'a> {
                     }
                 };
 
-                let (
-                    layout_engine,
-                    background_color,
-                    lifeline_definition,
-                    activation_box_definition,
-                ) = self.extract_diagram_attributes(kind, &diag.attributes)?;
+                let (layout_engine, background_color, lifeline_definition) =
+                    self.extract_diagram_attributes(kind, &diag.attributes)?;
 
                 info!(kind:?; "Diagram elaboration completed successfully");
                 Ok(types::Diagram::new(
@@ -102,7 +98,6 @@ impl<'a> Builder<'a> {
                     layout_engine,
                     background_color,
                     lifeline_definition,
-                    activation_box_definition,
                 ))
             }
             _ => Err(DiagnosticError::from_span(
@@ -318,12 +313,8 @@ impl<'a> Builder<'a> {
                 };
 
                 let kind = self.determine_diagram_kind(&diag.kind)?;
-                let (
-                    layout_engine,
-                    background_color,
-                    lifeline_definition,
-                    activation_box_definition,
-                ) = self.extract_diagram_attributes(kind, &diag.attributes)?;
+                let (layout_engine, background_color, lifeline_definition) =
+                    self.extract_diagram_attributes(kind, &diag.attributes)?;
 
                 Ok(types::Diagram::new(
                     kind,
@@ -331,7 +322,6 @@ impl<'a> Builder<'a> {
                     layout_engine,
                     background_color,
                     lifeline_definition,
-                    activation_box_definition,
                 ))
             }
             _ => Err(DiagnosticError::from_span(
@@ -366,7 +356,7 @@ impl<'a> Builder<'a> {
             };
 
             let kind = self.determine_diagram_kind(&diag.kind)?;
-            let (layout_engine, background_color, lifeline_definition, activation_box_definition) =
+            let (layout_engine, background_color, lifeline_definition) =
                 self.extract_diagram_attributes(kind, &diag.attributes)?;
 
             Ok(types::Diagram::new(
@@ -375,7 +365,6 @@ impl<'a> Builder<'a> {
                 layout_engine,
                 background_color,
                 lifeline_definition,
-                activation_box_definition,
             ))
         } else {
             Err(DiagnosticError::from_span(
@@ -1117,7 +1106,7 @@ impl<'a> Builder<'a> {
         )
     }
 
-    /// Extract diagram attributes (layout engine, background color, lifeline definition, and activation box definition)
+    /// Extract diagram attributes (layout engine, background color, and lifeline definition)
     fn extract_diagram_attributes(
         &self,
         kind: types::DiagramKind,
@@ -1126,7 +1115,6 @@ impl<'a> Builder<'a> {
         types::LayoutEngine,
         Option<Color>,
         Option<Rc<draw::LifelineDefinition>>,
-        Option<Rc<draw::ActivationBoxDefinition>>,
     )> {
         // Set the default layout engine based on the diagram kind and config
         let mut layout_engine = match kind {
@@ -1136,7 +1124,6 @@ impl<'a> Builder<'a> {
 
         let mut background_color = None;
         let mut lifeline_definition = None;
-        let mut activation_box_definition = None;
 
         // Single pass through the attributes to extract both values
         for attr in attrs {
@@ -1161,20 +1148,6 @@ impl<'a> Builder<'a> {
                     let definition = self.extract_lifeline_definition(attr)?;
                     lifeline_definition = Some(Rc::new(definition));
                 }
-                "activation_box" => {
-                    // Only valid for sequence diagrams
-                    if kind != types::DiagramKind::Sequence {
-                        return Err(DiagnosticError::from_span(
-                            "activation_box attribute is only valid for sequence diagrams"
-                                .to_string(),
-                            attr.span(),
-                            "invalid attribute",
-                            None,
-                        ));
-                    }
-                    let definition = self.extract_activation_box_definition(attr)?;
-                    activation_box_definition = Some(Rc::new(definition));
-                }
                 _ => {
                     return Err(DiagnosticError::from_span(
                         format!("Unsupported diagram attribute '{}'", attr.name),
@@ -1186,12 +1159,7 @@ impl<'a> Builder<'a> {
             }
         }
 
-        Ok((
-            layout_engine,
-            background_color,
-            lifeline_definition,
-            activation_box_definition,
-        ))
+        Ok((layout_engine, background_color, lifeline_definition))
     }
 
     /// Extract background color from an attribute
@@ -1230,45 +1198,6 @@ impl<'a> Builder<'a> {
             };
 
         Ok(draw::LifelineDefinition::new(stroke_rc))
-    }
-
-    /// Extract activation box definition from an attribute
-    fn extract_activation_box_definition(
-        &self,
-        activation_box_attr: &parser_types::Attribute<'_>,
-    ) -> Result<draw::ActivationBoxDefinition> {
-        let type_spec = Self::extract_type_spec(activation_box_attr, "activation_box")?;
-
-        let mut definition = draw::ActivationBoxDefinition::default();
-
-        for attr in &type_spec.attributes {
-            match *attr.name {
-                "stroke" => {
-                    let stroke_type_spec = Self::extract_type_spec(attr, "stroke")?;
-
-                    let stroke_rc =
-                        self.resolve_stroke_type_reference(stroke_type_spec, definition.stroke())?;
-                    definition.set_stroke(stroke_rc);
-                }
-                "fill_color" => {
-                    let color = Self::extract_color(attr, "fill_color")?;
-                    definition.set_fill_color(color);
-                }
-                _ => {
-                    return Err(DiagnosticError::from_span(
-                        format!("Unknown activation_box attribute '{}'", attr.name),
-                        attr.span(),
-                        "unknown attribute",
-                        Some(
-                            "Valid activation_box attributes are: stroke=[...], fill_color"
-                                .to_string(),
-                        ),
-                    ));
-                }
-            }
-        }
-
-        Ok(definition)
     }
 
     /// Determines the layout engine from an attribute
