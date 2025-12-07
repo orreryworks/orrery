@@ -384,7 +384,66 @@ Where:
 
 **For complete Type System documentation, see:** [Type System Specification](type_system.md)
 
-#### 6.4.2 Semantics
+#### 6.4.2 Fragment Attributes
+
+Fragments support the following attributes to customize their appearance:
+
+**Available Attributes:**
+
+- `border_stroke=[...]`: Border styling for the fragment box (stroke attributes)
+- `separator_stroke=[...]`: Styling for section separator lines (stroke attributes)
+- `background_color`: Background color for the entire fragment (string color value)
+- `content_padding`: Padding around fragment content (float value)
+- `operation_label_text=[...]`: Text styling for the operation label (e.g., "alt", "loop") (text attributes)
+- `section_title_text=[...]`: Text styling for section titles (text attributes)
+
+**Examples:**
+
+Basic fragment with custom colors:
+```
+fragment [background_color="lightyellow", border_stroke=[color="orange"]] "Authentication" {
+    section "success" {
+        client -> server: "Login successful";
+    };
+};
+```
+
+Fragment with custom text styling:
+```
+fragment [operation_label_text=[font_size=14, color="blue"]] "Process" {
+    section "step 1" {
+        server -> database: "Query";
+    };
+};
+```
+
+Fragment with separate operation and section title styling:
+```
+fragment [
+    operation_label_text=[font_size=14, color="darkblue"],
+    section_title_text=[font_size=12, color="gray"]
+] "Data Flow" {
+    section "initialization" {
+        client -> server: "Initialize";
+    };
+    section "processing" {
+        server -> database: "Process data";
+    };
+};
+```
+
+Using sugar syntax with attributes:
+```
+alt [background_color="lightblue"] "valid user" {
+    client -> server: "Access granted";
+} else [background_color="lightpink"] "invalid user" {
+    client -> server: "Access denied";
+};
+```
+
+**Note:** The `operation_label_text` attribute controls the styling of the operation label (like "alt", "loop", "opt"), while `section_title_text` controls the styling of individual section titles. This allows for independent customization of these two text elements.
+
+#### 6.4.3 Semantics
 
 - Sequence diagrams only: Using fragments in component diagrams is invalid
 - Grouping and alternatives: Multiple sections represent distinct phases or alternative paths
@@ -399,7 +458,7 @@ Scoping behavior:
 Diagram type restriction:
 - Fragments are only supported in sequence diagrams. Using them in component diagrams produces an error.
 
-#### 6.4.3 Sugar Syntax
+#### 6.4.4 Sugar Syntax
 
 To improve ergonomics and readability, Filament provides dedicated keywords for common UML 2.5 interaction operators. These keywords are syntactic sugar that desugar to the base `fragment` syntax during compilation.
 
@@ -584,7 +643,7 @@ fragment @TypeName [attributes...] "critical" {
 };
 ```
 
-#### 6.4.4 Examples
+#### 6.4.5 Examples
 
 ##### Base Fragment Examples
 

@@ -954,20 +954,28 @@ impl<'a> Builder<'a> {
                             let val = Self::extract_positive_float(attr, "content_padding")?;
                             fragment_def_mut.set_content_padding(Insets::uniform(val));
                         }
-                        "text" => {
-                            let type_spec = Self::extract_type_spec(attr, "text")?;
+                        "operation_label_text" => {
+                            let type_spec = Self::extract_type_spec(attr, "operation_label_text")?;
                             let text_rc = self.resolve_text_type_reference(
                                 type_spec,
                                 fragment_def_mut.operation_label_text(),
                             )?;
                             fragment_def_mut.set_operation_label_text(text_rc);
                         }
+                        "section_title_text" => {
+                            let type_spec = Self::extract_type_spec(attr, "section_title_text")?;
+                            let text_rc = self.resolve_text_type_reference(
+                                type_spec,
+                                fragment_def_mut.section_title_text(),
+                            )?;
+                            fragment_def_mut.set_section_title_text(text_rc);
+                        }
                         name => {
                             return Err(DiagnosticError::from_span(
                                 format!("Unknown fragment attribute '{name}'"),
                                 attr.span(),
                                 "unknown attribute",
-                                Some("Valid fragment attributes are: border_stroke=[...], separator_stroke=[...], background_color, content_padding, text=[...]".to_string()),
+                                Some("Valid fragment attributes are: border_stroke=[...], separator_stroke=[...], background_color, content_padding, operation_label_text=[...], section_title_text=[...]".to_string()),
                             ));
                         }
                     }
@@ -2180,5 +2188,56 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("Expected"));
+    }
+
+    #[test]
+    fn test_fragment_with_both_text_attributes() {
+        use crate::ast::parser_types::{Attribute, AttributeValue, TypeSpec};
+
+        let cfg = AppConfig::default();
+        let mut builder = Builder::new(&cfg, "");
+
+        // Create a fragment type with both operation_label_text and section_title_text attributes
+        let type_spec = TypeSpec {
+            type_name: Some(Spanned::new(Id::new("Fragment"), Span::new(0..8))),
+            attributes: vec![
+                Attribute {
+                    name: Spanned::new("operation_label_text", Span::new(0..4)),
+                    value: AttributeValue::TypeSpec(TypeSpec {
+                        type_name: None,
+                        attributes: vec![Attribute {
+                            name: Spanned::new("font_size", Span::new(0..9)),
+                            value: AttributeValue::Float(Spanned::new(14.0, Span::new(0..2))),
+                        }],
+                    }),
+                },
+                Attribute {
+                    name: Spanned::new("section_title_text", Span::new(0..18)),
+                    value: AttributeValue::TypeSpec(TypeSpec {
+                        type_name: None,
+                        attributes: vec![Attribute {
+                            name: Spanned::new("font_size", Span::new(0..9)),
+                            value: AttributeValue::Float(Spanned::new(12.0, Span::new(0..2))),
+                        }],
+                    }),
+                },
+            ],
+        };
+
+        let result = builder.build_type_definition(&type_spec);
+        assert!(
+            result.is_ok(),
+            "Failed to build type definition with both operation_label_text and section_title_text: {:?}",
+            result.err()
+        );
+
+        let type_def = result.unwrap();
+        // Verify it's a Fragment type definition
+        match type_def.draw_definition() {
+            types::DrawDefinition::Fragment(_) => {
+                // Success - fragment type was created with both operation_label_text and section_title_text attributes
+            }
+            _ => panic!("Expected Fragment draw definition"),
+        }
     }
 }

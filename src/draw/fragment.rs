@@ -77,9 +77,9 @@ impl FragmentDefinition {
         &self.operation_label_text_definition
     }
 
-    /// Gets mutable access to the section title text definition
-    pub fn mut_section_title_text(&mut self) -> &mut TextDefinition {
-        Rc::make_mut(&mut self.section_title_text_definition)
+    /// Gets the section title text definition
+    pub fn section_title_text(&self) -> &Rc<TextDefinition> {
+        &self.section_title_text_definition
     }
 
     /// Set operation label text definition using Rc.
