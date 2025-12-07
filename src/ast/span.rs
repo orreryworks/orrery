@@ -1,7 +1,5 @@
 use std::fmt;
 
-use winnow::stream::Stream;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span {
     start: usize,
@@ -68,27 +66,6 @@ impl From<&Span> for miette::SourceSpan {
     }
 }
 
-// Winnow compatibility implementations
-impl Span {
-    /// Create a span from offset information
-    pub fn from_offset(start: usize, end: usize) -> Self {
-        Self::new(start..end)
-    }
-
-    /// Create a span from a stream checkpoint and current position
-    pub fn from_checkpoint<S>(checkpoint_offset: usize, current_offset: usize) -> Self
-    where
-        S: Stream,
-    {
-        Self::new(checkpoint_offset..current_offset)
-    }
-
-    /// Get the offset range for winnow compatibility
-    pub fn to_offset_range(&self) -> std::ops::Range<usize> {
-        self.start()..self.end()
-    }
-}
-
 impl From<std::ops::Range<usize>> for Span {
     fn from(range: std::ops::Range<usize>) -> Self {
         Self::new(range)
@@ -105,27 +82,6 @@ pub struct Spanned<T> {
     value: T,
     /// The span information from the parser
     span: Span,
-}
-
-impl<T> Spanned<T> {
-    /// Create a spanned value from offset information
-    pub fn from_offset(value: T, start: usize, end: usize) -> Self {
-        Self {
-            value,
-            span: Span::from_offset(start, end),
-        }
-    }
-
-    /// Create a spanned value from a checkpoint
-    pub fn from_checkpoint<S>(value: T, checkpoint_offset: usize, current_offset: usize) -> Self
-    where
-        S: Stream,
-    {
-        Self {
-            value,
-            span: Span::from_checkpoint::<S>(checkpoint_offset, current_offset),
-        }
-    }
 }
 
 impl<T> Spanned<T> {
@@ -167,14 +123,6 @@ impl<T> Spanned<T> {
     /// Consume the Spanned wrapper and return just the inner value
     pub fn into_inner(self) -> T {
         self.value
-    }
-
-    /// Clone the span information while discarding the inner value
-    pub fn clone_spanned(&self) -> Spanned<()> {
-        Spanned {
-            value: (),
-            span: self.span,
-        }
     }
 }
 

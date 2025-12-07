@@ -31,7 +31,7 @@ use crate::{
 /// Each method takes a reference to its input and can accumulate state or errors.
 /// Default implementations perform recursive traversal so implementors can override
 /// only the methods they care about.
-pub trait Visitor<'a> {
+trait Visitor<'a> {
     /// Visit a complete diagram
     fn visit_diagram(&mut self, diagram: &Diagram<'a>) {
         self.visit_diagram_kind(&diagram.kind);
@@ -315,7 +315,7 @@ pub trait Visitor<'a> {
 }
 
 /// Entry point for running a visitor on a diagram
-pub fn visit_diagram<'a, V: Visitor<'a>>(visitor: &mut V, diagram: &Diagram<'a>) {
+fn visit_diagram<'a, V: Visitor<'a>>(visitor: &mut V, diagram: &Diagram<'a>) {
     visitor.visit_diagram(diagram)
 }
 
@@ -568,32 +568,6 @@ pub fn validate_diagram(diagram: &Diagram<'_>) -> Result<()> {
     } else {
         Ok(())
     }
-}
-
-/// Deprecated: Use validate_diagram instead
-///
-/// Convenience function to run activation validation for a diagram
-///
-/// Returns:
-/// - Ok(()) when no activation pairing issues are found
-/// - Err(DiagnosticError) with the first collected error otherwise
-#[allow(dead_code)]
-#[deprecated(since = "0.1.0", note = "Use validate_diagram instead")]
-pub fn validate_activation_pairs(diagram: &Diagram<'_>) -> Result<()> {
-    validate_diagram(diagram)
-}
-
-/// Deprecated: Use validate_diagram instead
-///
-/// Convenience function to run note validation for a diagram
-///
-/// Returns:
-/// - Ok(()) when no note validation issues are found
-/// - Err(DiagnosticError) with the first collected error otherwise
-#[allow(dead_code)]
-#[deprecated(since = "0.1.0", note = "Use validate_diagram instead")]
-pub fn validate_notes(diagram: &Diagram<'_>) -> Result<()> {
-    validate_diagram(diagram)
 }
 
 #[cfg(test)]

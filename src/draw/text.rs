@@ -25,16 +25,6 @@ use crate::{
 /// Use with `Cow::Borrowed(&DEFAULT_TEXT)` for zero-allocation defaults.
 static DEFAULT_TEXT: OnceLock<TextDefinition> = OnceLock::new();
 
-/// Default text definition for fragment operation labels.
-///
-/// Small text for "alt", "loop", "opt", etc. labels in sequence diagrams.
-static DEFAULT_FRAGMENT_OPERATION_TEXT: OnceLock<TextDefinition> = OnceLock::new();
-
-/// Default text definition for fragment section titles.
-///
-/// Standard size for section labels like "[condition]".
-static DEFAULT_FRAGMENT_SECTION_TEXT: OnceLock<TextDefinition> = OnceLock::new();
-
 // =============================================================================
 // Type Definitions
 // =============================================================================
@@ -58,34 +48,6 @@ impl TextDefinition {
     /// - Padding: 4px on all sides
     pub fn default_borrowed() -> &'static Self {
         DEFAULT_TEXT.get_or_init(|| TextDefinition {
-            font_family: String::from("sans-serif"),
-            font_size: 12,
-            background_color: None,
-            color: None,
-            padding: Insets::uniform(4.0),
-        })
-    }
-
-    /// Returns a reference to the default fragment operation text (borrowed from static).
-    ///
-    /// Small text for "alt", "loop", "opt", etc. labels in sequence diagrams.
-    /// - Font size: 10
-    pub fn default_fragment_operation_borrowed() -> &'static Self {
-        DEFAULT_FRAGMENT_OPERATION_TEXT.get_or_init(|| TextDefinition {
-            font_family: String::from("sans-serif"),
-            font_size: 10,
-            background_color: None,
-            color: None,
-            padding: Insets::uniform(4.0),
-        })
-    }
-
-    /// Returns a reference to the default fragment section text (borrowed from static).
-    ///
-    /// Standard size for section labels like "[condition]".
-    /// - Font size: 12
-    pub fn default_fragment_section_borrowed() -> &'static Self {
-        DEFAULT_FRAGMENT_SECTION_TEXT.get_or_init(|| TextDefinition {
             font_family: String::from("sans-serif"),
             font_size: 12,
             background_color: None,
