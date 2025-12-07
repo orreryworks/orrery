@@ -309,7 +309,7 @@ fn wrapped_attributes<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Attri
     .parse_next(input)
 }
 
-/// Parse a TypeSpec for attribute values: TypeName[attrs], TypeName, or [attrs]
+/// Parse a TypeSpec for attribute values: TypeName\[attrs\], TypeName, or \[attrs\]
 ///
 /// This is used for attribute values that support type specifications.
 /// It handles three forms:
@@ -338,7 +338,7 @@ fn attribute_type_spec<'src>(input: &mut Input<'src>) -> IResult<types::TypeSpec
     .parse_next(input)
 }
 
-/// Parse a TypeSpec: TypeName[attrs] or TypeName
+/// Parse a TypeSpec: TypeName\[attrs\] or TypeName
 ///
 /// Returns a TypeSpec with:
 /// - type_name: Always Some(id) - identifier is required
@@ -359,7 +359,7 @@ fn type_spec<'src>(input: &mut Input<'src>) -> IResult<types::TypeSpec<'src>> {
     })
 }
 
-/// Parse an invocation type spec: @TypeName[attrs]? or [attrs] or nothing
+/// Parse an invocation type spec: @TypeName\[attrs\]? or \[attrs\] or nothing
 ///
 /// This is used for invocations
 /// Similar to `type_spec()` but with `@` prefix for the identifier.
