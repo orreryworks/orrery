@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use super::{
     parser_types::{
-        Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
+        Attribute, AttributeValue, Diagram, DiagramKind, Element, Fragment, FragmentSection, Note,
         TypeDefinition, TypeSpec,
     },
     span::{Span, Spanned},
@@ -41,7 +41,7 @@ trait Visitor<'a> {
     }
 
     /// Visit the diagram kind (component, sequence, etc.)
-    fn visit_diagram_kind(&mut self, _kind: &Spanned<&'a str>) {}
+    fn visit_diagram_kind(&mut self, _kind: &Spanned<DiagramKind>) {}
 
     /// Visit a list of attributes
     fn visit_attributes(&mut self, attributes: &[Attribute<'a>]) {
@@ -335,7 +335,7 @@ fn visit_diagram<'a, V: Visitor<'a>>(visitor: &mut V, diagram: &Diagram<'a>) {
 /// identifier references (in relations, activations, and notes) are validated against this
 /// registry. Since identifiers are fully qualified after desugaring, all components in a
 /// diagram are accessible regardless of nesting depth.
-pub struct Validator<'a> {
+pub struct Validator {
     // Activation validation state
     activation_stack: Vec<HashMap<Id, Vec<Span>>>,
 
@@ -343,13 +343,13 @@ pub struct Validator<'a> {
     component_registry: Vec<HashMap<Id, Span>>,
 
     // Note validation state
-    diagram_kind: Option<&'a str>,
+    diagram_kind: Option<DiagramKind>,
 
     // Shared error collection
     errors: Vec<DiagnosticError>,
 }
 
-impl<'a> Validator<'a> {
+impl Validator {
     pub fn new() -> Self {
         Self {
             activation_stack: Vec::new(),
@@ -375,7 +375,7 @@ impl<'a> Validator<'a> {
     /// to fail gracefully if the validation is called incorrectly.
     fn validate_align_for_diagram_type(&mut self, align_value: &str, span: Span) {
         match self.diagram_kind {
-            Some("sequence") => {
+            Some(DiagramKind::Sequence) => {
                 if !matches!(align_value, "over" | "left" | "right") {
                     self.errors.push(DiagnosticError::from_span(
                         format!("Invalid align value '{}' for sequence diagram. Valid values: over, left, right", align_value),
@@ -385,7 +385,7 @@ impl<'a> Validator<'a> {
                     ));
                 }
             }
-            Some("component") => {
+            Some(DiagramKind::Component) => {
                 if !matches!(align_value, "left" | "right" | "top" | "bottom") {
                     self.errors.push(DiagnosticError::from_span(
                         format!("Invalid align value '{}' for component diagram. Valid values: left, right, top, bottom", align_value),
@@ -394,17 +394,6 @@ impl<'a> Validator<'a> {
                         None,
                     ));
                 }
-            }
-            Some(kind) => {
-                self.errors.push(DiagnosticError::from_span(
-                    format!(
-                        "Unknown diagram type '{}'. Cannot validate align attribute",
-                        kind
-                    ),
-                    span,
-                    "unknown diagram type",
-                    None,
-                ));
             }
             None => {
                 self.errors.push(DiagnosticError::from_span(
@@ -418,7 +407,7 @@ impl<'a> Validator<'a> {
     }
 }
 
-impl<'a> Visitor<'a> for Validator<'a> {
+impl<'a> Visitor<'a> for Validator {
     fn visit_diagram(&mut self, diagram: &Diagram<'a>) {
         // Begin component registry for this diagram
         self.component_registry.push(HashMap::new());
@@ -433,8 +422,8 @@ impl<'a> Visitor<'a> for Validator<'a> {
         self.component_registry.pop();
     }
 
-    fn visit_diagram_kind(&mut self, kind: &Spanned<&'a str>) {
-        self.diagram_kind = Some(kind.inner());
+    fn visit_diagram_kind(&mut self, kind: &Spanned<DiagramKind>) {
+        self.diagram_kind = Some(**kind);
     }
 
     fn visit_elements(&mut self, elements: &[Element<'a>]) {
@@ -646,7 +635,7 @@ mod tests {
     fn test_visitor_traversal() {
         // Create a simple test diagram
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -688,7 +677,7 @@ mod tests {
     #[test]
     fn test_validate_ok_pair() {
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -718,7 +707,7 @@ mod tests {
     #[test]
     fn test_validate_unpaired_deactivate() {
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::Deactivate {
@@ -733,7 +722,7 @@ mod tests {
     #[test]
     fn test_validate_unpaired_activate_end_of_scope() {
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::Activate {
@@ -749,7 +738,7 @@ mod tests {
     #[test]
     fn test_validate_nested_activations_ok() {
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -786,7 +775,7 @@ mod tests {
     #[test]
     fn test_validate_interleaved_components_ok() {
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -832,7 +821,7 @@ mod tests {
     #[test]
     fn test_validate_out_of_order_deactivate_first() {
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -998,7 +987,7 @@ mod identifier_validation_tests {
         // Test that fully qualified identifiers from nested components
         // are all accessible in a single diagram-level registry
         let diagram = Diagram {
-            kind: Spanned::new("component", Span::new(0..9)),
+            kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -1139,7 +1128,7 @@ mod identifier_validation_tests {
     #[test]
     fn test_relation_with_valid_components() {
         let diagram = Diagram {
-            kind: Spanned::new("component", Span::new(0..9)),
+            kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -1178,7 +1167,7 @@ mod identifier_validation_tests {
     #[test]
     fn test_relation_with_invalid_source() {
         let diagram = Diagram {
-            kind: Spanned::new("component", Span::new(0..9)),
+            kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -1210,7 +1199,7 @@ mod identifier_validation_tests {
     #[test]
     fn test_relation_with_invalid_target() {
         let diagram = Diagram {
-            kind: Spanned::new("component", Span::new(0..9)),
+            kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -1242,7 +1231,7 @@ mod identifier_validation_tests {
     #[test]
     fn test_activate_with_valid_component() {
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -1272,7 +1261,7 @@ mod identifier_validation_tests {
     #[test]
     fn test_activate_with_invalid_component() {
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -1301,7 +1290,7 @@ mod identifier_validation_tests {
     #[test]
     fn test_deactivate_with_invalid_component() {
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -1329,7 +1318,7 @@ mod identifier_validation_tests {
     #[test]
     fn test_note_with_invalid_component() {
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -1367,7 +1356,7 @@ mod identifier_validation_tests {
     #[test]
     fn test_note_with_multiple_components() {
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -1415,7 +1404,7 @@ mod identifier_validation_tests {
     #[test]
     fn test_note_with_empty_on_attribute() {
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![
@@ -1448,7 +1437,7 @@ mod identifier_validation_tests {
     #[test]
     fn test_validation_with_typespec() {
         let diagram = Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![TypeDefinition {
                 name: Spanned::new(Id::new("CustomArrow"), Span::new(10..21)),

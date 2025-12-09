@@ -244,9 +244,25 @@ impl TypeDefinition<'_> {
     }
 }
 
+/// The kind of a diagram: component or sequence.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum DiagramKind {
+    Component,
+    Sequence,
+}
+
+impl fmt::Display for DiagramKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DiagramKind::Component => write!(f, "component"),
+            DiagramKind::Sequence => write!(f, "sequence"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Diagram<'a> {
-    pub kind: Spanned<&'a str>,
+    pub kind: Spanned<DiagramKind>,
     pub attributes: Vec<Attribute<'a>>,
     pub type_definitions: Vec<TypeDefinition<'a>>,
     pub elements: Vec<Element<'a>>,

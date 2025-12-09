@@ -18,7 +18,7 @@
 use super::{
     builtin_types,
     parser_types::{
-        Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
+        Attribute, AttributeValue, Diagram, DiagramKind, Element, Fragment, FragmentSection, Note,
         TypeDefinition, TypeSpec,
     },
     span::Spanned,
@@ -82,7 +82,7 @@ trait Folder<'a> {
     }
 
     /// Fold the diagram kind (component, sequence, etc.)
-    fn fold_diagram_kind(&mut self, kind: Spanned<&'a str>) -> Spanned<&'a str> {
+    fn fold_diagram_kind(&mut self, kind: Spanned<DiagramKind>) -> Spanned<DiagramKind> {
         kind
     }
 
@@ -752,7 +752,7 @@ mod tests {
     fn test_identity_folder_preserves_simple_diagram() {
         // Create a simple diagram wrapped in Element
         let diagram = Element::Diagram(Diagram {
-            kind: spanned("component"),
+            kind: spanned(DiagramKind::Component),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![],
@@ -766,7 +766,7 @@ mod tests {
         // Verify the structure is unchanged
         match result_elem {
             Element::Diagram(d) => {
-                assert_eq!(*d.kind.inner(), "component");
+                assert_eq!(*d.kind, DiagramKind::Component);
                 assert!(d.attributes.is_empty());
                 assert!(d.type_definitions.is_empty());
                 assert!(d.elements.is_empty());
@@ -779,7 +779,7 @@ mod tests {
     fn test_identity_folder_preserves_attributes() {
         // Create a diagram with attributes
         let diagram = Element::Diagram(Diagram {
-            kind: spanned("component"),
+            kind: spanned(DiagramKind::Component),
             attributes: vec![
                 Attribute {
                     name: spanned("background_color"),
@@ -817,7 +817,7 @@ mod tests {
     fn test_identity_folder_preserves_type_definitions() {
         // Create a diagram with type definitions
         let diagram = Element::Diagram(Diagram {
-            kind: spanned("component"),
+            kind: spanned(DiagramKind::Component),
             attributes: vec![],
             type_definitions: vec![TypeDefinition {
                 name: spanned(Id::new("Database")),
@@ -861,7 +861,7 @@ mod tests {
     fn test_identity_folder_preserves_components() {
         // Create a diagram with a component element
         let diagram = Element::Diagram(Diagram {
-            kind: spanned("component"),
+            kind: spanned(DiagramKind::Component),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::Component {
@@ -911,7 +911,7 @@ mod tests {
     fn test_identity_folder_preserves_activate_block() {
         // Create a diagram with an activate block
         let diagram = Element::Diagram(Diagram {
-            kind: spanned("sequence"),
+            kind: spanned(DiagramKind::Sequence),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::ActivateBlock {
@@ -962,7 +962,7 @@ mod tests {
     fn test_desugar_rewrites_activate_blocks() {
         // Create a diagram with an activate block
         let diagram = Element::Diagram(Diagram {
-            kind: spanned("sequence"),
+            kind: spanned(DiagramKind::Sequence),
             attributes: vec![],
             type_definitions: vec![],
             elements: vec![Element::ActivateBlock {

@@ -1,3 +1,5 @@
+pub use crate::ast::parser_types::DiagramKind;
+
 use std::{
     fmt::{self, Display},
     rc::Rc,
@@ -344,13 +346,6 @@ impl Scope {
     pub fn elements(&self) -> &[Element] {
         &self.elements
     }
-}
-
-/// The kind of a diagram: component or sequence.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum DiagramKind {
-    Component,
-    Sequence,
 }
 
 /// Unified drawing definition for types: either a shape or an arrow.

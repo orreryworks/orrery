@@ -56,8 +56,7 @@ impl<'a> Builder<'a> {
                 debug!("Updating type definitions");
                 self.update_type_direct_definitions(&diag.type_definitions)?;
 
-                // Determine diagram kind
-                let kind = self.determine_diagram_kind(&diag.kind)?;
+                let kind = *diag.kind;
 
                 // Build block from elements
                 debug!("Building block from elements");
@@ -292,10 +291,9 @@ impl<'a> Builder<'a> {
     ) -> Result<types::Diagram> {
         match diag {
             parser_types::Element::Diagram(diag) => {
-                // Determine diagram kind for embedded diagram
-                let embedded_kind = self.determine_diagram_kind(&diag.kind)?;
+                let kind = *diag.kind;
                 // Create a block from the diagram elements
-                let block = self.build_block_from_elements(&diag.elements, embedded_kind)?;
+                let block = self.build_block_from_elements(&diag.elements, kind)?;
                 let scope = match block {
                     types::Block::None => types::Scope::default(),
                     types::Block::Scope(scope) => scope,
@@ -309,7 +307,6 @@ impl<'a> Builder<'a> {
                     }
                 };
 
-                let kind = self.determine_diagram_kind(&diag.kind)?;
                 let (layout_engine, background_color, lifeline_definition) =
                     self.extract_diagram_attributes(kind, &diag.attributes)?;
 
@@ -335,10 +332,9 @@ impl<'a> Builder<'a> {
         element: &parser_types::Element<'a>,
     ) -> Result<types::Diagram> {
         if let parser_types::Element::Diagram(diag) = element {
-            // Determine diagram kind for embedded diagram
-            let embedded_kind = self.determine_diagram_kind(&diag.kind)?;
+            let kind = *diag.kind;
             // Create a block from the diagram elements
-            let block = self.build_block_from_elements(&diag.elements, embedded_kind)?;
+            let block = self.build_block_from_elements(&diag.elements, kind)?;
             let scope = match block {
                 types::Block::None => types::Scope::default(),
                 types::Block::Scope(scope) => scope,
@@ -352,7 +348,6 @@ impl<'a> Builder<'a> {
                 }
             };
 
-            let kind = self.determine_diagram_kind(&diag.kind)?;
             let (layout_engine, background_color, lifeline_definition) =
                 self.extract_diagram_attributes(kind, &diag.attributes)?;
 
@@ -1084,20 +1079,6 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// Determines the diagram kind based on the input string.
-    fn determine_diagram_kind(&self, kind_str: &Spanned<&str>) -> Result<types::DiagramKind> {
-        match *kind_str.inner() {
-            "sequence" => Ok(types::DiagramKind::Sequence),
-            "component" => Ok(types::DiagramKind::Component),
-            _ => Err(DiagnosticError::from_span(
-                format!("Invalid diagram kind: '{kind_str}'"),
-                kind_str.span(),
-                "unsupported diagram type",
-                Some("Supported diagram types are: 'component', 'sequence'".to_string()),
-            )),
-        }
-    }
-
     /// Creates a standardized error for undefined type situations
     fn create_undefined_type_error(&self, span: &Spanned<Id>, message: &str) -> DiagnosticError {
         DiagnosticError::from_span(
@@ -1340,7 +1321,7 @@ mod tests {
         }];
 
         let diagram = parser_types::Diagram {
-            kind: Spanned::new("component", Span::new(0..9)),
+            kind: Spanned::new(parser_types::DiagramKind::Component, Span::new(0..9)),
             attributes: vec![],
             type_definitions: vec![],
             elements,
@@ -1392,7 +1373,7 @@ mod tests {
         ];
 
         let diagram = parser_types::Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(parser_types::DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements,
@@ -1501,7 +1482,7 @@ mod tests {
         ];
 
         let diagram = parser_types::Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(parser_types::DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements,
@@ -1611,7 +1592,7 @@ mod tests {
         ];
 
         let diagram = parser_types::Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(parser_types::DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements,
@@ -1685,7 +1666,7 @@ mod tests {
         ];
 
         let diagram = parser_types::Diagram {
-            kind: Spanned::new("component", Span::new(0..9)),
+            kind: Spanned::new(parser_types::DiagramKind::Component, Span::new(0..9)),
             attributes: vec![],
             type_definitions: vec![],
             elements,
@@ -1830,7 +1811,7 @@ mod tests {
         ];
 
         let diagram = parser_types::Diagram {
-            kind: Spanned::new("sequence", Span::new(0..8)),
+            kind: Spanned::new(parser_types::DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements,
