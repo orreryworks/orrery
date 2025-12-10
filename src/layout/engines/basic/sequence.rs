@@ -414,8 +414,8 @@ impl Engine {
             .expect("note should have at least one participant");
 
         let mut new_note_def = Rc::clone(note.definition());
-        let note_def_mut = Rc::make_mut(&mut new_note_def);
         if note.align() == ast::NoteAlign::Over {
+            let note_def_mut = Rc::make_mut(&mut new_note_def);
             note_def_mut.set_min_width(Some(max_x - min_x));
         }
 
