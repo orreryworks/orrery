@@ -621,19 +621,17 @@ impl<'a> Builder<'a> {
             ));
         }
 
-        let type_id = Id::new("Fragment"); // TODO: Hardcoded for now.
-
         // Build the type definition for this fragment
         let type_def = self
             .build_type_definition(&fragment.type_spec)
             .map_err(|_| {
                 DiagnosticError::from_span(
                     format!(
-                        "Unknown fragment type '{type_id}' for operation '{}'",
+                        "Invalid fragment type for operation '{}'",
                         fragment.operation.inner()
                     ),
                     fragment.operation.span(),
-                    "unknown fragment type",
+                    "invalid fragment type",
                     Some("Fragment types must be defined in the type system".to_string()),
                 )
             })?;
