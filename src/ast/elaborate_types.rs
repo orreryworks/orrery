@@ -351,7 +351,7 @@ impl Scope {
 /// Unified drawing definition for types: either a shape or an arrow.
 #[derive(Debug)]
 pub enum DrawDefinition {
-    Shape(Box<dyn draw::ShapeDefinition>),
+    Shape(Rc<Box<dyn draw::ShapeDefinition>>),
     Arrow(Rc<draw::ArrowDefinition>),
     Fragment(Rc<draw::FragmentDefinition>),
     Note(Rc<draw::NoteDefinition>),
@@ -479,7 +479,7 @@ impl TypeDefinition {
     }
 
     /// Construct a concrete shape type definition from a shape definition.
-    pub fn new_shape(id: Id, shape_definition: Box<dyn draw::ShapeDefinition>) -> Self {
+    pub fn new_shape(id: Id, shape_definition: Rc<Box<dyn draw::ShapeDefinition>>) -> Self {
         Self::new(id, DrawDefinition::Shape(shape_definition))
     }
 
@@ -527,9 +527,9 @@ impl TypeDefinition {
     }
 
     /// Borrow the shape definition if this type is a shape; otherwise returns an error.
-    pub fn shape_definition(&self) -> Result<&dyn draw::ShapeDefinition, String> {
+    pub fn shape_definition(&self) -> Result<&Rc<Box<dyn draw::ShapeDefinition>>, String> {
         match &self.draw_definition {
-            DrawDefinition::Shape(shape) => Ok(&**shape),
+            DrawDefinition::Shape(shape) => Ok(shape),
             _ => Err(format!("Type '{}' is not a shape type", self.id)),
         }
     }
@@ -848,8 +848,10 @@ mod elaborate_tests {
 
     #[test]
     fn test_shape_type_has_text_definition() {
-        let type_def =
-            TypeDefinition::new_shape(Id::new("Rect"), Box::new(draw::RectangleDefinition::new()));
+        let type_def = TypeDefinition::new_shape(
+            Id::new("Rect"),
+            Rc::new(Box::new(draw::RectangleDefinition::new())),
+        );
         // Verify shape has embedded text
         assert!(type_def.shape_definition().is_ok());
         let shape_def = type_def.shape_definition().unwrap();

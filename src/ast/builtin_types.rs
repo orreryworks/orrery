@@ -104,7 +104,7 @@ impl BuiltinTypeBuilder {
     ) -> Self {
         self.types.push(Rc::new(TypeDefinition::new_shape(
             Id::new(name),
-            Box::new(shape_definition),
+            Rc::new(Box::new(shape_definition)),
         )));
         self
     }

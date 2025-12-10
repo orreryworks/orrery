@@ -91,6 +91,14 @@ pub trait ShapeDefinition: std::fmt::Debug {
     }
 }
 
+/// Enable cloning of `Box<dyn ShapeDefinition>` by delegating to the clone_box method.
+/// This allows `Rc::make_mut` to work with `Rc<Box<dyn ShapeDefinition>>`.
+impl Clone for Box<dyn ShapeDefinition> {
+    fn clone(&self) -> Self {
+        self.clone_box()
+    }
+}
+
 /// A shape instance that combines a definition with content size and padding
 #[derive(Debug)]
 pub struct Shape {

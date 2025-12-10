@@ -264,7 +264,8 @@ mod tests {
     /// Helper function to create a minimal mock node for testing
     fn create_test_node(id_str: &str) -> Node {
         let id = Id::new(id_str);
-        let shape_def = Box::new(draw::RectangleDefinition::new());
+        let shape_def =
+            Rc::new(Box::new(draw::RectangleDefinition::new()) as Box<dyn draw::ShapeDefinition>);
         let type_def = TypeDefinition::new_shape(id, shape_def);
 
         Node::new(id, id_str.to_string(), None, Block::None, Rc::new(type_def))

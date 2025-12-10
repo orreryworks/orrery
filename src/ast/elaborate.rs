@@ -806,7 +806,8 @@ impl<'a> Builder<'a> {
     ) -> Result<types::TypeDefinition> {
         match base.draw_definition() {
             types::DrawDefinition::Shape(shape_def) => {
-                let mut new_shape_def = shape_def.clone_box();
+                let mut new_shape_def = Rc::clone(shape_def);
+                let shape_def_mut = Rc::make_mut(&mut new_shape_def);
 
                 for attr in attributes {
                     let name = attr.name.inner();
@@ -814,7 +815,7 @@ impl<'a> Builder<'a> {
                     match *name {
                         "fill_color" => {
                             let color = Self::extract_color(attr, "fill_color")?;
-                            new_shape_def.set_fill_color(Some(color)).map_err(|err| {
+                            shape_def_mut.set_fill_color(Some(color)).map_err(|err| {
                                 DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
@@ -826,13 +827,13 @@ impl<'a> Builder<'a> {
                         "stroke" => {
                             let type_spec = Self::extract_type_spec(attr, "stroke")?;
                             let stroke_rc = self
-                                .resolve_stroke_type_reference(type_spec, new_shape_def.stroke())?;
-                            new_shape_def.set_stroke(stroke_rc);
+                                .resolve_stroke_type_reference(type_spec, shape_def_mut.stroke())?;
+                            shape_def_mut.set_stroke(stroke_rc);
                         }
                         "rounded" => {
                             let val =
                                 Self::extract_usize(attr, "rounded", "must be a positive number")?;
-                            new_shape_def.set_rounded(val).map_err(|err| {
+                            shape_def_mut.set_rounded(val).map_err(|err| {
                                 DiagnosticError::from_span(
                                     err.to_string(),
                                     attr.span(),
@@ -844,8 +845,8 @@ impl<'a> Builder<'a> {
                         "text" => {
                             let type_spec = Self::extract_type_spec(attr, "text")?;
                             let text_rc =
-                                self.resolve_text_type_reference(type_spec, new_shape_def.text())?;
-                            new_shape_def.set_text(text_rc);
+                                self.resolve_text_type_reference(type_spec, shape_def_mut.text())?;
+                            shape_def_mut.set_text(text_rc);
                         }
                         name => {
                             return Err(DiagnosticError::from_span(
