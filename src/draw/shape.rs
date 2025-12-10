@@ -100,23 +100,15 @@ impl Clone for Box<dyn ShapeDefinition> {
 }
 
 /// A shape instance that combines a definition with content size and padding
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Shape {
-    definition: Box<dyn ShapeDefinition>,
+    definition: Rc<Box<dyn ShapeDefinition>>,
     content_size: Size,
     padding: Insets,
 }
 
-impl Clone for Shape {
-    fn clone(&self) -> Self {
-        Self {
-            definition: self.definition.clone_box(),
-            ..*self
-        }
-    }
-}
 impl Shape {
-    pub fn new(definition: Box<dyn ShapeDefinition>) -> Self {
+    pub fn new(definition: Rc<Box<dyn ShapeDefinition>>) -> Self {
         let content_size = definition.min_content_size();
         Self {
             definition,

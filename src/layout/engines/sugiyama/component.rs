@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use log::debug;
 use rust_sugiyama::configure::Config;
@@ -161,7 +161,7 @@ impl Engine {
 
         // TODO: move it to the best place.
         for node in graph.scope_nodes(containment_scope) {
-            let mut shape = draw::Shape::new(node.shape_definition().clone_box());
+            let mut shape = draw::Shape::new(Rc::clone(node.shape_definition()));
             shape.set_padding(self.container_padding);
             let text = draw::Text::new(node.shape_definition().text(), node.display_text());
             let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
