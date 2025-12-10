@@ -101,20 +101,9 @@ impl Engine {
         let mut participant_shapes: HashMap<_, _> = graph
             .nodes()
             .map(|node| {
-                let mut shape = draw::Shape::new(
-                    node.type_definition()
-                        .shape_definition()
-                        .expect("Node must have a shape definition for sequence layout")
-                        .clone_box(),
-                );
+                let mut shape = draw::Shape::new(node.shape_definition().clone_box());
                 shape.set_padding(self.padding);
-                let text = draw::Text::new(
-                    node.type_definition()
-                        .shape_definition()
-                        .expect("Node type must be a shape")
-                        .text(),
-                    node.display_text(),
-                );
+                let text = draw::Text::new(node.shape_definition().text(), node.display_text());
                 let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
                 if let ast::Block::Diagram(_) = node.block() {

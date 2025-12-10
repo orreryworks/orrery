@@ -255,7 +255,7 @@ impl<'a> SequenceGraph<'a> {
 mod tests {
     use super::*;
     use crate::{
-        ast::{Block, Node, TypeDefinition},
+        ast::{Block, Node},
         draw,
         identifier::Id,
     };
@@ -266,9 +266,8 @@ mod tests {
         let id = Id::new(id_str);
         let shape_def =
             Rc::new(Box::new(draw::RectangleDefinition::new()) as Box<dyn draw::ShapeDefinition>);
-        let type_def = TypeDefinition::new_shape(id, shape_def);
 
-        Node::new(id, id_str.to_string(), None, Block::None, Rc::new(type_def))
+        Node::new(id, id_str.to_string(), None, Block::None, shape_def)
     }
 
     #[test]

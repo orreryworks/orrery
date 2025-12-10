@@ -111,20 +111,9 @@ impl Engine {
 
         // TODO: move it to the best place.
         for node in graph.scope_nodes(containment_scope) {
-            let mut shape = draw::Shape::new(
-                node.type_definition()
-                    .shape_definition()
-                    .expect("Node must have a shape definition for component layout")
-                    .clone_box(),
-            );
+            let mut shape = draw::Shape::new(node.shape_definition().clone_box());
             shape.set_padding(self.padding);
-            let text = draw::Text::new(
-                node.type_definition()
-                    .shape_definition()
-                    .expect("Node type must be a shape")
-                    .text(),
-                node.display_text(),
-            );
+            let text = draw::Text::new(node.shape_definition().text(), node.display_text());
             let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
             match node.block() {

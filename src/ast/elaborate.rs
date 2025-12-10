@@ -489,12 +489,11 @@ impl<'a> Builder<'a> {
     ) -> Result<types::Element> {
         let type_def = self.build_type_definition(type_spec)?;
 
-        // Check if this shape supports content before processing nested elements
-        if !nested_elements.is_empty()
-            && !type_def
-                .shape_definition()
-                .is_ok_and(|s| s.supports_content())
-        {
+        let shape_def = type_def.shape_definition().map_err(|err| {
+            DiagnosticError::from_span(err, type_spec.span(), "invalid shape type", None)
+        })?;
+
+        if !nested_elements.is_empty() && !shape_def.supports_content() {
             let type_name = type_spec
                 .type_name
                 .as_ref()
@@ -527,7 +526,7 @@ impl<'a> Builder<'a> {
             name.to_string(),
             display_name.as_ref().map(|n| n.to_string()),
             block,
-            type_def,
+            Rc::clone(shape_def),
         );
 
         Ok(types::Element::Node(node))
@@ -545,6 +544,10 @@ impl<'a> Builder<'a> {
         // Extract relation type definition from type_spec
         let relation_type_def = self.build_type_definition(type_spec)?;
 
+        let arrow_def = relation_type_def.arrow_definition().map_err(|err| {
+            DiagnosticError::from_span(err, type_spec.span(), "invalid arrow type", None)
+        })?;
+
         let arrow_direction = draw::ArrowDirection::from_str(relation_type).map_err(|_| {
             DiagnosticError::from_span(
                 format!("Invalid arrow direction '{relation_type}'"),
@@ -559,7 +562,7 @@ impl<'a> Builder<'a> {
             *target.inner(),
             arrow_direction,
             label.as_ref().map(|l| l.to_string()),
-            relation_type_def,
+            Rc::clone(arrow_def),
         )))
     }
 
@@ -640,6 +643,15 @@ impl<'a> Builder<'a> {
                 )
             })?;
 
+        let fragment_def = type_def.fragment_definition().map_err(|err| {
+            DiagnosticError::from_span(
+                err,
+                fragment.type_spec.span(),
+                "invalid fragment type",
+                None,
+            )
+        })?;
+
         let mut sections = Vec::new();
         for parser_section in &fragment.sections {
             let scope = self.build_scope_from_elements(&parser_section.elements, diagram_kind)?;
@@ -654,7 +666,7 @@ impl<'a> Builder<'a> {
         Ok(types::Element::Fragment(types::Fragment::new(
             fragment.operation.inner().to_string(),
             sections,
-            type_def,
+            Rc::clone(fragment_def),
         )))
     }
 

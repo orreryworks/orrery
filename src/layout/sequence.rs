@@ -336,7 +336,7 @@ impl<'a> FragmentTiming<'a> {
         assert!(self.active_section.is_none());
 
         let drawable = draw::Fragment::new(
-            Rc::clone(self.fragment.fragment_definition()),
+            Rc::clone(self.fragment.definition()),
             self.fragment.operation().to_string(),
             self.sections,
             Size::new(self.max_x - self.min_x, end_y - self.start_y),
@@ -748,16 +748,13 @@ mod tests {
     #[test]
     fn test_fragment_timing_lifecycle() {
         // Create a mock ast::Fragment for testing
-        let fragment_def = draw::FragmentDefinition::default();
-        let type_def = Rc::new(ast::TypeDefinition::new_fragment(
-            Id::new("test_fragment"),
-            Rc::new(fragment_def),
-        ));
+        let fragment_def = Rc::new(draw::FragmentDefinition::default());
 
         let section1 = ast::FragmentSection::new(Some("section 1".to_string()), vec![]);
         let section2 = ast::FragmentSection::new(Some("section 2".to_string()), vec![]);
 
-        let fragment = ast::Fragment::new("alt".to_string(), vec![section1, section2], type_def);
+        let fragment =
+            ast::Fragment::new("alt".to_string(), vec![section1, section2], fragment_def);
 
         // Create FragmentTiming
         let start_y = 100.0;
@@ -792,13 +789,9 @@ mod tests {
     #[test]
     fn test_fragment_timing_bounds_tracking() {
         // Create a mock ast::Fragment
-        let fragment_def = draw::FragmentDefinition::default();
-        let type_def = Rc::new(ast::TypeDefinition::new_fragment(
-            Id::new("test_fragment"),
-            Rc::new(fragment_def),
-        ));
+        let fragment_def = Rc::new(draw::FragmentDefinition::default());
 
-        let fragment = ast::Fragment::new("opt".to_string(), vec![], type_def);
+        let fragment = ast::Fragment::new("opt".to_string(), vec![], fragment_def);
 
         let mut fragment_timing = FragmentTiming::new(&fragment, 100.0);
 

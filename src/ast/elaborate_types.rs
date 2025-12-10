@@ -24,7 +24,7 @@ pub struct Node {
     name: String,
     display_name: Option<String>,
     block: Block,
-    type_definition: Rc<TypeDefinition>,
+    shape_definition: Rc<Box<dyn draw::ShapeDefinition>>,
 }
 
 impl Node {
@@ -34,14 +34,14 @@ impl Node {
         name: String,
         display_name: Option<String>,
         block: Block,
-        type_definition: Rc<TypeDefinition>,
+        shape_definition: Rc<Box<dyn draw::ShapeDefinition>>,
     ) -> Self {
         Self {
             id,
             name,
             display_name,
             block,
-            type_definition,
+            shape_definition,
         }
     }
 
@@ -55,9 +55,9 @@ impl Node {
         &self.block
     }
 
-    /// Borrow the node's type definition.
-    pub fn type_definition(&self) -> &TypeDefinition {
-        &self.type_definition
+    /// Borrow the node's shape definition.
+    pub fn shape_definition(&self) -> &Rc<Box<dyn draw::ShapeDefinition>> {
+        &self.shape_definition
     }
 
     /// Returns the display text for this node
@@ -74,41 +74,38 @@ pub struct Relation {
     target: Id,
     arrow_direction: draw::ArrowDirection,
     label: Option<String>,
-    type_definition: Rc<TypeDefinition>,
+    arrow_definition: Rc<draw::ArrowDefinition>,
 }
 
 impl Relation {
     /// Create a new Relation between two node Ids with an optional label
-    /// and a type definition that determines appearance.
+    /// and an arrow definition that determines appearance.
     pub fn new(
         source: Id,
         target: Id,
         arrow_direction: draw::ArrowDirection,
         label: Option<String>,
-        type_definition: Rc<TypeDefinition>,
+        arrow_definition: Rc<draw::ArrowDefinition>,
     ) -> Self {
         Self {
             source,
             target,
             arrow_direction,
             label,
-            type_definition,
+            arrow_definition,
         }
     }
 
     /// Build a Text drawable for the relation's label using its text definition, if a label exists.
     pub fn text(&self) -> Option<draw::Text<'_>> {
         let label = self.label.as_ref()?;
-        let arrow_def = self.type_definition.arrow_definition().ok()?;
-        let text_def = arrow_def.text();
+        let text_def = self.arrow_definition.text();
         Some(draw::Text::new(text_def, label))
     }
 
     /// Get the underlying ArrowDefinition Rc for rendering this relation.
     pub fn arrow_definition(&self) -> &Rc<draw::ArrowDefinition> {
-        self.type_definition
-            .arrow_definition()
-            .expect("Type definition must have an arrow definition")
+        &self.arrow_definition
     }
 
     /// Get the source node Id of this relation.
@@ -259,8 +256,8 @@ pub struct Fragment {
     operation: String,
     /// The sections within this fragment
     sections: Vec<FragmentSection>,
-    /// The type definition for this fragment's styling
-    type_definition: Rc<TypeDefinition>,
+    /// The fragment definition for this fragment's styling
+    definition: Rc<draw::FragmentDefinition>,
 }
 
 impl Fragment {
@@ -268,12 +265,12 @@ impl Fragment {
     pub fn new(
         operation: String,
         sections: Vec<FragmentSection>,
-        type_definition: Rc<TypeDefinition>,
+        definition: Rc<draw::FragmentDefinition>,
     ) -> Self {
         Self {
             operation,
             sections,
-            type_definition,
+            definition,
         }
     }
 
@@ -287,17 +284,11 @@ impl Fragment {
         &self.sections
     }
 
-    /// Clone and return the [`Rc<FragmentDefinition>`] for this fragment.
+    /// Get the fragment definition for this fragment.
     ///
-    /// This method retrieves the fragment definition from the type definition and
-    /// returns a cloned Rc reference, allowing shared ownership of the definition.
-    ///
-    /// # Panics
-    /// Panics if the type definition does not have a fragment definition.
-    pub fn fragment_definition(&self) -> &Rc<draw::FragmentDefinition> {
-        self.type_definition
-            .fragment_definition()
-            .expect("Type definition must have a fragment definition")
+    /// Returns a reference to the `Rc<FragmentDefinition>` allowing shared ownership of the definition.
+    pub fn definition(&self) -> &Rc<draw::FragmentDefinition> {
+        &self.definition
     }
 }
 
