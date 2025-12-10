@@ -21,7 +21,7 @@ use crate::{
 
 pub struct Builder<'a> {
     cfg: &'a AppConfig,
-    type_definitions: HashMap<Id, Rc<types::TypeDefinition>>,
+    type_definitions: HashMap<Id, types::TypeDefinition>,
     _phantom: std::marker::PhantomData<&'a str>, // Use PhantomData to maintain the lifetime parameter
 }
 
@@ -29,8 +29,8 @@ impl<'a> Builder<'a> {
     pub fn new(cfg: &'a AppConfig, _source: &'a str) -> Self {
         let type_definitions = builtin_types::defaults();
         let type_definition_map = type_definitions
-            .iter()
-            .map(|def| (def.id(), Rc::clone(def)))
+            .into_iter()
+            .map(|def| (def.id(), def))
             .collect();
 
         Self {
@@ -217,16 +217,11 @@ impl<'a> Builder<'a> {
         &mut self,
         type_def: types::TypeDefinition,
         span: Span,
-    ) -> Result<Rc<types::TypeDefinition>> {
+    ) -> Result<types::TypeDefinition> {
         let id = type_def.id();
-        let type_def = Rc::new(type_def);
 
         // Check if the type already exists
-        if self
-            .type_definitions
-            .insert(id, Rc::clone(&type_def))
-            .is_none()
-        {
+        if self.type_definitions.insert(id, type_def.clone()).is_none() {
             Ok(type_def)
         } else {
             // We could use a span here if we tracked where the duplicate was defined
@@ -673,7 +668,7 @@ impl<'a> Builder<'a> {
     fn build_type_definition(
         &mut self,
         type_spec: &parser_types::TypeSpec,
-    ) -> Result<Rc<types::TypeDefinition>> {
+    ) -> Result<types::TypeDefinition> {
         let type_name = type_spec.type_name.as_ref().ok_or_else(|| {
             DiagnosticError::from_span(
                 "Base Type type_spec must have a type name".to_string(),
@@ -692,7 +687,7 @@ impl<'a> Builder<'a> {
         let attributes = &type_spec.attributes;
         // If there are no attributes, just return the base type
         if attributes.is_empty() {
-            return Ok(Rc::clone(base));
+            return Ok(base.clone());
         }
 
         // Otherwise, create a new anonymous type based on the base type
@@ -1243,9 +1238,10 @@ impl<'a> Builder<'a> {
         let content = note.content.inner().to_string();
 
         // Extract NoteDefinition from TypeDefinition
-        let note_def = Rc::clone(type_def.note_definition().map_err(|err| {
+        let note_def_ref = type_def.note_definition().map_err(|err| {
             DiagnosticError::from_span(err, note.content.span(), "invalid note type", None)
-        })?);
+        })?;
+        let note_def = Rc::clone(note_def_ref);
 
         Ok(types::Element::Note(types::Note::new(
             on, align, content, note_def,

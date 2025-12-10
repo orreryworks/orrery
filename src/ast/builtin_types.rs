@@ -85,7 +85,7 @@ pub const TEXT: &str = "Text";
 /// ```
 #[derive(Debug, Default)]
 pub struct BuiltinTypeBuilder {
-    types: Vec<Rc<TypeDefinition>>,
+    types: Vec<TypeDefinition>,
 }
 
 impl BuiltinTypeBuilder {
@@ -102,10 +102,10 @@ impl BuiltinTypeBuilder {
         name: &str,
         shape_definition: impl draw::ShapeDefinition + 'static,
     ) -> Self {
-        self.types.push(Rc::new(TypeDefinition::new_shape(
+        self.types.push(TypeDefinition::new_shape(
             Id::new(name),
             Rc::new(Box::new(shape_definition)),
-        )));
+        ));
         self
     }
 
@@ -113,10 +113,10 @@ impl BuiltinTypeBuilder {
     ///
     /// Returns `self` for method chaining.
     pub fn add_arrow(mut self, name: &str, arrow_definition: draw::ArrowDefinition) -> Self {
-        self.types.push(Rc::new(TypeDefinition::new_arrow(
+        self.types.push(TypeDefinition::new_arrow(
             Id::new(name),
             Rc::new(arrow_definition),
-        )));
+        ));
         self
     }
 
@@ -128,10 +128,10 @@ impl BuiltinTypeBuilder {
         name: &str,
         fragment_definition: draw::FragmentDefinition,
     ) -> Self {
-        self.types.push(Rc::new(TypeDefinition::new_fragment(
+        self.types.push(TypeDefinition::new_fragment(
             Id::new(name),
             Rc::new(fragment_definition),
-        )));
+        ));
         self
     }
 
@@ -139,10 +139,10 @@ impl BuiltinTypeBuilder {
     ///
     /// Returns `self` for method chaining.
     pub fn add_note(mut self, name: &str, note_definition: draw::NoteDefinition) -> Self {
-        self.types.push(Rc::new(TypeDefinition::new_note(
+        self.types.push(TypeDefinition::new_note(
             Id::new(name),
             Rc::new(note_definition),
-        )));
+        ));
         self
     }
 
@@ -154,10 +154,10 @@ impl BuiltinTypeBuilder {
         name: &str,
         activation_box_definition: draw::ActivationBoxDefinition,
     ) -> Self {
-        self.types.push(Rc::new(TypeDefinition::new_activation_box(
+        self.types.push(TypeDefinition::new_activation_box(
             Id::new(name),
             Rc::new(activation_box_definition),
-        )));
+        ));
         self
     }
 
@@ -165,10 +165,8 @@ impl BuiltinTypeBuilder {
     ///
     /// Returns `self` for method chaining.
     pub fn add_stroke(mut self, name: &str, stroke_definition: draw::StrokeDefinition) -> Self {
-        self.types.push(Rc::new(TypeDefinition::new_stroke(
-            Id::new(name),
-            stroke_definition,
-        )));
+        self.types
+            .push(TypeDefinition::new_stroke(Id::new(name), stroke_definition));
         self
     }
 
@@ -176,17 +174,15 @@ impl BuiltinTypeBuilder {
     ///
     /// Returns `self` for method chaining.
     pub fn add_text(mut self, name: &str, text_definition: draw::TextDefinition) -> Self {
-        self.types.push(Rc::new(TypeDefinition::new_text(
-            Id::new(name),
-            text_definition,
-        )));
+        self.types
+            .push(TypeDefinition::new_text(Id::new(name), text_definition));
         self
     }
 
     /// Build and return all registered type definitions
     ///
     /// Consumes the builder and returns the accumulated type definitions.
-    pub fn build(self) -> Vec<Rc<TypeDefinition>> {
+    pub fn build(self) -> Vec<TypeDefinition> {
         self.types
     }
 }
@@ -196,7 +192,7 @@ impl BuiltinTypeBuilder {
 /// This function acts as the single source of truth for built-in types in the
 /// Filament type system. It uses the `BuiltinTypeBuilder` to construct the
 /// standard set of types.
-pub fn defaults() -> Vec<Rc<TypeDefinition>> {
+pub fn defaults() -> Vec<TypeDefinition> {
     BuiltinTypeBuilder::new()
         // Attribute group types
         .add_stroke(STROKE, draw::StrokeDefinition::default())

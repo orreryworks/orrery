@@ -340,7 +340,7 @@ impl Scope {
 }
 
 /// Unified drawing definition for types: either a shape or an arrow.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DrawDefinition {
     Shape(Rc<Box<dyn draw::ShapeDefinition>>),
     Arrow(Rc<draw::ArrowDefinition>),
@@ -352,7 +352,7 @@ pub enum DrawDefinition {
 }
 
 /// A concrete, elaborated type with text styling and drawing definition.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeDefinition {
     id: Id,
     draw_definition: DrawDefinition,
