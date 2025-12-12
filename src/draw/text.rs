@@ -2,7 +2,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
 use log::info;
-use svg::{self, node::element as svg_element};
+use svg::{
+    self,
+    node::{Text as SvgText, element as svg_element},
+};
 
 use crate::{
     color::Color,
@@ -180,11 +183,24 @@ impl<'a> Drawable for Text<'a> {
         let text_size = self.calculate_size();
         let padding = self.definition.padding();
 
-        let mut rendered_text = svg_element::Text::new(self.content())
+        let lines: Vec<&str> = self.content.lines().collect();
+
+        // Calculate uniform line height by dividing total height by line count
+        let text_size_without_padding = self.calculate_size_without_padding();
+        let line_height = if lines.is_empty() {
+            0.0
+        } else {
+            text_size_without_padding.height() / lines.len() as f32
+        };
+
+        let total_height = text_size_without_padding.height();
+        let y_offset = -(total_height + line_height) / 2.0;
+
+        let mut rendered_text = svg_element::Text::new("")
             .set("x", position.x())
-            .set("y", position.y())
+            .set("y", position.y() + y_offset)
             .set("text-anchor", "middle")
-            .set("dominant-baseline", "middle")
+            .set("dominant-baseline", "central")
             .set("font-family", self.definition.font_family())
             .set("font-size", self.definition.font_size());
 
@@ -193,6 +209,14 @@ impl<'a> Drawable for Text<'a> {
             rendered_text = rendered_text
                 .set("fill", color.to_string())
                 .set("fill-opacity", color.alpha());
+        }
+
+        for line in lines.into_iter() {
+            let tspan = svg_element::TSpan::new("")
+                .set("x", position.x())
+                .set("dy", line_height)
+                .add(SvgText::new(line));
+            rendered_text = rendered_text.add(tspan);
         }
 
         // Add background rectangle if color is specified
