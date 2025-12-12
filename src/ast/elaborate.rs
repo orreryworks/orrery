@@ -258,24 +258,12 @@ impl<'a> Builder<'a> {
                 })?;
 
             // Try to create the type definition
-            match self.build_type_from_base(
+            let new_type_def = self.build_type_from_base(
                 *type_def.name.inner(),
                 base,
                 &type_def.type_spec.attributes,
-            ) {
-                Ok(new_type_def) => {
-                    self.insert_type_definition(new_type_def, type_def.span())?;
-                }
-                Err(err) => {
-                    // Wrap the error with location information for attribute errors
-                    return Err(DiagnosticError::from_span(
-                        format!("Invalid type definition: {err}"),
-                        type_def.span(),
-                        "type definition error",
-                        Some("Check attribute types and values for errors".to_string()),
-                    ));
-                }
-            }
+            )?;
+            self.insert_type_definition(new_type_def, type_def.span())?;
         }
         Ok(())
     }
@@ -690,14 +678,8 @@ impl<'a> Builder<'a> {
 
         // Otherwise, create a new anonymous type based on the base type
         let id = Id::from_anonymous(self.type_definitions.len());
-        match self.build_type_from_base(id, base, attributes) {
-            Ok(new_type) => self.insert_type_definition(new_type, type_name.span()),
-            Err(err) => Err(self.create_undefined_type_error(
-                // TODO add missing span details
-                type_name,
-                &format!("Error creating type based on '{type_name}': {err}"),
-            )),
-        }
+        let new_type = self.build_type_from_base(id, base, attributes)?;
+        self.insert_type_definition(new_type, type_name.span())
     }
 
     /// Resolve a text type reference and apply inline attribute overrides.
