@@ -292,7 +292,7 @@ impl EngineBuilder {
         }
 
         // Third phase: Apply position adjustments and set up clipping bounds for embedded diagrams
-        for (container_idx, positioned_shape, embedded_idx) in embedded_diagrams.into_iter().rev() {
+        for (container_idx, positioned_shape, embedded_idx) in embedded_diagrams.into_iter() {
             layered_layout.adjust_relative_position(
                 container_idx,
                 positioned_shape,
