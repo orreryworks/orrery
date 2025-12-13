@@ -199,6 +199,9 @@ impl EngineBuilder {
         // Map from container ID to its layer index in the layered_layout
         let mut container_element_to_layer: HashMap<Id, usize> = HashMap::new();
 
+        // Track the root diagram (which has no container_id)
+        let mut root_layout: Option<(usize, LayoutResult<'a>)> = None;
+
         // Track container-embedded diagram relationships for position adjustment in the second phase
         // Format: (container_layer_idx, reference to container drawable, embedded_layer_idx)
         // Note: Using type inference for the reference lifetime - it borrows from layout_info
@@ -236,19 +239,22 @@ impl EngineBuilder {
             // Record the mapping from container ID to its layer index
             if let Some(id) = container_id {
                 container_element_to_layer.insert(id, layer_idx);
-            }
-
-            // Store the layout for future engine.calculate() calls and for borrowing references
-            if let Some(id) = container_id {
                 layout_info.insert(id, layout_result);
+            } else {
+                root_layout = Some((layer_idx, layout_result));
             }
         }
 
-        // Second phase: populate embedded_diagrams by borrowing from layout_info
-        // We need this separate loop because we can't borrow from layout_result and then move it
-        for (&container_id, layout_result) in &layout_info {
-            let layer_idx = container_element_to_layer[&container_id];
-
+        // Second phase: populate embedded_diagrams by checking all layouts for embedded content
+        for (layer_idx, layout_result) in root_layout
+            .iter()
+            .map(|(idx, result)| (*idx, result))
+            .chain(
+                layout_info
+                    .iter()
+                    .map(|(&id, result)| (container_element_to_layer[&id], result)),
+            )
+        {
             match layout_result {
                 LayoutResult::Component(layout) => {
                     for positioned_content in layout.iter() {
@@ -256,7 +262,7 @@ impl EngineBuilder {
                             if let Some(&embedded_idx) =
                                 container_element_to_layer.get(&component.node_id())
                             {
-                                // Store reference to drawable (no clone needed!)
+                                // Store reference to drawable
                                 embedded_diagrams.push((
                                     layer_idx,
                                     component.drawable(),
@@ -272,7 +278,7 @@ impl EngineBuilder {
                             if let Some(&embedded_idx) =
                                 container_element_to_layer.get(&participant.component().node_id())
                             {
-                                // Store reference to drawable (no clone needed!)
+                                // Store reference to drawable
                                 embedded_diagrams.push((
                                     layer_idx,
                                     participant.component().drawable(),

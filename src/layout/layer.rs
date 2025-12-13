@@ -98,8 +98,7 @@ impl<'a> LayeredLayout<'a> {
     /// Adjusts the position of an embedded diagram within its container and sets up clipping
     ///
     /// - `container_idx`: Index of the container layer
-    /// - `container_position`: Position of the container component
-    /// - `container_size`: Size of the container component
+    /// - `positioned_shape`: The positioned drawable representing the container
     /// - `embedded_idx`: Index of the embedded diagram layer
     /// - `padding`: Padding to apply between container edges and embedded content
     ///
@@ -131,7 +130,7 @@ impl<'a> LayeredLayout<'a> {
         // Apply three transformations to position the embedded diagram:
         // 1. Add the container layer's offset (for nested containers)
         // 2. Add the container's top-left position
-        // 3. Add padding to inset from the edges
+        // 3. Add the shape's inner content offset (padding between shape border and content)
         embedded_layer.set_offset(
             embedded_layer
                 .offset()
