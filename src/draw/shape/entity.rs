@@ -36,7 +36,7 @@ impl Default for EntityDefinition {
 }
 
 impl ShapeDefinition for EntityDefinition {
-    fn calculate_shape_size(&self, _content_size: Size, _padding: Insets) -> Size {
+    fn calculate_inner_size(&self, _content_size: Size, _padding: Insets) -> Size {
         Size::new(30.0 + self.stroke.width(), 30.0)
     }
 

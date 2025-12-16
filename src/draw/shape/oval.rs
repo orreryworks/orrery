@@ -81,7 +81,7 @@ impl ShapeDefinition for OvalDefinition {
         )
     }
 
-    fn calculate_shape_size(&self, content_size: Size, padding: Insets) -> Size {
+    fn calculate_inner_size(&self, content_size: Size, padding: Insets) -> Size {
         // The largest rectangle that fits in an ellipse with semi-axes (a,b) has dimensions:
         // width = a√2, height = b√2
         // So we need to scale up the content to create an ellipse that can contain it

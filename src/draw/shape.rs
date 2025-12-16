@@ -37,9 +37,21 @@ pub trait ShapeDefinition: std::fmt::Debug {
         find_rectangle_intersection(a, b, a_size)
     }
 
-    /// Calculate the shape size needed to contain the given content size with padding
-    /// For content-free shapes, content_size and padding may be ignored
-    fn calculate_shape_size(&self, content_size: Size, padding: Insets) -> Size;
+    /// Calculate the inner shape size needed to contain the given content size with padding.
+    /// This is the size of the shape boundary excluding the stroke.
+    /// For content-free shapes, content_size and padding may be ignored.
+    fn calculate_inner_size(&self, content_size: Size, padding: Insets) -> Size;
+
+    /// Calculate the outer shape size including the stroke.
+    /// By default, this adds the stroke width to the inner size in both dimensions.
+    fn calculate_outer_size(&self, content_size: Size, padding: Insets) -> Size {
+        let inner_size = self.calculate_inner_size(content_size, padding);
+        let stroke_width = self.stroke().width();
+        Size::new(
+            inner_size.width() + stroke_width,
+            inner_size.height() + stroke_width,
+        )
+    }
 
     fn render_to_svg(&self, size: Size, position: Point) -> Box<dyn svg::Node>;
 
@@ -132,10 +144,18 @@ impl Shape {
         self.definition.text_positioning_strategy()
     }
 
-    /// Size of the shape needed to contain the given content size
-    pub fn shape_size(&self) -> Size {
+    /// Returns the inner size of the shape boundary, excluding stroke.
+    /// This is the size needed to contain the content with padding.
+    pub fn inner_size(&self) -> Size {
         self.definition
-            .calculate_shape_size(self.content_size, self.padding)
+            .calculate_inner_size(self.content_size, self.padding)
+    }
+
+    /// Returns the outer size of the shape, including stroke.
+    /// This is the full size the shape occupies when rendered.
+    pub fn outer_size(&self) -> Size {
+        self.definition
+            .calculate_outer_size(self.content_size, self.padding)
     }
 
     /// Expand the content size for this shape to the given size if it's bigger
@@ -173,8 +193,9 @@ impl Shape {
     ///
     /// Calculate any additional space the shape needs beyond content + padding.
     /// This accounts for shapes like ovals that need extra room beyond just padding.
+    // TODO: Validate we need this. i.e. it is not always zero.
     pub(super) fn calculate_additional_space(&self) -> Size {
-        let shape_size = self.shape_size();
+        let shape_size = self.inner_size();
         let content_size = self.content_size();
         let total_padding_size = content_size.add_padding(self.padding);
 
@@ -199,12 +220,12 @@ impl Shape {
 
 impl Drawable for Shape {
     fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
-        let size = self.shape_size();
+        let size = self.inner_size();
         self.definition.render_to_svg(size, position)
     }
 
     fn size(&self) -> Size {
-        self.shape_size() // TODO merge them.
+        self.outer_size() // TODO merge them.
     }
 }
 

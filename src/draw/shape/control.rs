@@ -36,7 +36,7 @@ impl Default for ControlDefinition {
 }
 
 impl ShapeDefinition for ControlDefinition {
-    fn calculate_shape_size(&self, _content_size: Size, _padding: Insets) -> Size {
+    fn calculate_inner_size(&self, _content_size: Size, _padding: Insets) -> Size {
         Size::new(34.0, 30.0)
     }
 

@@ -36,7 +36,7 @@ impl Default for ActorDefinition {
 }
 
 impl ShapeDefinition for ActorDefinition {
-    fn calculate_shape_size(&self, _content_size: Size, _padding: Insets) -> Size {
+    fn calculate_inner_size(&self, _content_size: Size, _padding: Insets) -> Size {
         Size::new(24.0, 54.0)
     }
 

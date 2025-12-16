@@ -108,7 +108,7 @@ where
         self.rectangle_definition.find_intersection(a, b, a_size)
     }
 
-    fn calculate_shape_size(&self, content_size: Size, padding: Insets) -> Size {
+    fn calculate_inner_size(&self, content_size: Size, padding: Insets) -> Size {
         let min_size = self.icon.size().add_padding(Insets::uniform(10.0));
         let padded_icon_size = self
             .icon

@@ -111,7 +111,7 @@ impl<'a> ShapeWithText<'a> {
             return Point::default();
         }
 
-        let shape_size = self.shape.shape_size();
+        let shape_size = self.shape.inner_size();
         let text_size = self.text_size();
         let has_inner_content = text_size != self.shape.content_size();
 
@@ -130,7 +130,7 @@ impl<'a> Drawable for ShapeWithText<'a> {
     fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
         let mut group = Group::new();
 
-        let shape_size = self.shape.shape_size();
+        let shape_size = self.shape.inner_size();
         let text_size = self.text_size();
         let shape_position = self
             .text_positioning_strategy
@@ -149,7 +149,7 @@ impl<'a> Drawable for ShapeWithText<'a> {
     /// Returns the total size of the underlying shape.
     /// For content-free shapes with text, this includes the text below the shape.
     fn size(&self) -> Size {
-        let shape_size = self.shape.shape_size();
+        let shape_size = self.shape.outer_size();
         let text_size = self.text_size();
         self.text_positioning_strategy
             .calculate_total_size(shape_size, text_size)
