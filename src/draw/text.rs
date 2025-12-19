@@ -309,7 +309,7 @@ impl TextManager {
 
         // Set the text with advanced shaping for accurate text metrics
         // Advanced shaping handles ligatures, kerning, etc.
-        buffer.set_text(text, &attrs, Shaping::Advanced);
+        buffer.set_text(text, &attrs, Shaping::Advanced, None);
 
         // Shape the text to calculate layout
         buffer.shape_until_scroll(true);
