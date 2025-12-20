@@ -202,7 +202,7 @@ impl Engine {
         &self,
         graph: &ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
-        _component_sizes: &HashMap<Id, Size>,
+        component_sizes: &HashMap<Id, Size>,
     ) -> HashMap<Id, Point> {
         // Prepare layout
         let mut positions = HashMap::new();
@@ -240,15 +240,40 @@ impl Engine {
                 edges.len()
             );
 
+            // Calculate actual maximum component dimensions for adaptive spacing
+            let max_width = component_sizes
+                .values()
+                .map(|s| s.width())
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                .unwrap_or(100.0);
+
+            let max_height = component_sizes
+                .values()
+                .map(|s| s.height())
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                .unwrap_or(100.0);
+
+            // Calculate average node size for rust-sugiyama configuration
+            let avg_node_size = if !component_sizes.is_empty() {
+                component_sizes
+                    .values()
+                    .map(|s| (s.width() + s.height()) / 2.0)
+                    .sum::<f32>()
+                    / component_sizes.len() as f32
+            } else {
+                100.0
+            };
+
             // Create a bidirectional mapping between our original node IDs and sequential IDs
             let id_to_node_id: HashMap<u32, Id> =
                 node_ids.iter().map(|(&node, &id)| (id, node)).collect();
 
             // Try the rust_sugiyama crate with our sequential IDs, catching any panics
             let layouts = std::panic::catch_unwind(move || {
+                // Configure with adaptive vertex spacing based on average component size
                 let config = Config {
                     minimum_length: 1,
-                    vertex_spacing: 3.0,
+                    vertex_spacing: (avg_node_size / 50.0).clamp(2.0, 5.0) as f64,
                     ..Default::default()
                 };
                 rust_sugiyama::from_edges(&edges, &config)
@@ -272,11 +297,13 @@ impl Engine {
 
                         // Map the ID back to our original node Id
                         if let Some(&node_id) = id_to_node_id.get(&node_id) {
-                            // Scale coordinates for proper spacing
-                            // Apply spacing that ensures adequate separation between nodes
-                            // Use smaller scaling factors to reduce padding
-                            let x_pos = (x as f32) * self.horizontal_spacing * 1.0;
-                            let y_pos = (y as f32) * self.vertical_spacing * 1.0;
+                            // Use adaptive spacing that accounts for actual component sizes
+                            // Use a fraction of max size to avoid excessive spacing
+                            let effective_h_spacing = self.horizontal_spacing + max_width * 0.5;
+                            let effective_v_spacing = self.vertical_spacing + max_height * 0.5;
+
+                            let x_pos = (x as f32) * effective_h_spacing;
+                            let y_pos = (y as f32) * effective_v_spacing;
                             positions.insert(node_id, Point::new(x_pos, y_pos));
                         }
                     }
@@ -309,7 +336,7 @@ impl Engine {
 
             // Center the layout if we have positions
             if !positions.is_empty() {
-                self.center_layout(&mut positions);
+                self.center_layout(&mut positions, component_sizes);
             }
 
             debug!(
@@ -330,34 +357,37 @@ impl Engine {
         positions
     }
 
-    fn center_layout(&self, positions: &mut HashMap<Id, Point>) {
-        // Find min and max x, y coordinates
-        let mut min_x = f32::MAX;
-        let mut min_y = f32::MAX;
-        let mut max_x = f32::MIN;
-        let mut max_y = f32::MIN;
-
-        for point in positions.values() {
-            min_x = min_x.min(point.x());
-            min_y = min_y.min(point.y());
-            max_x = max_x.max(point.x());
-            max_y = max_y.max(point.y());
+    fn center_layout(
+        &self,
+        positions: &mut HashMap<Id, Point>,
+        component_sizes: &HashMap<Id, Size>,
+    ) {
+        if positions.is_empty() {
+            return;
         }
 
-        // Calculate the offsets needed to ensure all coordinates are positive
-        // with a reasonable margin from the edge (add a small margin)
-        let offset_x = if min_x < 0.0 {
-            min_x - self.horizontal_spacing * 0.3
-        } else {
-            -self.horizontal_spacing * 0.3
-        };
-        let offset_y = if min_y < 0.0 {
-            min_y - self.vertical_spacing * 0.3
-        } else {
-            -self.vertical_spacing * 0.3
-        };
+        // Calculate actual bounds considering component sizes
+        // Positions are component centers, so we need to account for half-widths/heights
+        let mut min_x = f32::MAX;
+        let mut min_y = f32::MAX;
 
-        // Apply the offset to all positions to ensure they're positive
+        for (node_id, point) in positions.iter() {
+            let size = component_sizes
+                .get(node_id)
+                .expect("Component size not found");
+            let half_width = size.width() / 2.0;
+            let half_height = size.height() / 2.0;
+
+            // Calculate actual minimum bounds (left and top edges)
+            min_x = min_x.min(point.x() - half_width);
+            min_y = min_y.min(point.y() - half_height);
+        }
+
+        // Use minimal margin - the container shape provides the actual padding
+        // We just need to ensure coordinates are positive
+        let offset_x = min_x.min(0.0);
+        let offset_y = min_y.min(0.0);
+
         for position in positions.values_mut() {
             *position = position.sub_point(Point::new(offset_x, offset_y));
         }

@@ -43,11 +43,11 @@ impl Engine {
     pub fn new() -> Self {
         Self {
             iterations: 100,
-            spring_constant: 0.1,
-            repulsion_constant: 1000.0,
+            spring_constant: 0.78,
+            repulsion_constant: 95.0,
             damping_factor: 0.85,
             text_padding: 10.0,
-            min_distance: 80.0,
+            min_distance: 28.0,
             padding: Insets::uniform(10.0),
         }
     }
@@ -147,35 +147,48 @@ impl Engine {
         component_shapes
     }
 
-    /// Initialize random positions for components
+    /// Initialize positions for components in a size-aware grid pattern
     fn initialize_positions<'a>(
         &self,
         graph: &ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
-        _component_sizes: &HashMap<Id, Size>,
+        component_sizes: &HashMap<Id, Size>,
     ) -> HashMap<Id, Point> {
         use rand::Rng;
         let mut rng = rand::rng();
 
-        // Calculate approximate grid dimensions
         let node_count = containment_scope.nodes_count();
-        let grid_size = (node_count as f32).sqrt().ceil() as usize;
-        let cell_size = self.min_distance * 1.5;
+        let grid_cols = (node_count as f32).sqrt().ceil() as usize;
+
+        // Calculate cell size based on actual component sizes
+        let avg_width = if node_count > 0 {
+            component_sizes.values().map(|s| s.width()).sum::<f32>() / node_count as f32
+        } else {
+            100.0
+        };
+        let avg_height = if node_count > 0 {
+            component_sizes.values().map(|s| s.height()).sum::<f32>() / node_count as f32
+        } else {
+            100.0
+        };
+
+        // Use component size with minimal additional spacing
+        let cell_width = avg_width * 1.04 + self.min_distance * 0.12;
+        let cell_height = avg_height * 1.04 + self.min_distance * 0.12;
 
         // Place nodes in a grid pattern with some randomness
         graph
             .scope_nodes(containment_scope)
             .enumerate()
             .map(|(i, node)| {
-                let row = i / grid_size;
-                let col = i % grid_size;
+                let row = i / grid_cols;
+                let col = i % grid_cols;
 
-                // Calculate base position with spacing based on component sizes
-                let base = Point::new(col as f32 * cell_size, row as f32 * cell_size);
+                let base = Point::new(col as f32 * cell_width, row as f32 * cell_height);
 
                 // Add some randomness to avoid perfect grid alignment
                 let jitter =
-                    Point::new(rng.random_range(-20.0..20.0), rng.random_range(-20.0..20.0));
+                    Point::new(rng.random_range(-10.0..10.0), rng.random_range(-10.0..10.0));
 
                 (node.id(), base.add_point(jitter))
             })
@@ -231,17 +244,24 @@ impl Engine {
                         .get(&node_j)
                         .expect("Component size not found");
 
-                    // Calculate minimum distance based on component sizes plus padding
-                    let min_dist =
-                        (size_i.width() + size_j.width() + size_i.height() + size_j.height()) / 4.0
-                            + self.min_distance;
+                    // Calculate minimum distance based on component bounding boxes
+                    // Use small multiplier to balance spacing
+                    let min_dist_x =
+                        (size_i.width() + size_j.width()) / 2.0 + self.min_distance * 0.15;
+                    let min_dist_y =
+                        (size_i.height() + size_j.height()) / 2.0 + self.min_distance * 0.15;
 
                     // Avoid division by zero
                     let distance = trans.hypot().max(1.0);
 
+                    // Calculate required distance based on direction
+                    let dx = trans.x().abs();
+                    let dy = trans.y().abs();
+                    let required_dist = if dx > dy { min_dist_x } else { min_dist_y };
+
                     // Stronger repulsion when components are too close
-                    let force_factor = if distance < min_dist {
-                        self.repulsion_constant * (min_dist / distance).powf(2.0)
+                    let force_factor = if distance < required_dist {
+                        self.repulsion_constant * (required_dist / distance).powf(2.0)
                     } else {
                         self.repulsion_constant / distance
                     };
@@ -306,50 +326,48 @@ impl Engine {
             }
         }
 
-        // Center the layout
-        self.center_layout(&mut positions);
+        // Normalize layout to positive coordinates
+        self.normalize_to_positive(&mut positions, component_sizes);
 
         positions
     }
 
-    /// Center the layout around the origin
-    fn center_layout(&self, positions: &mut HashMap<Id, Point>) {
+    /// Normalize layout to ensure all coordinates are positive with minimal margin
+    /// Accounts for component sizes since positions represent centers, not corners
+    /// Uses minimal margin as the container shape handles padding
+    fn normalize_to_positive(
+        &self,
+        positions: &mut HashMap<Id, Point>,
+        component_sizes: &HashMap<Id, Size>,
+    ) {
         if positions.is_empty() {
             return;
         }
 
-        // Find bounding box
+        // Calculate actual bounds considering component sizes
+        // Positions are component centers, so we need to account for half-widths/heights
         let mut min_x = f32::MAX;
         let mut min_y = f32::MAX;
-        let mut max_x = f32::MIN;
-        let mut max_y = f32::MIN;
 
-        for pos in positions.values() {
-            min_x = min_x.min(pos.x());
-            min_y = min_y.min(pos.y());
-            max_x = max_x.max(pos.x());
-            max_y = max_y.max(pos.y());
+        for (node_id, pos) in positions.iter() {
+            let size = component_sizes
+                .get(node_id)
+                .expect("Component size not found");
+            let half_width = size.width() / 2.0;
+            let half_height = size.height() / 2.0;
+
+            // Calculate actual minimum bounds (left and top edges)
+            min_x = min_x.min(pos.x() - half_width);
+            min_y = min_y.min(pos.y() - half_height);
         }
 
-        // Calculate center offset
-        let center_x = (min_x + max_x) / 2.0;
-        let center_y = (min_y + max_y) / 2.0;
+        // Use minimal margin - the container shape provides the actual padding
+        // We just need to ensure coordinates are positive
+        let margin = 5.0;
+        let offset = Point::new(margin - min_x, margin - min_y);
 
-        // Center everything
         for pos in positions.values_mut() {
-            *pos = pos.sub_point(Point::new(center_x, center_y));
-        }
-
-        // Scale the layout if it's too large
-        let width = max_x - min_x;
-        let height = max_y - min_y;
-        let max_dimension = 1200.0; // Maximum desired layout dimension
-
-        if width > max_dimension || height > max_dimension {
-            let scale_factor = max_dimension / width.max(height);
-            for pos in positions.values_mut() {
-                *pos = pos.scale(scale_factor);
-            }
+            *pos = pos.add_point(offset);
         }
     }
 }

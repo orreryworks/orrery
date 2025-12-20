@@ -1,0 +1,87 @@
+diagram component [background_color="#F5F5F5"];
+
+// Define component types for consistent styling
+type Container = Rectangle [fill_color="#E3F2FD", stroke=[color="#1976D2", width=2.0], rounded=5.0];
+type Service = Rectangle [fill_color="#FFF9C4", stroke=[color="#F57F17"], rounded=3.0];
+type Database = Rectangle [fill_color="#C8E6C9", stroke=[color="#388E3C"], rounded=8.0];
+type Cache = Rectangle [fill_color="#FFCCBC", stroke=[color="#E64A19"], rounded=3.0];
+type Queue = Rectangle [fill_color="#E1BEE7", stroke=[color="#7B1FA2"], rounded=3.0];
+type Logger = Rectangle [fill_color="#B2DFDB", stroke=[color="#00796B"], rounded=3.0];
+
+// Top-level components, each with embedded diagrams using different layout engines
+system_a as "System A (Basic Layout)": Container embed diagram component [layout_engine="basic", background_color="#FFFFFF"] {
+    gateway as "API Gateway": Service;
+    auth as "Auth Service": Service;
+    user_svc as "User Service": Service;
+    order_svc as "Order Service": Service;
+    primary_db as "Primary DB": Database;
+    replica_db as "Replica DB": Database;
+    cache as "Redis Cache": Cache;
+    queue as "Message Queue": Queue;
+    logger as "Log Service": Logger;
+
+    gateway -> auth: "Verify Token";
+    gateway -> user_svc: "User Request";
+    gateway -> order_svc: "Order Request";
+    auth -> cache: "Session Check";
+    user_svc -> primary_db: "Query Users";
+    order_svc -> primary_db: "Query Orders";
+    primary_db -> replica_db: "Replicate";
+    user_svc -> queue: "Publish Event";
+    order_svc -> queue: "Publish Event";
+    queue -> logger: "Log Events";
+    auth -> logger: "Audit Log";
+};
+
+system_b as "System B (Force Layout)": Container embed diagram component [layout_engine="force", background_color="#FFFFFF"] {
+    gateway as "API Gateway": Service;
+    auth as "Auth Service": Service;
+    user_svc as "User Service": Service;
+    order_svc as "Order Service": Service;
+    primary_db as "Primary DB": Database;
+    replica_db as "Replica DB": Database;
+    cache as "Redis Cache": Cache;
+    queue as "Message Queue": Queue;
+    logger as "Log Service": Logger;
+
+    gateway -> auth: "Verify Token";
+    gateway -> user_svc: "User Request";
+    gateway -> order_svc: "Order Request";
+    auth -> cache: "Session Check";
+    user_svc -> primary_db: "Query Users";
+    order_svc -> primary_db: "Query Orders";
+    primary_db -> replica_db: "Replicate";
+    user_svc -> queue: "Publish Event";
+    order_svc -> queue: "Publish Event";
+    queue -> logger: "Log Events";
+    auth -> logger: "Audit Log";
+};
+
+system_c as "System C (Sugiyama Layout)": Container embed diagram component [layout_engine="sugiyama", background_color="#FFFFFF"] {
+    gateway as "API Gateway": Service;
+    auth as "Auth Service": Service;
+    user_svc as "User Service": Service;
+    order_svc as "Order Service": Service;
+    primary_db as "Primary DB": Database;
+    replica_db as "Replica DB": Database;
+    cache as "Redis Cache": Cache;
+    queue as "Message Queue": Queue;
+    logger as "Log Service": Logger;
+
+    gateway -> auth: "Verify Token";
+    gateway -> user_svc: "User Request";
+    gateway -> order_svc: "Order Request";
+    auth -> cache: "Session Check";
+    user_svc -> primary_db: "Query Users";
+    order_svc -> primary_db: "Query Orders";
+    primary_db -> replica_db: "Replicate";
+    user_svc -> queue: "Publish Event";
+    order_svc -> queue: "Publish Event";
+    queue -> logger: "Log Events";
+    auth -> logger: "Audit Log";
+};
+
+// Relations between the top-level systems
+system_a -> system_b: "Replication";
+system_b -> system_c: "Backup";
+system_c -> system_a: "Sync";
