@@ -1633,7 +1633,7 @@ mod tests {
 
     #[test]
     fn test_complex_diagram() {
-        let input = r#"diagram component [layout="force"];
+        let input = r#"diagram component [layout="basic"];
         type CustomBox = Rectangle [color="blue"];
 
         frontend: CustomBox [label="Frontend"];

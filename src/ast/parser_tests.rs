@@ -566,7 +566,7 @@ mod diagram_attribute_tests {
     #[test]
     fn test_diagram_with_layout_engine() {
         let source = r#"
-            diagram component [layout_engine="force"];
+            diagram component [layout_engine="basic"];
             app: Rectangle;
         "#;
         assert_parses_successfully(source);
@@ -731,7 +731,7 @@ mod complex_integration_tests {
     #[test]
     fn test_comprehensive_diagram() {
         let source = r##"
-            diagram component [layout_engine="force", background_color="#f8f8f8"];
+            diagram component [layout_engine="basic", background_color="#f8f8f8"];
 
             // Define custom types
             type Database = Rectangle[fill_color="lightblue", rounded="10"];

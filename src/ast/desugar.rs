@@ -787,7 +787,7 @@ mod tests {
                 },
                 Attribute {
                     name: spanned("layout_engine"),
-                    value: AttributeValue::String(spanned("force".to_string())),
+                    value: AttributeValue::String(spanned("basic".to_string())),
                 },
             ],
             type_definitions: vec![],

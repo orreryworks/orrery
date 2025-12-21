@@ -73,8 +73,7 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
     let engine_builder = layout::EngineBuilder::new()
         .with_component_padding(geometry::Insets::uniform(35.0))
         .with_component_spacing(50.0)
-        .with_message_spacing(60.0)
-        .with_force_iterations(500);
+        .with_message_spacing(60.0);
 
     // Process all diagrams in the hierarchy, from innermost to outermost
     // Each embedded diagram uses its own layout engine as specified in its attributes

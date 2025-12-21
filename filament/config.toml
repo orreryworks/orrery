@@ -2,7 +2,7 @@
 
 # Layout engine configuration
 [layout]
-# Default layout engine for component diagrams (basic, force, sugiyama)
-component = "force"
+# Default layout engine for component diagrams (basic, sugiyama)
+component = "basic"
 # Default layout engine for sequence diagrams (basic)
 sequence = "basic"

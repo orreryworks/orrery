@@ -33,7 +33,7 @@ diagram component;
 Diagrams can also include attributes to customize their behavior:
 
 ```
-diagram component [layout_engine="force"];
+diagram component [layout_engine="sugiyama"];
 ```
 
 ## 4. Type System
@@ -972,13 +972,12 @@ When a component contains an embedded diagram:
 Filament supports multiple layout engines that can be specified using the `layout_engine` attribute in the diagram declaration:
 
 ```
-diagram component [layout_engine="force", background_color="#f5f5f5"];
+diagram component [layout_engine="sugiyama", background_color="#f5f5f5"];
 ```
 
 Available layout engines:
 
 - `basic`: The default layout engine with simple positioning (available for both component and sequence diagrams)
-- `force`: A force-directed layout engine for more organic component positioning (available for component diagrams)
 - `sugiyama`: A hierarchical layout engine for layered diagrams (available for component diagrams)
 
 ### 10.1 Component Diagrams
@@ -1031,7 +1030,7 @@ user_actor: Boundary {
 ### 12.1 Component Diagram Example
 
 ```
-diagram component [layout_engine="force", background_color="#f8f8f8"];
+diagram component [layout_engine="sugiyama", background_color="#f8f8f8"];
 
 // Define component types
 type Database = Rectangle [fill_color="lightblue", rounded=10];
@@ -1231,8 +1230,8 @@ The configuration file uses TOML syntax and supports the following settings:
 ```toml
 # Layout engine configuration
 [layout]
-# Default layout engine for component diagrams (basic, force, sugiyama)
-component = "sugiyama"
+# Default layout engine for component diagrams (basic, sugiyama)
+component = "basic"
 # Default layout engine for sequence diagrams (basic)
 sequence = "basic"
 
@@ -1261,7 +1260,6 @@ The layout engine names in the configuration file are string representations of 
 | String Value | Layout Engine Type | Supported Diagram Types       |
 |--------------|-------------------|------------------------------|
 | "basic"      | Basic layout      | Component, Sequence          |
-| "force"      | Force-directed    | Component                    |
 | "sugiyama"   | Hierarchical      | Component                    |
 
 ### 14.4 Style Configuration

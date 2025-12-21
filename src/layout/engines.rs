@@ -10,7 +10,6 @@
 
 // Layout engine modules with different implementations
 mod basic;
-mod force;
 mod sugiyama;
 
 use std::collections::HashMap;
@@ -97,7 +96,6 @@ pub struct EngineBuilder {
     component_padding: geometry::Insets,
     min_component_spacing: f32,
     message_spacing: f32,
-    force_simulation_iterations: usize,
 }
 
 impl EngineBuilder {
@@ -124,12 +122,6 @@ impl EngineBuilder {
         self
     }
 
-    /// Set the number of iterations for force-directed layout simulation
-    pub fn with_force_iterations(mut self, iterations: usize) -> Self {
-        self.force_simulation_iterations = iterations;
-        self
-    }
-
     /// Get a component engine of the specified type with configured options
     pub fn component_engine(&mut self, engine_type: LayoutEngine) -> &dyn ComponentEngine {
         let engine = self
@@ -142,15 +134,6 @@ impl EngineBuilder {
                         // Configure the engine with our settings
                         e.set_padding(self.component_padding);
                         e.set_min_spacing(self.min_component_spacing);
-                        Box::new(e)
-                    }
-                    LayoutEngine::Force => {
-                        let mut e = force::Component::new();
-                        // Configure the force-directed engine
-                        e.set_padding(self.component_padding)
-                            .set_text_padding(self.message_spacing)
-                            .set_min_distance(self.min_component_spacing)
-                            .set_iterations(self.force_simulation_iterations);
                         Box::new(e)
                     }
                     LayoutEngine::Sugiyama => {

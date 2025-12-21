@@ -33,31 +33,7 @@ system_a as "System A (Basic Layout)": Container embed diagram component [layout
     auth -> logger: "Audit Log";
 };
 
-system_b as "System B (Force Layout)": Container embed diagram component [layout_engine="force", background_color="#FFFFFF"] {
-    gateway as "API Gateway": Service;
-    auth as "Auth Service": Service;
-    user_svc as "User Service": Service;
-    order_svc as "Order Service": Service;
-    primary_db as "Primary DB": Database;
-    replica_db as "Replica DB": Database;
-    cache as "Redis Cache": Cache;
-    queue as "Message Queue": Queue;
-    logger as "Log Service": Logger;
-
-    gateway -> auth: "Verify Token";
-    gateway -> user_svc: "User Request";
-    gateway -> order_svc: "Order Request";
-    auth -> cache: "Session Check";
-    user_svc -> primary_db: "Query Users";
-    order_svc -> primary_db: "Query Orders";
-    primary_db -> replica_db: "Replicate";
-    user_svc -> queue: "Publish Event";
-    order_svc -> queue: "Publish Event";
-    queue -> logger: "Log Events";
-    auth -> logger: "Audit Log";
-};
-
-system_c as "System C (Sugiyama Layout)": Container embed diagram component [layout_engine="sugiyama", background_color="#FFFFFF"] {
+system_b as "System B (Sugiyama Layout)": Container embed diagram component [layout_engine="sugiyama", background_color="#FFFFFF"] {
     gateway as "API Gateway": Service;
     auth as "Auth Service": Service;
     user_svc as "User Service": Service;
@@ -83,5 +59,4 @@ system_c as "System C (Sugiyama Layout)": Container embed diagram component [lay
 
 // Relations between the top-level systems
 system_a -> system_b: "Replication";
-system_b -> system_c: "Backup";
-system_c -> system_a: "Sync";
+system_b -> system_a: "Sync";

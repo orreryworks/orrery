@@ -1184,7 +1184,7 @@ impl<'a> Builder<'a> {
                 format!("Invalid layout_engine value: '{engine_str}'"),
                 engine_attr.value.span(),
                 "unsupported layout engine",
-                Some("Supported layout engines are: 'basic', 'force', 'sugiyama'".to_string()),
+                Some("Supported layout engines are: 'basic', 'sugiyama'".to_string()),
             )
         })
     }
