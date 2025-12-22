@@ -93,8 +93,10 @@ pub struct EngineBuilder {
     sequence_engines: HashMap<LayoutEngine, Box<dyn SequenceEngine>>,
 
     // Configuration options
-    component_padding: geometry::Insets,
-    min_component_spacing: f32,
+    padding: geometry::Insets,
+    min_spacing: f32,
+    horizontal_spacing: f32,
+    vertical_spacing: f32,
     message_spacing: f32,
 }
 
@@ -104,15 +106,27 @@ impl EngineBuilder {
         Self::default()
     }
 
-    /// Set the padding around components
-    pub fn with_component_padding(mut self, padding: geometry::Insets) -> Self {
-        self.component_padding = padding;
+    /// Set the padding inside all shapes (components, participants, containers)
+    pub fn with_padding(mut self, padding: geometry::Insets) -> Self {
+        self.padding = padding;
         self
     }
 
-    /// Set the minimum spacing between components
-    pub fn with_component_spacing(mut self, spacing: f32) -> Self {
-        self.min_component_spacing = spacing;
+    /// Set the minimum spacing between elements
+    pub fn with_min_spacing(mut self, spacing: f32) -> Self {
+        self.min_spacing = spacing;
+        self
+    }
+
+    /// Set the horizontal spacing between elements
+    pub fn with_horizontal_spacing(mut self, spacing: f32) -> Self {
+        self.horizontal_spacing = spacing;
+        self
+    }
+
+    /// Set the vertical spacing between elements
+    pub fn with_vertical_spacing(mut self, spacing: f32) -> Self {
+        self.vertical_spacing = spacing;
         self
     }
 
@@ -132,16 +146,16 @@ impl EngineBuilder {
                     LayoutEngine::Basic => {
                         let mut e = basic::Component::new();
                         // Configure the engine with our settings
-                        e.set_padding(self.component_padding);
-                        e.set_min_spacing(self.min_component_spacing);
+                        e.set_padding(self.padding);
+                        e.set_min_spacing(self.min_spacing);
                         Box::new(e)
                     }
                     LayoutEngine::Sugiyama => {
                         let mut e = sugiyama::Component::new();
                         // Configure the hierarchical engine
-                        e.set_horizontal_spacing(self.min_component_spacing);
-                        e.set_vertical_spacing(self.min_component_spacing);
-                        e.set_container_padding(self.component_padding);
+                        e.set_horizontal_spacing(self.horizontal_spacing);
+                        e.set_vertical_spacing(self.vertical_spacing);
+                        e.set_container_padding(self.padding);
                         Box::new(e)
                     }
                 };
@@ -157,8 +171,9 @@ impl EngineBuilder {
             // Currently only Basic is supported for sequence diagrams
             let mut engine = basic::Sequence::new();
             // Configure the engine with our settings
+            engine.set_text_padding(self.padding);
             engine.set_message_spacing(self.message_spacing);
-            engine.set_min_spacing(self.min_component_spacing);
+            engine.set_min_spacing(self.min_spacing);
             Box::new(engine)
         });
         // Dereference to avoid returning reference to temporary
@@ -280,7 +295,7 @@ impl EngineBuilder {
                 container_idx,
                 positioned_shape,
                 embedded_idx,
-                self.component_padding,
+                self.padding,
             );
         }
 

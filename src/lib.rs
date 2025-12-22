@@ -71,8 +71,10 @@ pub fn run(cfg: &Config) -> Result<(), FilamentError> {
 
     // Create a configured engine builder for processing diagrams
     let engine_builder = layout::EngineBuilder::new()
-        .with_component_padding(geometry::Insets::uniform(35.0))
-        .with_component_spacing(50.0)
+        .with_padding(geometry::Insets::uniform(35.0))
+        .with_min_spacing(50.0)
+        .with_horizontal_spacing(50.0)
+        .with_vertical_spacing(50.0)
         .with_message_spacing(60.0);
 
     // Process all diagrams in the hierarchy, from innermost to outermost
