@@ -2,8 +2,8 @@ use log::debug;
 
 use crate::{
     draw,
-    geometry::{Bounds, Insets, Point, Size},
-    layout::{component, positioning::LayoutSizing, sequence},
+    geometry::{Bounds, Point, Size},
+    layout::{component, positioning::LayoutBounds, sequence},
 };
 
 /// Content types that can be laid out in a layer
@@ -100,7 +100,6 @@ impl<'a> LayeredLayout<'a> {
     /// - `container_idx`: Index of the container layer
     /// - `positioned_shape`: The positioned drawable representing the container
     /// - `embedded_idx`: Index of the embedded diagram layer
-    /// - `padding`: Padding to apply between container edges and embedded content
     ///
     /// # Panics
     /// Panics if either index is invalid or if they refer to the same layer
@@ -110,41 +109,54 @@ impl<'a> LayeredLayout<'a> {
         container_idx: usize,
         positioned_shape: &draw::PositionedDrawable<draw::ShapeWithText>,
         embedded_idx: usize,
-        padding: Insets,
     ) {
         let [container_layer, embedded_layer] = &mut self
             .layers
             .get_disjoint_mut([container_idx, embedded_idx])
             .expect("container_idx and embedded_idx must be valid, distinct indices");
 
-        // Calculate the bounds of the container
-        let container_bounds = positioned_shape.bounds();
+        let content_bounds = positioned_shape
+            .content_bounds()
+            .expect("Container shape must have inner content size set");
+
+        // Get the actual bounds of the embedded layout's content
+        let embedded_layout_bounds = match embedded_layer.content() {
+            LayoutContent::Component(layout) => layout
+                .iter()
+                .last()
+                .map(|content| content.content().layout_bounds())
+                .unwrap_or_default(),
+            LayoutContent::Sequence(layout) => layout
+                .iter()
+                .last()
+                .map(|content| content.content().layout_bounds())
+                .unwrap_or_default(),
+        };
 
         debug!(
-            positioned_shape:?, container_bounds:?,
+            positioned_shape:?, content_bounds:?,
             container_idx, container_offset:?=container_layer.offset(), container_clip_bounds:?=container_layer.clip_bounds(),
             embedded_idx, embedded_offset:?=embedded_layer.offset(), embedded_clip_bounds:?=embedded_layer.clip_bounds();
             "Embedded layer before adjustment",
         );
 
-        // Apply three transformations to position the embedded diagram:
+        // Apply transformations to position the embedded diagram:
         // 1. Add the container layer's offset (for nested containers)
-        // 2. Add the container's top-left position
-        // 3. Add the shape's inner content offset (padding between shape border and content)
+        // 2. Add the content area's position (where we want content to start)
+        // 3. Subtract the embedded layout's min_point (where content actually starts in its local coords)
+        //    This aligns the embedded content's origin with the container's content area
         embedded_layer.set_offset(
             embedded_layer
                 .offset()
                 .add_point(container_layer.offset())
-                .add_point(container_bounds.min_point())
-                .add_point(positioned_shape.inner().shape_to_inner_content_min_point()),
+                .add_point(content_bounds.min_point())
+                .add_point(Point::new(
+                    -embedded_layout_bounds.min_x(),
+                    -embedded_layout_bounds.min_y(),
+                )),
         );
 
-        // Set clip bounds with padding
-        let padded_clip_bounds = container_bounds
-            .inverse_translate(container_bounds.min_point())
-            .translate(Point::new(-padding.left(), -padding.top()));
-
-        embedded_layer.set_clip_bounds(Some(padded_clip_bounds));
+        embedded_layer.set_clip_bounds(Some(embedded_layout_bounds));
 
         debug!(
             offset:?=embedded_layer.offset(), clip_bounds:?=embedded_layer.clip_bounds();
@@ -174,11 +186,11 @@ impl<'a> LayeredLayout<'a> {
 /// ContentStack manages a collection of positioned content items, where each item
 /// has both content and an offset position.
 #[derive(Debug, Clone)]
-pub struct ContentStack<T: LayoutSizing>(Vec<PositionedContent<T>>);
+pub struct ContentStack<T: LayoutBounds>(Vec<PositionedContent<T>>);
 
 impl<T> ContentStack<T>
 where
-    T: LayoutSizing,
+    T: LayoutBounds,
 {
     /// Creates a new empty content stack.
     pub fn new() -> Self {
@@ -237,7 +249,7 @@ where
 #[derive(Debug, Clone)]
 pub struct PositionedContent<T>
 where
-    T: LayoutSizing,
+    T: LayoutBounds,
 {
     offset: Point,
     content: T,
@@ -245,7 +257,7 @@ where
 
 impl<T> PositionedContent<T>
 where
-    T: LayoutSizing,
+    T: LayoutBounds,
 {
     /// Creates new positioned content with the given content and default (zero) offset.
     pub fn new(content: T) -> Self {

@@ -5,12 +5,22 @@
 
 use std::iter::IntoIterator;
 
-use crate::{draw, geometry::Size};
+use crate::{
+    draw,
+    geometry::{Bounds, Size},
+};
 
-/// A trait for types that can calculate their own size
-pub trait LayoutSizing {
+/// A trait for types that can calculate their own size and bounds
+pub trait LayoutBounds {
     /// Calculate the size of this layout, possibly adding padding
-    fn layout_size(&self) -> Size;
+    fn layout_size(&self) -> Size {
+        self.layout_bounds().to_size()
+    }
+
+    /// Calculate the bounds of this layout's content
+    /// Returns the bounding box that contains all content, which may have
+    /// a non-zero minimum point if content doesn't start at the origin.
+    fn layout_bounds(&self) -> Bounds;
 }
 
 /// Calculate additional spacing needed based on text labels

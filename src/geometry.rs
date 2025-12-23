@@ -162,7 +162,7 @@ impl Size {
 }
 
 /// Represents a rectangular bounding box with minimum and maximum coordinates
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Bounds {
     min_x: f32,
     min_y: f32,
@@ -222,9 +222,10 @@ impl Bounds {
         )
     }
 
-    /// Sets the maximum y-coordinate of the bounds
-    pub fn set_max_y(&mut self, max_y: f32) {
+    /// Sets the maximum y-coordinate of the bounds and returns the modified bounds
+    pub fn with_max_y(mut self, max_y: f32) -> Self {
         self.max_y = max_y;
+        self
     }
 
     /// Returns the width of the bounds
@@ -612,16 +613,24 @@ mod tests {
     }
 
     #[test]
-    fn test_bounds_set_max_y() {
-        let mut bounds = Bounds {
-            min_x: 0.0,
-            min_y: 0.0,
+    fn test_bounds_with_max_y() {
+        let bounds = Bounds {
+            min_x: 2.0,
+            min_y: 5.0,
             max_x: 10.0,
-            max_y: 10.0,
+            max_y: 12.0,
         };
 
-        bounds.set_max_y(15.0);
-        assert_eq!(bounds.max_y(), 15.0);
+        let new_bounds = bounds.with_max_y(15.0);
+        assert_eq!(
+            new_bounds,
+            Bounds {
+                min_x: 2.0,
+                min_y: 5.0,
+                max_x: 10.0,
+                max_y: 15.0,
+            }
+        );
     }
 
     #[test]

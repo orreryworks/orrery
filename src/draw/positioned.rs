@@ -50,6 +50,19 @@ impl<D: Drawable> PositionedDrawable<D> {
     }
 }
 
+impl<'a> PositionedDrawable<crate::draw::ShapeWithText<'a>> {
+    /// Calculate the bounds of the content area.
+    /// Returns None if no inner content size was set on the ShapeWithText.
+    pub fn content_bounds(&self) -> Option<Bounds> {
+        let content_size = self.drawable.content_size()?;
+        let outer_bounds = self.bounds();
+        let content_min_point = outer_bounds
+            .min_point()
+            .add_point(self.drawable.shape_to_inner_content_min_point());
+        Some(Bounds::new_from_top_left(content_min_point, content_size))
+    }
+}
+
 impl<D: Drawable> Drawable for PositionedDrawable<D> {
     fn render_to_svg(&self, _position: Point) -> Box<dyn svg::Node> {
         // Ignore the passed position and use our stored position

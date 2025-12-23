@@ -13,6 +13,8 @@ pub struct ShapeWithText<'a> {
     shape: Shape,
     text: Option<Text<'a>>,
     text_positioning_strategy: TextPositioningStrategy,
+    // Stores the pure embedded content size (without text) when set via set_inner_content_size
+    inner_content_size: Option<Size>,
 }
 
 impl<'a> ShapeWithText<'a> {
@@ -26,6 +28,7 @@ impl<'a> ShapeWithText<'a> {
             shape,
             text,
             text_positioning_strategy,
+            inner_content_size: None,
         };
         if instance.text.is_some()
             && instance
@@ -46,6 +49,9 @@ impl<'a> ShapeWithText<'a> {
         if !self.shape.supports_content() {
             return Err("Cannot set inner content size on content-free shapes");
         }
+
+        // Store the pure embedded content size
+        self.inner_content_size = Some(size);
 
         let text_size = self.text_size();
         let total = Size::new(
@@ -78,6 +84,12 @@ impl<'a> ShapeWithText<'a> {
         let text_size = self.text_size();
         self.text_positioning_strategy
             .calculate_inner_content_min_point(base, text_size)
+    }
+
+    /// Returns the size of the inner content area where inner content should be placed.
+    /// Returns None if no inner content size was set via set_inner_content_size.
+    pub fn content_size(&self) -> Option<Size> {
+        self.inner_content_size
     }
 
     /// Finds the intersection point of a line (from point a to point b) with the shape boundary.

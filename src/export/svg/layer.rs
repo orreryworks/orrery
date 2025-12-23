@@ -7,7 +7,7 @@ use crate::{
     layout::{
         component,
         layer::{ContentStack, Layer, LayeredLayout, LayoutContent},
-        positioning::LayoutSizing,
+        positioning::LayoutBounds,
         sequence,
     },
 };
@@ -191,7 +191,7 @@ impl Svg {
     }
 
     /// Generic function to render a ContentStack with positioned content
-    fn render_content_stack<T: LayoutSizing>(
+    fn render_content_stack<T: LayoutBounds>(
         &mut self,
         content_stack: &ContentStack<T>,
         render_fn: impl Fn(&mut Self, &T) -> Vec<Box<dyn svg::Node>>,

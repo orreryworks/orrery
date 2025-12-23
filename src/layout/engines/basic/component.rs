@@ -83,8 +83,16 @@ impl Engine {
             let components: Vec<Component> = graph
                 .scope_nodes(containment_scope)
                 .map(|node| {
-                    let position = *positions.get(&node.id()).unwrap();
+                    let mut position = *positions.get(&node.id()).unwrap();
                     let shape_with_text = component_shapes.remove(&node.id()).unwrap();
+
+                    // If this node contains an embedded diagram, adjust position to normalize
+                    // the embedded layout's coordinate system to start at origin
+                    if let ast::Block::Diagram(_) = node.block() {
+                        if let Some(layout) = embedded_layouts.get(&node.id()) {
+                            position = position.add_point(layout.normalize_offset());
+                        }
+                    }
 
                     Component::new(node, shape_with_text, position)
                 })

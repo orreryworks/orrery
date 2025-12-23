@@ -130,9 +130,7 @@ impl Svg {
                     content_bounds = content_bounds.merge(&note_bounds);
                 }
 
-                content_bounds.set_max_y(layout.max_lifeline_end());
-
-                content_bounds
+                content_bounds.with_max_y(layout.max_lifeline_end())
             })
             .unwrap_or_default()
     }

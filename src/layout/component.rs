@@ -4,9 +4,9 @@ use log::{debug, error};
 
 use crate::{
     ast, draw,
-    geometry::{self, Size},
+    geometry::{Bounds, Point},
     identifier::Id,
-    layout::{layer, positioning::LayoutSizing},
+    layout::{layer, positioning::LayoutBounds},
     structure,
 };
 
@@ -24,7 +24,7 @@ impl<'a> Component<'a> {
     pub fn new(
         node: &ast::Node,
         shape_with_text: draw::ShapeWithText<'a>,
-        position: geometry::Point,
+        position: Point,
     ) -> Component<'a> {
         let drawable =
             Rc::new(draw::PositionedDrawable::new(shape_with_text).with_position(position));
@@ -43,7 +43,7 @@ impl<'a> Component<'a> {
     ///
     /// The position represents the center point of the component in the layout
     /// coordinate system.
-    pub fn position(&self) -> geometry::Point {
+    pub fn position(&self) -> Point {
         self.drawable.position()
     }
 
@@ -51,7 +51,7 @@ impl<'a> Component<'a> {
     ///
     /// The position is treated as the center of the component,
     /// and the bounds extend half the width/height in each direction.
-    pub fn bounds(&self) -> geometry::Bounds {
+    pub fn bounds(&self) -> Bounds {
         self.drawable.bounds()
     }
 
@@ -118,14 +118,27 @@ impl<'a> LayoutRelation<'a> {
 pub struct Layout<'a> {
     components: Vec<Component<'a>>,
     relations: Vec<LayoutRelation<'a>>,
+    bounds: Bounds,
 }
 
 impl<'a> Layout<'a> {
     /// Creates a new layout with the given components and relations.
     pub fn new(components: Vec<Component<'a>>, relations: Vec<LayoutRelation<'a>>) -> Self {
+        let bounds = if components.is_empty() {
+            Bounds::default()
+        } else {
+            components
+                .iter()
+                .skip(1)
+                .fold(components[0].bounds(), |acc, comp| {
+                    acc.merge(&comp.bounds())
+                })
+        };
+
         Self {
             components,
             relations,
+            bounds,
         }
     }
 
@@ -156,23 +169,9 @@ impl<'a> Layout<'a> {
     }
 }
 
-impl<'a> LayoutSizing for Layout<'a> {
-    fn layout_size(&self) -> Size {
-        // For component layouts, get the bounding box of all components
-        if self.components.is_empty() {
-            return Size::default();
-        }
-
-        // Calculate bounds from all components
-        let bounds = self
-            .components
-            .iter()
-            .skip(1)
-            .fold(self.components[0].bounds(), |acc, comp| {
-                acc.merge(&comp.bounds())
-            });
-
-        bounds.to_size()
+impl<'a> LayoutBounds for Layout<'a> {
+    fn layout_bounds(&self) -> Bounds {
+        self.bounds
     }
 }
 

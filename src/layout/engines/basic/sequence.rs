@@ -163,7 +163,15 @@ impl Engine {
             .enumerate()
             .map(|(i, node)| {
                 let shape_with_text = participant_shapes.remove(&node.id()).unwrap();
-                let position = Point::new(x_positions[i], self.top_margin);
+                let mut position = Point::new(x_positions[i], self.top_margin);
+
+                // If this node contains an embedded diagram, adjust position to normalize
+                // the embedded layout's coordinate system to start at origin
+                if let ast::Block::Diagram(_) = node.block() {
+                    if let Some(layout) = embedded_layouts.get(&node.id()) {
+                        position = position.add_point(layout.normalize_offset());
+                    }
+                }
 
                 let component = Component::new(node, shape_with_text, position);
 

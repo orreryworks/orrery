@@ -6,7 +6,7 @@ use crate::{
     ast, draw,
     geometry::{Bounds, Point, Size},
     identifier::Id,
-    layout::{component, positioning::LayoutSizing},
+    layout::{component, positioning::LayoutBounds},
 };
 
 /// Sequence diagram participant that holds its drawable component and lifeline.
@@ -442,6 +442,7 @@ pub struct Layout<'a> {
     fragments: Vec<draw::PositionedDrawable<draw::Fragment>>,
     notes: Vec<draw::PositionedDrawable<draw::Note>>,
     max_lifeline_end: f32, // TODO: Consider calculating on the fly.
+    bounds: Bounds,
 }
 
 impl<'a> Layout<'a> {
@@ -454,6 +455,13 @@ impl<'a> Layout<'a> {
         notes: Vec<draw::PositionedDrawable<draw::Note>>,
         max_lifeline_end: f32,
     ) -> Self {
+        let bounds = participants
+            .values()
+            .map(|participant| participant.component().bounds())
+            .reduce(|acc, bounds| acc.merge(&bounds))
+            .unwrap_or_default()
+            .with_max_y(max_lifeline_end);
+
         Self {
             participants,
             messages,
@@ -461,6 +469,7 @@ impl<'a> Layout<'a> {
             fragments,
             notes,
             max_lifeline_end,
+            bounds,
         }
     }
 
@@ -495,26 +504,9 @@ impl<'a> Layout<'a> {
     }
 }
 
-impl<'a> LayoutSizing for Layout<'a> {
-    /// Calculate the overall size of this sequence layout.
-    fn layout_size(&self) -> Size {
-        // For sequence layouts, calculate bounds based on participants and messages
-        if self.participants().is_empty() {
-            return Size::default();
-        }
-
-        // Find bounds for width
-        let bounds = self
-            .participants()
-            .values()
-            .map(|participant| participant.component().bounds())
-            .reduce(|acc, bounds| acc.merge(&bounds))
-            .expect("Participants is empty");
-
-        Size::new(
-            bounds.width(),
-            self.max_lifeline_end() - bounds.min_y(), // Height from top to bottom lifeline
-        )
+impl<'a> LayoutBounds for Layout<'a> {
+    fn layout_bounds(&self) -> Bounds {
+        self.bounds
     }
 }
 
