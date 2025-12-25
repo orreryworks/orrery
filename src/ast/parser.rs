@@ -525,32 +525,40 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
 
     ws_comments0.parse_next(input)?;
     let relation_type = relation_type.parse_next(input)?;
-    ws_comments0.parse_next(input)?;
 
-    let type_spec = opt(invocation_type_spec)
-        .parse_next(input)?
-        .unwrap_or_default();
+    // After parsing arrow, commit to parsing relation
+    cut_err(input, |input| {
+        ws_comments0.parse_next(input)?;
 
-    ws_comments0.parse_next(input)?;
-    let target = nested_identifier.parse_next(input)?;
+        let type_spec = opt(invocation_type_spec)
+            .parse_next(input)?
+            .unwrap_or_default();
 
-    ws_comments0.parse_next(input)?;
+        ws_comments0.parse_next(input)?;
+        let target = nested_identifier
+            .context(StrContext::Label("target identifier after arrow"))
+            .parse_next(input)?;
 
-    // Optional relation label as string literal
-    let label = opt(preceded(
-        any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Colon)),
-        preceded(ws_comments0, string_literal),
-    ))
-    .parse_next(input)?;
+        ws_comments0.parse_next(input)?;
 
-    semicolon.parse_next(input)?;
+        // Optional relation label as string literal
+        let label = opt(preceded(
+            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Colon)),
+            preceded(ws_comments0, string_literal),
+        ))
+        .parse_next(input)?;
 
-    Ok(types::Element::Relation {
-        source,
-        target,
-        relation_type: make_spanned(relation_type, Span::new(0..0)), // TODO: track proper span
-        type_spec,
-        label,
+        semicolon
+            .context(StrContext::Label("semicolon after relation"))
+            .parse_next(input)?;
+
+        Ok(types::Element::Relation {
+            source,
+            target,
+            relation_type: make_spanned(relation_type, Span::new(0..0)), // TODO: track proper span
+            type_spec,
+            label,
+        })
     })
 }
 
@@ -1021,10 +1029,60 @@ fn elements<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Element<'src>>>
                 fragment_block,
                 relation,
                 component_with_elements,
+                invalid_statement_with_semicolon,
             )),
         ),
     )
     .parse_next(input)
+}
+
+/// Catch-all parser for invalid syntax.
+/// This is used as the last alternative in elements() to provide
+/// better error reporting when no valid parser matches.
+///
+/// Strategy: Consume tokens up to semicolon or until hitting a block delimiter.
+/// Returns Cut error if semicolon found or if meaningful tokens consumed before delimiter.
+fn invalid_statement_with_semicolon<'src>(
+    input: &mut Input<'src>,
+) -> IResult<types::Element<'src>> {
+    let mut consumed_meaningful_tokens = false;
+
+    // Consume tokens until we find semicolon or hit a block delimiter
+    loop {
+        let checkpoint = input.checkpoint();
+        match any::<_, ErrMode<ContextError>>.parse_next(input) {
+            Ok(token) => {
+                // Track if we consumed a meaningful content token
+                // Exclude whitespace, newlines, and delimiters (which are structural)
+                if !matches!(
+                    token.token,
+                    Token::Whitespace | Token::Newline | Token::RightBrace | Token::RightBracket
+                ) {
+                    consumed_meaningful_tokens = true;
+                }
+
+                // Check if it's a block delimiter - don't consume it
+                // If we consumed meaningful tokens before delimiter, that's an error (missing semicolon)
+                if matches!(token.token, Token::RightBrace | Token::RightBracket) {
+                    input.reset(&checkpoint);
+                    if consumed_meaningful_tokens {
+                        return Err(ErrMode::Cut(ContextError::new()));
+                    }
+                    break;
+                }
+
+                if matches!(token.token, Token::Semicolon) {
+                    return Err(ErrMode::Cut(ContextError::new()));
+                }
+            }
+            Err(_) => {
+                input.reset(&checkpoint);
+                break;
+            }
+        }
+    }
+
+    Err(ErrMode::Backtrack(ContextError::new()))
 }
 
 /// Parse diagram type (component, sequence, etc.)
@@ -1120,7 +1178,21 @@ fn embedded_diagram<'src>(input: &mut Input<'src>) -> IResult<types::Element<'sr
 }
 
 /// Utility function to convert winnow errors to our custom error format
-fn convert_error(error: ErrMode<ContextError>) -> DiagnosticError {
+fn convert_error(
+    error: ErrMode<ContextError>,
+    start_offset: usize,
+    end_offset: usize,
+    tokens: &[PositionedToken],
+) -> DiagnosticError {
+    // Helper to find last meaningful token span in a slice
+    let last_meaningful_span = |slice: &[PositionedToken]| {
+        slice
+            .iter()
+            .rev()
+            .find(|t| !matches!(t.token, Token::Whitespace | Token::Newline))
+            .map(|t| t.span)
+    };
+
     match error {
         ErrMode::Backtrack(e) | ErrMode::Cut(e) => {
             // Extract context information for better error messages
@@ -1139,19 +1211,80 @@ fn convert_error(error: ErrMode<ContextError>) -> DiagnosticError {
                 contexts.join(", ")
             };
 
+            let end_offset = end_offset.min(tokens.len());
+            let start_offset = start_offset.min(end_offset).max(0);
+
+            // Calculate error span from token positions
+            let error_span = if start_offset < end_offset
+                && end_offset > 0
+                && matches!(tokens[end_offset - 1].token, Token::Semicolon)
+            {
+                // Catch-all consumed tokens ending with semicolon - invalid statement
+                // Find where the invalid statement starts
+                let mut statement_start = start_offset;
+
+                // Scan backward from before the semicolon to find previous semicolon
+                if end_offset >= 2
+                    && let Some(pos) = tokens[start_offset..end_offset - 1]
+                        .iter()
+                        .rposition(|t| matches!(t.token, Token::Semicolon))
+                {
+                    statement_start = start_offset + pos + 1;
+                    // Skip whitespace and newlines after previous semicolon
+                    statement_start = tokens[statement_start..end_offset - 1]
+                        .iter()
+                        .position(|t| !matches!(t.token, Token::Whitespace | Token::Newline))
+                        .map(|pos| statement_start + pos)
+                        .unwrap_or(statement_start);
+                }
+
+                // Ensure statement_start is valid
+                if statement_start >= end_offset {
+                    statement_start = start_offset;
+                }
+
+                // Span from statement start to last meaningful token BEFORE the semicolon
+                let first = tokens[statement_start].span;
+                let last =
+                    last_meaningful_span(&tokens[statement_start..end_offset - 1]).unwrap_or(first);
+                first.union(last)
+            } else if end_offset < tokens.len() {
+                // Error at current position
+                // If current token is a delimiter, point to previous meaningful token
+                // (e.g., missing semicolon before })
+                if matches!(
+                    tokens[end_offset].token,
+                    Token::RightBrace | Token::RightBracket
+                ) {
+                    last_meaningful_span(&tokens[..end_offset]).unwrap_or_default()
+                } else {
+                    tokens[end_offset].span
+                }
+            } else {
+                last_meaningful_span(&tokens[..end_offset + 1]).unwrap_or_default()
+            };
+
             DiagnosticError::from_span(
                 format!("Parse error: {message}"),
-                Span::default(), // TODO: Extract span from context if available
+                error_span,
                 "here",
                 Some("Check syntax and token positioning".to_string()),
             )
         }
-        ErrMode::Incomplete(_) => DiagnosticError::from_span(
-            "Incomplete input - more tokens expected".to_string(),
-            Span::default(), // TODO: Extract span from context if available
-            "here",
-            Some("Ensure input is complete".to_string()),
-        ),
+        ErrMode::Incomplete(_) => {
+            let error_span = if end_offset < tokens.len() {
+                tokens[end_offset].span
+            } else {
+                last_meaningful_span(tokens).unwrap_or_default()
+            };
+
+            DiagnosticError::from_span(
+                "Incomplete input - more tokens expected".to_string(),
+                error_span,
+                "here",
+                Some("Ensure input is complete".to_string()),
+            )
+        }
     }
 }
 
@@ -1161,18 +1294,21 @@ pub fn build_diagram<'src>(
 ) -> Result<Spanned<types::Element<'src>>, DiagnosticError> {
     let mut token_slice = TokenSlice::new(tokens);
 
+    let start_offset = tokens.len() - token_slice.eof_offset();
+
     match diagram.parse_next(&mut token_slice) {
         Ok(diagram) => {
-            let total_span = if tokens.is_empty() {
-                0..0
-            } else {
-                let first = tokens[0].span;
-                let last = tokens[tokens.len() - 1].span;
-                first.start()..last.end()
-            };
-            Ok(make_spanned(diagram, Span::new(total_span)))
+            let total_span = tokens
+                .first()
+                .and_then(|f| tokens.last().map(|l| l.span.union(f.span)))
+                .unwrap_or_default();
+
+            Ok(make_spanned(diagram, total_span))
         }
-        Err(e) => Err(convert_error(e)),
+        Err(e) => {
+            let end_offset = tokens.len() - token_slice.eof_offset();
+            Err(convert_error(e, start_offset, end_offset, tokens))
+        }
     }
 }
 
@@ -1208,7 +1344,7 @@ mod tests {
             .expect("at least one identifier expected for nested identifier");
         let last = id_spans.next_back().unwrap_or(first);
 
-        Span::new(first.start()..last.end())
+        first.union(last)
     }
 
     #[test]
