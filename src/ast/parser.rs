@@ -1,7 +1,7 @@
 use winnow::{
     Parser as _,
     combinator::{alt, delimited, opt, preceded, repeat, separated},
-    error::{ContextError, ErrMode, StrContext},
+    error::{ContextError, ErrMode},
     stream::{Stream, TokenSlice},
     token::any,
 };
@@ -16,8 +16,19 @@ use crate::{
     identifier::Id,
 };
 
+/// Context type for parser errors
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Context {
+    /// Description of what is currently being parsed
+    Label(&'static str),
+    /// Remaining token count (`eof_offset()`) at error start position
+    ///
+    /// Used to calculate start_offset as: `tokens.len() - start_offset_value`
+    StartOffset(usize),
+}
+
 type Input<'src> = FilamentTokenSlice<'src>;
-type IResult<O> = std::result::Result<O, ErrMode<ContextError>>;
+type IResult<O> = std::result::Result<O, ErrMode<ContextError<Context>>>;
 /// Type alias for winnow TokenSlice with our positioned tokens
 type FilamentTokenSlice<'src> = TokenSlice<'src, PositionedToken<'src>>;
 
@@ -30,12 +41,39 @@ fn cut_err<'src, O, F>(input: &mut Input<'src>, f: F) -> IResult<O>
 where
     F: FnOnce(&mut Input<'src>) -> IResult<O>,
 {
+    let start_remaining = input.eof_offset();
+
     match f(input) {
         Ok(o) => Ok(o),
-        Err(ErrMode::Backtrack(e)) | Err(ErrMode::Cut(e)) => Err(ErrMode::Cut(e)),
+        Err(ErrMode::Backtrack(mut e)) | Err(ErrMode::Cut(mut e)) => {
+            e.push(Context::StartOffset(start_remaining));
+            Err(ErrMode::Cut(e))
+        }
         Err(e) => Err(e),
     }
 }
+
+/// Helper to create a Cut error with StartOffset context
+fn cut_error_with_offset<'src>(input: &Input<'src>) -> ErrMode<ContextError<Context>> {
+    let mut e = ContextError::new();
+    e.push(Context::StartOffset(input.eof_offset()));
+    ErrMode::Cut(e)
+}
+
+/// Helper to create a Cut error with a specific StartOffset value
+fn cut_error_from_offset(start_offset: usize) -> ErrMode<ContextError<Context>> {
+    let mut e = ContextError::new();
+    e.push(Context::StartOffset(start_offset));
+    ErrMode::Cut(e)
+}
+
+/// Helper to create a Backtrack error with a specific StartOffset value
+fn backtrack_error_from_offset(start_offset: usize) -> ErrMode<ContextError<Context>> {
+    let mut e = ContextError::new();
+    e.push(Context::StartOffset(start_offset));
+    ErrMode::Backtrack(e)
+}
+
 /// Parse whitespace and comments
 fn ws_comment<'src>(input: &mut Input<'src>) -> IResult<()> {
     any.verify(|token: &PositionedToken<'_>| {
@@ -65,7 +103,7 @@ fn semicolon<'src>(input: &mut Input<'src>) -> IResult<()> {
         any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Semicolon))
             .void(),
     )
-    .context(StrContext::Label("semicolon"))
+    .context(Context::Label("semicolon"))
     .parse_next(input)
 }
 
@@ -84,7 +122,7 @@ fn raw_identifier<'src>(input: &mut Input<'src>) -> IResult<Spanned<&'src str>> 
         Token::As => Some(Spanned::new("As", token.span)),
         _ => None,
     })
-    .context(StrContext::Label("identifier"))
+    .context(Context::Label("identifier"))
     .parse_next(input)
 }
 
@@ -133,7 +171,7 @@ fn string_literal<'src>(input: &mut Input<'src>) -> IResult<Spanned<String>> {
         Token::StringLiteral(s) => Some(Spanned::new(s.clone(), token.span)),
         _ => None,
     })
-    .context(StrContext::Label("string literal"))
+    .context(Context::Label("string literal"))
     .parse_next(input)
 }
 
@@ -207,7 +245,7 @@ fn identifiers<'src>(input: &mut Input<'src>) -> IResult<Vec<Spanned<Id>>> {
             any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBracket)),
         ),
     )
-    .context(StrContext::Label("identifiers"))
+    .context(Context::Label("identifiers"))
     .parse_next(input)
 }
 
@@ -221,7 +259,7 @@ fn empty_brackets<'src>(input: &mut Input<'src>) -> IResult<()> {
         ws_comments0,
         any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBracket)),
     )
-    .context(StrContext::Label("empty brackets"))
+    .context(Context::Label("empty brackets"))
     .parse_next(input)
 }
 
@@ -256,7 +294,7 @@ fn attribute_value<'src>(input: &mut Input<'src>) -> IResult<types::AttributeVal
             _ => None,
         }),
     ))
-    .context(StrContext::Label("attribute value"))
+    .context(Context::Label("attribute value"))
     .parse_next(input)
 }
 
@@ -288,7 +326,7 @@ fn attributes<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Attribute<'sr
             ws_comments0,
         ),
     )
-    .context(StrContext::Label("attributes"))
+    .context(Context::Label("attributes"))
     .parse_next(input)
 }
 
@@ -305,7 +343,7 @@ fn wrapped_attributes<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Attri
             any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBracket)),
         ),
     )
-    .context(StrContext::Label("wrapped attributes"))
+    .context(Context::Label("wrapped attributes"))
     .parse_next(input)
 }
 
@@ -334,7 +372,7 @@ fn attribute_type_spec<'src>(input: &mut Input<'src>) -> IResult<types::TypeSpec
             })
         },
     ))
-    .context(StrContext::Label("attribute type spec"))
+    .context(Context::Label("attribute type spec"))
     .parse_next(input)
 }
 
@@ -382,7 +420,7 @@ fn invocation_type_spec<'src>(input: &mut Input<'src>) -> IResult<types::TypeSpe
         cut_err(input, |input| {
             ws_comments0.parse_next(input)?;
             identifier
-                .context(StrContext::Label("type name after @"))
+                .context(Context::Label("type name after @"))
                 .parse_next(input)
         })
     })
@@ -536,7 +574,7 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
 
         ws_comments0.parse_next(input)?;
         let target = nested_identifier
-            .context(StrContext::Label("target identifier after arrow"))
+            .context(Context::Label("target identifier after arrow"))
             .parse_next(input)?;
 
         ws_comments0.parse_next(input)?;
@@ -549,7 +587,7 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
         .parse_next(input)?;
 
         semicolon
-            .context(StrContext::Label("semicolon after relation"))
+            .context(Context::Label("semicolon after relation"))
             .parse_next(input)?;
 
         Ok(types::Element::Relation {
@@ -577,12 +615,12 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
 fn activate_block<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     // Parse "activate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Activate))
-        .context(StrContext::Label("activate keyword"))
+        .context(Context::Label("activate keyword"))
         .parse_next(input)?;
 
     // Require at least one space or comment after the keyword
     ws_comments1
-        .context(StrContext::Label("whitespace after activate"))
+        .context(Context::Label("whitespace after activate"))
         .parse_next(input)?;
 
     let type_spec = opt(invocation_type_spec)
@@ -592,35 +630,35 @@ fn activate_block<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>
     ws_comments0.parse_next(input)?;
 
     let component = nested_identifier
-        .context(StrContext::Label("component nested identifier"))
+        .context(Context::Label("component nested identifier"))
         .parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
 
     // Parse opening brace
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace))
-        .context(StrContext::Label("opening brace '{'"))
+        .context(Context::Label("opening brace '{'"))
         .parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
 
     // Parse nested elements
     let nested_elements = elements
-        .context(StrContext::Label("activate block content"))
+        .context(Context::Label("activate block content"))
         .parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
 
     // Parse closing brace
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace))
-        .context(StrContext::Label("closing brace '}'"))
+        .context(Context::Label("closing brace '}'"))
         .parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
 
     // Parse semicolon
     semicolon
-        .context(StrContext::Label("semicolon after activate block"))
+        .context(Context::Label("semicolon after activate block"))
         .parse_next(input)?;
 
     Ok(types::Element::ActivateBlock {
@@ -634,7 +672,7 @@ fn activate_block<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>
 fn section_block<'src>(input: &mut Input<'src>) -> IResult<types::FragmentSection<'src>> {
     // Parse "section" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Section))
-        .context(StrContext::Label("section keyword"))
+        .context(Context::Label("section keyword"))
         .parse_next(input)?;
 
     cut_err(input, |input| {
@@ -642,35 +680,35 @@ fn section_block<'src>(input: &mut Input<'src>) -> IResult<types::FragmentSectio
         ws_comments0.parse_next(input)?;
 
         // Optional section title as a spanned string literal
-        let title = opt(string_literal.context(StrContext::Label("section title string literal")))
+        let title = opt(string_literal.context(Context::Label("section title string literal")))
             .parse_next(input)?;
 
         ws_comments0.parse_next(input)?;
 
         // Parse opening brace
         any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace))
-            .context(StrContext::Label("opening brace '{'"))
+            .context(Context::Label("opening brace '{'"))
             .parse_next(input)?;
 
         ws_comments0.parse_next(input)?;
 
         // Parse nested elements inside the section
         let elems = elements
-            .context(StrContext::Label("section content"))
+            .context(Context::Label("section content"))
             .parse_next(input)?;
 
         ws_comments0.parse_next(input)?;
 
         // Parse closing brace
         any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace))
-            .context(StrContext::Label("closing brace '}'"))
+            .context(Context::Label("closing brace '}'"))
             .parse_next(input)?;
 
         ws_comments0.parse_next(input)?;
 
         // Parse semicolon after the section block
         semicolon
-            .context(StrContext::Label("semicolon after section"))
+            .context(Context::Label("semicolon after section"))
             .parse_next(input)?;
 
         Ok(types::FragmentSection {
@@ -688,12 +726,12 @@ fn parse_section_content<'src>(
 ) -> IResult<types::FragmentSection<'src>> {
     ws_comments0.parse_next(input)?;
 
-    let title = opt(string_literal.context(StrContext::Label(title_context))).parse_next(input)?;
+    let title = opt(string_literal.context(Context::Label(title_context))).parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
 
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace))
-        .context(StrContext::Label("opening brace '{'"))
+        .context(Context::Label("opening brace '{'"))
         .parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -703,7 +741,7 @@ fn parse_section_content<'src>(
     ws_comments0.parse_next(input)?;
 
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace))
-        .context(StrContext::Label("closing brace '}'"))
+        .context(Context::Label("closing brace '}'"))
         .parse_next(input)?;
 
     Ok(types::FragmentSection {
@@ -718,7 +756,7 @@ macro_rules! single_section_parser {
         fn $fn_name<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
             let keyword_token = any
                 .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::$token))
-                .context(StrContext::Label(concat!(stringify!($token), " keyword")))
+                .context(Context::Label(concat!(stringify!($token), " keyword")))
                 .parse_next(input)?;
             let keyword_span = keyword_token.span;
 
@@ -733,7 +771,7 @@ macro_rules! single_section_parser {
 
                 ws_comments0.parse_next(input)?;
                 semicolon
-                    .context(StrContext::Label(concat!(
+                    .context(Context::Label(concat!(
                         "semicolon after ",
                         stringify!($token),
                         " block"
@@ -756,7 +794,7 @@ macro_rules! multi_section_parser {
         fn $fn_name<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
             let keyword_token = any
                 .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::$first_token))
-                .context(StrContext::Label(concat!(
+                .context(Context::Label(concat!(
                     stringify!($first_token),
                     " keyword"
                 )))
@@ -790,7 +828,7 @@ macro_rules! multi_section_parser {
 
                 ws_comments0.parse_next(input)?;
                 semicolon
-                    .context(StrContext::Label(concat!(
+                    .context(Context::Label(concat!(
                         "semicolon after ",
                         stringify!($first_token),
                         " block"
@@ -828,7 +866,7 @@ multi_section_parser!(par_block, Par, Par, "par title", "par title", ParBlock);
 fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     // Parse "fragment" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Fragment))
-        .context(StrContext::Label("fragment keyword"))
+        .context(Context::Label("fragment keyword"))
         .parse_next(input)?;
 
     cut_err(input, |input| {
@@ -842,35 +880,35 @@ fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>
 
         // Parse the fragment operation (title) as a spanned string literal
         let operation = string_literal
-            .context(StrContext::Label("fragment operation string literal"))
+            .context(Context::Label("fragment operation string literal"))
             .parse_next(input)?;
 
         ws_comments0.parse_next(input)?;
 
         // Parse opening brace
         any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace))
-            .context(StrContext::Label("opening brace '{'"))
+            .context(Context::Label("opening brace '{'"))
             .parse_next(input)?;
 
         ws_comments0.parse_next(input)?;
 
         // Parse one or more sections
         let sections = repeat(1.., preceded(ws_comments0, section_block))
-            .context(StrContext::Label("fragment sections"))
+            .context(Context::Label("fragment sections"))
             .parse_next(input)?;
 
         ws_comments0.parse_next(input)?;
 
         // Parse closing brace
         any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace))
-            .context(StrContext::Label("closing brace '}'"))
+            .context(Context::Label("closing brace '}'"))
             .parse_next(input)?;
 
         ws_comments0.parse_next(input)?;
 
         // Parse semicolon after the fragment block
         semicolon
-            .context(StrContext::Label("semicolon after fragment"))
+            .context(Context::Label("semicolon after fragment"))
             .parse_next(input)?;
 
         Ok(types::Element::Fragment(types::Fragment {
@@ -893,11 +931,11 @@ fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>
 fn activate_statement<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     // Parse "activate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Activate))
-        .context(StrContext::Label("activate keyword"))
+        .context(Context::Label("activate keyword"))
         .parse_next(input)?;
 
     ws_comments1
-        .context(StrContext::Label("whitespace after activate"))
+        .context(Context::Label("whitespace after activate"))
         .parse_next(input)?;
 
     let type_spec = opt(invocation_type_spec)
@@ -907,13 +945,13 @@ fn activate_statement<'src>(input: &mut Input<'src>) -> IResult<types::Element<'
     ws_comments0.parse_next(input)?;
 
     let component = nested_identifier
-        .context(StrContext::Label("component nested identifier"))
+        .context(Context::Label("component nested identifier"))
         .parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
 
     semicolon
-        .context(StrContext::Label("semicolon after activate statement"))
+        .context(Context::Label("semicolon after activate statement"))
         .parse_next(input)?;
 
     Ok(types::Element::Activate {
@@ -926,21 +964,21 @@ fn activate_statement<'src>(input: &mut Input<'src>) -> IResult<types::Element<'
 fn deactivate_statement<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     // Parse "deactivate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Deactivate))
-        .context(StrContext::Label("deactivate keyword"))
+        .context(Context::Label("deactivate keyword"))
         .parse_next(input)?;
 
     ws_comments1
-        .context(StrContext::Label("whitespace after deactivate"))
+        .context(Context::Label("whitespace after deactivate"))
         .parse_next(input)?;
 
     let component = nested_identifier
-        .context(StrContext::Label("component nested identifier"))
+        .context(Context::Label("component nested identifier"))
         .parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
 
     semicolon
-        .context(StrContext::Label("semicolon after deactivate statement"))
+        .context(Context::Label("semicolon after deactivate statement"))
         .parse_next(input)?;
 
     Ok(types::Element::Deactivate { component })
@@ -981,7 +1019,7 @@ fn note_element<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> 
     // Parse 'note' keyword
     let _ = any
         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Note))
-        .context(StrContext::Label("note keyword"))
+        .context(Context::Label("note keyword"))
         .parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -995,7 +1033,7 @@ fn note_element<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> 
     // Parse colon separator
     let _ = any
         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Colon))
-        .context(StrContext::Label("colon"))
+        .context(Context::Label("colon"))
         .parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -1046,6 +1084,7 @@ fn invalid_statement_with_semicolon<'src>(
     input: &mut Input<'src>,
 ) -> IResult<types::Element<'src>> {
     let mut consumed_meaningful_tokens = false;
+    let start_offset = input.eof_offset();
 
     // Consume tokens until we find semicolon or hit a block delimiter
     loop {
@@ -1066,13 +1105,13 @@ fn invalid_statement_with_semicolon<'src>(
                 if matches!(token.token, Token::RightBrace | Token::RightBracket) {
                     input.reset(&checkpoint);
                     if consumed_meaningful_tokens {
-                        return Err(ErrMode::Cut(ContextError::new()));
+                        return Err(cut_error_from_offset(start_offset));
                     }
                     break;
                 }
 
                 if matches!(token.token, Token::Semicolon) {
-                    return Err(ErrMode::Cut(ContextError::new()));
+                    return Err(cut_error_from_offset(start_offset));
                 }
             }
             Err(_) => {
@@ -1082,7 +1121,7 @@ fn invalid_statement_with_semicolon<'src>(
         }
     }
 
-    Err(ErrMode::Backtrack(ContextError::new()))
+    Err(backtrack_error_from_offset(start_offset))
 }
 
 /// Parse diagram type (component, sequence, etc.)
@@ -1092,7 +1131,7 @@ fn diagram_type<'src>(input: &mut Input<'src>) -> IResult<Spanned<types::Diagram
         Token::Sequence => Some(make_spanned(types::DiagramKind::Sequence, token.span)),
         _ => None,
     })
-    .context(StrContext::Label("diagram type"))
+    .context(Context::Label("diagram type"))
     .parse_next(input)
 }
 
@@ -1130,7 +1169,7 @@ fn diagram<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
 
     // Check if we've consumed all tokens (equivalent to `end()` in chumsky)
     if !input.is_empty() {
-        return Err(ErrMode::Cut(ContextError::new()));
+        return Err(cut_error_with_offset(input));
     }
 
     Ok(types::Element::Diagram(types::Diagram {
@@ -1178,20 +1217,26 @@ fn embedded_diagram<'src>(input: &mut Input<'src>) -> IResult<types::Element<'sr
 }
 
 /// Utility function to convert winnow errors to our custom error format
+///
+/// Extracts position information from error context (StartOffset) and calculates
+/// precise error spans using the token array.
 fn convert_error(
-    error: ErrMode<ContextError>,
-    start_offset: usize,
-    end_offset: usize,
+    error: ErrMode<ContextError<Context>>,
     tokens: &[PositionedToken],
+    current_remaining: usize,
 ) -> DiagnosticError {
-    // Helper to find last meaningful token span in a slice
-    let last_meaningful_span = |slice: &[PositionedToken]| {
-        slice
-            .iter()
-            .rev()
-            .find(|t| !matches!(t.token, Token::Whitespace | Token::Newline))
-            .map(|t| t.span)
+    // Extract start offset from error context if available
+    let start_remaining = match &error {
+        ErrMode::Backtrack(e) | ErrMode::Cut(e) => e.context().find_map(|ctx| match ctx {
+            Context::StartOffset(n) => Some(*n),
+            _ => None,
+        }),
+        _ => None,
     };
+
+    // Calculate offsets from remaining token counts
+    let end_offset = tokens.len() - current_remaining;
+    let start_offset = start_remaining.map(|r| tokens.len() - r).unwrap_or(0);
 
     match error {
         ErrMode::Backtrack(e) | ErrMode::Cut(e) => {
@@ -1199,8 +1244,7 @@ fn convert_error(
             let contexts: Vec<String> = e
                 .context()
                 .filter_map(|ctx| match ctx {
-                    StrContext::Label(label) => Some(format!("expected {label}")),
-                    StrContext::Expected(exp) => Some(format!("expected {exp}")),
+                    Context::Label(label) => Some(format!("expected {label}")),
                     _ => None,
                 })
                 .collect();
@@ -1208,60 +1252,46 @@ fn convert_error(
             let message = if contexts.is_empty() {
                 "unexpected token or end of input".to_string()
             } else {
-                contexts.join(", ")
+                contexts.join(" → ")
             };
 
-            let end_offset = end_offset.min(tokens.len());
-            let start_offset = start_offset.min(end_offset).max(0);
-
             // Calculate error span from token positions
-            let error_span = if start_offset < end_offset
-                && end_offset > 0
-                && matches!(tokens[end_offset - 1].token, Token::Semicolon)
-            {
-                // Catch-all consumed tokens ending with semicolon - invalid statement
-                // Find where the invalid statement starts
-                let mut statement_start = start_offset;
-
-                // Scan backward from before the semicolon to find previous semicolon
-                if end_offset >= 2
-                    && let Some(pos) = tokens[start_offset..end_offset - 1]
-                        .iter()
-                        .rposition(|t| matches!(t.token, Token::Semicolon))
-                {
-                    statement_start = start_offset + pos + 1;
-                    // Skip whitespace and newlines after previous semicolon
-                    statement_start = tokens[statement_start..end_offset - 1]
-                        .iter()
-                        .position(|t| !matches!(t.token, Token::Whitespace | Token::Newline))
-                        .map(|pos| statement_start + pos)
-                        .unwrap_or(statement_start);
-                }
-
-                // Ensure statement_start is valid
-                if statement_start >= end_offset {
-                    statement_start = start_offset;
-                }
-
-                // Span from statement start to last meaningful token BEFORE the semicolon
-                let first = tokens[statement_start].span;
-                let last =
-                    last_meaningful_span(&tokens[statement_start..end_offset - 1]).unwrap_or(first);
-                first.union(last)
-            } else if end_offset < tokens.len() {
-                // Error at current position
-                // If current token is a delimiter, point to previous meaningful token
-                // (e.g., missing semicolon before })
-                if matches!(
-                    tokens[end_offset].token,
-                    Token::RightBrace | Token::RightBracket
-                ) {
-                    last_meaningful_span(&tokens[..end_offset]).unwrap_or_default()
+            // Determine the range to examine based on error type
+            let error_span = {
+                let examine_range = if start_offset < end_offset {
+                    // Parser consumed tokens - examine that range
+                    start_offset..end_offset
+                } else if end_offset < tokens.len() {
+                    if matches!(
+                        tokens[end_offset].token,
+                        Token::RightBrace | Token::RightBracket
+                    ) {
+                        // At delimiter without consuming - examine everything before it
+                        // (e.g., missing semicolon before })
+                        0..end_offset
+                    } else {
+                        // At specific non-delimiter token - examine just that token
+                        end_offset..end_offset + 1
+                    }
                 } else {
-                    tokens[end_offset].span
-                }
-            } else {
-                last_meaningful_span(&tokens[..end_offset + 1]).unwrap_or_default()
+                    // EOF - examine all tokens
+                    0..tokens.len()
+                };
+
+                // Extract meaningful spans from the range and union them
+                let slice = &tokens[examine_range];
+                let first = slice
+                    .iter()
+                    .find(|t| !matches!(t.token, Token::Whitespace | Token::Newline))
+                    .map(|t| t.span)
+                    .unwrap_or(slice[0].span);
+                let last = slice
+                    .iter()
+                    .rev()
+                    .find(|t| !matches!(t.token, Token::Whitespace | Token::Newline))
+                    .map(|t| t.span)
+                    .unwrap_or(slice[slice.len() - 1].span);
+                first.union(last)
             };
 
             DiagnosticError::from_span(
@@ -1272,10 +1302,16 @@ fn convert_error(
             )
         }
         ErrMode::Incomplete(_) => {
+            // This should not happen as we are not supporting streaming input.
             let error_span = if end_offset < tokens.len() {
                 tokens[end_offset].span
             } else {
-                last_meaningful_span(tokens).unwrap_or_default()
+                tokens
+                    .iter()
+                    .rev()
+                    .find(|t| !matches!(t.token, Token::Whitespace | Token::Newline))
+                    .map(|t| t.span)
+                    .unwrap_or(tokens[tokens.len() - 1].span)
             };
 
             DiagnosticError::from_span(
@@ -1294,8 +1330,6 @@ pub fn build_diagram<'src>(
 ) -> Result<Spanned<types::Element<'src>>, DiagnosticError> {
     let mut token_slice = TokenSlice::new(tokens);
 
-    let start_offset = tokens.len() - token_slice.eof_offset();
-
     match diagram.parse_next(&mut token_slice) {
         Ok(diagram) => {
             let total_span = tokens
@@ -1306,8 +1340,8 @@ pub fn build_diagram<'src>(
             Ok(make_spanned(diagram, total_span))
         }
         Err(e) => {
-            let end_offset = tokens.len() - token_slice.eof_offset();
-            Err(convert_error(e, start_offset, end_offset, tokens))
+            let current_remaining = token_slice.eof_offset();
+            Err(convert_error(e, tokens, current_remaining))
         }
     }
 }
@@ -1345,6 +1379,14 @@ mod tests {
         let last = id_spans.next_back().unwrap_or(first);
 
         first.union(last)
+    }
+
+    /// Helper to create a token at a specific position
+    fn make_token<'a>(token: Token<'a>, offset: usize, length: usize) -> PositionedToken<'a> {
+        PositionedToken {
+            token,
+            span: Span::new(offset..offset + length),
+        }
     }
 
     #[test]
@@ -3110,6 +3152,187 @@ mod tests {
         } else {
             panic!("Expected Note element");
         }
+    }
+
+    #[test]
+    fn test_convert_error_consumed_tokens() {
+        // Test Case: Parser consumed tokens before failing
+        // Tokens: ["a", "->", "b"]
+        // Consumed: all three (indices 0..3)
+        // Expected: span covering "a -> b"
+        let tokens = vec![
+            make_token(Token::Identifier("a"), 0, 1),
+            make_token(Token::Arrow_, 2, 2),
+            make_token(Token::Identifier("b"), 5, 1),
+        ];
+
+        let mut err = ContextError::new();
+        err.push(Context::StartOffset(3)); // Started with 3 tokens remaining
+        err.push(Context::Label("semicolon"));
+
+        let result = convert_error(
+            ErrMode::Cut(err),
+            &tokens,
+            0, // No tokens remaining
+        );
+
+        // Should span from first token to last token
+        // Span union: (0..1) union (5..6) = (0..6), which has length 6
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("Parse error: expected semicolon"));
+    }
+
+    #[test]
+    fn test_convert_error_delimiter_at_position() {
+        // Test Case: Error at delimiter without consuming tokens
+        // Tokens: ["a", ";", "}"]
+        // At index 2 ("}"), should point to previous meaningful token
+        let tokens = vec![
+            make_token(Token::Identifier("a"), 0, 1),
+            make_token(Token::Semicolon, 1, 1),
+            make_token(Token::RightBrace, 3, 1),
+        ];
+
+        let mut err = ContextError::new();
+        err.push(Context::StartOffset(1)); // Started at the "}" position
+        err.push(Context::Label("component"));
+
+        let result = convert_error(
+            ErrMode::Cut(err),
+            &tokens,
+            1, // One token remaining (the "}")
+        );
+
+        // Should point to previous tokens (everything before "}"), which is "a" and ";"
+        // Span union: (0..1) union (1..2) = (0..2), which has length 2
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("offset: SourceOffset(0)"));
+        assert!(debug.contains("length: 2"));
+    }
+
+    #[test]
+    fn test_convert_error_non_delimiter_at_position() {
+        // Test Case: Error at non-delimiter token
+        // Tokens: ["diagram", "component", ";", ":"]
+        // At index 3 (":"), should point directly at it
+        let tokens = vec![
+            make_token(Token::Diagram, 0, 7),
+            make_token(Token::Whitespace, 7, 1),
+            make_token(Token::Component, 8, 9),
+            make_token(Token::Semicolon, 17, 1),
+            make_token(Token::Colon, 19, 1),
+        ];
+
+        let mut err = ContextError::new();
+        err.push(Context::StartOffset(1)); // Started at current position
+
+        let result = convert_error(
+            ErrMode::Cut(err),
+            &tokens,
+            1, // One token remaining (the ":")
+        );
+
+        // Should point directly at the ":" token
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("offset: SourceOffset(19)"));
+        assert!(debug.contains("length: 1"));
+    }
+
+    #[test]
+    fn test_convert_error_eof() {
+        // Test Case: Error at EOF
+        // Should use last meaningful token
+        let tokens = vec![
+            make_token(Token::Identifier("a"), 0, 1),
+            make_token(Token::Arrow_, 2, 2),
+            make_token(Token::Whitespace, 4, 1),
+        ];
+
+        let mut err = ContextError::new();
+        err.push(Context::StartOffset(0)); // Started at EOF
+        err.push(Context::Label("semicolon"));
+
+        let result = convert_error(
+            ErrMode::Cut(err),
+            &tokens,
+            0, // No tokens remaining (EOF)
+        );
+
+        // Should span from first meaningful ("a") to last meaningful (arrow)
+        // Span union: (0..1) union (2..4) = (0..4), which has length 4
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("offset: SourceOffset(0)"));
+        assert!(debug.contains("length: 4"));
+    }
+
+    #[test]
+    fn test_convert_error_skip_whitespace() {
+        // Test Case: Consumed range with whitespace
+        // Should skip whitespace and union first/last meaningful tokens
+        let tokens = vec![
+            make_token(Token::Whitespace, 0, 2),
+            make_token(Token::Identifier("a"), 2, 1),
+            make_token(Token::Whitespace, 3, 1),
+            make_token(Token::Arrow_, 4, 2),
+            make_token(Token::Whitespace, 6, 1),
+            make_token(Token::Identifier("b"), 7, 1),
+            make_token(Token::Newline, 8, 1),
+        ];
+
+        let mut err = ContextError::new();
+        err.push(Context::StartOffset(7)); // Started at beginning
+        err.push(Context::Label("semicolon"));
+
+        let result = convert_error(
+            ErrMode::Cut(err),
+            &tokens,
+            0, // Consumed all tokens
+        );
+
+        // Should span from first meaningful ("a" at 2) to last meaningful ("b" at 7)
+        // Span union: (2..3) union (7..8) = (2..8), which has length 6
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("offset: SourceOffset(2)"));
+        assert!(debug.contains("length: 6"));
+    }
+
+    #[test]
+    fn test_convert_error_no_start_offset_fallback() {
+        // Test Case: Error without StartOffset context (fallback to 0)
+        let tokens = vec![
+            make_token(Token::Identifier("a"), 0, 1),
+            make_token(Token::Arrow_, 2, 2),
+        ];
+
+        let err = ContextError::new(); // No StartOffset!
+
+        let result = convert_error(
+            ErrMode::Cut(err),
+            &tokens,
+            0, // No tokens remaining
+        );
+
+        // Should fallback to start_offset=0 and span from beginning
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("offset: SourceOffset(0)"));
+        assert!(debug.contains("length: 4")); // (0..1) union (2..4) = (0..4)
+    }
+
+    #[test]
+    fn test_convert_error_multiple_context_labels() {
+        // Test Case: Multiple context labels should be joined with " → "
+        let tokens = vec![make_token(Token::Identifier("a"), 0, 1)];
+
+        let mut err = ContextError::new();
+        err.push(Context::StartOffset(1));
+        err.push(Context::Label("semicolon"));
+        err.push(Context::Label("component"));
+
+        let result = convert_error(ErrMode::Cut(err), &tokens, 0);
+
+        // Should join labels with arrow separator
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("expected semicolon → expected component"));
     }
 
     #[test]
