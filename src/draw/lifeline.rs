@@ -20,10 +20,10 @@
 
 use std::rc::Rc;
 
-use svg::{self, node::element as svg_element};
+use svg::node::element as svg_element;
 
 use crate::{
-    draw::{Drawable, StrokeDefinition},
+    draw::{Drawable, LayeredOutput, RenderLayer, StrokeDefinition},
     geometry::{Point, Size},
 };
 
@@ -99,7 +99,9 @@ impl Lifeline {
 }
 
 impl Drawable for Lifeline {
-    fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
+    fn render_to_layers(&self, position: Point) -> LayeredOutput {
+        let mut output = LayeredOutput::new();
+
         // The lifeline renders as a vertical line from the given position
         // extending downward by its height
         let line = svg_element::Line::new()
@@ -111,7 +113,8 @@ impl Drawable for Lifeline {
 
         let line = crate::apply_stroke!(line, self.definition.stroke());
 
-        Box::new(line)
+        output.add_to_layer(RenderLayer::Lifelines, Box::new(line));
+        output
     }
 
     fn size(&self) -> Size {

@@ -24,7 +24,7 @@ use svg::{self, node::element as svg_element};
 
 use crate::{
     color::Color,
-    draw::{Drawable, StrokeDefinition, Text, TextDefinition},
+    draw::{Drawable, LayeredOutput, RenderLayer, StrokeDefinition, Text, TextDefinition},
     geometry::{Bounds, Insets, Point, Size},
 };
 
@@ -327,8 +327,8 @@ impl Fragment {
 }
 
 impl Drawable for Fragment {
-    fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
-        let mut group = svg_element::Group::new();
+    fn render_to_layers(&self, position: Point) -> LayeredOutput {
+        let mut output = LayeredOutput::new();
         let padding = self.definition.content_padding();
         let bounds_padding = self.definition.bounds_padding();
 
@@ -346,7 +346,7 @@ impl Drawable for Fragment {
                 .set("height", bounds.height())
                 .set("fill", bg_color.to_string())
                 .set("fill-opacity", bg_color.alpha());
-            group = group.add(background);
+            output.add_to_layer(RenderLayer::Background, Box::new(background));
         }
 
         // 2. Render border
@@ -358,7 +358,7 @@ impl Drawable for Fragment {
             .set("fill", "none");
 
         let border = crate::apply_stroke!(border, self.definition.border_stroke());
-        group = group.add(border);
+        output.add_to_layer(RenderLayer::Foreground, Box::new(border));
 
         // 3. Render operation label in upper-left corner as pentagonal tab
         // First, measure the text to determine pentagon size
@@ -374,8 +374,9 @@ impl Drawable for Fragment {
             .definition
             .create_pentagon_path(pentagon_content_bounds);
 
-        group = group.add(pentagon);
-        group = group.add(operation_text.render_to_svg(pentagon_content_bounds.center()));
+        output.add_to_layer(RenderLayer::Foreground, Box::new(pentagon));
+        let op_text_output = operation_text.render_to_layers(pentagon_content_bounds.center());
+        output.merge(op_text_output);
 
         // 4. Render section separators and titles
         let mut current_y = pentagon_bounds.max_y();
@@ -391,7 +392,7 @@ impl Drawable for Fragment {
                     .set("y2", current_y);
 
                 let separator = crate::apply_stroke!(separator, self.definition.separator_stroke());
-                group = group.add(separator);
+                output.add_to_layer(RenderLayer::Foreground, Box::new(separator));
             }
 
             // Render section title if present (wrapped in square brackets per UML 2.5)
@@ -417,14 +418,15 @@ impl Drawable for Fragment {
                     )
                 };
 
-                group = group.add(title_text.render_to_svg(title_position));
+                let title_output = title_text.render_to_layers(title_position);
+                output.merge(title_output);
             }
 
             // Move to next section position
             current_y += section.height();
         }
 
-        group.into()
+        output
     }
 
     fn size(&self) -> Size {
@@ -518,9 +520,10 @@ mod tests {
         assert_eq!(fragment.size(), Size::new(300.0, 200.0));
 
         let position = Point::new(50.0, 100.0);
-        let svg_node = fragment.render_to_svg(position);
+        let output = fragment.render_to_layers(position);
 
-        // Basic smoke test - verify it returns a valid SVG node without panicking
-        drop(svg_node);
+        // Basic smoke test - verify it returns a valid LayeredOutput without panicking
+        let svg_nodes = output.render();
+        assert!(!svg_nodes.is_empty());
     }
 }

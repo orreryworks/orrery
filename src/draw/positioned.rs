@@ -1,7 +1,7 @@
 //! Provides `PositionedDrawable`, a wrapper for a Drawable and its absolute position.
 
 use crate::{
-    draw::Drawable,
+    draw::{Drawable, LayeredOutput},
     geometry::{Bounds, Point, Size},
 };
 
@@ -29,9 +29,9 @@ impl<D: Drawable> PositionedDrawable<D> {
         self
     }
 
-    /// Render this positioned drawable to SVG, using the inner drawable\'s implementation.
-    pub fn render_to_svg(&self) -> Box<dyn svg::Node> {
-        self.drawable.render_to_svg(self.position)
+    /// Render this positioned drawable to layers, using the inner drawable's implementation.
+    pub fn render_to_layers(&self) -> LayeredOutput {
+        self.drawable.render_to_layers(self.position)
     }
 
     /// Calculate the bounds of this positioned drawable.
@@ -64,9 +64,9 @@ impl<'a> PositionedDrawable<crate::draw::ShapeWithText<'a>> {
 }
 
 impl<D: Drawable> Drawable for PositionedDrawable<D> {
-    fn render_to_svg(&self, _position: Point) -> Box<dyn svg::Node> {
+    fn render_to_layers(&self, _position: Point) -> LayeredOutput {
         // Ignore the passed position and use our stored position
-        self.render_to_svg()
+        self.render_to_layers()
     }
 
     fn size(&self) -> Size {

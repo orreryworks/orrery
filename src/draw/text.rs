@@ -2,14 +2,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
 use log::info;
-use svg::{
-    self,
-    node::{Text as SvgText, element as svg_element},
-};
+use svg::{self, node::Text as SvgText, node::element as svg_element};
 
 use crate::{
     color::Color,
-    draw::Drawable,
+    draw::{Drawable, LayeredOutput, RenderLayer},
     geometry::{Insets, Point, Size},
 };
 
@@ -179,7 +176,8 @@ impl<'a> Text<'a> {
 }
 
 impl<'a> Drawable for Text<'a> {
-    fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
+    fn render_to_layers(&self, position: Point) -> LayeredOutput {
+        let mut output = LayeredOutput::new();
         let text_size = self.calculate_size();
         let padding = self.definition.padding();
 
@@ -234,13 +232,11 @@ impl<'a> Drawable for Text<'a> {
                 .set("fill-opacity", bg_color.alpha())
                 .set("rx", 3.0); // Slightly rounded corners
 
-            let mut group = svg_element::Group::new();
-            group = group.add(bg);
-            group = group.add(rendered_text);
-            return group.into();
+            output.add_to_layer(RenderLayer::Background, Box::new(bg));
         }
 
-        rendered_text.into()
+        output.add_to_layer(RenderLayer::Text, Box::new(rendered_text));
+        output
     }
 
     fn size(&self) -> Size {

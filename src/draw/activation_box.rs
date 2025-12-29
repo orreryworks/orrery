@@ -24,7 +24,7 @@ use svg::{self, node::element as svg_element};
 
 use crate::{
     color::Color,
-    draw::{Drawable, StrokeDefinition},
+    draw::{Drawable, LayeredOutput, RenderLayer, StrokeDefinition},
     geometry::{Bounds, Point, Size},
 };
 
@@ -172,7 +172,8 @@ impl Drawable for ActivationBox {
     /// The position represents the center point where the activation box should be anchored.
     /// The actual rendering position is offset based on the nesting level.
     /// The box is rendered as a rectangle with styling from the definition.
-    fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
+    fn render_to_layers(&self, position: Point) -> LayeredOutput {
+        let mut output = LayeredOutput::new();
         let def = self.definition();
 
         let bounds = self.calculate_bounds(position);
@@ -190,7 +191,8 @@ impl Drawable for ActivationBox {
         // Apply all stroke attributes (color, opacity, width, cap, join, dasharray)
         let activation_rect = crate::apply_stroke!(activation_rect, def.stroke());
 
-        activation_rect.into()
+        output.add_to_layer(RenderLayer::Activations, Box::new(activation_rect));
+        output
     }
 
     /// Returns the size of the activation box.
@@ -239,7 +241,7 @@ mod tests {
 
         // Test that nesting level 2 with offset 4.0 creates 8.0 total offset
         let base_position = Point::new(100.0, 200.0);
-        let _rendered_svg = activation_box.render_to_svg(base_position);
+        let _rendered_output = activation_box.render_to_layers(base_position);
 
         // The actual positioning logic is tested through SVG output
         // Here we verify the activation box holds correct nesting data
@@ -248,16 +250,17 @@ mod tests {
     }
 
     #[test]
-    fn test_render_to_svg_returns_valid_node() {
+    fn test_render_to_layers_returns_valid_output() {
         let activation_box =
             ActivationBox::new(Rc::new(ActivationBoxDefinition::default()), 100.0, 0);
         let position = Point::new(50.0, 75.0);
 
-        let svg_node = activation_box.render_to_svg(position);
+        let output = activation_box.render_to_layers(position);
 
-        // Verify we get a valid SVG node (basic smoke test - no panic means success)
-        // The Box<dyn svg::Node> cannot be null in safe Rust, so just getting here is sufficient
-        drop(svg_node);
+        // Verify we get a valid LayeredOutput with nodes
+        assert!(!output.is_empty());
+        let svg_nodes = output.render();
+        assert!(!svg_nodes.is_empty());
     }
 
     #[test]

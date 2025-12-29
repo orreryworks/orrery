@@ -1,31 +1,31 @@
-use svg::node::element as svg_element;
-
 use super::Svg;
 use crate::{
-    draw::{self, Drawable as _},
+    draw::{self, Drawable as _, LayeredOutput},
     geometry::{Bounds, Point},
     layout::{layer::ContentStack, sequence},
 };
 
 impl Svg {
-    pub fn render_participant(&self, participant: &sequence::Participant) -> Box<dyn svg::Node> {
-        let group = svg_element::Group::new();
+    pub fn render_participant(&self, participant: &sequence::Participant) -> LayeredOutput {
+        let mut output = LayeredOutput::new();
         let component = participant.component();
 
         // Use the renderer to generate the SVG for the participant
-        let shape_group = component.drawable().render_to_svg();
+        let shape_output = component.drawable().render_to_layers();
+        output.merge(shape_output);
 
         // Render the pre-positioned lifeline from the participant
-        let lifeline_svg = participant.lifeline().render_to_svg();
+        let lifeline_output = participant.lifeline().render_to_layers();
+        output.merge(lifeline_output);
 
-        group.add(shape_group).add(lifeline_svg).into()
+        output
     }
 
     pub fn render_message(
         &mut self,
         message: &sequence::Message,
         layout: &sequence::Layout,
-    ) -> Box<dyn svg::Node> {
+    ) -> LayeredOutput {
         let source = &layout.participants()[&message.source()];
         let target = &layout.participants()[&message.target()];
         let message_y = message.y_position();
@@ -72,8 +72,8 @@ impl Svg {
     pub fn render_fragment(
         &self,
         fragment: &draw::PositionedDrawable<draw::Fragment>,
-    ) -> Box<dyn svg::Node> {
-        fragment.render_to_svg()
+    ) -> LayeredOutput {
+        fragment.render_to_layers()
     }
 
     /// Render a note in a sequence diagram.
@@ -85,15 +85,15 @@ impl Svg {
     ///
     /// # Returns
     /// A boxed SVG node representing the note
-    pub fn render_note(&self, note: &draw::PositionedDrawable<draw::Note>) -> Box<dyn svg::Node> {
-        note.render_to_svg()
+    pub fn render_note(&self, note: &draw::PositionedDrawable<draw::Note>) -> LayeredOutput {
+        note.render_to_layers()
     }
 
     pub fn render_activation_box(
         &self,
         activation_box: &sequence::ActivationBox,
         layout: &sequence::Layout,
-    ) -> Box<dyn svg::Node> {
+    ) -> LayeredOutput {
         // Calculate the center position for the activation box
         let participant = &layout.participants()[&activation_box.participant_id()];
         let participant_position = participant.component().position();
@@ -101,7 +101,7 @@ impl Svg {
         let position = participant_position.with_y(center_y);
 
         // Use the drawable to render the activation box
-        activation_box.drawable().render_to_svg(position)
+        activation_box.drawable().render_to_layers(position)
     }
 
     pub fn calculate_sequence_diagram_bounds(

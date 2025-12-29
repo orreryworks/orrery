@@ -3,6 +3,7 @@ use svg::{self, node::element as svg_element};
 
 use super::Svg;
 use crate::{
+    draw::LayeredOutput,
     geometry::Bounds,
     layout::{
         component,
@@ -229,41 +230,41 @@ impl Svg {
 
     /// Render component-specific content
     fn render_component_content(&mut self, content: &component::Layout) -> Vec<Box<dyn svg::Node>> {
-        let mut groups = Vec::with_capacity(content.components().len() + content.relations().len());
+        let mut output = LayeredOutput::new();
+
         // Render all components within this positioned content
         for component in content.components() {
-            groups.push(self.render_component(component));
+            let component_output = self.render_component(component);
+            output.merge(component_output);
         }
 
         // Render all relations within this positioned content
         for relation in content.relations() {
-            groups.push(self.render_relation(
+            let relation_output = self.render_relation(
                 content.source(relation),
                 content.target(relation),
                 relation.arrow_with_text(),
-            ));
+            );
+            output.merge(relation_output);
         }
-        groups
+
+        output.render()
     }
 
     /// Render sequence-specific content
     fn render_sequence_content(&mut self, content: &sequence::Layout) -> Vec<Box<dyn svg::Node>> {
-        let mut groups = Vec::with_capacity(
-            content.participants().len()
-                + content.messages().len()
-                + content.activations().len()
-                + content.fragments().len()
-                + content.notes().len(),
-        );
+        let mut output = LayeredOutput::new();
 
         // Render all participants within this positioned content
         for participant in content.participants().values() {
-            groups.push(self.render_participant(participant));
+            let participant_output = self.render_participant(participant);
+            output.merge(participant_output);
         }
 
         // Render all fragments within this positioned content
         for fragment in content.fragments() {
-            groups.push(self.render_fragment(fragment));
+            let fragment_output = self.render_fragment(fragment);
+            output.merge(fragment_output);
         }
 
         // Render all activation boxes within this positioned content
@@ -272,19 +273,22 @@ impl Svg {
         sorted_activations.sort_by_key(|activation_box| activation_box.drawable().nesting_level());
 
         for activation_box in sorted_activations {
-            groups.push(self.render_activation_box(activation_box, content));
+            let activation_output = self.render_activation_box(activation_box, content);
+            output.merge(activation_output);
         }
 
         // Render all notes within this positioned content
         for note in content.notes() {
-            groups.push(self.render_note(note));
+            let note_output = self.render_note(note);
+            output.merge(note_output);
         }
 
         // Render all messages within this positioned content
         for message in content.messages() {
-            groups.push(self.render_message(message, content));
+            let message_output = self.render_message(message, content);
+            output.merge(message_output);
         }
 
-        groups
+        output.render()
     }
 }

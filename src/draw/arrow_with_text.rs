@@ -1,7 +1,5 @@
-use svg::node::element as svg_element;
-
 use crate::{
-    draw::{Arrow, ArrowDrawer, Drawable, Text},
+    draw::{Arrow, ArrowDrawer, Drawable, LayeredOutput, RenderLayer, Text},
     geometry::{Point, Size},
 };
 
@@ -66,27 +64,26 @@ impl<'a> ArrowWithText<'a> {
         source.midpoint(destination)
     }
 
-    /// Renders the arrow with optional text to SVG.
+    /// Renders the arrow with optional text to layered output.
     // TODO: borrowing arrow_drawer is not good in here.
-    pub fn render_to_svg(
+    pub fn render_to_layers(
         &self,
         arrow_drawer: &mut ArrowDrawer,
         source: Point,
         destination: Point,
-    ) -> Box<dyn svg::Node> {
+    ) -> LayeredOutput {
+        let mut output = LayeredOutput::new();
+
         let rendered_arrow = arrow_drawer.draw_arrow(&self.arrow, source, destination);
+        output.add_to_layer(RenderLayer::Arrows, rendered_arrow);
 
         if let Some(text) = &self.text {
             let text_pos = self.calculate_text_position(source, destination);
-            let rendered_text = text.render_to_svg(text_pos);
-
-            let mut group = svg_element::Group::new();
-            group = group.add(rendered_arrow);
-            group = group.add(rendered_text);
-            Box::new(group)
-        } else {
-            rendered_arrow
+            let text_output = text.render_to_layers(text_pos);
+            output.merge(text_output);
         }
+
+        output
     }
 }
 
@@ -113,8 +110,8 @@ impl ArrowWithTextDrawer {
         arrow_with_text: &ArrowWithText,
         source: Point,
         destination: Point,
-    ) -> Box<dyn svg::Node> {
-        arrow_with_text.render_to_svg(&mut self.0, source, destination)
+    ) -> LayeredOutput {
+        arrow_with_text.render_to_layers(&mut self.0, source, destination)
     }
 
     /// Generates SVG marker definitions for all arrows

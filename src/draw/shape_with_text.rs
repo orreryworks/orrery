@@ -1,5 +1,5 @@
 use crate::{
-    draw::{Drawable, Shape, Text, group::Group, text_positioning::TextPositioningStrategy},
+    draw::{Drawable, LayeredOutput, Shape, Text, text_positioning::TextPositioningStrategy},
     geometry::{Point, Size},
 };
 
@@ -139,8 +139,8 @@ impl<'a> ShapeWithText<'a> {
 }
 
 impl<'a> Drawable for ShapeWithText<'a> {
-    fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
-        let mut group = Group::new();
+    fn render_to_layers(&self, position: Point) -> LayeredOutput {
+        let mut output = LayeredOutput::new();
 
         let shape_size = self.shape.inner_size();
         let text_size = self.text_size();
@@ -148,14 +148,16 @@ impl<'a> Drawable for ShapeWithText<'a> {
             .text_positioning_strategy
             .calculate_shape_position(position, shape_size, text_size);
 
-        group.add(&self.shape, shape_position);
+        let shape_output = self.shape.render_to_layers(shape_position);
+        output.merge(shape_output);
 
         if let Some(text) = &self.text {
             let text_pos = self.calculate_text_position(position);
-            group.add(text, text_pos);
+            let text_output = text.render_to_layers(text_pos);
+            output.merge(text_output);
         }
 
-        group.render()
+        output
     }
 
     /// Returns the total size of the underlying shape.

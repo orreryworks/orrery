@@ -1,7 +1,7 @@
 use super::Svg;
 
 use crate::{
-    draw,
+    draw::{self, LayeredOutput},
     geometry::{Bounds, Point},
     layout::component,
     layout::layer::ContentStack,
@@ -20,8 +20,8 @@ impl Svg {
             .find_intersection(shape_entity.position(), external_point)
     }
 
-    pub fn render_component(&self, component: &component::Component) -> Box<dyn svg::Node> {
-        component.drawable().render_to_svg()
+    pub fn render_component(&self, component: &component::Component) -> LayeredOutput {
+        component.drawable().render_to_layers()
     }
 
     pub fn render_relation(
@@ -29,7 +29,7 @@ impl Svg {
         source: &component::Component,
         target: &component::Component,
         arrow_with_text: &draw::ArrowWithText,
-    ) -> Box<dyn svg::Node> {
+    ) -> LayeredOutput {
         // Calculate intersection points where the line meets each shape's boundary
         let source_edge = self.find_intersection(source, target.position());
         let target_edge = self.find_intersection(target, source.position());

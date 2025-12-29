@@ -25,9 +25,10 @@
 //! // Get the size
 //! let size = note.size();
 //!
-//! // Render to SVG
+//! // Render to layered output
 //! let position = Point::new(100.0, 100.0);
-//! let svg_node = note.render_to_svg(position);
+//! let output = note.render_to_layers(position);
+//! let svg_nodes = output.render();
 //! ```
 //!
 //! # Customization
@@ -61,7 +62,7 @@ use svg::{self, node::element as svg_element};
 
 use crate::{
     color::Color,
-    draw::{Drawable, StrokeDefinition, Text, TextDefinition},
+    draw::{Drawable, LayeredOutput, RenderLayer, StrokeDefinition, Text, TextDefinition},
     geometry::{Insets, Point, Size},
 };
 
@@ -231,7 +232,8 @@ impl Default for NoteDefinition {
 ///
 /// // Render at a specific position (center point)
 /// let position = Point::new(150.0, 200.0);
-/// let svg_node = note.render_to_svg(position);
+/// let output = note.render_to_layers(position);
+/// let svg_nodes = output.render();
 /// ```
 #[derive(Debug, Clone)]
 pub struct Note {
@@ -369,9 +371,9 @@ impl Note {
 }
 
 impl Drawable for Note {
-    fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
+    fn render_to_layers(&self, position: Point) -> LayeredOutput {
+        let mut output = LayeredOutput::new();
         let size = self.size();
-        let mut group = svg_element::Group::new();
 
         // Create the main note body with dog-eared corner
         let mut note_body = self.create_dog_eared_path(size, position);
@@ -383,7 +385,7 @@ impl Drawable for Note {
                 .set("fill-opacity", bg_color.alpha());
         }
 
-        group = group.add(note_body);
+        output.add_to_layer(RenderLayer::Background, Box::new(note_body));
 
         // Add the small triangle for the folded corner (slightly darker)
         let mut fold_triangle = self.create_fold_triangle_path(size, position);
@@ -400,21 +402,21 @@ impl Drawable for Note {
                 .set("fill-opacity", 0.8);
         }
 
-        group = group.add(fold_triangle);
+        output.add_to_layer(RenderLayer::Background, Box::new(fold_triangle));
 
         // Add the fold line
         let fold_line = self.create_fold_line_path(size, position);
 
-        group = group.add(fold_line);
+        output.add_to_layer(RenderLayer::Foreground, Box::new(fold_line));
 
         // Render the text content if present
         if !self.content.is_empty() {
             let text = Text::new(&self.definition.text, &self.content);
-            let text_node = text.render_to_svg(position);
-            group = group.add(text_node);
+            let text_output = text.render_to_layers(position);
+            output.merge(text_output);
         }
 
-        group.into()
+        output
     }
 
     fn size(&self) -> Size {

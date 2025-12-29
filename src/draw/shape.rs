@@ -2,7 +2,10 @@ use std::rc::Rc;
 
 use crate::{
     color::Color,
-    draw::{Drawable, StrokeDefinition, TextDefinition, text_positioning::TextPositioningStrategy},
+    draw::{
+        Drawable, LayeredOutput, RenderLayer, StrokeDefinition, TextDefinition,
+        text_positioning::TextPositioningStrategy,
+    },
     geometry::{Insets, Point, Size},
 };
 
@@ -219,9 +222,12 @@ impl Shape {
 }
 
 impl Drawable for Shape {
-    fn render_to_svg(&self, position: Point) -> Box<dyn svg::Node> {
+    fn render_to_layers(&self, position: Point) -> LayeredOutput {
+        let mut output = LayeredOutput::new();
         let size = self.inner_size();
-        self.definition.render_to_svg(size, position)
+        let node = self.definition.render_to_svg(size, position);
+        output.add_to_layer(RenderLayer::Content, node);
+        output
     }
 
     fn size(&self) -> Size {
