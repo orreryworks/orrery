@@ -75,7 +75,7 @@ impl<'a> ArrowWithText<'a> {
         let mut output = LayeredOutput::new();
 
         let rendered_arrow = arrow_drawer.draw_arrow(&self.arrow, source, destination);
-        output.add_to_layer(RenderLayer::Arrows, rendered_arrow);
+        output.add_to_layer(RenderLayer::Arrow, rendered_arrow);
 
         if let Some(text) = &self.text {
             let text_pos = self.calculate_text_position(source, destination);

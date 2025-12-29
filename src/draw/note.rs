@@ -385,7 +385,7 @@ impl Drawable for Note {
                 .set("fill-opacity", bg_color.alpha());
         }
 
-        output.add_to_layer(RenderLayer::Background, Box::new(note_body));
+        output.add_to_layer(RenderLayer::Note, Box::new(note_body));
 
         // Add the small triangle for the folded corner (slightly darker)
         let mut fold_triangle = self.create_fold_triangle_path(size, position);
@@ -402,12 +402,12 @@ impl Drawable for Note {
                 .set("fill-opacity", 0.8);
         }
 
-        output.add_to_layer(RenderLayer::Background, Box::new(fold_triangle));
+        output.add_to_layer(RenderLayer::Note, Box::new(fold_triangle));
 
         // Add the fold line
         let fold_line = self.create_fold_line_path(size, position);
 
-        output.add_to_layer(RenderLayer::Foreground, Box::new(fold_line));
+        output.add_to_layer(RenderLayer::Note, Box::new(fold_line));
 
         // Render the text content if present
         if !self.content.is_empty() {

@@ -100,9 +100,9 @@ impl TextPositioningStrategy {
             Self::BelowShape => {
                 // Content-free shapes: center the shape within the total area
                 let total_size = self.calculate_total_size(shape_size, text_size);
-                let shape_y = dbg!(total_position.y())
-                    - (dbg!(total_size.height()) - dbg!(shape_size.height())) / 2.0;
-                total_position.with_y(dbg!(shape_y))
+                let shape_y =
+                    total_position.y() - (total_size.height() - shape_size.height()) / 2.0;
+                total_position.with_y(shape_y)
             }
         }
     }

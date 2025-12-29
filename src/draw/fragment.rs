@@ -346,7 +346,7 @@ impl Drawable for Fragment {
                 .set("height", bounds.height())
                 .set("fill", bg_color.to_string())
                 .set("fill-opacity", bg_color.alpha());
-            output.add_to_layer(RenderLayer::Background, Box::new(background));
+            output.add_to_layer(RenderLayer::Fragment, Box::new(background));
         }
 
         // 2. Render border
@@ -358,7 +358,7 @@ impl Drawable for Fragment {
             .set("fill", "none");
 
         let border = crate::apply_stroke!(border, self.definition.border_stroke());
-        output.add_to_layer(RenderLayer::Foreground, Box::new(border));
+        output.add_to_layer(RenderLayer::Fragment, Box::new(border));
 
         // 3. Render operation label in upper-left corner as pentagonal tab
         // First, measure the text to determine pentagon size
@@ -374,7 +374,7 @@ impl Drawable for Fragment {
             .definition
             .create_pentagon_path(pentagon_content_bounds);
 
-        output.add_to_layer(RenderLayer::Foreground, Box::new(pentagon));
+        output.add_to_layer(RenderLayer::Fragment, Box::new(pentagon));
         let op_text_output = operation_text.render_to_layers(pentagon_content_bounds.center());
         output.merge(op_text_output);
 
@@ -392,7 +392,7 @@ impl Drawable for Fragment {
                     .set("y2", current_y);
 
                 let separator = crate::apply_stroke!(separator, self.definition.separator_stroke());
-                output.add_to_layer(RenderLayer::Foreground, Box::new(separator));
+                output.add_to_layer(RenderLayer::Fragment, Box::new(separator));
             }
 
             // Render section title if present (wrapped in square brackets per UML 2.5)

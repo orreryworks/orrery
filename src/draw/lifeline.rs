@@ -113,7 +113,7 @@ impl Drawable for Lifeline {
 
         let line = crate::apply_stroke!(line, self.definition.stroke());
 
-        output.add_to_layer(RenderLayer::Lifelines, Box::new(line));
+        output.add_to_layer(RenderLayer::Lifeline, Box::new(line));
         output
     }
 

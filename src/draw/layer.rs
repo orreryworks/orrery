@@ -12,7 +12,7 @@
 //! # Example
 //!
 //! ```
-//! # use filament::draw::layer::{RenderLayer, LayeredOutput};
+//! # use filament::draw::{RenderLayer, LayeredOutput};
 //! # use svg::node::element::Rectangle;
 //!
 //! let mut output = LayeredOutput::new();
@@ -44,13 +44,17 @@ pub enum RenderLayer {
     /// Background elements (fills, background shapes) - renders first
     Background,
     /// Vertical lifelines in sequence diagrams
-    Lifelines,
+    Lifeline,
     /// Main content shapes and participants - default layer
     Content,
     /// Activation boxes (sorted by nesting within this layer)
-    Activations,
+    Activation,
+    /// Fragment blocks (backgrounds, borders, separators, pentagon tabs)
+    Fragment,
+    /// Notes and annotations (backgrounds, fills, lines, strokes, corners)
+    Note,
     /// Arrows, relations, and messages between elements
-    Arrows,
+    Arrow,
     /// Text labels and annotations
     Text,
     /// Foreground decorations (borders, fold lines) - renders last
@@ -62,10 +66,12 @@ impl RenderLayer {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Background => "background",
-            Self::Lifelines => "lifelines",
+            Self::Lifeline => "lifeline",
             Self::Content => "content",
-            Self::Activations => "activations",
-            Self::Arrows => "arrows",
+            Self::Activation => "activation",
+            Self::Fragment => "fragment",
+            Self::Note => "note",
+            Self::Arrow => "arrow",
             Self::Text => "text",
             Self::Foreground => "foreground",
         }
@@ -80,7 +86,7 @@ impl RenderLayer {
 /// # Example
 ///
 /// ```
-/// # use filament::draw::layer::{RenderLayer, LayeredOutput};
+/// # use filament::draw::{RenderLayer, LayeredOutput};
 /// # use svg::node::element::{Rectangle, Text as SvgText};
 ///
 /// let mut output = LayeredOutput::new();
@@ -118,7 +124,7 @@ impl LayeredOutput {
     /// # Example
     ///
     /// ```
-    /// # use filament::draw::layer::{RenderLayer, LayeredOutput};
+    /// # use filament::draw::{RenderLayer, LayeredOutput};
     /// # use svg::node::element::Rectangle;
     ///
     /// let mut output = LayeredOutput::new();
@@ -137,7 +143,7 @@ impl LayeredOutput {
     /// # Example
     ///
     /// ```
-    /// # use filament::draw::layer::{RenderLayer, LayeredOutput};
+    /// # use filament::draw::{RenderLayer, LayeredOutput};
     /// # use svg::node::element::Rectangle;
     ///
     /// let mut output1 = LayeredOutput::new();
@@ -158,7 +164,7 @@ impl LayeredOutput {
     /// # Example
     ///
     /// ```
-    /// # use filament::draw::layer::{RenderLayer, LayeredOutput};
+    /// # use filament::draw::{RenderLayer, LayeredOutput};
     /// # use svg::node::element::Rectangle;
     ///
     /// let mut output = LayeredOutput::new();
@@ -188,7 +194,7 @@ impl LayeredOutput {
     /// # Example
     ///
     /// ```
-    /// use filament::draw::layer::{RenderLayer, LayeredOutput};
+    /// use filament::draw::{RenderLayer, LayeredOutput};
     /// # use svg::node::element::Rectangle;
     ///
     /// let mut output = LayeredOutput::new();

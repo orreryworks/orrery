@@ -191,7 +191,7 @@ impl Drawable for ActivationBox {
         // Apply all stroke attributes (color, opacity, width, cap, join, dasharray)
         let activation_rect = crate::apply_stroke!(activation_rect, def.stroke());
 
-        output.add_to_layer(RenderLayer::Activations, Box::new(activation_rect));
+        output.add_to_layer(RenderLayer::Activation, Box::new(activation_rect));
         output
     }
 
