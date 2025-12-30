@@ -37,12 +37,9 @@ pub mod span;
 mod tokens;
 mod validate;
 
-use crate::{
-    config::AppConfig,
-    error::{FilamentError, diagnostic::DiagnosticError},
-};
 pub use elaborate_types::*;
-use span::Span;
+
+use crate::{config::AppConfig, error::FilamentError};
 
 /// Builds a fully elaborated AST from source code using the two-stage parser.
 ///
@@ -87,15 +84,8 @@ use span::Span;
 /// ```
 pub fn build_ast(cfg: &AppConfig, source: &str) -> Result<elaborate_types::Diagram, FilamentError> {
     // Step 1: Tokenize the source code
-    let tokens = lexer::tokenize(source).map_err(|err| {
-        let diag_err = DiagnosticError::from_span(
-            format!("Lexer failed to parse input: {err}"),
-            Span::default(), // TODO: Extract span from lexer error
-            "lexer error",
-            Some("Check for invalid characters or malformed tokens".to_string()),
-        );
-        FilamentError::new_parse_error(diag_err, source)
-    })?;
+    let tokens =
+        lexer::tokenize(source).map_err(|err| FilamentError::new_lexer_error(err, source))?;
 
     // Step 2: Parse the tokens into AST
     let parsed_ast =

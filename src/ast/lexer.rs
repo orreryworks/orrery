@@ -2,7 +2,7 @@ use winnow::{
     Parser as _,
     ascii::{float, multispace1},
     combinator::{alt, delimited, not, peek, preceded, repeat, terminated},
-    error::{ContextError, ModalResult, StrContext},
+    error::{ContextError, ModalResult, ParseError, StrContext},
     token::{literal, none_of, one_of, take_while},
 };
 
@@ -10,6 +10,7 @@ use super::{
     span::Span,
     tokens::{PositionedToken, Token},
 };
+use crate::error::diagnostic::DiagnosticError;
 
 type Input<'a> = &'a str;
 type IResult<'a, O> = ModalResult<O, ContextError>;
@@ -255,11 +256,37 @@ fn lexer<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<PositionedToken<'sr
     .parse_next(input)
 }
 
+/// Convert a winnow lexer error to a DiagnosticError with helpful messaging
+fn convert_lexer_error(error: ParseError<&str, ContextError>) -> DiagnosticError {
+    let char_range = error.char_span();
+    let span = Span::new(char_range);
+
+    let context_error = error.inner();
+    let contexts: Vec<String> = context_error
+        .context()
+        .filter_map(|ctx| match ctx {
+            StrContext::Label(label) => Some(label.to_string()),
+            _ => None,
+        })
+        .collect();
+
+    let message = if !contexts.is_empty() {
+        format!(
+            "Invalid or unexpected token: expected {}",
+            contexts.join(" or ")
+        )
+    } else {
+        "Invalid or unexpected token".to_string()
+    };
+
+    DiagnosticError::from_span(message, span, "here", None)
+}
+
 /// Parse tokens from a string input
-pub fn tokenize(input: &str) -> Result<Vec<PositionedToken<'_>>, String> {
+pub fn tokenize(input: &str) -> Result<Vec<PositionedToken<'_>>, DiagnosticError> {
     match lexer.parse(input) {
         Ok(tokens) => Ok(tokens),
-        Err(e) => Err(format!("Lexer error: {e}")),
+        Err(e) => Err(convert_lexer_error(e)),
     }
 }
 
@@ -634,9 +661,8 @@ mod tests {
             input
         );
 
-        // For now, we verify the error occurs - span extraction would require winnow error details
-        let error = result.unwrap_err();
-        assert!(!error.is_empty(), "Error message should not be empty");
+        // Verify we got a DiagnosticError
+        let _error = result.unwrap_err();
 
         // TODO: Extract precise error span when winnow error details are accessible
         // For now, validate that lexing fails at expected position by checking partial success

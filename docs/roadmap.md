@@ -9,8 +9,6 @@ The roadmap is organized into major feature categories, each containing specific
 ## Table of Contents
 
 In sequence diagram, move max lifeline f32 to to lifeline property
-Lexer error type
-Move error types inside?!
 
 ### Core Components
 - **[Language Core](#language-core)** - Core language features, syntax, and semantics
