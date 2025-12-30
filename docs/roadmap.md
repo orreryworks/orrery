@@ -9,7 +9,6 @@ The roadmap is organized into major feature categories, each containing specific
 ## Table of Contents
 
 In sequence diagram, move max lifeline f32 to to lifeline property
-Extend PossitionedDrawable
 Lexer error type
 Move error types inside?!
 
@@ -18,11 +17,8 @@ Move error types inside?!
   - [Support for Importing Other .fil Files](#support-for-importing-other-fil-files)
   - [Add Support for Class Diagrams](#add-support-for-class-diagrams)
   - [Configurable Activation Box Definitions](#configurable-activation-box-definitions)
-  - [Alt/If Blocks for Sequence Diagrams](#altif-blocks-for-sequence-diagrams)
-  - [Loop/While Blocks for Sequence Diagrams](#loopwhile-blocks-for-sequence-diagrams)
 - **[AST](#ast)** - Parser improvements and error handling
   - [Multi Error Reporting](#multi-error-reporting)
-  - [Improve Error Messages](#improve-error-messages)
   - [Empty/Unavailable Span](#emptyunavailable-span)
 - **[Engines](#engines)** - Diagram generation and processing engines
   - [Fix Cross Level Relations in Component Diagram](#fix-cross-level-relations-in-component-diagram)
@@ -32,7 +28,6 @@ Move error types inside?!
   - [Add Base Type Override Support](#add-base-type-override-support)
   - [Fix Scoping Types in graph::Graph](#fix-scoping-types-in-graphgraph)
   - [Stroke Style Validation](#stroke-style-validation)
-  - [Investigate DrawDefinition Usage](#investigate-drawdefinition-usage)
 - **[Rendering](#rendering)** - Visual output and drawing capabilities
   - [Adding More UML Shapes](#adding-more-uml-shapes)
   - [Relation-Triggered Activation](#relation-triggered-activation)
@@ -168,120 +163,6 @@ activate server [fill_color="lightblue", line_color="darkblue", line_width=2.0] 
 
 ---
 
-#### Alt/If Blocks for Sequence Diagrams
-
-**Description**:
-Introduce support for UML-style alternative (alt) fragments to represent conditional flows in sequence diagrams. Each branch can be labeled with a guard/condition, with an optional `else` branch.
-
-**Current Limitation**:
-- No native syntax for conditional fragments; users must model branches as separate diagrams or rely on comments.
-
-**Proposed Implementation**:
-- Syntax:
-  ```filament
-  alt "user is authenticated" {
-      user -> server: "Access resource";
-  } else {
-      user -> server: "Show login";
-  };
-  ```
-  - Optional multi-branch form:
-    ```filament
-    alt "role == admin" {
-        admin -> system: "Admin action";
-    } else "role == user" {
-        user -> system: "User action";
-    } else {
-        guest -> system: "Limited access";
-    };
-    ```
-- Parsing:
-  - Add `alt` keyword producing an AST node with ordered branches: `(guard_label: Option<String>, block)`.
-  - `else` branches may include an optional label; the final `else` may be unlabeled.
-- Engine integration:
-  - Render each branch as a stacked fragment with a labeled header band.
-  - Allocate vertical space per branch based on content; maintain consistent participant spacing.
-- Styling (future attribute group on fragments):
-  - `title_color`, `border_color`, `border_width`, `fill_color`, `title_background_color`, `padding`.
-
-**Benefits**:
-- First-class conditional modeling within a single sequence diagram.
-- Clear, standard UML representation for branching logic.
-- Improves readability and reduces duplication across diagrams.
-
-**Example Usage**:
-```filament
-diagram sequence;
-
-user: Rectangle;
-server: Rectangle;
-
-alt "valid token" {
-    user -> server: "Request data";
-    server -> user: "200 OK";
-} else {
-    user -> server: "Request data";
-    server -> user: "401 Unauthorized";
-};
-```
-
----
-
-#### Loop/While Blocks for Sequence Diagrams
-
-**Description**:
-Add support for UML-style loop fragments to represent repeated interactions driven by a condition (while semantics) or a count.
-
-**Current Limitation**:
-- Repetition must be manually duplicated, obscuring intent and making changes error-prone.
-
-**Proposed Implementation**:
-- Syntax (while-style guard):
-  ```filament
-  loop while "has more items" {
-      producer -> consumer: "Next item";
-  };
-  ```
-- Syntax (count/iterations):
-  ```filament
-  loop times=3 {
-      client -> server: "Ping";
-  };
-  ```
-- Parsing:
-  - Add `loop` keyword with either:
-    - `while "label"` guard form, or
-    - attribute form `loop [times=3] { ... };` for numeric iteration.
-- Engine integration:
-  - Render a single loop fragment with a header showing the guard (or times) and a dashed border (UML convention).
-  - Content renders once; renderer denotes repetition via the fragment label rather than duplicating nodes.
-- Validation:
-  - `times` must be a positive float (treated as integer); reject non-positive values with clear diagnostics.
-
-**Benefits**:
-- Explicit, concise representation of repetition.
-- Aligns with UML sequence diagram notation.
-- Improves maintainability by avoiding duplicated message blocks.
-
-**Example Usage**:
-```filament
-diagram sequence;
-
-client: Rectangle;
-server: Rectangle;
-
-loop while "retry < 3 && !ok" {
-    client -> server: "Attempt request";
-    server -> client: "Response";
-};
-
-loop times=2 {
-    client -> server: "Heartbeat";
-};
-```
-
----
-
 ### AST
 
 #### Multi Error Reporting
@@ -309,32 +190,6 @@ The compiler currently stops at the first error, requiring multiple compilation 
 - Error recovery mechanisms in parser
 - Error collection and batching system
 - Maintaining accurate source locations across multiple errors
-
----
-
-#### Improve Error Messages
-
-**Description**:
-Enhance error messages with more context, better suggestions, and improved formatting for common mistakes.
-
-**Proposed Improvements**:
-- Better suggestions for typos in type names and attributes
-- More context around the error location
-- Common fix suggestions based on error patterns
-- Better highlighting of problematic code sections
-
-**Example**:
-```
-Current: "Parse error: unexpected token"
-Improved: "Parse error: expected ';' after component definition
-   Did you mean to terminate this component declaration?
-   Similar issue: Missing semicolon is a common syntax error"
-```
-
-**Benefits**:
-- Reduced debugging time
-- Better learning experience for new users
-- More actionable error guidance
 
 ---
 
@@ -555,40 +410,6 @@ type Invalid3 = Rectangle [stroke=[style="-5,3"]];        // ✗ Negative values
 
 ---
 
-#### Investigate DrawDefinition Usage
-
-**Description**:
-Investigate whether `DrawDefinition` is truly useful for `Fragment` or `Note` elements at the moment, and consider if it needs to be refactored.
-
-**Current Concerns**:
-- `DrawDefinition` may be applied to `Fragment` and `Note` elements without providing meaningful value
-- The current implementation might be adding unnecessary complexity
-- May need architectural changes to better align with actual use cases
-
-**Investigation Areas**:
-- Review current usage of `DrawDefinition` in `elaborate_types` module
-- Analyze how `Fragment` and `Note` elements utilize draw definitions
-- Determine if draw definitions provide actual rendering benefits for these element types
-- Evaluate alternative approaches that might be more appropriate
-
-**References**:
-- `src/ast/elaborate_types/`
-- `src/ast/elaborate.rs`
-
-**Potential Outcomes**:
-- Keep current implementation if justified by use cases
-- Refactor to remove `DrawDefinition` from specific element types
-- Redesign the abstraction to better match actual needs
-- Document the rationale for current design if maintaining status quo
-
-**Benefits**:
-- Cleaner, more maintainable codebase
-- Reduced complexity where not needed
-- Better alignment between abstractions and actual use cases
-- Improved code clarity and intent
-
----
-
 ### Rendering
 
 #### Adding More UML Shapes
@@ -598,7 +419,6 @@ Expand the built-in shape library with additional UML shapes to support comprehe
 
 **Proposed Shapes**:
 - `Package`: UML package notation with folder-like appearance
-- `Note`: UML note/comment shape with folded corner
 - `Database`: Traditional database cylinder shape
 - `Cloud`: Cloud computing representation
 - `Queue`: Message queue representation
