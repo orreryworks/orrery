@@ -234,13 +234,42 @@ impl Note {
     }
 }
 
+/// Represents an activation in a sequence diagram.
+#[derive(Debug, Clone)]
+pub struct Activate {
+    /// Component ID being activated
+    component: Id,
+    /// Styling definition for the activation box
+    definition: Rc<draw::ActivationBoxDefinition>,
+}
+
+impl Activate {
+    /// Create a new Activate.
+    pub fn new(component: Id, definition: Rc<draw::ActivationBoxDefinition>) -> Self {
+        Self {
+            component,
+            definition,
+        }
+    }
+
+    /// Get the component ID being activated.
+    pub fn component(&self) -> Id {
+        self.component
+    }
+
+    /// Borrow the activation box styling definition.
+    pub fn definition(&self) -> &Rc<draw::ActivationBoxDefinition> {
+        &self.definition
+    }
+}
+
 /// Top-level elaborated element within a scope.
 /// Represents nodes, relations, and activation events in AST order.
 #[derive(Debug, Clone)]
 pub enum Element {
     Node(Node),
     Relation(Relation),
-    Activate(Id),
+    Activate(Activate),
     Deactivate(Id),
     Fragment(Fragment),
     Note(Note),
@@ -543,6 +572,14 @@ impl TypeDefinition {
         match &self.draw_definition {
             DrawDefinition::Note(note) => Ok(note),
             _ => Err(format!("Type '{}' is not a note type", self.id)),
+        }
+    }
+
+    /// Borrow the activation box definition if this type is an activation box; otherwise returns an error.
+    pub fn activation_box_definition(&self) -> Result<&Rc<draw::ActivationBoxDefinition>, String> {
+        match &self.draw_definition {
+            DrawDefinition::ActivationBox(activation_box) => Ok(activation_box),
+            _ => Err(format!("Type '{}' is not an activation box type", self.id)),
         }
     }
 

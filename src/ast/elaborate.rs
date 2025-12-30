@@ -435,8 +435,8 @@ impl<'a> Builder<'a> {
                 }
                 parser_types::Element::Activate {
                     component,
-                    type_spec: _,
-                } => self.build_activate_element(component, diagram_kind)?,
+                    type_spec,
+                } => self.build_activate_element(component, type_spec, diagram_kind)?,
                 parser_types::Element::Deactivate { component } => {
                     self.build_deactivate_element(component, diagram_kind)?
                 }
@@ -553,6 +553,7 @@ impl<'a> Builder<'a> {
     fn build_activate_element(
         &mut self,
         component: &Spanned<Id>,
+        type_spec: &parser_types::TypeSpec<'a>,
         diagram_kind: types::DiagramKind,
     ) -> Result<types::Element> {
         // Only allow activate in sequence diagrams
@@ -568,7 +569,23 @@ impl<'a> Builder<'a> {
             ));
         }
 
-        Ok(types::Element::Activate(*component.inner()))
+        let activate_type_def = self.build_type_definition(type_spec)?;
+
+        let activation_box_def = activate_type_def
+            .activation_box_definition()
+            .map_err(|err| {
+                DiagnosticError::from_span(
+                    err,
+                    type_spec.span(),
+                    "invalid activation box type",
+                    None,
+                )
+            })?;
+
+        Ok(types::Element::Activate(types::Activate::new(
+            *component.inner(),
+            Rc::clone(activation_box_def),
+        )))
     }
 
     /// Builds a deactivate element from parser data
@@ -1496,8 +1513,8 @@ mod tests {
         let activations: Vec<_> = elems
             .iter()
             .filter_map(|e| {
-                if let types::Element::Activate(id) = e {
-                    Some(id.to_string())
+                if let types::Element::Activate(activate) = e {
+                    Some(activate.component().to_string())
                 } else {
                     None
                 }
@@ -1572,7 +1589,10 @@ mod tests {
             // Activate the component
             parser_types::Element::Activate {
                 component: Spanned::new(Id::new("user"), Span::new(0..4)),
-                type_spec: parser_types::TypeSpec::default(),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Activate"), Span::new(0..8))),
+                    attributes: vec![],
+                },
             },
             // Deactivate the component
             parser_types::Element::Deactivate {
@@ -1607,9 +1627,9 @@ mod tests {
         );
 
         // Verify the activate element
-        if let types::Element::Activate(id) = &elements[1] {
+        if let types::Element::Activate(activate) = &elements[1] {
             assert_eq!(
-                id.to_string(),
+                activate.component().to_string(),
                 "user",
                 "Activate should reference 'user' component"
             );

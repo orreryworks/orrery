@@ -297,19 +297,25 @@ impl Engine {
 
                     current_y += self.message_spacing;
                 }
-                SequenceEvent::Activate(node_id) => {
+                SequenceEvent::Activate(activate) => {
+                    let node_id = activate.component();
                     // Calculate nesting level for this node
                     let nesting_level = activation_stack
-                        .get(node_id)
+                        .get(&node_id)
                         .map(|stack| stack.len() as u32)
                         .unwrap_or(0);
 
                     // Create new ActivationTiming with current Y position
-                    let new_timing = ActivationTiming::new(*node_id, current_y, nesting_level);
+                    let new_timing = ActivationTiming::new(
+                        node_id,
+                        current_y,
+                        nesting_level,
+                        Rc::clone(activate.definition()),
+                    );
 
                     // Add to the stack for this node
                     activation_stack
-                        .entry(*node_id)
+                        .entry(node_id)
                         .or_default()
                         .push(new_timing);
                 }

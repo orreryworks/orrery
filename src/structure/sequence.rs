@@ -47,8 +47,8 @@ pub enum SequenceEvent<'a> {
     ///
     /// Activation represents a period when a participant has focus of control,
     /// typically shown as a white rectangle on the participant's lifeline.
-    /// Contains the [`Id`] of the participant that becomes active.
-    Activate(Id),
+    /// Contains a reference to the AST activate which includes participant ID and styling.
+    Activate(&'a ast::Activate),
 
     /// End of an activation period for a participant.
     ///
@@ -214,8 +214,8 @@ impl<'a> SequenceGraph<'a> {
                 ast::Element::Relation(relation) => {
                     graph.add_event(SequenceEvent::Relation(relation));
                 }
-                ast::Element::Activate(id) => {
-                    graph.add_event(SequenceEvent::Activate(*id));
+                ast::Element::Activate(activate) => {
+                    graph.add_event(SequenceEvent::Activate(activate));
                 }
                 ast::Element::Deactivate(id) => {
                     graph.add_event(SequenceEvent::Deactivate(*id));

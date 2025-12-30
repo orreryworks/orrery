@@ -9,18 +9,15 @@ The roadmap is organized into major feature categories, each containing specific
 ## Table of Contents
 
 In sequence diagram, move max lifeline f32 to to lifeline property
-Full use of Cow in the elaborateTypes
 Extend PossitionedDrawable
 Lexer error type
 Move error types inside?!
 
 ### Core Components
 - **[Language Core](#language-core)** - Core language features, syntax, and semantics
-  - [Named Types for Nested Attributes](#named-types-for-nested-attributes)
   - [Support for Importing Other .fil Files](#support-for-importing-other-fil-files)
   - [Add Support for Class Diagrams](#add-support-for-class-diagrams)
   - [Configurable Activation Box Definitions](#configurable-activation-box-definitions)
-  - [Configurable Lifeline Definitions from Sequence Attributes](#configurable-lifeline-definitions-from-sequence-attributes)
   - [Alt/If Blocks for Sequence Diagrams](#altif-blocks-for-sequence-diagrams)
   - [Loop/While Blocks for Sequence Diagrams](#loopwhile-blocks-for-sequence-diagrams)
 - **[AST](#ast)** - Parser improvements and error handling
@@ -56,62 +53,6 @@ Move error types inside?!
 ## Features
 
 ### Language Core
-
-#### Named Types for Nested Attributes
-
-**Description**:
-Allow creation of named types for nested attribute groups, enabling reusable attribute collections that can be referenced by name in type definitions.
-
-**Current Limitation**:
-Currently, nested attributes must be defined inline, leading to duplication and reduced maintainability:
-
-```filament
-type Button = Rectangle [
-    fill_color="blue",
-    text=[font_size=16, font_family="Arial", background_color="white", padding=8.0]
-];
-
-type ImportantButton = Rectangle [
-    fill_color="red",
-    text=[font_size=16, font_family="Arial", background_color="white", padding=8.0]  // Duplication
-];
-```
-
-**Proposed Solution**:
-Introduce named types for nested attribute groups:
-
-```filament
-// Define a reusable text style
-type StandardText = Text [font_size=16, font_family="Arial", background_color="white", padding=8.0];
-
-// Define a highlighted text style extending the standard
-type ImportantText = StandardText [background_color="yellow"];
-
-// Use named text types in component definitions
-type Button = Rectangle [
-    fill_color="blue",
-    text=StandardText
-];
-
-type ImportantButton = Rectangle [
-    fill_color="red",
-    text=ImportantText
-];
-```
-
-**Benefits**:
-- Reduces code duplication
-- Improves maintainability of style definitions
-- Enables consistent styling across components
-- Supports hierarchical style inheritance
-
-**Implementation Considerations**:
-- Parser modifications to handle `Type [attributes]` syntax for nested attribute types
-- Type resolver updates to handle nested type references
-- Error handling for circular dependencies in nested types
-- Documentation updates for new syntax patterns
-
----
 
 #### Support for Importing Other .fil Files
 
@@ -223,65 +164,6 @@ activate user {
 activate server [fill_color="lightblue", line_color="darkblue", line_width=2.0] {
     server -> user: "Response";
 };
-```
-
----
-
-#### Configurable Lifeline Definitions from Sequence Attributes
-
-**Description**:
-Enable configuring lifeline visual and layout properties directly from sequence diagram attributes. Lifelines are the vertical lines that represent participant existence over time. Today, their appearance and spacing are fixed; this feature makes them first-class configurable elements to match different visual styles and layout needs.
-
-**Current Limitation**:
-- Lifeline line color, width, and style are not customizable via the language
-- Horizontal spacing between participants is fixed or globally internal
-- Top/bottom margins for lifelines cannot be tuned per diagram
-
-**Proposed Implementation**:
-- Add a `lifeline=[...]` nested attribute group to sequence diagram declarations:
-  - `line_color` (string): Color of lifeline (e.g., `"#bbbbbb"`, `"gray"`)
-  - `line_width` (float): Stroke width of lifeline (e.g., `1.0`, `1.5`)
-  - `line_style` (string): Line style, e.g., `"solid"` or `"dashed"`
-  - `spacing` (float): Horizontal distance between adjacent participants
-  - `top_padding` (float): Vertical padding before the first message
-  - `bottom_padding` (float): Vertical padding after the last message
-- Parsing:
-  - Extend the sequence diagram parser to accept an optional `lifeline=[...]` attribute group on the `diagram sequence [...]` declaration
-- Engine integration:
-  - Use `spacing` during participant layout
-  - Apply `line_color`, `line_width`, `line_style` when drawing lifelines
-  - Respect `top_padding` and `bottom_padding` when computing the diagram height and lifeline lengths
-- Validation:
-  - Enforce value types (strings for colors/styles, floats for numeric values)
-  - Provide clear errors for invalid `line_style` values
-
-**Benefits**:
-- Consistent, theme-able lifeline styling across sequence diagrams
-- Better control over density and readability via adjustable spacing
-- Professional look that matches organizational branding or documentation style
-- Backward-compatible: defaults preserve current behavior when `lifeline` is omitted
-
-**Example Usage**:
-```filament
-diagram sequence [
-    lifeline=[
-        line_color="#bbbbbb",
-        line_width=1.5,
-        line_style="dashed",
-        spacing=160.0,
-        top_padding=24.0,
-        bottom_padding=16.0
-    ]
-];
-
-client: Rectangle;
-service: Rectangle;
-db: Rectangle;
-
-client -> service: "Request";
-service -> db: "Query";
-db -> service: "Result";
-service -> client: "Response";
 ```
 
 ---

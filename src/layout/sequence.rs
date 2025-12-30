@@ -142,15 +142,22 @@ pub struct ActivationTiming {
     participant_id: Id,
     start_y: f32,
     nesting_level: u32,
+    definition: Rc<draw::ActivationBoxDefinition>,
 }
 
 impl ActivationTiming {
-    /// Creates a new ActivationTiming with the given participant ID, start position, and nesting level
-    pub fn new(participant_id: Id, start_y: f32, nesting_level: u32) -> Self {
+    /// Creates a new ActivationTiming with the given participant ID, start position, nesting level, and definition
+    pub fn new(
+        participant_id: Id,
+        start_y: f32,
+        nesting_level: u32,
+        definition: Rc<draw::ActivationBoxDefinition>,
+    ) -> Self {
         Self {
             participant_id,
             start_y,
             nesting_level,
+            definition,
         }
     }
 
@@ -166,8 +173,8 @@ impl ActivationTiming {
 
         let center_y = (self.start_y() + end_y) / 2.0;
         let height = end_y - self.start_y();
-        let definition = draw::ActivationBoxDefinition::default();
-        let drawable = draw::ActivationBox::new(Rc::new(definition), height, self.nesting_level());
+        let drawable =
+            draw::ActivationBox::new(Rc::clone(&self.definition), height, self.nesting_level());
 
         ActivationBox {
             participant_id: self.participant_id(),
