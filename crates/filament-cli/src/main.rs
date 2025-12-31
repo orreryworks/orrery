@@ -3,19 +3,21 @@ use std::{process, str::FromStr};
 use clap::Parser;
 use log::{LevelFilter, debug, error, info};
 
-use filament::{Config, FilamentError};
+use filament::FilamentError;
+use filament_cli::Args;
 
 fn main() {
     // Install miette's pretty panic hook early for better panic reports
     miette::set_panic_hook();
+
     // Parse configuration first
-    let cfg = Config::parse();
+    let args = Args::parse();
 
     // Initialize the logger with the specified log level
-    let log_level = LevelFilter::from_str(&cfg.log_level).unwrap_or_else(|_| {
+    let log_level = LevelFilter::from_str(&args.log_level).unwrap_or_else(|_| {
         eprintln!(
-            "Invalid log level: {}. Using 'info' instead.",
-            cfg.log_level
+            "Invalid log level: {}. Using 'warn' instead.",
+            args.log_level
         );
         LevelFilter::Warn
     });
@@ -25,10 +27,10 @@ fn main() {
         .init();
 
     info!(log_level:?; "Starting Filament");
-    debug!(cfg:?; "Parsed configuration");
+    debug!(args:?; "Parsed arguments");
 
     // Run the application
-    if let Err(err) = filament::run(&cfg) {
+    if let Err(err) = filament_cli::run(&args) {
         // Use miette to display a rich diagnostic error
         let reporter = miette::GraphicalReportHandler::new();
         let mut writer = String::new();

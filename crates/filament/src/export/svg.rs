@@ -62,7 +62,9 @@ impl<'a> SvgBuilder<'a> {
                 background_color = Some(color);
             }
         } else if let Some(style) = self.style {
-            background_color = style.background_color()?;
+            background_color = style
+                .background_color()
+                .map_err(|e| FilamentError::Layout(e))?;
         }
 
         let arrow_with_text_drawer = ArrowWithTextDrawer::new();

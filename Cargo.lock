@@ -298,11 +298,8 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 name = "filament"
 version = "0.1.0"
 dependencies = [
- "clap",
  "color",
  "cosmic-text",
- "directories",
- "env_logger",
  "indexmap",
  "layout-rs",
  "log",
@@ -315,8 +312,23 @@ dependencies = [
  "svg",
  "tempfile",
  "thiserror",
- "toml",
  "winnow",
+]
+
+[[package]]
+name = "filament-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "directories",
+ "env_logger",
+ "filament",
+ "log",
+ "miette",
+ "serde",
+ "tempfile",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]
@@ -498,9 +510,9 @@ checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
 
 [[package]]
 name = "libredox"
-version = "0.1.11"
+version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df15f6eac291ed1cf25865b1ee60399f57e7c227e7f51bdbd4c5270396a9ed50"
+checksum = "3d0b95e02c851351f877147b7deea7b1afb1df71b63aa5f8270716e0c5720616"
 dependencies = [
  "bitflags",
  "libc",

@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use tempfile::tempdir;
 
-use filament::Config;
+use filament_cli::{Args, run};
 
 /// Collects all .fil files from a directory
 fn collect_fil_files(dir: PathBuf) -> Vec<PathBuf> {
@@ -28,7 +28,14 @@ fn e2e_smoke_test_valid_examples() {
     // Create a temporary directory for test outputs
     let temp_dir = tempdir().expect("Failed to create temp directory");
 
-    let valid_examples = collect_fil_files(PathBuf::from("examples"));
+    // Examples are at workspace root, relative to workspace not the crate
+    let examples_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("examples");
+    let valid_examples = collect_fil_files(examples_path);
 
     assert!(
         !valid_examples.is_empty(),
@@ -44,14 +51,14 @@ fn e2e_smoke_test_valid_examples() {
         );
         let output_path = temp_dir.path().join(output_filename);
 
-        let cfg = Config {
-            log_level: "off".to_string(),
-            file: example_path.to_string_lossy().to_string(),
+        let args = Args {
+            input: example_path.to_string_lossy().to_string(),
             output: output_path.to_string_lossy().to_string(),
             config: None,
+            log_level: "off".to_string(),
         };
 
-        if let Err(e) = filament::run(&cfg) {
+        if let Err(e) = run(&args) {
             failed_examples.push((example_path.clone(), e));
         }
     }
@@ -75,7 +82,15 @@ fn e2e_smoke_test_error_examples() {
     // Create a temporary directory for test outputs
     let temp_dir = tempdir().expect("Failed to create temp directory");
 
-    let error_examples = collect_fil_files(PathBuf::from("examples/errors"));
+    // Examples are at workspace root, relative to workspace not the crate
+    let examples_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("examples")
+        .join("errors");
+    let error_examples = collect_fil_files(examples_path);
 
     assert!(
         !error_examples.is_empty(),
@@ -91,14 +106,14 @@ fn e2e_smoke_test_error_examples() {
         );
         let output_path = temp_dir.path().join(output_filename);
 
-        let cfg = Config {
-            log_level: "off".to_string(),
-            file: example_path.to_string_lossy().to_string(),
+        let args = Args {
+            input: example_path.to_string_lossy().to_string(),
             output: output_path.to_string_lossy().to_string(),
             config: None,
+            log_level: "off".to_string(),
         };
 
-        if filament::run(&cfg).is_ok() {
+        if run(&args).is_ok() {
             unexpectedly_succeeded.push(example_path.clone());
         }
     }

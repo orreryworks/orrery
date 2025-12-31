@@ -1,4 +1,4 @@
-use std::{io, path::PathBuf};
+use std::io;
 
 use miette::Diagnostic;
 use thiserror::Error;
@@ -33,9 +33,6 @@ pub enum FilamentError {
 
     #[error("Export error: {0}")]
     Export(Box<dyn std::error::Error>),
-
-    #[error(transparent)]
-    Config(#[from] ConfigError),
 }
 
 // Manual implementation of Diagnostic for FilamentError
@@ -53,7 +50,6 @@ impl Diagnostic for FilamentError {
             Self::Graph(_) => Some(Box::new("filament::error::graph")),
             Self::Layout(_) => Some(Box::new("filament::error::layout")),
             Self::Export(_) => Some(Box::new("filament::error::export")),
-            Self::Config(_) => Some(Box::new("filament::error::config")),
         }
     }
 
@@ -94,19 +90,6 @@ impl From<crate::export::Error> for FilamentError {
     fn from(error: crate::export::Error) -> Self {
         Self::Export(Box::new(error))
     }
-}
-
-/// Specific configuration-related error types
-#[derive(Debug, Error)]
-pub enum ConfigError {
-    #[error("Failed to parse TOML configuration: {0}")]
-    Parse(#[from] toml::de::Error),
-
-    #[error("Missing configuration file: {0}")]
-    MissingFile(PathBuf),
-
-    #[error("Validation error: {0}")]
-    Validation(String),
 }
 
 impl FilamentError {
