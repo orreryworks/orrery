@@ -303,7 +303,6 @@ dependencies = [
  "indexmap",
  "layout-rs",
  "log",
- "miette",
  "petgraph",
  "rand",
  "rust-sugiyama",

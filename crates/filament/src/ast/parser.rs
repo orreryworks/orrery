@@ -3206,8 +3206,8 @@ mod tests {
         // Should point to previous tokens (everything before "}"), which is "a" and ";"
         // Span union: (0..1) union (1..2) = (0..2), which has length 2
         let debug = format!("{:?}", result);
-        assert!(debug.contains("offset: SourceOffset(0)"));
-        assert!(debug.contains("length: 2"));
+        assert!(debug.contains("start: 0"));
+        assert!(debug.contains("end: 2"));
     }
 
     #[test]
@@ -3234,8 +3234,8 @@ mod tests {
 
         // Should point directly at the ":" token
         let debug = format!("{:?}", result);
-        assert!(debug.contains("offset: SourceOffset(19)"));
-        assert!(debug.contains("length: 1"));
+        assert!(debug.contains("start: 19"));
+        assert!(debug.contains("end: 20"));
     }
 
     #[test]
@@ -3261,8 +3261,8 @@ mod tests {
         // Should span from first meaningful ("a") to last meaningful (arrow)
         // Span union: (0..1) union (2..4) = (0..4), which has length 4
         let debug = format!("{:?}", result);
-        assert!(debug.contains("offset: SourceOffset(0)"));
-        assert!(debug.contains("length: 4"));
+        assert!(debug.contains("start: 0"));
+        assert!(debug.contains("end: 4"));
     }
 
     #[test]
@@ -3292,8 +3292,8 @@ mod tests {
         // Should span from first meaningful ("a" at 2) to last meaningful ("b" at 7)
         // Span union: (2..3) union (7..8) = (2..8), which has length 6
         let debug = format!("{:?}", result);
-        assert!(debug.contains("offset: SourceOffset(2)"));
-        assert!(debug.contains("length: 6"));
+        assert!(debug.contains("start: 2"));
+        assert!(debug.contains("end: 8"));
     }
 
     #[test]
@@ -3314,8 +3314,8 @@ mod tests {
 
         // Should fallback to start_offset=0 and span from beginning
         let debug = format!("{:?}", result);
-        assert!(debug.contains("offset: SourceOffset(0)"));
-        assert!(debug.contains("length: 4")); // (0..1) union (2..4) = (0..4)
+        assert!(debug.contains("start: 0"));
+        assert!(debug.contains("end: 4")); // (0..1) union (2..4) = (0..4)
     }
 
     #[test]

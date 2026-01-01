@@ -1,13 +1,19 @@
 use std::io;
 
-use miette::Diagnostic;
 use thiserror::Error;
 
 use diagnostic::DiagnosticError;
 
 pub mod diagnostic;
 
-/// The main error type for Filament operations
+/// The main error type for Filament operations.
+///
+/// # Diagnostic Variants
+///
+/// The `LexerDiagnostic`, `ParseDiagnostic`, `ElaborationDiagnostic`, and
+/// `ValidationDiagnostic` variants contain structured error information with
+/// source code spans. These provide detailed error information that can be
+/// used for rich error reporting.
 #[derive(Debug, Error)]
 pub enum FilamentError {
     #[error("I/O error: {0}")]
@@ -33,57 +39,6 @@ pub enum FilamentError {
 
     #[error("Export error: {0}")]
     Export(Box<dyn std::error::Error>),
-}
-
-// Manual implementation of Diagnostic for FilamentError
-impl Diagnostic for FilamentError {
-    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        match self {
-            Self::Io(_) => Some(Box::new("filament::error::io")),
-            Self::LexerDiagnostic { .. }
-            | Self::ParseDiagnostic { .. }
-            | Self::ElaborationDiagnostic { .. }
-            | Self::ValidationDiagnostic { .. } => {
-                // Return None to suppress the error code in output
-                None
-            }
-            Self::Graph(_) => Some(Box::new("filament::error::graph")),
-            Self::Layout(_) => Some(Box::new("filament::error::layout")),
-            Self::Export(_) => Some(Box::new("filament::error::export")),
-        }
-    }
-
-    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        match self {
-            Self::LexerDiagnostic { err: source, .. } => source.help(),
-            Self::ParseDiagnostic { err: source, .. } => source.help(),
-            Self::ElaborationDiagnostic { err: source, .. } => source.help(),
-            Self::ValidationDiagnostic { err: source, .. } => source.help(),
-            _ => None, // Other errors don't have specific help
-        }
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        match self {
-            Self::LexerDiagnostic { src, .. } => Some(src),
-            Self::ParseDiagnostic { src, .. } => Some(src),
-            Self::ElaborationDiagnostic { src, .. } => Some(src),
-            Self::ValidationDiagnostic { src, .. } => Some(src),
-            _ => None,
-        }
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        match self {
-            Self::LexerDiagnostic { err, .. } => err.labels(),
-            Self::ParseDiagnostic { err, .. } => err.labels(),
-            Self::ElaborationDiagnostic { err, .. } => err.labels(),
-            Self::ValidationDiagnostic { err, .. } => err.labels(),
-            _ => None,
-        }
-    }
-
-    // You can add overrides for severity(), url(), related() if needed
 }
 
 impl From<crate::export::Error> for FilamentError {

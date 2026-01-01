@@ -3,8 +3,7 @@ use std::{process, str::FromStr};
 use clap::Parser;
 use log::{LevelFilter, debug, error, info};
 
-use filament::FilamentError;
-use filament_cli::Args;
+use filament_cli::{Args, ErrorAdapter};
 
 fn main() {
     // Install miette's pretty panic hook early for better panic reports
@@ -31,21 +30,14 @@ fn main() {
 
     // Run the application
     if let Err(err) = filament_cli::run(&args) {
-        // Use miette to display a rich diagnostic error
+        // Wrap error in ErrorAdapter for rich miette formatting
+        let adapted_error = ErrorAdapter(err);
+
+        // Use miette to display the diagnostic error
         let reporter = miette::GraphicalReportHandler::new();
         let mut writer = String::new();
-        match err {
-            FilamentError::LexerDiagnostic { .. }
-            | FilamentError::ParseDiagnostic { .. }
-            | FilamentError::ElaborationDiagnostic { .. }
-            | FilamentError::ValidationDiagnostic { .. } => {
-                // Pass the FilamentError itself which implements Diagnostic and has source_code
-                reporter.render_report(&mut writer, &err).unwrap();
-            }
-            err => {
-                writer.push_str(&err.to_string());
-            }
-        }
+        reporter.render_report(&mut writer, &adapted_error).unwrap();
+
         error!("Failed\n{writer}");
         process::exit(1);
     }

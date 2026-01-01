@@ -4,8 +4,10 @@
 
 mod args;
 mod config;
+mod error_adapter;
 
 pub use args::Args;
+pub use error_adapter::ErrorAdapter;
 
 use std::fs;
 

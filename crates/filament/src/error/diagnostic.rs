@@ -1,4 +1,3 @@
-use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
 use crate::ast::span::Span;
@@ -6,8 +5,7 @@ use crate::ast::span::Span;
 /// A rich diagnostic error for compiler issues in the Filament language.
 ///
 /// This error provides detailed diagnostic information including:
-/// - The source code where the error occurred
-/// - A precise location (span) in the source
+/// - A precise location ([`Span`]) in the source code
 /// - A descriptive message and label
 /// - Optional help text with suggestions to fix the error
 ///
@@ -15,7 +13,6 @@ use crate::ast::span::Span;
 /// (parsing, validation, elaboration, etc.). Phase context is provided
 /// by the `FilamentError` variant that wraps this diagnostic.
 ///
-/// These rich errors are displayed using miette's pretty error formatting.
 /// The source code itself is expected to be provided by the container error
 /// type (e.g., `FilamentError::ValidationDiagnostic`).
 #[derive(Debug, Error)]
@@ -25,30 +22,13 @@ pub struct DiagnosticError {
     message: String,
 
     /// The error span in the source
-    span: SourceSpan,
+    span: Span,
 
     /// Label for the error span
     label: String,
 
     /// Optional help text
     help: Option<String>,
-}
-
-impl Diagnostic for DiagnosticError {
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        Some(Box::new(std::iter::once(
-            miette::LabeledSpan::new_with_span(Some(self.label.clone()), self.span),
-        )))
-    }
-
-    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        self.help
-            .as_ref()
-            .map(|h| Box::new(h) as Box<dyn std::fmt::Display + 'a>)
-    }
-
-    // code(), severity(), url(), related() use defaults
-    // code() will come from the FilamentError wrapper variant
 }
 
 impl DiagnosticError {
@@ -67,10 +47,30 @@ impl DiagnosticError {
     ) -> Self {
         Self {
             message,
-            span: span.into(),
+            span,
             label: label.into(),
             help,
         }
+    }
+
+    /// Get the error message.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    /// Get the error span in the source code.
+    pub fn span(&self) -> Span {
+        self.span
+    }
+
+    /// Get the label describing the error.
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    /// Get the help text, if any
+    pub fn help(&self) -> Option<&str> {
+        self.help.as_deref()
     }
 }
 

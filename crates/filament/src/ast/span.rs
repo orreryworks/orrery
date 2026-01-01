@@ -54,18 +54,6 @@ impl Default for Span {
     }
 }
 
-impl From<Span> for miette::SourceSpan {
-    fn from(span: Span) -> Self {
-        miette::SourceSpan::new(span.start().into(), span.len())
-    }
-}
-
-impl From<&Span> for miette::SourceSpan {
-    fn from(span: &Span) -> Self {
-        miette::SourceSpan::new(span.start().into(), span.len())
-    }
-}
-
 impl From<std::ops::Range<usize>> for Span {
     fn from(range: std::ops::Range<usize>) -> Self {
         Self::new(range)
@@ -176,22 +164,6 @@ mod tests {
         let union = span1.union(span2);
         assert_eq!(union.start(), 5);
         assert_eq!(union.end(), 20);
-    }
-
-    #[test]
-    fn test_miette_conversion() {
-        let span = Span::new(5..10);
-        let miette_span: miette::SourceSpan = span.into();
-        assert_eq!(miette_span.offset(), 5);
-        assert_eq!(miette_span.len(), 5);
-    }
-
-    #[test]
-    fn test_miette_conversion_by_ref() {
-        let span = Span::new(5..10);
-        let miette_span: miette::SourceSpan = (&span).into();
-        assert_eq!(miette_span.offset(), 5);
-        assert_eq!(miette_span.len(), 5);
     }
 
     #[test]
