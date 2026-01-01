@@ -175,7 +175,7 @@ impl<'a> DiagramBuilder<'a> {
         let temp_path = temp_file.path().to_string_lossy().to_string();
 
         let mut svg_exporter = export::svg::SvgBuilder::new(&temp_path)
-            .with_style(&config.style)
+            .with_style(config.style())
             .with_diagram(&elaborated_ast)
             .build()?;
 

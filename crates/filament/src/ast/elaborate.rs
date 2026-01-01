@@ -1109,8 +1109,8 @@ impl<'a> Builder<'a> {
     )> {
         // Set the default layout engine based on the diagram kind and config
         let mut layout_engine = match kind {
-            types::DiagramKind::Component => self.cfg.layout.component,
-            types::DiagramKind::Sequence => self.cfg.layout.sequence,
+            types::DiagramKind::Component => self.cfg.layout().component(),
+            types::DiagramKind::Sequence => self.cfg.layout().sequence(),
         };
 
         let mut background_color = None;

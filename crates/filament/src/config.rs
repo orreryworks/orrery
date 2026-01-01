@@ -7,11 +7,28 @@ use crate::{ast::LayoutEngine, color::Color};
 pub struct AppConfig {
     /// Layout configuration section
     #[serde(default)]
-    pub layout: LayoutConfig,
+    layout: LayoutConfig,
 
     /// Style configuration section
     #[serde(default)]
-    pub style: StyleConfig,
+    style: StyleConfig,
+}
+
+impl AppConfig {
+    /// Create a new AppConfig with the specified layout and style configurations
+    pub fn new(layout: LayoutConfig, style: StyleConfig) -> Self {
+        Self { layout, style }
+    }
+
+    /// Get the layout configuration
+    pub fn layout(&self) -> &LayoutConfig {
+        &self.layout
+    }
+
+    /// Get the style configuration
+    pub fn style(&self) -> &StyleConfig {
+        &self.style
+    }
 }
 
 /// Layout configuration section
@@ -19,11 +36,31 @@ pub struct AppConfig {
 pub struct LayoutConfig {
     /// Default layout engine for component diagrams
     #[serde(default)]
-    pub component: LayoutEngine,
+    component: LayoutEngine,
 
     /// Default layout engine for sequence diagrams
     #[serde(default)]
-    pub sequence: LayoutEngine,
+    sequence: LayoutEngine,
+}
+
+impl LayoutConfig {
+    /// Create a new LayoutConfig with the specified layout engines
+    pub fn new(component: LayoutEngine, sequence: LayoutEngine) -> Self {
+        Self {
+            component,
+            sequence,
+        }
+    }
+
+    /// Get the layout engine for component diagrams
+    pub fn component(&self) -> LayoutEngine {
+        self.component
+    }
+
+    /// Get the layout engine for sequence diagrams
+    pub fn sequence(&self) -> LayoutEngine {
+        self.sequence
+    }
 }
 
 /// Style configuration section
