@@ -3,7 +3,7 @@ use std::{collections::HashMap, rc::Rc};
 use log::warn;
 
 use crate::{
-    ast, draw,
+    draw, semantic,
     geometry::{Bounds, Point, Size},
     identifier::Id,
     layout::{component, positioning::LayoutBounds},
@@ -63,7 +63,7 @@ impl<'a> Message<'a> {
     ///
     /// # Returns
     /// A new Message containing all necessary rendering information
-    pub fn from_ast(relation: &'a ast::Relation, source: Id, target: Id, y_position: f32) -> Self {
+    pub fn from_ast(relation: &'a semantic::Relation, source: Id, target: Id, y_position: f32) -> Self {
         let arrow_def = Rc::clone(relation.arrow_definition());
         let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
         let mut arrow_with_text = draw::ArrowWithText::new(arrow);
@@ -265,14 +265,14 @@ pub struct FragmentTiming<'a> {
     start_y: f32,
     min_x: f32,
     max_x: f32,
-    fragment: &'a ast::Fragment,
-    active_section: Option<(&'a ast::FragmentSection, f32)>,
+    fragment: &'a semantic::Fragment,
+    active_section: Option<(&'a semantic::FragmentSection, f32)>,
     sections: Vec<draw::FragmentSection>,
 }
 
 impl<'a> FragmentTiming<'a> {
     /// Creates a new `FragmentTiming` for the given fragment starting at the specified Y position.
-    pub fn new(fragment: &'a ast::Fragment, start_y: f32) -> Self {
+    pub fn new(fragment: &'a semantic::Fragment, start_y: f32) -> Self {
         Self {
             start_y,
             min_x: f32::MAX,
@@ -287,7 +287,7 @@ impl<'a> FragmentTiming<'a> {
     ///
     /// # Panics
     /// Panics in debug builds if there's already an active section.
-    pub fn start_section(&mut self, section: &'a ast::FragmentSection, start_y: f32) {
+    pub fn start_section(&mut self, section: &'a semantic::FragmentSection, start_y: f32) {
         #[cfg(debug_assertions)]
         assert!(self.active_section.is_none());
 
@@ -746,14 +746,14 @@ mod tests {
 
     #[test]
     fn test_fragment_timing_lifecycle() {
-        // Create a mock ast::Fragment for testing
+        // Create a mock semantic::Fragment for testing
         let fragment_def = Rc::new(draw::FragmentDefinition::default());
 
-        let section1 = ast::FragmentSection::new(Some("section 1".to_string()), vec![]);
-        let section2 = ast::FragmentSection::new(Some("section 2".to_string()), vec![]);
+        let section1 = semantic::FragmentSection::new(Some("section 1".to_string()), vec![]);
+        let section2 = semantic::FragmentSection::new(Some("section 2".to_string()), vec![]);
 
         let fragment =
-            ast::Fragment::new("alt".to_string(), vec![section1, section2], fragment_def);
+            semantic::Fragment::new("alt".to_string(), vec![section1, section2], fragment_def);
 
         // Create FragmentTiming
         let start_y = 100.0;
@@ -787,10 +787,10 @@ mod tests {
 
     #[test]
     fn test_fragment_timing_bounds_tracking() {
-        // Create a mock ast::Fragment
+        // Create a mock semantic::Fragment
         let fragment_def = Rc::new(draw::FragmentDefinition::default());
 
-        let fragment = ast::Fragment::new("opt".to_string(), vec![], fragment_def);
+        let fragment = semantic::Fragment::new("opt".to_string(), vec![], fragment_def);
 
         let mut fragment_timing = FragmentTiming::new(&fragment, 100.0);
 

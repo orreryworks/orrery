@@ -173,15 +173,6 @@ impl<'a> AttributeValue<'a> {
         }
     }
 
-    /// Extract a numeric value as u32 (casting f32 if necessary)
-    pub fn as_u32(&self) -> Result<u32, &'static str> {
-        if let AttributeValue::Float(f) = self {
-            Ok(*f.inner() as u32)
-        } else {
-            Err("Expected float value")
-        }
-    }
-
     /// Extract a numeric value as usize (casting f32 if necessary)
     pub fn as_usize(&self) -> Result<usize, &'static str> {
         if let AttributeValue::Float(f) = self {

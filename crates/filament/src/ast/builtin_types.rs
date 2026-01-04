@@ -15,7 +15,7 @@
 
 use std::rc::Rc;
 
-use super::elaborate_types::TypeDefinition;
+use super::elaborate_utils::TypeDefinition;
 use crate::{draw, identifier::Id};
 
 /// Built-in base type for rectangular shapes

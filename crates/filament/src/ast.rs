@@ -1,7 +1,15 @@
 /// AST module for the Filament language
 ///
-/// This module contains the types and functionality for parsing, elaborating,
-/// and working with Filament AST (Abstract Syntax Tree).
+/// This module contains the parsing, validation, and elaboration infrastructure for
+/// transforming Filament source code into semantic diagram models.
+///
+/// ## Module Responsibilities
+///
+/// The `ast` module handles:
+/// - **Lexing**: Tokenizing source code
+/// - **Parsing**: Building syntactic AST with span information
+/// - **Validation**: Checking diagram semantics at syntax level
+/// - **Elaboration**: Transforming parser AST into semantic model (see [`crate::semantic`])
 ///
 /// ## Parser Architecture
 ///
@@ -19,15 +27,21 @@
 /// - **Collection parsers** return `Vec<T>` directly instead of `Vec<Spanned<T>>` to avoid wrap-then-unwrap inefficiency
 /// - **Error reporting** uses `from_span()` with extracted spans for rich diagnostics
 ///
-/// ## Other Modules
-/// - `span`: Provides location tracking for AST elements
-/// - `parser_types`: Contains spanned versions of parser types with source location tracking
-/// - `desugar`: Performs AST normalization between parsing and elaboration
-/// - `elaborate`: Handles AST elaboration with rich error diagnostics
+/// ## Output
+///
+/// The `build_ast()` function produces a [`crate::semantic::Diagram`] - the fully elaborated
+/// semantic model ready for structure analysis and layout.
+///
+/// ## Internal Modules
+/// - `span`: Provides location tracking for AST elements (public)
+/// - `parser_types`: Spanned parser AST types (internal)
+/// - `desugar`: AST normalization (internal)
+/// - `elaborate`: Elaboration phase (internal)
+/// - `elaborate_utils`: Type definitions and attribute extractors (internal)
 mod builtin_types;
 mod desugar;
 mod elaborate;
-mod elaborate_types;
+mod elaborate_utils;
 mod lexer;
 mod parser;
 #[cfg(test)]
@@ -37,9 +51,9 @@ pub mod span;
 mod tokens;
 mod validate;
 
-pub use elaborate_types::*;
+pub use parser_types::DiagramKind;
 
-use crate::{config::AppConfig, error::FilamentError};
+use crate::{config::AppConfig, error::FilamentError, semantic};
 
 /// Builds a fully elaborated AST from source code using the two-stage parser.
 ///
@@ -82,7 +96,7 @@ use crate::{config::AppConfig, error::FilamentError};
 /// let config = AppConfig::default();
 /// let result = ast::build_ast(&config, source);
 /// ```
-pub fn build_ast(cfg: &AppConfig, source: &str) -> Result<elaborate_types::Diagram, FilamentError> {
+pub fn build_ast(cfg: &AppConfig, source: &str) -> Result<semantic::Diagram, FilamentError> {
     // Step 1: Tokenize the source code
     let tokens =
         lexer::tokenize(source).map_err(|err| FilamentError::new_lexer_error(err, source))?;

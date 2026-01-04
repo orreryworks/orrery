@@ -8,7 +8,6 @@ use log::{debug, error, info};
 use svg::{Document, node::element::Rectangle};
 
 use crate::{
-    ast,
     color::Color,
     config::StyleConfig,
     draw::ArrowWithTextDrawer,
@@ -16,13 +15,14 @@ use crate::{
     export,
     geometry::{Insets, Size},
     layout::layer::LayeredLayout,
+    semantic,
 };
 
 /// SVG exporter builder to configure and build the SVG exporter
 pub struct SvgBuilder<'a> {
     file_name: String,
     style: Option<&'a StyleConfig>,
-    diagram: Option<&'a ast::Diagram>,
+    diagram: Option<&'a semantic::Diagram>,
 }
 
 /// Base SVG exporter structure with common properties and methods
@@ -48,7 +48,7 @@ impl<'a> SvgBuilder<'a> {
     }
 
     /// Set diagram to extract styles from
-    pub fn with_diagram(mut self, diagram: &'a ast::Diagram) -> Self {
+    pub fn with_diagram(mut self, diagram: &'a semantic::Diagram) -> Self {
         self.diagram = Some(diagram);
         self
     }
@@ -62,9 +62,7 @@ impl<'a> SvgBuilder<'a> {
                 background_color = Some(color);
             }
         } else if let Some(style) = self.style {
-            background_color = style
-                .background_color()
-                .map_err(|e| FilamentError::Layout(e))?;
+            background_color = style.background_color().map_err(FilamentError::Layout)?;
         }
 
         let arrow_with_text_drawer = ArrowWithTextDrawer::new();

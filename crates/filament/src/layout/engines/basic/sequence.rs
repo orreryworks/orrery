@@ -6,7 +6,6 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
-    ast,
     draw::{self, Drawable as _},
     geometry::{Insets, Point, Size},
     identifier::Id,
@@ -16,8 +15,18 @@ use crate::{
         layer::{ContentStack, PositionedContent},
         sequence::{ActivationBox, ActivationTiming, FragmentTiming, Layout, Message, Participant},
     },
+    semantic,
     structure::{SequenceEvent, SequenceGraph},
 };
+
+/// Return type for process_events: (messages, activation_boxes, fragments, notes, final_y)
+type ProcessEventsResult<'a> = (
+    Vec<Message<'a>>,
+    Vec<ActivationBox>,
+    Vec<draw::PositionedDrawable<draw::Fragment>>,
+    Vec<draw::PositionedDrawable<draw::Note>>,
+    f32,
+);
 
 /// Basic sequence layout engine implementation that implements the SequenceLayoutEngine trait
 pub struct Engine {
@@ -78,7 +87,7 @@ impl Engine {
         &self,
         source_id: Id,
         target_id: Id,
-        messages: &[&ast::Relation],
+        messages: &[&semantic::Relation],
     ) -> f32 {
         // Filter messages to only those between the two participants
         let relevant_messages = messages.iter().filter(|relation| {
@@ -106,7 +115,7 @@ impl Engine {
                 let text = draw::Text::new(node.shape_definition().text(), node.display_text());
                 let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
-                if let ast::Block::Diagram(_) = node.block() {
+                if let semantic::Block::Diagram(_) = node.block() {
                     // If this participant has an embedded diagram, use its layout size
                     let content_size = if let Some(layout) = embedded_layouts.get(&node.id()) {
                         layout.calculate_size()
@@ -167,7 +176,7 @@ impl Engine {
 
                 // If this node contains an embedded diagram, adjust position to normalize
                 // the embedded layout's coordinate system to start at origin
-                if let ast::Block::Diagram(_) = node.block()
+                if let semantic::Block::Diagram(_) = node.block()
                     && let Some(layout) = embedded_layouts.get(&node.id())
                 {
                     position = position.add_point(layout.normalize_offset());
@@ -255,13 +264,7 @@ impl Engine {
         graph: &SequenceGraph<'a>,
         participants_height: f32,
         components: &HashMap<Id, Component<'a>>,
-    ) -> (
-        Vec<Message<'a>>,
-        Vec<ActivationBox>,
-        Vec<draw::PositionedDrawable<draw::Fragment>>,
-        Vec<draw::PositionedDrawable<draw::Note>>,
-        f32,
-    ) {
+    ) -> ProcessEventsResult<'a> {
         let mut messages: Vec<Message<'a>> = Vec::new();
         let mut activation_boxes: Vec<ActivationBox> = Vec::new();
         let mut fragments: Vec<draw::PositionedDrawable<draw::Fragment>> = Vec::new();
@@ -389,7 +392,7 @@ impl Engine {
     /// A `PositionedDrawable<Note>` ready to be added to the layout
     fn create_positioned_note<'a>(
         &self,
-        note: &ast::Note,
+        note: &semantic::Note,
         components: &HashMap<Id, Component<'a>>,
         current_y: f32,
     ) -> draw::PositionedDrawable<draw::Note> {
@@ -407,17 +410,17 @@ impl Engine {
         };
 
         let edge_map: fn(&Component) -> (f32, f32) = match note.align() {
-            ast::NoteAlign::Over => |component| {
+            semantic::NoteAlign::Over => |component| {
                 let center_x = component.position().x();
                 let width = component.drawable().size().width();
                 let left_edge = center_x - width / 2.0;
                 let right_edge = center_x + width / 2.0;
                 (left_edge, right_edge)
             },
-            ast::NoteAlign::Left | ast::NoteAlign::Right => {
+            semantic::NoteAlign::Left | semantic::NoteAlign::Right => {
                 |component| (component.position().x(), component.position().x())
             }
-            ast::NoteAlign::Top | ast::NoteAlign::Bottom => {
+            semantic::NoteAlign::Top | semantic::NoteAlign::Bottom => {
                 unreachable!("Alignments is not supported for sequence diagrams")
             }
         };
@@ -428,7 +431,7 @@ impl Engine {
             .expect("note should have at least one participant");
 
         let mut new_note_def = Rc::clone(note.definition());
-        if note.align() == ast::NoteAlign::Over {
+        if note.align() == semantic::NoteAlign::Over {
             let note_def_mut = Rc::make_mut(&mut new_note_def);
             note_def_mut.set_min_width(Some(max_x - min_x));
         }
@@ -437,10 +440,10 @@ impl Engine {
 
         let note_size = note_drawable.size();
         let center_x = match note.align() {
-            ast::NoteAlign::Over => (min_x + max_x) / 2.0,
-            ast::NoteAlign::Left => min_x - (note_size.width() / 2.0) - NOTE_SPACING,
-            ast::NoteAlign::Right => max_x + (note_size.width() / 2.0) + NOTE_SPACING,
-            ast::NoteAlign::Top | ast::NoteAlign::Bottom => {
+            semantic::NoteAlign::Over => (min_x + max_x) / 2.0,
+            semantic::NoteAlign::Left => min_x - (note_size.width() / 2.0) - NOTE_SPACING,
+            semantic::NoteAlign::Right => max_x + (note_size.width() / 2.0) + NOTE_SPACING,
+            semantic::NoteAlign::Top | semantic::NoteAlign::Bottom => {
                 unreachable!("Alignments is not supported for sequence diagrams")
             }
         };

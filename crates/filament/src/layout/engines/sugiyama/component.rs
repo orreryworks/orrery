@@ -4,7 +4,6 @@ use log::debug;
 use rust_sugiyama::configure::Config;
 
 use crate::{
-    ast,
     draw::{self, Drawable},
     geometry::{Insets, Point, Size},
     identifier::Id,
@@ -13,6 +12,7 @@ use crate::{
         engines::{ComponentEngine, EmbeddedLayouts},
         layer::{ContentStack, PositionedContent},
     },
+    semantic,
     structure::{ComponentGraph, ContainmentScope},
 };
 
@@ -167,7 +167,7 @@ impl Engine {
             let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
             match node.block() {
-                ast::Block::Diagram(_) => {
+                semantic::Block::Diagram(_) => {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
                     let layout = embedded_layouts
@@ -179,7 +179,7 @@ impl Engine {
                         .set_inner_content_size(content_size)
                         .expect("Diagram blocks should always support content sizing");
                 }
-                ast::Block::Scope(_) => {
+                semantic::Block::Scope(_) => {
                     let content_size = *positioned_content_sizes
                         .get(&node.id())
                         .expect("Scope size not found");
@@ -187,7 +187,7 @@ impl Engine {
                         .set_inner_content_size(content_size)
                         .expect("Scope blocks should always support content sizing");
                 }
-                ast::Block::None => {
+                semantic::Block::None => {
                     // No content to size, so don't call set_inner_content_size
                 }
             };

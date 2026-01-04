@@ -10,7 +10,6 @@ use std::{
 };
 
 use crate::{
-    ast,
     draw::{self, Drawable},
     geometry::{Insets, Point, Size},
     identifier::Id,
@@ -19,6 +18,7 @@ use crate::{
         engines::{ComponentEngine, EmbeddedLayouts},
         layer::{ContentStack, PositionedContent},
     },
+    semantic,
     structure::{ComponentGraph, ContainmentScope},
 };
 
@@ -88,7 +88,7 @@ impl Engine {
 
                     // If this node contains an embedded diagram, adjust position to normalize
                     // the embedded layout's coordinate system to start at origin
-                    if let ast::Block::Diagram(_) = node.block()
+                    if let semantic::Block::Diagram(_) = node.block()
                         && let Some(layout) = embedded_layouts.get(&node.id())
                     {
                         position = position.add_point(layout.normalize_offset());
@@ -159,7 +159,7 @@ impl Engine {
             let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
             match node.block() {
-                ast::Block::Diagram(_) => {
+                semantic::Block::Diagram(_) => {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
                     let layout = embedded_layouts
@@ -171,7 +171,7 @@ impl Engine {
                         .set_inner_content_size(content_size)
                         .expect("Diagram blocks should always support content sizing");
                 }
-                ast::Block::Scope(_) => {
+                semantic::Block::Scope(_) => {
                     let content_size = *positioned_content_sizes
                         .get(&node.id())
                         .expect("Scope size not found");
@@ -179,7 +179,7 @@ impl Engine {
                         .set_inner_content_size(content_size)
                         .expect("Scope blocks should always support content sizing");
                 }
-                ast::Block::None => {
+                semantic::Block::None => {
                     // No content to size, so don't call set_inner_content_size
                 }
             };
@@ -262,7 +262,7 @@ impl Engine {
     fn find_node_layers(
         &self,
         graph: &ComponentGraph,
-        relation: &ast::Relation,
+        relation: &semantic::Relation,
         layers: &[Vec<Id>],
     ) -> (Option<usize>, Option<usize>) {
         let mut source_layer = None;

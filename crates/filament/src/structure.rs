@@ -12,7 +12,7 @@
 
 use log::trace;
 
-use crate::{FilamentError, ast, identifier::Id};
+use crate::{FilamentError, ast, identifier::Id, semantic};
 
 mod component;
 mod graph_base;
@@ -47,7 +47,7 @@ impl<'a, 'idx> GraphKind<'a, 'idx> {
     /// - The constructed [`GraphKind::ComponentGraph`] variant
     /// - A vector of [`HierarchyNode`] representing any embedded diagrams found
     fn build_component(
-        elements: &'a [ast::Element],
+        elements: &'a [semantic::Element],
     ) -> Result<(Self, Vec<HierarchyNode<'a, 'idx>>), FilamentError> {
         let (graph, children) = ComponentGraph::new_from_elements(elements)?;
         Ok((Self::ComponentGraph(graph), children))
@@ -66,7 +66,7 @@ impl<'a, 'idx> GraphKind<'a, 'idx> {
     /// - The constructed [`GraphKind::SequenceGraph`] variant
     /// - A vector of [`HierarchyNode`] representing any embedded diagrams found
     fn build_sequence(
-        elements: &'a [ast::Element],
+        elements: &'a [semantic::Element],
     ) -> Result<(Self, Vec<HierarchyNode<'a, 'idx>>), FilamentError> {
         let (graph, children) = SequenceGraph::new_from_elements(elements)?;
         Ok((Self::SequenceGraph(graph), children))
@@ -76,13 +76,13 @@ impl<'a, 'idx> GraphKind<'a, 'idx> {
 /// Container that pairs an AST diagram with its graph representation.
 #[derive(Debug)]
 pub struct GraphedDiagram<'a, 'idx> {
-    ast_diagram: &'a ast::Diagram,
+    ast_diagram: &'a semantic::Diagram,
     graph_kind: GraphKind<'a, 'idx>,
 }
 
 impl<'a, 'idx> GraphedDiagram<'a, 'idx> {
     /// Returns a reference to the underlying AST diagram.
-    pub fn ast_diagram(&self) -> &ast::Diagram {
+    pub fn ast_diagram(&self) -> &semantic::Diagram {
         self.ast_diagram
     }
 
@@ -95,7 +95,7 @@ impl<'a, 'idx> GraphedDiagram<'a, 'idx> {
     }
 
     /// Creates a new graphed diagram from an AST diagram and its graph representation.
-    fn new(ast_diagram: &'a ast::Diagram, graph_kind: GraphKind<'a, 'idx>) -> Self {
+    fn new(ast_diagram: &'a semantic::Diagram, graph_kind: GraphKind<'a, 'idx>) -> Self {
         Self {
             ast_diagram,
             graph_kind,
@@ -152,7 +152,7 @@ impl<'a, 'idx> HierarchyNode<'a, 'idx> {
     /// A constructed `HierarchyNode` with its graph and children, or an error if
     /// graph construction fails.
     fn build_from_ast_diagram(
-        ast_diagram: &'a ast::Diagram,
+        ast_diagram: &'a semantic::Diagram,
         container_id: Option<Id>,
     ) -> Result<Self, FilamentError> {
         let (graph, children) = match ast_diagram.kind() {
@@ -209,7 +209,7 @@ impl<'a, 'idx> DiagramHierarchy<'a, 'idx> {
     ///
     /// A [`DiagramHierarchy`] containing the graph representations of all diagrams
     /// in the hierarchy, or a [`FilamentError`] if graph construction fails.
-    pub fn from_diagram(diagram: &'a ast::Diagram) -> Result<Self, FilamentError> {
+    pub fn from_diagram(diagram: &'a semantic::Diagram) -> Result<Self, FilamentError> {
         // Process all elements in the diagram recursively
         let root_diagram = HierarchyNode::build_from_ast_diagram(diagram, None)?;
 

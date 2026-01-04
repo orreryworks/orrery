@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::{ast::LayoutEngine, color::Color};
+use crate::{color::Color, semantic::LayoutEngine};
 
 /// Application configuration loaded from TOML file
 #[derive(Debug, Clone, Default, Deserialize)]

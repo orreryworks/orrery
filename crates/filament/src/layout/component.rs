@@ -3,11 +3,11 @@ use std::{collections::HashMap, rc::Rc};
 use log::{debug, error};
 
 use crate::{
-    ast, draw,
+    draw,
     geometry::{Bounds, Point},
     identifier::Id,
     layout::{layer, positioning::LayoutBounds},
-    structure,
+    semantic, structure,
 };
 
 /// Represents a diagram component with a reference to its AST node and positioning information
@@ -22,7 +22,7 @@ pub struct Component<'a> {
 impl<'a> Component<'a> {
     /// Creates a new component with the specified properties.
     pub fn new(
-        node: &ast::Node,
+        node: &semantic::Node,
         shape_with_text: draw::ShapeWithText<'a>,
         position: Point,
     ) -> Component<'a> {
@@ -89,7 +89,7 @@ impl<'a> LayoutRelation<'a> {
     ///
     /// # Returns
     /// A new LayoutRelation containing all necessary rendering information
-    pub fn from_ast(relation: &'a ast::Relation, source_index: usize, target_index: usize) -> Self {
+    pub fn from_ast(relation: &'a semantic::Relation, source_index: usize, target_index: usize) -> Self {
         let arrow_def = Rc::clone(relation.arrow_definition());
         let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
         let mut arrow_with_text = draw::ArrowWithText::new(arrow);

@@ -29,10 +29,7 @@ pub enum ConfigError {
 
 impl From<ConfigError> for FilamentError {
     fn from(err: ConfigError) -> Self {
-        FilamentError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            err.to_string(),
-        ))
+        FilamentError::Io(std::io::Error::other(err.to_string()))
     }
 }
 

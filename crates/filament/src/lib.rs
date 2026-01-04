@@ -10,6 +10,7 @@ pub mod config;
 pub mod draw;
 pub mod geometry;
 pub mod identifier;
+pub mod semantic;
 
 mod error;
 mod export;
@@ -112,7 +113,7 @@ impl<'a> DiagramBuilder<'a> {
     ///     .parse()
     ///     .expect("Failed to parse diagram");
     /// ```
-    pub fn parse(self) -> Result<ast::Diagram, FilamentError> {
+    pub fn parse(self) -> Result<semantic::Diagram, FilamentError> {
         let config = self.config.unwrap_or_default();
         info!("Building diagram AST");
         let elaborated_ast = ast::build_ast(&config, self.source)?;
@@ -182,7 +183,7 @@ impl<'a> DiagramBuilder<'a> {
         svg_exporter.export_layered_layout(&layered_layout)?;
 
         // Read the SVG content back from the temp file
-        let svg_string = fs::read_to_string(&temp_path).map_err(|e| FilamentError::Io(e))?;
+        let svg_string = fs::read_to_string(&temp_path).map_err(FilamentError::Io)?;
 
         info!("SVG rendered successfully");
         Ok(svg_string)

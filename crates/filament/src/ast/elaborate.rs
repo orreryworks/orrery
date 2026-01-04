@@ -8,7 +8,7 @@ use std::{collections::HashMap, rc::Rc, str::FromStr};
 
 use log::{debug, info, trace};
 
-use super::{builtin_types, elaborate_types as types, parser_types};
+use super::{builtin_types, elaborate_utils, parser_types};
 use crate::{
     ast::span::{Span, Spanned},
     color::Color,
@@ -17,11 +17,12 @@ use crate::{
     error::diagnostic::{DiagnosticError, Result},
     geometry::Insets,
     identifier::Id,
+    semantic,
 };
 
 pub struct Builder<'a> {
     cfg: &'a AppConfig,
-    type_definitions: HashMap<Id, types::TypeDefinition>,
+    type_definitions: HashMap<Id, elaborate_utils::TypeDefinition>,
     _phantom: std::marker::PhantomData<&'a str>, // Use PhantomData to maintain the lifetime parameter
 }
 
@@ -44,7 +45,7 @@ impl<'a> Builder<'a> {
     // Main Entry Methods
     // ============================================================================
 
-    pub fn build(mut self, diag: &Spanned<parser_types::Element<'a>>) -> Result<types::Diagram> {
+    pub fn build(mut self, diag: &Spanned<parser_types::Element<'a>>) -> Result<semantic::Diagram> {
         debug!("Building elaborated diagram");
         match diag.inner() {
             parser_types::Element::Diagram(diag) => {
@@ -64,18 +65,18 @@ impl<'a> Builder<'a> {
 
                 // Convert block to scope
                 let scope = match block {
-                    types::Block::None => {
+                    semantic::Block::None => {
                         debug!("Empty block, using default scope");
-                        types::Scope::default()
+                        semantic::Scope::default()
                     }
-                    types::Block::Scope(scope) => {
+                    semantic::Block::Scope(scope) => {
                         debug!(
                             elements_len = scope.elements().len();
                             "Using scope from block",
                         );
                         scope
                     }
-                    types::Block::Diagram(_) => {
+                    semantic::Block::Diagram(_) => {
                         return Err(DiagnosticError::from_span(
                             "Nested diagram not allowed".to_string(),
                             diag.kind.span(),
@@ -89,7 +90,7 @@ impl<'a> Builder<'a> {
                     self.extract_diagram_attributes(kind, &diag.attributes)?;
 
                 info!(kind:?; "Diagram elaboration completed successfully");
-                Ok(types::Diagram::new(
+                Ok(semantic::Diagram::new(
                     kind,
                     scope,
                     layout_engine,
@@ -215,9 +216,9 @@ impl<'a> Builder<'a> {
     // TODO: Change error type so it would not accept a span.
     fn insert_type_definition(
         &mut self,
-        type_def: types::TypeDefinition,
+        type_def: elaborate_utils::TypeDefinition,
         span: Span,
-    ) -> Result<types::TypeDefinition> {
+    ) -> Result<elaborate_utils::TypeDefinition> {
         let id = type_def.id();
 
         // Check if the type already exists
@@ -271,16 +272,16 @@ impl<'a> Builder<'a> {
     fn build_diagram_from_parser(
         &mut self,
         diag: &parser_types::Element<'a>,
-    ) -> Result<types::Diagram> {
+    ) -> Result<semantic::Diagram> {
         match diag {
             parser_types::Element::Diagram(diag) => {
                 let kind = *diag.kind;
                 // Create a block from the diagram elements
                 let block = self.build_block_from_elements(&diag.elements, kind)?;
                 let scope = match block {
-                    types::Block::None => types::Scope::default(),
-                    types::Block::Scope(scope) => scope,
-                    types::Block::Diagram(_) => {
+                    semantic::Block::None => semantic::Scope::default(),
+                    semantic::Block::Scope(scope) => scope,
+                    semantic::Block::Diagram(_) => {
                         return Err(DiagnosticError::from_span(
                             "Nested diagram not allowed".to_string(),
                             diag.kind.span(),
@@ -293,7 +294,7 @@ impl<'a> Builder<'a> {
                 let (layout_engine, background_color, lifeline_definition) =
                     self.extract_diagram_attributes(kind, &diag.attributes)?;
 
-                Ok(types::Diagram::new(
+                Ok(semantic::Diagram::new(
                     kind,
                     scope,
                     layout_engine,
@@ -313,15 +314,15 @@ impl<'a> Builder<'a> {
     fn build_diagram_from_embedded_diagram(
         &mut self,
         element: &parser_types::Element<'a>,
-    ) -> Result<types::Diagram> {
+    ) -> Result<semantic::Diagram> {
         if let parser_types::Element::Diagram(diag) = element {
             let kind = *diag.kind;
             // Create a block from the diagram elements
             let block = self.build_block_from_elements(&diag.elements, kind)?;
             let scope = match block {
-                types::Block::None => types::Scope::default(),
-                types::Block::Scope(scope) => scope,
-                types::Block::Diagram(_) => {
+                semantic::Block::None => semantic::Scope::default(),
+                semantic::Block::Scope(scope) => scope,
+                semantic::Block::Diagram(_) => {
                     return Err(DiagnosticError::from_span(
                         "Nested diagram not allowed".to_string(),
                         diag.kind.span(),
@@ -334,7 +335,7 @@ impl<'a> Builder<'a> {
             let (layout_engine, background_color, lifeline_definition) =
                 self.extract_diagram_attributes(kind, &diag.attributes)?;
 
-            Ok(types::Diagram::new(
+            Ok(semantic::Diagram::new(
                 kind,
                 scope,
                 layout_engine,
@@ -354,13 +355,13 @@ impl<'a> Builder<'a> {
     fn build_block_from_elements(
         &mut self,
         parser_elements: &[parser_types::Element<'a>],
-        diagram_kind: types::DiagramKind,
-    ) -> Result<types::Block> {
+        diagram_kind: semantic::DiagramKind,
+    ) -> Result<semantic::Block> {
         if parser_elements.is_empty() {
-            Ok(types::Block::None)
+            Ok(semantic::Block::None)
         } else if let parser_types::Element::Diagram { .. } = &parser_elements[0] {
             // This case happens when a diagram is the first element in a block
-            Ok(types::Block::Diagram(
+            Ok(semantic::Block::Diagram(
                 self.build_diagram_from_parser(&parser_elements[0])?,
             ))
         } else {
@@ -381,7 +382,7 @@ impl<'a> Builder<'a> {
             }
 
             // If no diagrams were found mixed with other elements, build the scope
-            Ok(types::Block::Scope(self.build_scope_from_elements(
+            Ok(semantic::Block::Scope(self.build_scope_from_elements(
                 parser_elements,
                 diagram_kind,
             )?))
@@ -391,8 +392,8 @@ impl<'a> Builder<'a> {
     fn build_scope_from_elements(
         &mut self,
         parser_elements: &[parser_types::Element<'a>],
-        diagram_kind: types::DiagramKind,
-    ) -> Result<types::Scope> {
+        diagram_kind: semantic::DiagramKind,
+    ) -> Result<semantic::Scope> {
         let mut elements = Vec::new();
 
         for parser_elm in parser_elements {
@@ -457,7 +458,7 @@ impl<'a> Builder<'a> {
             };
             elements.push(element);
         }
-        Ok(types::Scope::new(elements))
+        Ok(semantic::Scope::new(elements))
     }
 
     /// Builds a component element from parser data
@@ -468,8 +469,8 @@ impl<'a> Builder<'a> {
         type_spec: &parser_types::TypeSpec,
         nested_elements: &[parser_types::Element<'a>],
         parser_elm: &parser_types::Element,
-        diagram_kind: types::DiagramKind,
-    ) -> Result<types::Element> {
+        diagram_kind: semantic::DiagramKind,
+    ) -> Result<semantic::Element> {
         let type_def = self.build_type_definition(type_spec)?;
 
         let shape_def = type_def.shape_definition().map_err(|err| {
@@ -498,13 +499,13 @@ impl<'a> Builder<'a> {
             // Handle a single diagram element specially
             let elaborated_diagram =
                 self.build_diagram_from_embedded_diagram(&nested_elements[0])?;
-            types::Block::Diagram(elaborated_diagram)
+            semantic::Block::Diagram(elaborated_diagram)
         } else {
             // Process regular nested elements
             self.build_block_from_elements(nested_elements, diagram_kind)?
         };
 
-        let node = types::Node::new(
+        let node = semantic::Node::new(
             *name.inner(),
             name.to_string(),
             display_name.as_ref().map(|n| n.to_string()),
@@ -512,7 +513,7 @@ impl<'a> Builder<'a> {
             Rc::clone(shape_def),
         );
 
-        Ok(types::Element::Node(node))
+        Ok(semantic::Element::Node(node))
     }
 
     /// Builds a relation element from parser data
@@ -523,7 +524,7 @@ impl<'a> Builder<'a> {
         relation_type: &Spanned<&str>,
         type_spec: &parser_types::TypeSpec<'a>,
         label: &Option<Spanned<String>>,
-    ) -> Result<types::Element> {
+    ) -> Result<semantic::Element> {
         // Extract relation type definition from type_spec
         let relation_type_def = self.build_type_definition(type_spec)?;
 
@@ -540,7 +541,7 @@ impl<'a> Builder<'a> {
             )
         })?;
 
-        Ok(types::Element::Relation(types::Relation::new(
+        Ok(semantic::Element::Relation(semantic::Relation::new(
             *source.inner(),
             *target.inner(),
             arrow_direction,
@@ -554,10 +555,10 @@ impl<'a> Builder<'a> {
         &mut self,
         component: &Spanned<Id>,
         type_spec: &parser_types::TypeSpec<'a>,
-        diagram_kind: types::DiagramKind,
-    ) -> Result<types::Element> {
+        diagram_kind: semantic::DiagramKind,
+    ) -> Result<semantic::Element> {
         // Only allow activate in sequence diagrams
-        if diagram_kind != types::DiagramKind::Sequence {
+        if diagram_kind != semantic::DiagramKind::Sequence {
             return Err(DiagnosticError::from_span(
                 "Activate statements are only supported in sequence diagrams".to_string(),
                 component.span(),
@@ -582,7 +583,7 @@ impl<'a> Builder<'a> {
                 )
             })?;
 
-        Ok(types::Element::Activate(types::Activate::new(
+        Ok(semantic::Element::Activate(semantic::Activate::new(
             *component.inner(),
             Rc::clone(activation_box_def),
         )))
@@ -592,10 +593,10 @@ impl<'a> Builder<'a> {
     fn build_deactivate_element(
         &mut self,
         component: &Spanned<Id>,
-        diagram_kind: types::DiagramKind,
-    ) -> Result<types::Element> {
+        diagram_kind: semantic::DiagramKind,
+    ) -> Result<semantic::Element> {
         // Only allow deactivate in sequence diagrams
-        if diagram_kind != types::DiagramKind::Sequence {
+        if diagram_kind != semantic::DiagramKind::Sequence {
             return Err(DiagnosticError::from_span(
                 "Deactivate statements are only supported in sequence diagrams".to_string(),
                 component.span(),
@@ -607,17 +608,17 @@ impl<'a> Builder<'a> {
             ));
         }
 
-        Ok(types::Element::Deactivate(*component.inner()))
+        Ok(semantic::Element::Deactivate(*component.inner()))
     }
 
     /// Builds a fragment element from parser data
     fn build_fragment_element(
         &mut self,
         fragment: &parser_types::Fragment<'a>,
-        diagram_kind: types::DiagramKind,
-    ) -> Result<types::Element> {
+        diagram_kind: semantic::DiagramKind,
+    ) -> Result<semantic::Element> {
         // Only allow fragments in sequence diagrams
-        if diagram_kind != types::DiagramKind::Sequence {
+        if diagram_kind != semantic::DiagramKind::Sequence {
             return Err(DiagnosticError::from_span(
                 "Fragment blocks are only supported in sequence diagrams".to_string(),
                 fragment.span(),
@@ -655,13 +656,13 @@ impl<'a> Builder<'a> {
             let scope = self.build_scope_from_elements(&parser_section.elements, diagram_kind)?;
             let elements_vec = scope.elements().to_vec();
 
-            sections.push(types::FragmentSection::new(
+            sections.push(semantic::FragmentSection::new(
                 parser_section.title.as_ref().map(|t| t.inner().to_string()),
                 elements_vec,
             ));
         }
 
-        Ok(types::Element::Fragment(types::Fragment::new(
+        Ok(semantic::Element::Fragment(semantic::Fragment::new(
             fragment.operation.inner().to_string(),
             sections,
             Rc::clone(fragment_def),
@@ -671,7 +672,7 @@ impl<'a> Builder<'a> {
     fn build_type_definition(
         &mut self,
         type_spec: &parser_types::TypeSpec,
-    ) -> Result<types::TypeDefinition> {
+    ) -> Result<elaborate_utils::TypeDefinition> {
         let type_name = type_spec.type_name.as_ref().ok_or_else(|| {
             DiagnosticError::from_span(
                 "Base Type type_spec must have a type name".to_string(),
@@ -740,7 +741,7 @@ impl<'a> Builder<'a> {
         // Step 2: If attributes exist, make mutable and apply them
         if !type_spec.attributes.is_empty() {
             let text_def_mut = Rc::make_mut(&mut text_rc);
-            types::TextAttributeExtractor::extract_text_attributes(
+            elaborate_utils::TextAttributeExtractor::extract_text_attributes(
                 text_def_mut,
                 &type_spec.attributes,
             )?;
@@ -790,7 +791,7 @@ impl<'a> Builder<'a> {
         // Step 2: If attributes exist, make mutable and apply them
         if !type_spec.attributes.is_empty() {
             let stroke_def_mut = Rc::make_mut(&mut stroke_rc);
-            types::StrokeAttributeExtractor::extract_stroke_attributes(
+            elaborate_utils::StrokeAttributeExtractor::extract_stroke_attributes(
                 stroke_def_mut,
                 &type_spec.attributes,
             )?;
@@ -805,11 +806,11 @@ impl<'a> Builder<'a> {
     fn build_type_from_base(
         &self,
         id: Id,
-        base: &types::TypeDefinition,
+        base: &elaborate_utils::TypeDefinition,
         attributes: &[parser_types::Attribute],
-    ) -> Result<types::TypeDefinition> {
+    ) -> Result<elaborate_utils::TypeDefinition> {
         match base.draw_definition() {
-            types::DrawDefinition::Shape(shape_def) => {
+            elaborate_utils::DrawDefinition::Shape(shape_def) => {
                 let mut new_shape_def = Rc::clone(shape_def);
                 let shape_def_mut = Rc::make_mut(&mut new_shape_def);
 
@@ -866,9 +867,12 @@ impl<'a> Builder<'a> {
                     }
                 }
 
-                Ok(types::TypeDefinition::new_shape(id, new_shape_def))
+                Ok(elaborate_utils::TypeDefinition::new_shape(
+                    id,
+                    new_shape_def,
+                ))
             }
-            types::DrawDefinition::Arrow(arrow_def) => {
+            elaborate_utils::DrawDefinition::Arrow(arrow_def) => {
                 let mut new_arrow_def = Rc::clone(arrow_def);
                 let arrow_def_mut = Rc::make_mut(&mut new_arrow_def);
 
@@ -917,9 +921,12 @@ impl<'a> Builder<'a> {
                     }
                 }
 
-                Ok(types::TypeDefinition::new_arrow(id, new_arrow_def))
+                Ok(elaborate_utils::TypeDefinition::new_arrow(
+                    id,
+                    new_arrow_def,
+                ))
             }
-            types::DrawDefinition::Fragment(fragment_def) => {
+            elaborate_utils::DrawDefinition::Fragment(fragment_def) => {
                 let mut new_fragment_def = Rc::clone(fragment_def);
                 let fragment_def_mut = Rc::make_mut(&mut new_fragment_def);
 
@@ -978,9 +985,12 @@ impl<'a> Builder<'a> {
                     }
                 }
 
-                Ok(types::TypeDefinition::new_fragment(id, new_fragment_def))
+                Ok(elaborate_utils::TypeDefinition::new_fragment(
+                    id,
+                    new_fragment_def,
+                ))
             }
-            types::DrawDefinition::Note(note_def) => {
+            elaborate_utils::DrawDefinition::Note(note_def) => {
                 let mut new_note_def = Rc::clone(note_def);
                 let note_def_mut = Rc::make_mut(&mut new_note_def);
 
@@ -1019,9 +1029,9 @@ impl<'a> Builder<'a> {
                     }
                 }
 
-                Ok(types::TypeDefinition::new_note(id, new_note_def))
+                Ok(elaborate_utils::TypeDefinition::new_note(id, new_note_def))
             }
-            types::DrawDefinition::ActivationBox(activation_box_def) => {
+            elaborate_utils::DrawDefinition::ActivationBox(activation_box_def) => {
                 let mut new_activation_box_def = Rc::clone(activation_box_def);
                 let activation_box_def_mut = Rc::make_mut(&mut new_activation_box_def);
 
@@ -1060,26 +1070,26 @@ impl<'a> Builder<'a> {
                     }
                 }
 
-                Ok(types::TypeDefinition::new_activation_box(
+                Ok(elaborate_utils::TypeDefinition::new_activation_box(
                     id,
                     new_activation_box_def,
                 ))
             }
-            types::DrawDefinition::Stroke(stroke_def) => {
+            elaborate_utils::DrawDefinition::Stroke(stroke_def) => {
                 let mut new_stroke = (**stroke_def).clone();
-                types::StrokeAttributeExtractor::extract_stroke_attributes(
+                elaborate_utils::StrokeAttributeExtractor::extract_stroke_attributes(
                     &mut new_stroke,
                     attributes,
                 )?;
-                Ok(types::TypeDefinition::new_stroke(id, new_stroke))
+                Ok(elaborate_utils::TypeDefinition::new_stroke(id, new_stroke))
             }
-            types::DrawDefinition::Text(text_def) => {
+            elaborate_utils::DrawDefinition::Text(text_def) => {
                 let mut new_text_def = (**text_def).clone();
-                types::TextAttributeExtractor::extract_text_attributes(
+                elaborate_utils::TextAttributeExtractor::extract_text_attributes(
                     &mut new_text_def,
                     attributes,
                 )?;
-                Ok(types::TypeDefinition::new_text(id, new_text_def))
+                Ok(elaborate_utils::TypeDefinition::new_text(id, new_text_def))
             }
         }
     }
@@ -1100,17 +1110,17 @@ impl<'a> Builder<'a> {
     /// Extract diagram attributes (layout engine, background color, and lifeline definition)
     fn extract_diagram_attributes(
         &self,
-        kind: types::DiagramKind,
+        kind: semantic::DiagramKind,
         attrs: &Vec<parser_types::Attribute<'_>>,
     ) -> Result<(
-        types::LayoutEngine,
+        semantic::LayoutEngine,
         Option<Color>,
         Option<Rc<draw::LifelineDefinition>>,
     )> {
         // Set the default layout engine based on the diagram kind and config
         let mut layout_engine = match kind {
-            types::DiagramKind::Component => self.cfg.layout().component(),
-            types::DiagramKind::Sequence => self.cfg.layout().sequence(),
+            semantic::DiagramKind::Component => self.cfg.layout().component(),
+            semantic::DiagramKind::Sequence => self.cfg.layout().sequence(),
         };
 
         let mut background_color = None;
@@ -1128,7 +1138,7 @@ impl<'a> Builder<'a> {
                 }
                 "lifeline" => {
                     // Only valid for sequence diagrams
-                    if kind != types::DiagramKind::Sequence {
+                    if kind != semantic::DiagramKind::Sequence {
                         return Err(DiagnosticError::from_span(
                             "lifeline attribute is only valid for sequence diagrams".to_string(),
                             attr.span(),
@@ -1194,9 +1204,9 @@ impl<'a> Builder<'a> {
     /// Determines the layout engine from an attribute
     fn determine_layout_engine(
         engine_attr: &parser_types::Attribute<'_>,
-    ) -> Result<types::LayoutEngine> {
+    ) -> Result<semantic::LayoutEngine> {
         let engine_str = Self::extract_string(engine_attr, "layout_engine")?;
-        types::LayoutEngine::from_str(engine_str).map_err(|_| {
+        semantic::LayoutEngine::from_str(engine_str).map_err(|_| {
             DiagnosticError::from_span(
                 format!("Invalid layout_engine value: '{engine_str}'"),
                 engine_attr.value.span(),
@@ -1225,8 +1235,8 @@ impl<'a> Builder<'a> {
     fn build_note_element(
         &mut self,
         note: &parser_types::Note,
-        diagram_kind: types::DiagramKind,
-    ) -> Result<types::Element> {
+        diagram_kind: semantic::DiagramKind,
+    ) -> Result<semantic::Element> {
         let type_def = self.build_type_definition(&note.type_spec)?;
 
         // Extract 'on' and 'align' attributes
@@ -1240,7 +1250,7 @@ impl<'a> Builder<'a> {
         })?;
         let note_def = Rc::clone(note_def_ref);
 
-        Ok(types::Element::Note(types::Note::new(
+        Ok(semantic::Element::Note(semantic::Note::new(
             on, align, content, note_def,
         )))
     }
@@ -1264,10 +1274,10 @@ impl<'a> Builder<'a> {
     fn extract_note_attributes(
         &mut self,
         attributes: &[parser_types::Attribute],
-        diagram_kind: types::DiagramKind,
-    ) -> Result<(Vec<Id>, types::NoteAlign)> {
+        diagram_kind: semantic::DiagramKind,
+    ) -> Result<(Vec<Id>, semantic::NoteAlign)> {
         let mut on: Option<Vec<Id>> = None;
-        let mut align: Option<types::NoteAlign> = None;
+        let mut align: Option<semantic::NoteAlign> = None;
 
         for attr in attributes {
             match *attr.name.inner() {
@@ -1286,7 +1296,7 @@ impl<'a> Builder<'a> {
                 "align" => {
                     let align_str = Self::extract_string(attr, "align")?;
 
-                    let alignment = align_str.parse::<types::NoteAlign>().map_err(|_| {
+                    let alignment = align_str.parse::<semantic::NoteAlign>().map_err(|_| {
                         DiagnosticError::from_span(
                             format!("Invalid alignment value: '{}'", align_str),
                             attr.value.span(),
@@ -1304,8 +1314,8 @@ impl<'a> Builder<'a> {
         // Apply defaults if not specified
         let on = on.unwrap_or_default();
         let align = align.unwrap_or(match diagram_kind {
-            types::DiagramKind::Sequence => types::NoteAlign::Over,
-            types::DiagramKind::Component => types::NoteAlign::Bottom,
+            semantic::DiagramKind::Sequence => semantic::NoteAlign::Over,
+            semantic::DiagramKind::Component => semantic::NoteAlign::Bottom,
         });
 
         Ok((on, align))
@@ -1400,7 +1410,7 @@ mod tests {
         let diagram = result.unwrap();
         // After desugaring, relations remain unscoped; ensure names were not prefixed
         for element in diagram.scope().elements() {
-            if let types::Element::Relation(relation) = element {
+            if let semantic::Element::Relation(relation) = element {
                 // Relations should maintain original naming, not be scoped under "user"
                 let source_str = relation.source().to_string();
                 let target_str = relation.target().to_string();
@@ -1513,7 +1523,7 @@ mod tests {
         let activations: Vec<_> = elems
             .iter()
             .filter_map(|e| {
-                if let types::Element::Activate(activate) = e {
+                if let semantic::Element::Activate(activate) = e {
                     Some(activate.component().to_string())
                 } else {
                     None
@@ -1523,7 +1533,7 @@ mod tests {
         let deactivations: Vec<_> = elems
             .iter()
             .filter_map(|e| {
-                if let types::Element::Deactivate(id) = e {
+                if let semantic::Element::Deactivate(id) = e {
                     Some(id.to_string())
                 } else {
                     None
@@ -1533,7 +1543,7 @@ mod tests {
         let relations: Vec<_> = elems
             .iter()
             .filter_map(|e| {
-                if let types::Element::Relation(r) = e {
+                if let semantic::Element::Relation(r) = e {
                     Some((r.source().to_string(), r.target().to_string()))
                 } else {
                     None
@@ -1627,7 +1637,7 @@ mod tests {
         );
 
         // Verify the activate element
-        if let types::Element::Activate(activate) = &elements[1] {
+        if let semantic::Element::Activate(activate) = &elements[1] {
             assert_eq!(
                 activate.component().to_string(),
                 "user",
@@ -1638,7 +1648,7 @@ mod tests {
         }
 
         // Verify the deactivate element
-        if let types::Element::Deactivate(id) = &elements[2] {
+        if let semantic::Element::Deactivate(id) = &elements[2] {
             assert_eq!(
                 id.to_string(),
                 "user",
@@ -1845,15 +1855,15 @@ mod tests {
         let elems = diagram.scope().elements();
         let relations = elems
             .iter()
-            .filter(|e| matches!(e, types::Element::Relation(_)))
+            .filter(|e| matches!(e, semantic::Element::Relation(_)))
             .count();
         let activates = elems
             .iter()
-            .filter(|e| matches!(e, types::Element::Activate(_)))
+            .filter(|e| matches!(e, semantic::Element::Activate(_)))
             .count();
         let deactivates = elems
             .iter()
-            .filter(|e| matches!(e, types::Element::Deactivate(_)))
+            .filter(|e| matches!(e, semantic::Element::Deactivate(_)))
             .count();
 
         assert!(
@@ -1886,14 +1896,14 @@ mod tests {
             content: Spanned::new("Test note".to_string(), Span::new(0..9)),
         };
 
-        let diagram_kind = types::DiagramKind::Sequence;
+        let diagram_kind = semantic::DiagramKind::Sequence;
         let result = builder.build_note_element(&note, diagram_kind);
 
         assert!(result.is_ok());
         let element = result.unwrap();
-        if let types::Element::Note(note_elem) = element {
+        if let semantic::Element::Note(note_elem) = element {
             assert_eq!(note_elem.on().len(), 0); // Margin note
-            assert_eq!(note_elem.align(), types::NoteAlign::Over); // Sequence default
+            assert_eq!(note_elem.align(), semantic::NoteAlign::Over); // Sequence default
             assert_eq!(note_elem.content(), "Test note");
         } else {
             panic!("Expected Note element");
@@ -1913,14 +1923,14 @@ mod tests {
             content: Spanned::new("Test note".to_string(), Span::new(0..9)),
         };
 
-        let diagram_kind = types::DiagramKind::Component;
+        let diagram_kind = semantic::DiagramKind::Component;
         let result = builder.build_note_element(&note, diagram_kind);
 
         assert!(result.is_ok());
         let element = result.unwrap();
-        if let types::Element::Note(note_elem) = element {
+        if let semantic::Element::Note(note_elem) = element {
             assert_eq!(note_elem.on().len(), 0); // Margin note
-            assert_eq!(note_elem.align(), types::NoteAlign::Bottom); // Component default
+            assert_eq!(note_elem.align(), semantic::NoteAlign::Bottom); // Component default
             assert_eq!(note_elem.content(), "Test note");
         } else {
             panic!("Expected Note element");
@@ -1985,14 +1995,14 @@ mod tests {
             content: Spanned::new("Styled note".to_string(), Span::new(0..11)),
         };
 
-        let diagram_kind = types::DiagramKind::Sequence;
+        let diagram_kind = semantic::DiagramKind::Sequence;
         let result = builder.build_note_element(&note, diagram_kind);
 
         assert!(result.is_ok());
         let element = result.unwrap();
-        if let types::Element::Note(note_elem) = element {
+        if let semantic::Element::Note(note_elem) = element {
             assert_eq!(note_elem.content(), "Styled note");
-            assert_eq!(note_elem.align(), types::NoteAlign::Over); // Default for sequence
+            assert_eq!(note_elem.align(), semantic::NoteAlign::Over); // Default for sequence
             assert_eq!(note_elem.on().len(), 0); // Margin note
         } else {
             panic!("Expected Note element");
@@ -2221,7 +2231,7 @@ mod tests {
         let type_def = result.unwrap();
         // Verify it's a Fragment type definition
         match type_def.draw_definition() {
-            types::DrawDefinition::Fragment(_) => {
+            elaborate_utils::DrawDefinition::Fragment(_) => {
                 // Success - fragment type was created with both operation_label_text and section_title_text attributes
             }
             _ => panic!("Expected Fragment draw definition"),

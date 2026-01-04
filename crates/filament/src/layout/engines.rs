@@ -18,7 +18,6 @@ use log::trace;
 
 use super::layer::ContentStack;
 use crate::{
-    ast::LayoutEngine,
     geometry,
     identifier::Id,
     layout::{
@@ -27,6 +26,7 @@ use crate::{
         positioning::LayoutBounds,
         sequence,
     },
+    semantic::LayoutEngine,
     structure,
 };
 
