@@ -7,8 +7,7 @@ use filament::{DiagramBuilder, config::AppConfig};
 #[test]
 fn test_builder_api_exists() {
     // Just verify the API compiles and can be constructed
-    let source = "diagram component;";
-    let _builder = DiagramBuilder::new(source);
+    let _builder = DiagramBuilder::default();
 }
 
 #[test]
@@ -18,7 +17,8 @@ fn test_parse_simple_diagram() {
         app: Rectangle;
     "#;
 
-    let result = DiagramBuilder::new(source).parse();
+    let builder = DiagramBuilder::default();
+    let result = builder.parse(source);
     assert!(
         result.is_ok(),
         "Should parse valid diagram: {:?}",
@@ -33,7 +33,9 @@ fn test_render_simple_diagram() {
         app: Rectangle [fill_color="blue"];
     "#;
 
-    let result = DiagramBuilder::new(source).render_svg();
+    let builder = DiagramBuilder::default();
+    let diagram = builder.parse(source).expect("Failed to parse diagram");
+    let result = builder.render_svg(&diagram);
 
     if let Ok(svg) = result {
         assert!(svg.contains("<svg"), "Output should contain SVG tag");
@@ -49,7 +51,8 @@ fn test_builder_with_config() {
     let config = AppConfig::default();
 
     // Just verify the API works with config
-    let _result = DiagramBuilder::new(source).with_config(config).parse();
+    let builder = DiagramBuilder::new(config);
+    let _result = builder.parse(source);
 
     // If it compiles and doesn't panic, the API works
 }
@@ -58,6 +61,30 @@ fn test_builder_with_config() {
 fn test_parse_invalid_syntax_returns_error() {
     let invalid_source = "this is not valid filament syntax!!!";
 
-    let result = DiagramBuilder::new(invalid_source).parse();
+    let builder = DiagramBuilder::default();
+    let result = builder.parse(invalid_source);
     assert!(result.is_err(), "Should return error for invalid syntax");
+}
+
+#[test]
+fn test_builder_reusability() {
+    let source1 = "diagram component; app1: Rectangle;";
+    let source2 = "diagram component; app2: Oval;";
+
+    let builder = DiagramBuilder::default();
+
+    // Parse and render first diagram
+    let diagram1 = builder.parse(source1).expect("Failed to parse diagram1");
+    let svg1 = builder
+        .render_svg(&diagram1)
+        .expect("Failed to render diagram1");
+
+    // Reuse same builder for second diagram
+    let diagram2 = builder.parse(source2).expect("Failed to parse diagram2");
+    let svg2 = builder
+        .render_svg(&diagram2)
+        .expect("Failed to render diagram2");
+
+    assert!(svg1.contains("<svg"), "First SVG should be valid");
+    assert!(svg2.contains("<svg"), "Second SVG should be valid");
 }

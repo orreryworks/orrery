@@ -28,53 +28,38 @@ use export::Exporter;
 
 /// Builder for parsing and rendering Filament diagrams.
 ///
-/// This provides a fluent API for processing Filament source code through
-/// the full pipeline: parsing → layout → rendering.
+/// This provides an API for processing Filament diagrams through parsing,
+/// layout, and rendering stages.
 ///
 /// # Examples
 ///
 /// ```rust,no_run
-/// use filament::DiagramBuilder;
+/// use filament::{DiagramBuilder, config::AppConfig};
 ///
 /// let source = "diagram component; app: Rectangle;";
 ///
-/// // Parse only
-/// let diagram = DiagramBuilder::new(source)
-///     .parse()
+/// // With custom config
+/// let config = AppConfig::default();
+/// let builder = DiagramBuilder::new(config);
+///
+/// // Parse source to semantic model
+/// let diagram = builder.parse(source)
 ///     .expect("Failed to parse");
 ///
-/// // Full rendering
-/// let svg = DiagramBuilder::new(source)
-///     .render_svg()
+/// // Render semantic model to SVG
+/// let svg = builder.render_svg(&diagram)
 ///     .expect("Failed to render");
+///
+/// // Or use default config
+/// let builder = DiagramBuilder::default();
 /// ```
-pub struct DiagramBuilder<'a> {
-    source: &'a str,
-    config: Option<AppConfig>,
+#[derive(Default)]
+pub struct DiagramBuilder {
+    config: AppConfig,
 }
 
-impl<'a> DiagramBuilder<'a> {
-    /// Create a new diagram builder from source code.
-    ///
-    /// # Arguments
-    ///
-    /// * `source` - Filament source code as a string
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use filament::DiagramBuilder;
-    ///
-    /// let builder = DiagramBuilder::new("diagram component;");
-    /// ```
-    pub fn new(source: &'a str) -> Self {
-        Self {
-            source,
-            config: None,
-        }
-    }
-
-    /// Provide custom configuration for the diagram.
+impl DiagramBuilder {
+    /// Create a new diagram builder with the given configuration.
     ///
     /// # Arguments
     ///
@@ -86,18 +71,20 @@ impl<'a> DiagramBuilder<'a> {
     /// use filament::{DiagramBuilder, config::AppConfig};
     ///
     /// let config = AppConfig::default();
-    /// let builder = DiagramBuilder::new("diagram component;")
-    ///     .with_config(config);
+    /// let builder = DiagramBuilder::new(config);
     /// ```
-    pub fn with_config(mut self, config: AppConfig) -> Self {
-        self.config = Some(config);
-        self
+    pub fn new(config: AppConfig) -> Self {
+        Self { config }
     }
 
-    /// Parse the source code into an AST.
+    /// Parse source code into a semantic diagram.
     ///
     /// This performs lexing, parsing, desugaring, validation, and elaboration
-    /// to produce a fully resolved diagram AST.
+    /// to produce a fully resolved semantic diagram model.
+    ///
+    /// # Arguments
+    ///
+    /// * `source` - Filament source code as a string
     ///
     /// # Errors
     ///
@@ -107,53 +94,54 @@ impl<'a> DiagramBuilder<'a> {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use filament::DiagramBuilder;
+    /// use filament::{DiagramBuilder, config::AppConfig};
     ///
-    /// let diagram = DiagramBuilder::new("diagram component; app: Rectangle;")
-    ///     .parse()
+    /// let source = "diagram component; app: Rectangle;";
+    /// let builder = DiagramBuilder::new(AppConfig::default());
+    /// let diagram = builder.parse(source)
     ///     .expect("Failed to parse diagram");
     /// ```
-    pub fn parse(self) -> Result<semantic::Diagram, FilamentError> {
-        let config = self.config.unwrap_or_default();
+    pub fn parse(&self, source: &str) -> Result<semantic::Diagram, FilamentError> {
         info!("Building diagram AST");
-        let elaborated_ast = ast::build_ast(&config, self.source)?;
+        let elaborated_ast = ast::build_ast(&self.config, source)?;
         debug!("AST built successfully");
         trace!(elaborated_ast:?; "Elaborated AST");
         Ok(elaborated_ast)
     }
 
-    /// Parse, layout, and render the diagram to SVG string.
+    /// Render a semantic diagram to SVG string.
     ///
-    /// This is the main entry point for most use cases. It processes the
-    /// source code through the complete pipeline and returns an SVG string.
+    /// This transforms a semantic diagram through the layout and rendering
+    /// pipeline to produce an SVG string.
+    ///
+    /// # Arguments
+    ///
+    /// * `diagram` - A semantic diagram to render
     ///
     /// # Errors
     ///
-    /// Returns `FilamentError` for parsing, layout, or rendering errors.
+    /// Returns `FilamentError` for layout or rendering errors.
     ///
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use filament::DiagramBuilder;
+    /// use filament::{DiagramBuilder, config::AppConfig};
     ///
-    /// let svg = DiagramBuilder::new("diagram component; app: Rectangle;")
-    ///     .render_svg()
+    /// let source = "diagram component; app: Rectangle;";
+    /// let builder = DiagramBuilder::new(AppConfig::default());
+    ///
+    /// let diagram = builder.parse(source)
+    ///     .expect("Failed to parse");
+    ///
+    /// let svg = builder.render_svg(&diagram)
     ///     .expect("Failed to render diagram");
     ///
     /// println!("{}", svg);
     /// ```
-    pub fn render_svg(self) -> Result<String, FilamentError> {
-        let config = self.config.unwrap_or_default();
-
-        // Parse the diagram
-        info!("Building diagram AST");
-        let elaborated_ast = ast::build_ast(&config, self.source)?;
-        debug!("AST built successfully");
-        trace!(elaborated_ast:?; "Elaborated AST");
-
+    pub fn render_svg(&self, diagram: &semantic::Diagram) -> Result<String, FilamentError> {
         // Build the diagram structure/graph
-        info!(diagram_kind:? = elaborated_ast.kind(); "Building diagram structure");
-        let diagram_hierarchy = structure::DiagramHierarchy::from_diagram(&elaborated_ast)?;
+        info!(diagram_kind:? = diagram.kind(); "Building diagram structure");
+        let diagram_hierarchy = structure::DiagramHierarchy::from_diagram(diagram)?;
         debug!("Structure built successfully");
 
         // Create layout engine
@@ -176,8 +164,8 @@ impl<'a> DiagramBuilder<'a> {
         let temp_path = temp_file.path().to_string_lossy().to_string();
 
         let mut svg_exporter = export::svg::SvgBuilder::new(&temp_path)
-            .with_style(config.style())
-            .with_diagram(&elaborated_ast)
+            .with_style(self.config.style())
+            .with_diagram(diagram)
             .build()?;
 
         svg_exporter.export_layered_layout(&layered_layout)?;

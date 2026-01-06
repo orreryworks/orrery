@@ -46,9 +46,9 @@ pub fn run(args: &Args) -> Result<(), FilamentError> {
     let source = fs::read_to_string(&args.input)?;
 
     // Process diagram using DiagramBuilder API
-    let svg = DiagramBuilder::new(&source)
-        .with_config(app_config)
-        .render_svg()?;
+    let builder = DiagramBuilder::new(app_config);
+    let diagram = builder.parse(&source)?;
+    let svg = builder.render_svg(&diagram)?;
 
     // Write output file
     fs::write(&args.output, svg)?;
