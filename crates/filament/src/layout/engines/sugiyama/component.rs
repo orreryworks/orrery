@@ -145,7 +145,7 @@ impl Engine {
             content_stack.push(positioned_content);
         }
 
-        adjust_positioned_contents_offset(&mut content_stack, graph);
+        adjust_positioned_contents_offset(&mut content_stack, graph)?;
 
         Ok(content_stack)
     }

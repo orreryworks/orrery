@@ -4,6 +4,7 @@ use log::{debug, error};
 
 use crate::{
     draw,
+    error::FilamentError,
     geometry::{Bounds, Point},
     identifier::Id,
     layout::{layer, positioning::LayoutBounds},
@@ -89,7 +90,11 @@ impl<'a> LayoutRelation<'a> {
     ///
     /// # Returns
     /// A new LayoutRelation containing all necessary rendering information
-    pub fn from_ast(relation: &'a semantic::Relation, source_index: usize, target_index: usize) -> Self {
+    pub fn from_ast(
+        relation: &'a semantic::Relation,
+        source_index: usize,
+        target_index: usize,
+    ) -> Self {
         let arrow_def = Rc::clone(relation.arrow_definition());
         let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
         let mut arrow_with_text = draw::ArrowWithText::new(arrow);
@@ -190,14 +195,14 @@ impl<'a> LayoutBounds for Layout<'a> {
 /// 2. Calculates the target offset based on the container's bounds and shape properties
 /// 3. Updates the destination layer's offset to position the nested content correctly
 ///
-/// # Panics
-/// Panics if a component referenced in the containment graph is not found in its
-/// corresponding layout layer.
+/// # Errors
+/// Returns `FilamentError::Layout` if a component referenced in the containment graph
+/// is not found in its corresponding layout layer.
 // TODO: Once added enough abstractions, make this a method on ContentStack.
 pub fn adjust_positioned_contents_offset<'a>(
     content_stack: &mut layer::ContentStack<Layout>,
     graph: &'a structure::ComponentGraph<'a, '_>,
-) {
+) -> Result<(), FilamentError> {
     let container_indices: HashMap<_, _> = graph
         .containment_scopes()
         .enumerate()
@@ -216,7 +221,11 @@ pub fn adjust_positioned_contents_offset<'a>(
                 continue;
             }
             let source = content_stack.get_unchecked(source_idx);
-            let node = graph.node_by_id(node_id).expect("Node must exist");
+            let node = graph.node_by_id(node_id).ok_or_else(|| {
+                FilamentError::Layout(format!(
+                    "Node with id {node_id} not found in graph during layout adjustment"
+                ))
+            })?;
 
             // Find the component in the source layer that matches the node
             let source_component = source
@@ -224,7 +233,13 @@ pub fn adjust_positioned_contents_offset<'a>(
                 .components()
                 .iter()
                 .find(|component| component.node_id == node.id())
-                .expect("Component must exist in source layer");
+                .ok_or_else(|| {
+                    FilamentError::Layout(format!(
+                        "Component with id {} not found in source layer {}",
+                        node.id(),
+                        source_idx
+                    ))
+                })?;
             let target_offset = source
                 .offset()
                 .add_point(source_component.bounds().min_point())
@@ -249,4 +264,5 @@ pub fn adjust_positioned_contents_offset<'a>(
             target.set_offset(target_offset);
         }
     }
+    Ok(())
 }

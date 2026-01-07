@@ -64,7 +64,7 @@ impl Engine {
         &self,
         graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> ContentStack<Layout<'a>> {
+    ) -> Result<ContentStack<Layout<'a>>, FilamentError> {
         let mut content_stack = ContentStack::<Layout<'a>>::new();
         let mut positioned_content_sizes = HashMap::<Id, Size>::new();
 
@@ -137,9 +137,9 @@ impl Engine {
             content_stack.push(positioned_content);
         }
 
-        adjust_positioned_contents_offset(&mut content_stack, graph);
+        adjust_positioned_contents_offset(&mut content_stack, graph)?;
 
-        content_stack
+        Ok(content_stack)
     }
 
     /// Calculate component shapes with proper content size and padding
@@ -422,6 +422,6 @@ impl ComponentEngine for Engine {
         graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts<'a>,
     ) -> Result<ContentStack<Layout<'a>>, FilamentError> {
-        Ok(self.calculate_layout(graph, embedded_layouts))
+        self.calculate_layout(graph, embedded_layouts)
     }
 }
