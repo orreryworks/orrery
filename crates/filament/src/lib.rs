@@ -154,7 +154,7 @@ impl DiagramBuilder {
 
         // Calculate layout
         info!("Processing diagrams in hierarchy");
-        let layered_layout = engine_builder.build(&diagram_hierarchy);
+        let layered_layout = engine_builder.build(&diagram_hierarchy)?;
         info!(layers_count = layered_layout.len(); "Layout calculated");
 
         // Render to SVG using a temporary file

@@ -7,6 +7,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     draw::{self, Drawable as _},
+    error::FilamentError,
     geometry::{Insets, Point, Size},
     identifier::Id,
     layout::{
@@ -458,7 +459,7 @@ impl SequenceEngine for Engine {
         &self,
         graph: &'a SequenceGraph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> ContentStack<Layout<'a>> {
-        self.calculate_layout(graph, embedded_layouts)
+    ) -> Result<ContentStack<Layout<'a>>, FilamentError> {
+        Ok(self.calculate_layout(graph, embedded_layouts))
     }
 }

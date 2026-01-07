@@ -5,6 +5,7 @@ use rust_sugiyama::configure::Config;
 
 use crate::{
     draw::{self, Drawable},
+    error::FilamentError,
     geometry::{Insets, Point, Size},
     identifier::Id,
     layout::{
@@ -73,7 +74,7 @@ impl Engine {
         &self,
         graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> ContentStack<Layout<'a>> {
+    ) -> Result<ContentStack<Layout<'a>>, FilamentError> {
         let mut content_stack = ContentStack::<Layout<'a>>::new();
         let mut positioned_content_sizes = HashMap::<Id, Size>::new();
 
@@ -93,7 +94,7 @@ impl Engine {
                 .collect();
 
             // Calculate positions for components in this scope
-            let positions = self.positions(graph, containment_scope, &component_sizes);
+            let positions = self.positions(graph, containment_scope, &component_sizes)?;
 
             // Build the final component list using the pre-configured shapes
             let components: Vec<Component> = graph
@@ -146,7 +147,7 @@ impl Engine {
 
         adjust_positioned_contents_offset(&mut content_stack, graph);
 
-        content_stack
+        Ok(content_stack)
     }
 
     /// Calculate component shapes with proper sizing and padding
@@ -203,7 +204,7 @@ impl Engine {
         graph: &ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
         component_sizes: &HashMap<Id, Size>,
-    ) -> HashMap<Id, Point> {
+    ) -> Result<HashMap<Id, Point>, FilamentError> {
         // Prepare layout
         let mut positions = HashMap::new();
 
@@ -308,29 +309,37 @@ impl Engine {
                         }
                     }
 
-                    // If mapping failed for all nodes, fall back to hierarchical layout
+                    // If mapping failed for all nodes, return error
                     if positions.is_empty() {
-                        panic!("Failed to map any rust-sugiyama positions back to graph nodes.");
+                        return Err(FilamentError::Layout(
+                            "Failed to map any rust-sugiyama positions back to graph nodes"
+                                .to_string(),
+                        ));
                     }
                 }
 
                 // Empty results case
                 Ok(results) if results.is_empty() => {
-                    panic!("Rust-sugiyama returned empty layout results.");
+                    return Err(FilamentError::Layout(
+                        "Rust-sugiyama returned empty layout results".to_string(),
+                    ));
                 }
 
                 // Unexpected success case
                 Ok(_) => {
-                    panic!("Rust-sugiyama returned unexpected result format.");
+                    return Err(FilamentError::Layout(
+                        "Rust-sugiyama returned unexpected result format".to_string(),
+                    ));
                 }
 
                 // Error/panic case
                 Err(err) => {
-                    if let Some(panic_msg) = err.downcast_ref::<String>() {
-                        panic!("Rust-sugiyama layout engine panicked: {panic_msg}.");
+                    let message = if let Some(panic_msg) = err.downcast_ref::<String>() {
+                        format!("Rust-sugiyama layout engine panicked: {panic_msg}")
                     } else {
-                        panic!("Rust-sugiyama layout engine panicked with unknown error.");
-                    }
+                        "Rust-sugiyama layout engine panicked with unknown error".to_string()
+                    };
+                    return Err(FilamentError::Layout(message));
                 }
             }
 
@@ -354,7 +363,7 @@ impl Engine {
             }
         }
 
-        positions
+        Ok(positions)
     }
 
     fn center_layout(
@@ -399,7 +408,7 @@ impl ComponentEngine for Engine {
         &self,
         graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> ContentStack<Layout<'a>> {
+    ) -> Result<ContentStack<Layout<'a>>, FilamentError> {
         self.calculate_layout(graph, embedded_layouts)
     }
 }

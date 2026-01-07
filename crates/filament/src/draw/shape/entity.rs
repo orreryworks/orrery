@@ -23,6 +23,11 @@ impl EntityDefinition {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Get the fill color of the entity
+    fn fill_color(&self) -> Option<Color> {
+        self.fill_color
+    }
 }
 
 impl Default for EntityDefinition {
@@ -44,14 +49,9 @@ impl ShapeDefinition for EntityDefinition {
         Box::new(self.clone())
     }
 
-    fn fill_color(&self) -> Option<Color> {
-        self.fill_color
-    }
-
     fn stroke(&self) -> &Rc<StrokeDefinition> {
         &self.stroke
     }
-
 
     fn set_fill_color(&mut self, color: Option<Color>) -> Result<(), &'static str> {
         self.fill_color = color;
@@ -61,7 +61,6 @@ impl ShapeDefinition for EntityDefinition {
     fn text(&self) -> &Rc<TextDefinition> {
         &self.text
     }
-
 
     fn set_text(&mut self, text: Rc<TextDefinition>) {
         self.text = text;

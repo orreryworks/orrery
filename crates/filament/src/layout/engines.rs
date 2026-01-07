@@ -18,6 +18,7 @@ use log::trace;
 
 use super::layer::ContentStack;
 use crate::{
+    error::FilamentError,
     geometry,
     identifier::Id,
     layout::{
@@ -91,11 +92,14 @@ pub trait ComponentEngine {
     ///   indexed by their Id. When a node contains an embedded diagram,
     ///   its size should be determined by looking up its layout here rather than
     ///   calculating it again.
+    ///
+    /// # Errors
+    /// Returns `FilamentError::Layout` if the layout engine fails to calculate positions.
     fn calculate<'a>(
         &self,
         graph: &'a structure::ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> ContentStack<component::Layout<'a>>;
+    ) -> Result<ContentStack<component::Layout<'a>>, FilamentError>;
 }
 
 /// Trait defining the interface for sequence diagram layout engines
@@ -107,11 +111,14 @@ pub trait SequenceEngine {
     ///   indexed by their Id. When a node contains an embedded diagram,
     ///   its size should be determined by looking up its layout here rather than
     ///   calculating it again.
+    ///
+    /// # Errors
+    /// Returns `FilamentError::Layout` if the layout engine fails to calculate positions.
     fn calculate<'a>(
         &self,
         graph: &'a structure::SequenceGraph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> ContentStack<sequence::Layout<'a>>;
+    ) -> Result<ContentStack<sequence::Layout<'a>>, FilamentError>;
 }
 
 /// Builder for creating and configuring layout engines.
@@ -216,10 +223,13 @@ impl EngineBuilder {
     /// This is a two-phase process:
     /// 1. Calculate layouts for all diagrams in post-order (innermost to outermost)
     /// 2. Adjust positions of embedded diagrams relative to their containers
+    ///
+    /// # Errors
+    /// Returns `FilamentError::Layout` if any layout engine fails to calculate positions.
     pub fn build<'a>(
         mut self,
         collection: &'a structure::DiagramHierarchy<'a, '_>,
-    ) -> LayeredLayout<'a> {
+    ) -> Result<LayeredLayout<'a>, FilamentError> {
         let mut layered_layout = LayeredLayout::new();
 
         let mut layout_info: HashMap<Id, LayoutResult<'a>> = HashMap::new();
@@ -243,13 +253,13 @@ impl EngineBuilder {
                 structure::GraphKind::ComponentGraph(graph) => {
                     let engine = self.component_engine(diagram.layout_engine());
 
-                    let layout = engine.calculate(graph, &layout_info);
+                    let layout = engine.calculate(graph, &layout_info)?;
                     LayoutResult::Component(layout)
                 }
                 structure::GraphKind::SequenceGraph(graph) => {
                     let engine = self.sequence_engine(diagram.layout_engine());
 
-                    let layout = engine.calculate(graph, &layout_info);
+                    let layout = engine.calculate(graph, &layout_info)?;
                     LayoutResult::Sequence(layout)
                 }
             };
@@ -326,6 +336,6 @@ impl EngineBuilder {
 
         trace!(layered_layout:?; "Built layered layout");
 
-        layered_layout
+        Ok(layered_layout)
     }
 }

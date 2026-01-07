@@ -11,6 +11,7 @@ use std::{
 
 use crate::{
     draw::{self, Drawable},
+    error::FilamentError,
     geometry::{Insets, Point, Size},
     identifier::Id,
     layout::{
@@ -420,7 +421,7 @@ impl ComponentEngine for Engine {
         &self,
         graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> ContentStack<Layout<'a>> {
-        self.calculate_layout(graph, embedded_layouts)
+    ) -> Result<ContentStack<Layout<'a>>, FilamentError> {
+        Ok(self.calculate_layout(graph, embedded_layouts))
     }
 }

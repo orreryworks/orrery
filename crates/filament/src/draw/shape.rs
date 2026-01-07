@@ -70,11 +70,6 @@ pub trait ShapeDefinition: std::fmt::Debug {
         Err("rounded corners are not supported for this shape")
     }
 
-    /// Get the fill color of the rectangle
-    fn fill_color(&self) -> Option<Color> {
-        unimplemented!("fill_color is not supported for this shape")
-    }
-
     /// Get the stroke definition for the shape.
     fn stroke(&self) -> &Rc<StrokeDefinition>;
 
@@ -86,11 +81,6 @@ pub trait ShapeDefinition: std::fmt::Debug {
 
     /// Set stroke definition using Rc.
     fn set_stroke(&mut self, stroke: Rc<StrokeDefinition>);
-
-    /// Get the corner rounding of the rectangle
-    fn rounded(&self) -> usize {
-        unimplemented!("rounded corners are not supported for this shape")
-    }
 
     fn min_content_size(&self) -> Size {
         if self.supports_content() {

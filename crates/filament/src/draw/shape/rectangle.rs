@@ -23,6 +23,16 @@ impl RectangleDefinition {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Get the fill color of the rectangle
+    pub fn fill_color(&self) -> Option<Color> {
+        self.fill_color
+    }
+
+    /// Get the corner rounding of the rectangle
+    pub fn rounded(&self) -> usize {
+        self.rounded
+    }
 }
 
 impl Default for RectangleDefinition {
@@ -50,17 +60,8 @@ impl ShapeDefinition for RectangleDefinition {
         Box::new(self.clone())
     }
 
-    fn fill_color(&self) -> Option<Color> {
-        self.fill_color
-    }
-
     fn stroke(&self) -> &Rc<StrokeDefinition> {
         &self.stroke
-    }
-
-
-    fn rounded(&self) -> usize {
-        self.rounded
     }
 
     fn set_fill_color(&mut self, color: Option<Color>) -> Result<(), &'static str> {
@@ -76,7 +77,6 @@ impl ShapeDefinition for RectangleDefinition {
     fn text(&self) -> &Rc<TextDefinition> {
         &self.text
     }
-
 
     fn set_text(&mut self, text: Rc<TextDefinition>) {
         self.text = text;

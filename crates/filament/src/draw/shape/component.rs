@@ -96,6 +96,21 @@ where
     icon: I,
 }
 
+impl<I> RectangleWithIconDefinition<I>
+where
+    I: Icon + fmt::Debug + Clone + 'static,
+{
+    /// Get the fill color of the shape
+    fn fill_color(&self) -> Option<Color> {
+        self.rectangle_definition.fill_color()
+    }
+
+    /// Get the corner rounding of the shape
+    fn rounded(&self) -> usize {
+        self.rectangle_definition.rounded()
+    }
+}
+
 impl<I> ShapeDefinition for RectangleWithIconDefinition<I>
 where
     I: Icon + fmt::Debug + Clone + 'static,
@@ -124,19 +139,13 @@ where
         Box::new(self.clone())
     }
 
-    fn fill_color(&self) -> Option<Color> {
-        self.rectangle_definition.fill_color()
-    }
-
     fn stroke(&self) -> &Rc<StrokeDefinition> {
         self.rectangle_definition.stroke()
     }
 
-
     fn text(&self) -> &Rc<TextDefinition> {
         self.rectangle_definition.text()
     }
-
 
     fn set_text(&mut self, text: Rc<TextDefinition>) {
         self.rectangle_definition.set_text(text);
@@ -144,10 +153,6 @@ where
 
     fn set_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
         self.rectangle_definition.set_stroke(stroke);
-    }
-
-    fn rounded(&self) -> usize {
-        self.rectangle_definition.rounded()
     }
 
     fn set_fill_color(&mut self, color: Option<Color>) -> Result<(), &'static str> {
