@@ -2,6 +2,7 @@ use log::debug;
 
 use crate::{
     draw,
+    error::FilamentError,
     geometry::{Bounds, Point, Size},
     layout::{component, positioning::LayoutBounds, sequence},
 };
@@ -101,23 +102,30 @@ impl<'a> LayeredLayout<'a> {
     /// - `positioned_shape`: The positioned drawable representing the container
     /// - `embedded_idx`: Index of the embedded diagram layer
     ///
-    /// # Panics
-    /// Panics if either index is invalid or if they refer to the same layer
-    // TODO: We can return error instead of panicking if indices are invalid
+    /// # Errors
+    /// Returns an error if either index is invalid, if they refer to the same layer,
+    /// or if the container shape doesn't have content bounds set.
     pub fn adjust_relative_position(
         &mut self,
         container_idx: usize,
         positioned_shape: &draw::PositionedDrawable<draw::ShapeWithText>,
         embedded_idx: usize,
-    ) {
-        let [container_layer, embedded_layer] = &mut self
-            .layers
-            .get_disjoint_mut([container_idx, embedded_idx])
-            .expect("container_idx and embedded_idx must be valid, distinct indices");
+    ) -> Result<(), FilamentError> {
+        let [container_layer, embedded_layer] =
+            self.layers
+                .get_disjoint_mut([container_idx, embedded_idx])
+                .map_err(|err| {
+                    FilamentError::Layout(format!(
+                        "Invalid layer indices (container_idx={container_idx}, embedded_idx={embedded_idx}): {err}"
+                    ))
+                })?;
 
-        let content_bounds = positioned_shape
-            .content_bounds()
-            .expect("Container shape must have inner content size set");
+        let content_bounds = positioned_shape.content_bounds().ok_or_else(|| {
+            FilamentError::Layout(
+                "Container shape must have inner content size set for embedded diagram positioning"
+                    .to_string(),
+            )
+        })?;
 
         // Get the actual bounds of the embedded layout's content
         let embedded_layout_bounds = match embedded_layer.content() {
@@ -162,6 +170,8 @@ impl<'a> LayeredLayout<'a> {
             offset:?=embedded_layer.offset(), clip_bounds:?=embedded_layer.clip_bounds();
             "Adjusted embedded layer",
         );
+
+        Ok(())
     }
 
     /// Returns the number of layers
