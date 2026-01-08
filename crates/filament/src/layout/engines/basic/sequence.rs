@@ -3,7 +3,7 @@
 //! This module provides a layout engine for sequence diagrams
 //! using a simple, deterministic algorithm.
 
-use std::{collections::HashMap, rc::Rc};
+use std::{cmp::Ordering, collections::HashMap, rc::Rc};
 
 use crate::{
     draw::{self, Drawable as _},
@@ -106,32 +106,35 @@ impl Engine {
         &self,
         graph: &'a SequenceGraph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> ContentStack<Layout<'a>> {
+    ) -> Result<ContentStack<Layout<'a>>, FilamentError> {
         // Create shapes with text for participants
-        let mut participant_shapes: HashMap<_, _> = graph
-            .nodes()
-            .map(|node| {
-                let mut shape = draw::Shape::new(Rc::clone(node.shape_definition()));
-                shape.set_padding(self.padding);
-                let text = draw::Text::new(node.shape_definition().text(), node.display_text());
-                let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
+        let mut participant_shapes: HashMap<_, _> = HashMap::new();
+        for node in graph.nodes() {
+            let mut shape = draw::Shape::new(Rc::clone(node.shape_definition()));
+            shape.set_padding(self.padding);
+            let text = draw::Text::new(node.shape_definition().text(), node.display_text());
+            let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
 
-                if let semantic::Block::Diagram(_) = node.block() {
-                    // If this participant has an embedded diagram, use its layout size
-                    let content_size = if let Some(layout) = embedded_layouts.get(&node.id()) {
-                        layout.calculate_size()
-                    } else {
-                        Size::default()
-                    };
+            if let semantic::Block::Diagram(_) = node.block() {
+                // If this participant has an embedded diagram, use its layout size
+                let content_size = if let Some(layout) = embedded_layouts.get(&node.id()) {
+                    layout.calculate_size()
+                } else {
+                    Size::default()
+                };
 
-                    shape_with_text
-                        .set_inner_content_size(content_size)
-                        .expect("Diagram blocks should always support content sizing");
-                }
-                // For non-Diagram blocks, don't call set_inner_content_size
-                (node.id(), shape_with_text)
-            })
-            .collect();
+                shape_with_text
+                    .set_inner_content_size(content_size)
+                    .map_err(|err| {
+                        FilamentError::Layout(format!(
+                            "Failed to set content size for participant '{}': {err}",
+                            node.display_text()
+                        ))
+                    })?;
+            }
+            // For non-Diagram blocks, don't call set_inner_content_size
+            participant_shapes.insert(node.id(), shape_with_text);
+        }
 
         // Collect all messages to consider their labels for spacing
         let mut messages_vec = Vec::new();
@@ -152,13 +155,13 @@ impl Engine {
         }
 
         // Get list of node indices and their sizes
-        let sizes: Vec<_> = graph
-            .node_ids()
-            .map(|id| {
-                let shape_with_text = participant_shapes.get(id).unwrap();
-                shape_with_text.size()
-            })
-            .collect();
+        let mut sizes: Vec<Size> = Vec::new();
+        for id in graph.node_ids() {
+            let shape_with_text = participant_shapes.get(id).ok_or_else(|| {
+                FilamentError::Layout("Participant shape not found for node".to_string())
+            })?;
+            sizes.push(shape_with_text.size());
+        }
 
         // Calculate horizontal positions using positioning algorithms
         let x_positions = crate::layout::positioning::distribute_horizontally(
@@ -168,36 +171,37 @@ impl Engine {
         );
 
         // Create participants and store their indices
-        let components: HashMap<Id, Component> = graph
-            .nodes()
-            .enumerate()
-            .map(|(i, node)| {
-                let shape_with_text = participant_shapes.remove(&node.id()).unwrap();
-                let mut position = Point::new(x_positions[i], self.top_margin);
+        let mut components: HashMap<Id, Component> = HashMap::new();
+        for (i, node) in graph.nodes().enumerate() {
+            let shape_with_text = participant_shapes.remove(&node.id()).ok_or_else(|| {
+                FilamentError::Layout(format!(
+                    "Participant shape not found for node '{}'",
+                    node.id()
+                ))
+            })?;
+            let mut position = Point::new(x_positions[i], self.top_margin);
 
-                // If this node contains an embedded diagram, adjust position to normalize
-                // the embedded layout's coordinate system to start at origin
-                if let semantic::Block::Diagram(_) = node.block()
-                    && let Some(layout) = embedded_layouts.get(&node.id())
-                {
-                    position = position.add_point(layout.normalize_offset());
-                }
+            // If this node contains an embedded diagram, adjust position to normalize
+            // the embedded layout's coordinate system to start at origin
+            if let semantic::Block::Diagram(_) = node.block()
+                && let Some(layout) = embedded_layouts.get(&node.id())
+            {
+                position = position.add_point(layout.normalize_offset());
+            }
 
-                let component = Component::new(node, shape_with_text, position);
-
-                (node.id(), component)
-            })
-            .collect();
+            let component = Component::new(node, shape_with_text, position);
+            components.insert(node.id(), component);
+        }
 
         // Calculate message positions and update lifeline ends
         let participants_height = components
             .values()
             .map(|component| component.drawable().size().height())
-            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
             .unwrap_or_default();
 
         let (messages, activations, fragments, notes, lifeline_end) =
-            self.process_events(graph, participants_height, &components);
+            self.process_events(graph, participants_height, &components)?;
 
         // Update lifeline ends to match diagram height and finalize lifelines
         let participants: HashMap<Id, Participant<'a>> = components
@@ -227,7 +231,7 @@ impl Engine {
         let mut content_stack = ContentStack::new();
         content_stack.push(PositionedContent::new(layout));
 
-        content_stack
+        Ok(content_stack)
     }
 
     /// Process all sequence diagram events to create layout components.
@@ -265,7 +269,7 @@ impl Engine {
         graph: &SequenceGraph<'a>,
         participants_height: f32,
         components: &HashMap<Id, Component<'a>>,
-    ) -> ProcessEventsResult<'a> {
+    ) -> Result<ProcessEventsResult<'a>, FilamentError> {
         let mut messages: Vec<Message<'a>> = Vec::new();
         let mut activation_boxes: Vec<ActivationBox> = Vec::new();
         let mut fragments: Vec<draw::PositionedDrawable<draw::Fragment>> = Vec::new();
@@ -365,7 +369,8 @@ impl Engine {
                     fragments.push(fragment);
                 }
                 SequenceEvent::Note(note) => {
-                    let positioned_note = self.create_positioned_note(note, components, current_y);
+                    let positioned_note =
+                        self.create_positioned_note(note, components, current_y)?;
                     let note_height = positioned_note.size().height();
 
                     notes.push(positioned_note);
@@ -374,7 +379,7 @@ impl Engine {
             }
         }
 
-        (messages, activation_boxes, fragments, notes, current_y)
+        Ok((messages, activation_boxes, fragments, notes, current_y))
     }
 
     /// Create a positioned note drawable for a sequence diagram.
@@ -396,18 +401,21 @@ impl Engine {
         note: &semantic::Note,
         components: &HashMap<Id, Component<'a>>,
         current_y: f32,
-    ) -> draw::PositionedDrawable<draw::Note> {
+    ) -> Result<draw::PositionedDrawable<draw::Note>, FilamentError> {
         const NOTE_SPACING: f32 = 20.0; // Spacing between note and participant lifeline
 
         // Select appropriate components: all if on=[], otherwise specified ones
-        let filtered_components: Box<dyn Iterator<Item = &Component>> = if note.on().is_empty() {
-            Box::new(components.values())
+        let filtered_components: Vec<&Component> = if note.on().is_empty() {
+            components.values().collect()
         } else {
-            Box::new(
-                note.on()
-                    .iter()
-                    .map(|id| components.get(id).expect("component not found")),
-            )
+            note.on()
+                .iter()
+                .map(|id| {
+                    components.get(id).ok_or_else(|| {
+                        FilamentError::Layout("Component not found for note".to_string())
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?
         };
 
         let edge_map: fn(&Component) -> (f32, f32) = match note.align() {
@@ -427,9 +435,12 @@ impl Engine {
         };
 
         let (min_x, max_x) = filtered_components
+            .into_iter()
             .map(edge_map)
             .reduce(|(min_x, max_x), (left_x, right_x)| (min_x.min(left_x), max_x.max(right_x)))
-            .expect("note should have at least one participant");
+            .ok_or_else(|| {
+                FilamentError::Layout("Note should have at least one participant".to_string())
+            })?;
 
         let mut new_note_def = Rc::clone(note.definition());
         if note.align() == semantic::NoteAlign::Over {
@@ -450,7 +461,7 @@ impl Engine {
         };
         let position = Point::new(center_x, current_y + note_size.height() / 2.0);
 
-        draw::PositionedDrawable::new(note_drawable).with_position(position)
+        Ok(draw::PositionedDrawable::new(note_drawable).with_position(position))
     }
 }
 
@@ -460,6 +471,6 @@ impl SequenceEngine for Engine {
         graph: &'a SequenceGraph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
     ) -> Result<ContentStack<Layout<'a>>, FilamentError> {
-        Ok(self.calculate_layout(graph, embedded_layouts))
+        self.calculate_layout(graph, embedded_layouts)
     }
 }
