@@ -4,7 +4,6 @@
 //! using a simple, deterministic algorithm.
 
 use std::{
-    cmp::Ordering,
     collections::{HashMap, HashSet, VecDeque},
     rc::Rc,
 };
@@ -75,17 +74,27 @@ impl Engine {
                 containment_scope,
                 &positioned_content_sizes,
                 embedded_layouts,
-            );
+            )?;
 
             // Calculate positions for components
-            let positions = self.positions(graph, containment_scope, &component_shapes);
+            let positions = self.positions(graph, containment_scope, &component_shapes)?;
 
             // Build the final component list using the pre-configured shapes
             let components: Vec<Component> = graph
                 .scope_nodes(containment_scope)
                 .map(|node| {
-                    let mut position = *positions.get(&node.id()).unwrap();
-                    let shape_with_text = component_shapes.remove(&node.id()).unwrap();
+                    let mut position = *positions.get(&node.id()).ok_or_else(|| {
+                        FilamentError::Layout(format!(
+                            "Position not found for node '{}' during component layout",
+                            node.id()
+                        ))
+                    })?;
+                    let shape_with_text = component_shapes.remove(&node.id()).ok_or_else(|| {
+                        FilamentError::Layout(format!(
+                            "Shape not found for node '{}' during component layout",
+                            node.id()
+                        ))
+                    })?;
 
                     // If this node contains an embedded diagram, adjust position to normalize
                     // the embedded layout's coordinate system to start at origin
@@ -95,9 +104,9 @@ impl Engine {
                         position = position.add_point(layout.normalize_offset());
                     }
 
-                    Component::new(node, shape_with_text, position)
+                    Ok(Component::new(node, shape_with_text, position))
                 })
-                .collect();
+                .collect::<Result<Vec<_>, FilamentError>>()?;
 
             // Map node IDs to their component indices
             let component_indices: HashMap<_, _> = components
@@ -149,7 +158,7 @@ impl Engine {
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<Id, Size>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> HashMap<Id, draw::ShapeWithText<'a>> {
+    ) -> Result<HashMap<Id, draw::ShapeWithText<'a>>, FilamentError> {
         let mut component_shapes: HashMap<Id, draw::ShapeWithText<'a>> = HashMap::new();
 
         // TODO: move it to the best place.
@@ -163,22 +172,39 @@ impl Engine {
                 semantic::Block::Diagram(_) => {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
-                    let layout = embedded_layouts
-                        .get(&node.id())
-                        .expect("Embedded layout not found");
+                    let layout = embedded_layouts.get(&node.id()).ok_or_else(|| {
+                        FilamentError::Layout(format!(
+                            "Embedded layout not found for diagram block '{}'",
+                            node.id()
+                        ))
+                    })?;
 
                     let content_size = layout.calculate_size();
                     shape_with_text
                         .set_inner_content_size(content_size)
-                        .expect("Diagram blocks should always support content sizing");
+                        .map_err(|err| {
+                            FilamentError::Layout(format!(
+                                "Failed to set content size for diagram block '{}': {err}",
+                                node.id()
+                            ))
+                        })?;
                 }
                 semantic::Block::Scope(_) => {
-                    let content_size = *positioned_content_sizes
-                        .get(&node.id())
-                        .expect("Scope size not found");
+                    let content_size =
+                        *positioned_content_sizes.get(&node.id()).ok_or_else(|| {
+                            FilamentError::Layout(format!(
+                                "Scope size not found for node '{}'",
+                                node.id()
+                            ))
+                        })?;
                     shape_with_text
                         .set_inner_content_size(content_size)
-                        .expect("Scope blocks should always support content sizing");
+                        .map_err(|err| {
+                            FilamentError::Layout(format!(
+                                "Failed to set content size for scope block '{}': {err}",
+                                node.id()
+                            ))
+                        })?;
                 }
                 semantic::Block::None => {
                     // No content to size, so don't call set_inner_content_size
@@ -187,7 +213,7 @@ impl Engine {
             component_shapes.insert(node.id(), shape_with_text);
         }
 
-        component_shapes
+        Ok(component_shapes)
     }
 
     /// Calculate positions for components in a containment scope
@@ -196,12 +222,12 @@ impl Engine {
         graph: &'a ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
         component_shapes: &HashMap<Id, draw::ShapeWithText<'a>>,
-    ) -> HashMap<Id, Point> {
+    ) -> Result<HashMap<Id, Point>, FilamentError> {
         // Step 1: Assign layers for the top-level nodes
-        let layers = Self::assign_layers_for_containment_scope_graph(graph, containment_scope);
+        let layers = Self::assign_layers_for_containment_scope_graph(graph, containment_scope)?;
         // Step 2: Calculate layer metrics (widths and spacings)
         let (layer_widths, layer_spacings) =
-            self.calculate_layer_metrics(graph, containment_scope, &layers, component_shapes);
+            self.calculate_layer_metrics(graph, containment_scope, &layers, component_shapes)?;
         // Step 3: Calculate X positions for each layer
         let layer_x_positions = self.calculate_layer_x_positions(&layer_widths, &layer_spacings);
         // Step 4: Position nodes within their layers
@@ -215,18 +241,25 @@ impl Engine {
         containment_scope: &ContainmentScope,
         layers: &[Vec<Id>],
         component_shapes: &HashMap<Id, draw::ShapeWithText<'a>>,
-    ) -> (Vec<f32>, Vec<f32>) {
+    ) -> Result<(Vec<f32>, Vec<f32>), FilamentError> {
         // Calculate max width for each layer
         let layer_widths: Vec<f32> = layers
             .iter()
             .map(|layer| {
-                layer
-                    .iter()
-                    .map(|&node_idx| component_shapes.get(&node_idx).unwrap().size().width())
-                    .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Less))
-                    .unwrap_or_default()
+                layer.iter().try_fold(0.0_f32, |max_width, &node_idx| {
+                    let width = component_shapes
+                        .get(&node_idx)
+                        .map(|shape| shape.size().width())
+                        .ok_or_else(|| {
+                            FilamentError::Layout(format!(
+                                "Component shape not found for node '{}' during layer metrics calculation",
+                                node_idx
+                            ))
+                        })?;
+                    Ok(max_width.max(width))
+                })
             })
-            .collect();
+            .collect::<Result<Vec<f32>, FilamentError>>()?;
 
         // Initialize spacings with default padding
         let mut layer_spacings =
@@ -238,7 +271,7 @@ impl Engine {
                 let label_width = text.calculate_size().width();
 
                 // Find layers for source and target nodes
-                let (source_layer, target_layer) = self.find_node_layers(graph, relation, layers);
+                let (source_layer, target_layer) = self.find_node_layers(relation, layers);
 
                 if let (Some(src), Some(tgt)) = (source_layer, target_layer)
                     && src != tgt
@@ -255,14 +288,13 @@ impl Engine {
             }
         }
 
-        (layer_widths, layer_spacings)
+        Ok((layer_widths, layer_spacings))
     }
 
     /// Find which layer contains nodes for a given relation
-    // PERF: Depricate this method in favor of a more efficient approach.
+    // PERF: Deprecate this method in favor of a more efficient approach.
     fn find_node_layers(
         &self,
-        graph: &ComponentGraph,
         relation: &semantic::Relation,
         layers: &[Vec<Id>],
     ) -> (Option<usize>, Option<usize>) {
@@ -271,11 +303,10 @@ impl Engine {
 
         for (layer_idx, layer_nodes) in layers.iter().enumerate() {
             for node_id in layer_nodes {
-                let node = graph.node_by_id(*node_id).expect("Node not found");
-                if node.id() == relation.source() {
+                if *node_id == relation.source() {
                     source_layer = Some(layer_idx);
                 }
-                if node.id() == relation.target() {
+                if *node_id == relation.target() {
                     target_layer = Some(layer_idx);
                 }
             }
@@ -312,7 +343,7 @@ impl Engine {
         layers: &[Vec<Id>],
         layer_x_positions: &[f32],
         component_shapes: &HashMap<Id, draw::ShapeWithText<'a>>,
-    ) -> HashMap<Id, Point> {
+    ) -> Result<HashMap<Id, Point>, FilamentError> {
         let mut positions = HashMap::new();
 
         for (layer_idx, layer_nodes) in layers.iter().enumerate() {
@@ -321,7 +352,16 @@ impl Engine {
             // Calculate heights for vertical positioning
             let mut y_pos = 0.0;
             for (j, &node_idx) in layer_nodes.iter().enumerate() {
-                let node_height = component_shapes.get(&node_idx).unwrap().size().height();
+                let node_height = component_shapes
+                    .get(&node_idx)
+                    .ok_or_else(|| {
+                        FilamentError::Layout(format!(
+                            "Component shape not found for node '{}' during position calculation",
+                            node_idx
+                        ))
+                    })?
+                    .size()
+                    .height();
 
                 if j > 0 {
                     y_pos += self.padding.vertical_sum() / 2.0; // Space between components
@@ -334,14 +374,14 @@ impl Engine {
             }
         }
 
-        positions
+        Ok(positions)
     }
 
     /// Helper method to assign layers for a specific graph
     fn assign_layers_for_containment_scope_graph(
         graph: &ComponentGraph,
         containment_scope: &ContainmentScope,
-    ) -> Vec<Vec<Id>> {
+    ) -> Result<Vec<Vec<Id>>, FilamentError> {
         let mut layers = Vec::new();
         let mut visited = HashSet::new();
 
@@ -385,9 +425,16 @@ impl Engine {
             let unvisited_node_id = containment_scope
                 .node_ids()
                 .find(|id| !visited.contains(id))
-                .expect("Should have unvisited nodes");
+                .ok_or_else(|| {
+                    FilamentError::Layout("Expected unvisited nodes but none found".to_string())
+                })?;
 
-            let unvisited_node = graph.node_by_id(unvisited_node_id).expect("Node not found");
+            let unvisited_node = graph.node_by_id(unvisited_node_id).ok_or_else(|| {
+                FilamentError::Layout(format!(
+                    "Node '{}' from containment scope not found in graph",
+                    unvisited_node_id
+                ))
+            })?;
 
             queue.push_back((unvisited_node, 0));
 
@@ -412,7 +459,7 @@ impl Engine {
             }
         }
 
-        layers
+        Ok(layers)
     }
 }
 
