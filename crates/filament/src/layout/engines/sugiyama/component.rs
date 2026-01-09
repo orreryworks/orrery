@@ -85,7 +85,7 @@ impl Engine {
                 containment_scope,
                 &positioned_content_sizes,
                 embedded_layouts,
-            );
+            )?;
 
             // Extract sizes from shapes for position calculation
             let component_sizes: HashMap<Id, Size> = component_shapes
@@ -97,15 +97,16 @@ impl Engine {
             let positions = self.positions(graph, containment_scope, &component_sizes)?;
 
             // Build the final component list using the pre-configured shapes
-            let components: Vec<Component> = graph
-                .scope_nodes(containment_scope)
-                .map(|node| {
-                    let position = *positions.get(&node.id()).unwrap();
-                    let shape_with_text = component_shapes.remove(&node.id()).unwrap();
-
-                    Component::new(node, shape_with_text, position)
-                })
-                .collect();
+            let mut components: Vec<Component> = Vec::new();
+            for node in graph.scope_nodes(containment_scope) {
+                let position = *positions.get(&node.id()).ok_or_else(|| {
+                    FilamentError::Layout(format!("Position not found for node {}", node.id()))
+                })?;
+                let shape_with_text = component_shapes.remove(&node.id()).ok_or_else(|| {
+                    FilamentError::Layout(format!("Shape not found for node {}", node.id()))
+                })?;
+                components.push(Component::new(node, shape_with_text, position));
+            }
 
             // Map node IDs to their component indices
             let component_indices: HashMap<_, _> = components
@@ -157,7 +158,7 @@ impl Engine {
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<Id, Size>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> HashMap<Id, draw::ShapeWithText<'a>> {
+    ) -> Result<HashMap<Id, draw::ShapeWithText<'a>>, FilamentError> {
         let mut component_shapes: HashMap<Id, draw::ShapeWithText<'a>> = HashMap::new();
 
         // TODO: move it to the best place.
@@ -171,22 +172,39 @@ impl Engine {
                 semantic::Block::Diagram(_) => {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
-                    let layout = embedded_layouts
-                        .get(&node.id())
-                        .expect("Embedded layout not found");
+                    let layout = embedded_layouts.get(&node.id()).ok_or_else(|| {
+                        FilamentError::Layout(format!(
+                            "Embedded layout not found for node {}",
+                            node.id()
+                        ))
+                    })?;
 
                     let content_size = layout.calculate_size();
                     shape_with_text
                         .set_inner_content_size(content_size)
-                        .expect("Diagram blocks should always support content sizing");
+                        .map_err(|err| {
+                            FilamentError::Layout(format!(
+                                "Failed to set content size for diagram block {}: {err}",
+                                node.id()
+                            ))
+                        })?;
                 }
                 semantic::Block::Scope(_) => {
-                    let content_size = *positioned_content_sizes
-                        .get(&node.id())
-                        .expect("Scope size not found");
+                    let content_size =
+                        *positioned_content_sizes.get(&node.id()).ok_or_else(|| {
+                            FilamentError::Layout(format!(
+                                "Scope size not found for node {}",
+                                node.id()
+                            ))
+                        })?;
                     shape_with_text
                         .set_inner_content_size(content_size)
-                        .expect("Scope blocks should always support content sizing");
+                        .map_err(|err| {
+                            FilamentError::Layout(format!(
+                                "Failed to set content size for scope block {}: {err}",
+                                node.id()
+                            ))
+                        })?;
                 }
                 semantic::Block::None => {
                     // No content to size, so don't call set_inner_content_size
@@ -195,7 +213,7 @@ impl Engine {
             component_shapes.insert(node.id(), shape_with_text);
         }
 
-        component_shapes
+        Ok(component_shapes)
     }
 
     /// Calculate positions for components in a containment scope
@@ -345,7 +363,7 @@ impl Engine {
 
             // Center the layout if we have positions
             if !positions.is_empty() {
-                self.center_layout(&mut positions, component_sizes);
+                self.center_layout(&mut positions, component_sizes)?;
             }
 
             debug!(
@@ -370,9 +388,9 @@ impl Engine {
         &self,
         positions: &mut HashMap<Id, Point>,
         component_sizes: &HashMap<Id, Size>,
-    ) {
+    ) -> Result<(), FilamentError> {
         if positions.is_empty() {
-            return;
+            return Ok(());
         }
 
         // Calculate actual bounds considering component sizes
@@ -381,9 +399,9 @@ impl Engine {
         let mut min_y = f32::MAX;
 
         for (node_id, point) in positions.iter() {
-            let size = component_sizes
-                .get(node_id)
-                .expect("Component size not found");
+            let size = component_sizes.get(node_id).ok_or_else(|| {
+                FilamentError::Layout(format!("Component size not found for node {node_id}"))
+            })?;
             let half_width = size.width() / 2.0;
             let half_height = size.height() / 2.0;
 
@@ -400,6 +418,8 @@ impl Engine {
         for position in positions.values_mut() {
             *position = position.sub_point(Point::new(offset_x, offset_y));
         }
+
+        Ok(())
     }
 }
 
