@@ -36,7 +36,9 @@ fn main() {
         // Use miette to display the diagnostic error
         let reporter = miette::GraphicalReportHandler::new();
         let mut writer = String::new();
-        reporter.render_report(&mut writer, &adapted_error).unwrap();
+        reporter
+            .render_report(&mut writer, &adapted_error)
+            .expect("Writing to String buffer is infallible");
 
         error!("Failed\n{writer}");
         process::exit(1);

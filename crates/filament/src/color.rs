@@ -76,7 +76,7 @@ impl Color {
 
 impl Default for Color {
     fn default() -> Self {
-        Self::new("black").unwrap()
+        Self::new("black").expect("'black' is a valid CSS color")
     }
 }
 

@@ -3,6 +3,7 @@
 //! This module provides algorithms for calculating element positions in diagrams.
 //! It contains reusable positioning logic that can be used by different layout engines.
 
+use std::cmp::Ordering;
 use std::iter::IntoIterator;
 
 use crate::{
@@ -43,7 +44,7 @@ where
         .into_iter()
         .flatten()
         .map(|text| text.calculate_size().width() + padding)
-        .max_by(|a, b| a.partial_cmp(b).unwrap())
+        .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
         .unwrap_or(0.0)
 }
 

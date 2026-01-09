@@ -32,7 +32,9 @@ impl Default for ComponentDefinition {
     fn default() -> Self {
         let mut rectangle_definition = RectangleDefinition::default();
         rectangle_definition
-            .set_fill_color(Some(Color::new("#FEFECE").unwrap()))
+            .set_fill_color(Some(
+                Color::new("#FEFECE").expect("#FEFECE is a valid color"),
+            ))
             .expect("Failed to set fill color");
         rectangle_definition
             .set_rounded(10)

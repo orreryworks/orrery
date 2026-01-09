@@ -102,7 +102,7 @@ impl Id {
         let mut interner = INTERNER
             .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
             .lock()
-            .unwrap();
+            .expect("Failed to acquire interner lock");
         let parent_str = interner
             .resolve(self.0)
             .expect("Parent ID should exist in interner");
@@ -120,7 +120,7 @@ impl fmt::Display for Id {
         let interner = INTERNER
             .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
             .lock()
-            .unwrap();
+            .expect("Failed to acquire interner lock");
         let str_value = interner
             .resolve(self.0)
             .expect("Symbol should exist in interner");
@@ -135,7 +135,7 @@ impl std::str::FromStr for Id {
         let mut interner = INTERNER
             .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
             .lock()
-            .unwrap();
+            .expect("Failed to acquire interner lock");
         let symbol = interner.get_or_intern(s);
         Ok(Self(symbol))
     }
@@ -174,7 +174,7 @@ impl PartialEq<str> for Id {
         let interner = INTERNER
             .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
             .lock()
-            .unwrap();
+            .expect("Failed to acquire interner lock");
         let self_str = interner
             .resolve(self.0)
             .expect("Symbol should exist in interner");

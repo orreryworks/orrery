@@ -42,7 +42,7 @@ fn string_literal<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
                         u32::from_str_radix(hex_str, 16)
                             .ok()
                             .and_then(std::char::from_u32)
-                            .unwrap() // Safe because we verified above
+                            .expect("verified hex digits form valid unicode codepoint")
                     }),
             ),
             // Standard escape sequences
