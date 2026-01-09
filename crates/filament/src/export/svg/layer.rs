@@ -106,17 +106,13 @@ impl Svg {
     /// # Returns
     /// A Bounds object that encompasses all content in all layers
     fn calculate_layered_layout_bounds(&self, layout: &LayeredLayout) -> Bounds {
-        if layout.is_empty() {
-            return Bounds::default();
-        }
-
         let mut layout_iter = layout.iter_from_bottom();
-        // Start with the bounds of the first (bottom) layer
-        let mut combined_bounds = self.calculate_layer_bounds(
-            layout_iter
-                .next()
-                .expect("Bottom layer should always exist"), // FIXME: Convert to Result.
-        );
+        // Start with the bounds of the first (bottom) layer.
+        // Note: `iter_from_bottom().next()` returning `None` is equivalent to `is_empty()`..
+        let Some(first_layer) = layout_iter.next() else {
+            return Bounds::default();
+        };
+        let mut combined_bounds = self.calculate_layer_bounds(first_layer);
 
         // Merge with bounds of additional layers, adjusting for layer offset
         for layer in layout_iter {
