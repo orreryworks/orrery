@@ -174,10 +174,7 @@ impl Engine {
         let mut components: HashMap<Id, Component> = HashMap::new();
         for (i, node) in graph.nodes().enumerate() {
             let shape_with_text = participant_shapes.remove(&node.id()).ok_or_else(|| {
-                FilamentError::Layout(format!(
-                    "Participant shape not found for node '{}'",
-                    node.id()
-                ))
+                FilamentError::Layout(format!("Participant shape not found for node '{node}'"))
             })?;
             let mut position = Point::new(x_positions[i], self.top_margin);
 

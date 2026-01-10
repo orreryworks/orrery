@@ -100,10 +100,10 @@ impl Engine {
             let mut components: Vec<Component> = Vec::new();
             for node in graph.scope_nodes(containment_scope) {
                 let position = *positions.get(&node.id()).ok_or_else(|| {
-                    FilamentError::Layout(format!("Position not found for node {}", node.id()))
+                    FilamentError::Layout(format!("Position not found for node {node}"))
                 })?;
                 let shape_with_text = component_shapes.remove(&node.id()).ok_or_else(|| {
-                    FilamentError::Layout(format!("Shape not found for node {}", node.id()))
+                    FilamentError::Layout(format!("Shape not found for node {node}"))
                 })?;
                 components.push(Component::new(node, shape_with_text, position));
             }
@@ -173,10 +173,7 @@ impl Engine {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
                     let layout = embedded_layouts.get(&node.id()).ok_or_else(|| {
-                        FilamentError::Layout(format!(
-                            "Embedded layout not found for node {}",
-                            node.id()
-                        ))
+                        FilamentError::Layout(format!("Embedded layout not found for node {node}"))
                     })?;
 
                     let content_size = layout.calculate_size();
@@ -184,25 +181,20 @@ impl Engine {
                         .set_inner_content_size(content_size)
                         .map_err(|err| {
                             FilamentError::Layout(format!(
-                                "Failed to set content size for diagram block {}: {err}",
-                                node.id()
+                                "Failed to set content size for diagram block {node}: {err}"
                             ))
                         })?;
                 }
                 semantic::Block::Scope(_) => {
                     let content_size =
                         *positioned_content_sizes.get(&node.id()).ok_or_else(|| {
-                            FilamentError::Layout(format!(
-                                "Scope size not found for node {}",
-                                node.id()
-                            ))
+                            FilamentError::Layout(format!("Scope size not found for node {node}"))
                         })?;
                     shape_with_text
                         .set_inner_content_size(content_size)
                         .map_err(|err| {
                             FilamentError::Layout(format!(
-                                "Failed to set content size for scope block {}: {err}",
-                                node.id()
+                                "Failed to set content size for scope block {node}: {err}"
                             ))
                         })?;
                 }

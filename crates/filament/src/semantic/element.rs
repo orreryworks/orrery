@@ -1,6 +1,6 @@
 //! Diagram element types for the semantic model.
 
-use std::{rc::Rc, str::FromStr};
+use std::{fmt, rc::Rc, str::FromStr};
 
 use crate::{draw, identifier::Id, semantic::diagram::Block};
 
@@ -51,6 +51,12 @@ impl Node {
     /// Uses display_name if present, otherwise falls back to the identifier name
     pub fn display_text(&self) -> &str {
         self.display_name.as_deref().unwrap_or(&self.name)
+    }
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id)
     }
 }
 

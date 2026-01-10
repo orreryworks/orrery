@@ -235,9 +235,7 @@ pub fn adjust_positioned_contents_offset<'a>(
                 .find(|component| component.node_id == node.id())
                 .ok_or_else(|| {
                     FilamentError::Layout(format!(
-                        "Component with id {} not found in source layer {}",
-                        node.id(),
-                        source_idx
+                        "Component with id {node} not found in source layer {source_idx}"
                     ))
                 })?;
             let target_offset = source
@@ -250,13 +248,13 @@ pub fn adjust_positioned_contents_offset<'a>(
                         .shape_to_inner_content_min_point(),
                 ); // TODO: This does not account for text.
             debug!(
-                node_id:? = node.id(),
+                node_id:% = node,
                 source_offset:? = source.offset();
                 "Adjusting positioned content offset [source]",
             );
             let target = content_stack.get_mut_unchecked(destination_idx);
             debug!(
-                node_id:? = node.id(),
+                node_id:% = node,
                 original_offset:? = target.offset(),
                 new_offset:? = target_offset;
                 "Adjusting positioned content offset [target]",
