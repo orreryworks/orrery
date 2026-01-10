@@ -102,8 +102,8 @@ pub fn build_ast(cfg: &AppConfig, source: &str) -> Result<semantic::Diagram, Fil
         lexer::tokenize(source).map_err(|err| FilamentError::new_lexer_error(err, source))?;
 
     // Step 2: Parse the tokens into AST
-    let parsed_ast =
-        parser::build_diagram(&tokens).map_err(|e| FilamentError::new_parse_error(e, source))?;
+    let parsed_ast = parser::build_diagram(&tokens)
+        .map_err(|err| FilamentError::new_parse_error(err, source))?;
 
     // Step 3: Apply desugaring transformations
     let desugared_ast = desugar::desugar(parsed_ast);
@@ -111,12 +111,12 @@ pub fn build_ast(cfg: &AppConfig, source: &str) -> Result<semantic::Diagram, Fil
     // Step 4: Validate diagram semantics at syntax level before elaboration
     if let parser_types::Element::Diagram(diagram) = desugared_ast.inner() {
         validate::validate_diagram(diagram)
-            .map_err(|e| FilamentError::new_validation_error(e, source))?;
+            .map_err(|err| FilamentError::new_validation_error(err, source))?;
     }
 
     // Step 5: Elaborate the AST with rich error handling
     let elaborate_builder = elaborate::Builder::new(cfg, source);
     elaborate_builder
         .build(&desugared_ast)
-        .map_err(|e| FilamentError::new_elaboration_error(e, source))
+        .map_err(|err| FilamentError::new_elaboration_error(err, source))
 }

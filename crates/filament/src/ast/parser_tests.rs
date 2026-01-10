@@ -7,8 +7,8 @@ use crate::ast::{lexer, parser};
 
 /// Helper function to parse a source string and return success/failure
 fn parse_source(source: &str) -> Result<(), String> {
-    let tokens = lexer::tokenize(source).map_err(|e| format!("Lexer error: {}", e))?;
-    let _ast = parser::build_diagram(&tokens).map_err(|e| format!("Parser error: {}", e))?;
+    let tokens = lexer::tokenize(source).map_err(|err| format!("Lexer error: {}", err))?;
+    let _ast = parser::build_diagram(&tokens).map_err(|err| format!("Parser error: {}", err))?;
     Ok(())
 }
 
@@ -36,10 +36,10 @@ fn assert_error_at_position(source: &str, _expected_error_line: usize, _expected
         "Expected parsing to fail for span validation"
     );
 
-    let error = result.unwrap_err();
+    let err = result.unwrap_err();
 
     // Validate that error contains span/location information for IDE integration
-    let error_debug = format!("{:?}", error);
+    let error_debug = format!("{:?}", err);
     assert!(
         !error_debug.is_empty(),
         "Error should contain span/location information for IDE integration"
@@ -65,10 +65,10 @@ fn assert_error_span_boundaries(source: &str, _expected_start: usize, _expected_
         "Expected parsing to fail for span boundary validation"
     );
 
-    let error = result.unwrap_err();
+    let err = result.unwrap_err();
 
     // Validate that error contains span boundary information
-    let error_debug = format!("{:?}", error);
+    let error_debug = format!("{:?}", err);
     assert!(
         !error_debug.is_empty(),
         "Error should contain span boundary information"
@@ -91,10 +91,10 @@ fn assert_multiline_error_span(source: &str) {
         "Expected parsing to fail for multiline span validation"
     );
 
-    let error = result.unwrap_err();
+    let err = result.unwrap_err();
 
     // Validate that error handles multi-line spans correctly
-    let error_debug = format!("{:?}", error);
+    let error_debug = format!("{:?}", err);
     assert!(
         !error_debug.is_empty(),
         "Multi-line error should contain span information"
@@ -616,9 +616,9 @@ mod error_handling_tests {
         );
 
         // Validate error contains useful span information (error location accuracy)
-        let error = result.unwrap_err();
+        let err = result.unwrap_err();
         assert!(
-            !format!("{:?}", error).is_empty(),
+            !format!("{:?}", err).is_empty(),
             "Error should contain span information"
         );
     }

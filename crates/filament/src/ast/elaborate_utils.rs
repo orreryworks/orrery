@@ -497,8 +497,8 @@ mod elaborate_tests {
         let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
         assert!(result.is_err());
 
-        if let Err(error) = result {
-            let error_message = error.to_string();
+        if let Err(err) = result {
+            let error_message = err.to_string();
             assert!(error_message.contains("Unknown text attribute 'invalid_attribute'"));
         }
     }
@@ -567,8 +567,8 @@ mod elaborate_tests {
         let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
 
         assert!(result.is_err());
-        if let Err(error) = result {
-            let error_message = format!("{}", error);
+        if let Err(err) = result {
+            let error_message = format!("{err}");
             assert!(error_message.contains("Unknown stroke attribute"));
             assert!(error_message.contains("invalid_attr"));
         }
@@ -585,8 +585,8 @@ mod elaborate_tests {
         let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
 
         assert!(result.is_err());
-        if let Err(error) = result {
-            let error_message = format!("{}", error);
+        if let Err(err) = result {
+            let error_message = format!("{err}");
             assert!(error_message.contains("Invalid stroke color"));
         }
     }
@@ -599,8 +599,8 @@ mod elaborate_tests {
         let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
 
         assert!(result.is_err());
-        if let Err(error) = result {
-            let error_message = format!("{}", error);
+        if let Err(err) = result {
+            let error_message = format!("{err}");
             assert!(error_message.contains("Invalid stroke cap"));
         }
     }
@@ -616,8 +616,8 @@ mod elaborate_tests {
         let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
 
         assert!(result.is_err());
-        if let Err(error) = result {
-            let error_message = format!("{}", error);
+        if let Err(err) = result {
+            let error_message = format!("{err}");
             assert!(error_message.contains("Invalid stroke join"));
         }
     }

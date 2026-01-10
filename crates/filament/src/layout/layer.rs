@@ -179,11 +179,6 @@ impl<'a> LayeredLayout<'a> {
         self.layers.len()
     }
 
-    /// Returns true if there are no layers
-    pub fn is_empty(&self) -> bool {
-        self.layers.is_empty()
-    }
-
     /// Returns an iterator over the layers, starting from the bottom (background) layer
     /// This ordering is appropriate for rendering, where bottom layers should be drawn first
     pub fn iter_from_bottom(&'a self) -> impl Iterator<Item = &'a Layer<'a>> {

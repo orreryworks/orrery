@@ -110,7 +110,7 @@ fn load_config_file(path: impl AsRef<Path>) -> Result<AppConfig, FilamentError> 
 
     // Parse TOML content
     let config: AppConfig =
-        toml::from_str(&content).map_err(|e| ConfigError::Parse(e.to_string()))?;
+        toml::from_str(&content).map_err(|err| ConfigError::Parse(err.to_string()))?;
 
     Ok(config)
 }

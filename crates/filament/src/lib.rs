@@ -160,7 +160,7 @@ impl DiagramBuilder {
         // Render to SVG using a temporary file
         // TODO: In the future, modify SvgBuilder to support in-memory rendering
         let temp_file =
-            tempfile::NamedTempFile::new().map_err(|e| FilamentError::Export(Box::new(e)))?;
+            tempfile::NamedTempFile::new().map_err(|err| FilamentError::Export(Box::new(err)))?;
         let temp_path = temp_file.path().to_string_lossy().to_string();
 
         let mut svg_exporter = export::svg::SvgBuilder::new(&temp_path)
