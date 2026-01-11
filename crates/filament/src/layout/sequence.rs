@@ -3,10 +3,11 @@ use std::{collections::HashMap, rc::Rc};
 use log::warn;
 
 use crate::{
-    draw, semantic,
+    draw,
     geometry::{Bounds, Point, Size},
     identifier::Id,
     layout::{component, positioning::LayoutBounds},
+    semantic,
 };
 
 /// Sequence diagram participant that holds its drawable component and lifeline.
@@ -63,13 +64,15 @@ impl<'a> Message<'a> {
     ///
     /// # Returns
     /// A new Message containing all necessary rendering information
-    pub fn from_ast(relation: &'a semantic::Relation, source: Id, target: Id, y_position: f32) -> Self {
+    pub fn from_ast(
+        relation: &'a semantic::Relation,
+        source: Id,
+        target: Id,
+        y_position: f32,
+    ) -> Self {
         let arrow_def = Rc::clone(relation.arrow_definition());
         let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
-        let mut arrow_with_text = draw::ArrowWithText::new(arrow);
-        if let Some(text) = relation.text() {
-            arrow_with_text.set_text(text);
-        }
+        let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
         Self {
             source,
             target,
@@ -520,6 +523,7 @@ impl<'a> LayoutBounds for Layout<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::draw::Drawable;
 
     #[test]
     fn test_activation_box_is_active_at_y() {

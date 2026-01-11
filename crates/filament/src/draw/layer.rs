@@ -57,8 +57,6 @@ pub enum RenderLayer {
     Arrow,
     /// Text labels and annotations
     Text,
-    /// Foreground decorations (borders, fold lines) - renders last
-    Foreground,
 }
 
 impl RenderLayer {
@@ -73,7 +71,6 @@ impl RenderLayer {
             Self::Note => "note",
             Self::Arrow => "arrow",
             Self::Text => "text",
-            Self::Foreground => "foreground",
         }
     }
 }
@@ -264,7 +261,7 @@ mod tests {
         output1.add_to_layer(RenderLayer::Content, Box::new(Rectangle::new()));
 
         let mut output2 = LayeredOutput::new();
-        output2.add_to_layer(RenderLayer::Foreground, Box::new(Rectangle::new()));
+        output2.add_to_layer(RenderLayer::Note, Box::new(Rectangle::new()));
 
         output1.merge(output2);
         assert!(!output1.is_empty());
@@ -286,8 +283,8 @@ mod tests {
     fn test_layered_output_render() {
         let mut output = LayeredOutput::new();
 
-        output.add_to_layer(RenderLayer::Foreground, Box::new(Rectangle::new()));
-        output.add_to_layer(RenderLayer::Background, Box::new(Rectangle::new()));
+        output.add_to_layer(RenderLayer::Content, Box::new(Rectangle::new()));
+        output.add_to_layer(RenderLayer::Note, Box::new(Rectangle::new()));
         output.add_to_layer(RenderLayer::Text, Box::new(Rectangle::new()));
 
         let svg_nodes = output.render();

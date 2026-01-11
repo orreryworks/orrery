@@ -97,10 +97,7 @@ impl<'a> LayoutRelation<'a> {
     ) -> Self {
         let arrow_def = Rc::clone(relation.arrow_definition());
         let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
-        let mut arrow_with_text = draw::ArrowWithText::new(arrow);
-        if let Some(text) = relation.text() {
-            arrow_with_text.set_text(text);
-        }
+        let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
         Self {
             source_index,
             target_index,

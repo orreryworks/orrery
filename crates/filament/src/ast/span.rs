@@ -78,14 +78,6 @@ impl<T> Spanned<T> {
         Self { value, span }
     }
 
-    pub fn offset(&self) -> usize {
-        self.span.start()
-    }
-
-    pub fn length(&self) -> usize {
-        self.span.len()
-    }
-
     pub fn span(&self) -> Span {
         self.span
     }
@@ -170,8 +162,8 @@ mod tests {
     fn test_spanned_with_new_span() {
         let span = Span::new(5..10);
         let spanned = Spanned::new("test", span);
-        assert_eq!(spanned.offset(), 5);
-        assert_eq!(spanned.length(), 5);
+        assert_eq!(spanned.span().start(), 5);
+        assert_eq!(spanned.span().len(), 5);
         assert_eq!(*spanned.inner(), "test");
     }
 }

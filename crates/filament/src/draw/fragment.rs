@@ -311,17 +311,17 @@ impl Fragment {
     }
 
     /// Returns the operation type
-    pub fn operation(&self) -> &str {
+    fn operation(&self) -> &str {
         &self.operation
     }
 
     /// Returns the sections
-    pub fn sections(&self) -> &[FragmentSection] {
+    fn sections(&self) -> &[FragmentSection] {
         &self.sections
     }
 
     /// Returns the total size
-    pub fn size(&self) -> Size {
+    fn size(&self) -> Size {
         self.size
     }
 }
@@ -333,7 +333,7 @@ impl Drawable for Fragment {
         let bounds_padding = self.definition.bounds_padding();
 
         // Apply bounds padding to expand the fragment beyond its content
-        let expanded_size = self.size.add_padding(bounds_padding);
+        let expanded_size = self.size().add_padding(bounds_padding);
         let bounds = position.to_bounds(expanded_size);
         let top_left = bounds.min_point();
 
@@ -364,7 +364,7 @@ impl Drawable for Fragment {
         // First, measure the text to determine pentagon size
         let operation_text = Text::new(
             &self.definition.operation_label_text_definition,
-            &self.operation,
+            self.operation(),
         );
         let pentagon_content_size = operation_text.size();
         let pentagon_content_bounds = Bounds::new_from_top_left(top_left, pentagon_content_size);
@@ -381,14 +381,14 @@ impl Drawable for Fragment {
         // 4. Render section separators and titles
         let mut current_y = pentagon_bounds.max_y();
 
-        for (i, section) in self.sections.iter().enumerate() {
+        for (i, section) in self.sections().iter().enumerate() {
             // Skip separator for the first section
             if i > 0 {
                 // Draw separator line
                 let separator = svg_element::Line::new()
                     .set("x1", top_left.x() + padding.left())
                     .set("y1", current_y)
-                    .set("x2", top_left.x() + self.size.width() - padding.right())
+                    .set("x2", top_left.x() + self.size().width() - padding.right())
                     .set("y2", current_y);
 
                 let separator = crate::apply_stroke!(separator, self.definition.separator_stroke());

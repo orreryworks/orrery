@@ -167,11 +167,6 @@ pub struct ArrowDrawer {
 }
 
 impl ArrowDrawer {
-    /// Creates a new ArrowDrawer
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Draws an arrow and collects its color for marker generation
     pub fn draw_arrow(
         &mut self,

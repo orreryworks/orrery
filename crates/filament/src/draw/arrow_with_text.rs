@@ -1,6 +1,6 @@
 use crate::{
     draw::{Arrow, ArrowDrawer, Drawable, LayeredOutput, RenderLayer, Text},
-    geometry::{Point, Size},
+    geometry::Point,
 };
 
 /// A drawable that combines an arrow with optional text positioned at the midpoint.
@@ -15,41 +15,8 @@ pub struct ArrowWithText<'a> {
 
 impl<'a> ArrowWithText<'a> {
     /// Creates a new ArrowWithText with the given arrow and no text.
-    pub fn new(arrow: Arrow) -> Self {
-        Self { arrow, text: None }
-    }
-
-    /// Creates a new ArrowWithText with the given arrow and text.
-    pub fn with_text(arrow: Arrow, text: Text<'a>) -> Self {
-        Self {
-            arrow,
-            text: Some(text),
-        }
-    }
-
-    /// Sets the text for this arrow.
-    pub fn set_text(&mut self, text: Text<'a>) {
-        self.text = Some(text);
-    }
-
-    /// Removes the text from this arrow.
-    pub fn clear_text(&mut self) {
-        self.text = None;
-    }
-
-    /// Returns a reference to the text, if any.
-    pub fn text(&self) -> Option<&Text<'a>> {
-        self.text.as_ref()
-    }
-
-    /// Returns a reference to the underlying arrow.
-    pub fn arrow(&self) -> &Arrow {
-        &self.arrow
-    }
-
-    /// Returns the size of the text component, or zero size if no text is present.
-    pub fn text_size(&self) -> Size {
-        self.text.as_ref().map(|t| t.size()).unwrap_or_default()
+    pub fn new(arrow: Arrow, text: Option<Text<'a>>) -> Self {
+        Self { arrow, text }
     }
 
     /// Calculates the position where text should be rendered relative to the arrow.

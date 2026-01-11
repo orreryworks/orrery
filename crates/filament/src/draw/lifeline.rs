@@ -91,11 +91,6 @@ impl Lifeline {
     pub fn with_default_style(height: f32) -> Self {
         Self::new(Rc::new(LifelineDefinition::default()), height)
     }
-
-    /// Returns the height of the lifeline
-    pub fn height(&self) -> f32 {
-        self.height
-    }
 }
 
 impl Drawable for Lifeline {
