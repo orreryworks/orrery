@@ -51,9 +51,9 @@ pub mod span;
 mod tokens;
 mod validate;
 
-pub use parser_types::DiagramKind;
+use filament_core::semantic;
 
-use crate::{config::AppConfig, error::FilamentError, semantic};
+use crate::{config::AppConfig, error::FilamentError};
 
 /// Builds a fully elaborated AST from source code using the two-stage parser.
 ///

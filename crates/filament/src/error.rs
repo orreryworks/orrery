@@ -1,10 +1,15 @@
+//! Error types for Filament operations.
+//!
+//! This module provides the main error type [`FilamentError`] which wraps
+//! various error conditions that can occur during diagram processing.
+
+pub mod diagnostic;
+
+pub use diagnostic::DiagnosticError;
+
 use std::io;
 
 use thiserror::Error;
-
-use diagnostic::DiagnosticError;
-
-pub mod diagnostic;
 
 /// The main error type for Filament operations.
 ///

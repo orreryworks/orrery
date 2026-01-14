@@ -1,3 +1,9 @@
+//! Color handling for Filament diagrams
+//!
+//! This module provides the [`Color`] type which wraps the `DynamicColor` type
+//! from the color crate, providing convenience methods for working with colors
+//! in the Filament project.
+
 use std::{
     hash::{Hash, Hasher},
     str::FromStr,
@@ -21,8 +27,17 @@ impl Hash for Color {
 }
 
 impl Color {
-    /// Create a new `FilamentColor` from a string
+    /// Create a new `Color` from a string
     /// This will parse CSS color strings such as "#ff0000", "rgb(255, 0, 0)", "red", etc.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use filament_core::color::Color;
+    ///
+    /// let red = Color::new("#ff0000").unwrap();
+    /// let blue = Color::new("blue").unwrap();
+    /// ```
     pub fn new(color_str: &str) -> Result<Self, String> {
         match DynamicColor::from_str(color_str) {
             Ok(color) => Ok(Self { color }),
@@ -31,6 +46,9 @@ impl Color {
     }
 
     /// Get the sanitized ID-safe string for this color (for use in markers)
+    ///
+    /// This converts the color to a string representation that is safe to use
+    /// as an SVG ID attribute.
     pub fn to_id_safe_string(self) -> String {
         let color_str = self.to_string();
         // Replace invalid ID characters with underscores
@@ -56,6 +74,16 @@ impl Color {
     /// # Returns
     ///
     /// A new `Color` instance with the updated alpha value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use filament_core::color::Color;
+    ///
+    /// let red = Color::new("red").unwrap();
+    /// let semi_transparent_red = red.with_alpha(0.5);
+    /// assert_eq!(semi_transparent_red.alpha(), 0.5);
+    /// ```
     pub fn with_alpha(self, alpha: f32) -> Self {
         Color {
             color: self.color.with_alpha(alpha),
@@ -90,5 +118,67 @@ impl std::fmt::Display for Color {
 impl From<&Color> for svg::node::Value {
     fn from(color: &Color) -> Self {
         Self::from(color.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_color_new() {
+        let red = Color::new("#ff0000");
+        assert!(red.is_ok());
+
+        let invalid = Color::new("not-a-color");
+        assert!(invalid.is_err());
+    }
+
+    #[test]
+    fn test_color_default() {
+        let color = Color::default();
+        assert_eq!(color.to_string(), "black");
+    }
+
+    #[test]
+    fn test_color_with_alpha() {
+        let color = Color::new("red").unwrap();
+        let transparent = color.with_alpha(0.5);
+        assert!((transparent.alpha() - 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_color_to_id_safe_string() {
+        let color = Color::new("#ff0000").unwrap();
+        let safe_id = color.to_id_safe_string();
+        assert!(!safe_id.contains('#'));
+        assert!(!safe_id.contains('('));
+        assert!(!safe_id.contains(')'));
+        assert!(!safe_id.contains(','));
+        assert!(!safe_id.contains(' '));
+    }
+
+    #[test]
+    fn test_color_display() {
+        let color = Color::new("blue").unwrap();
+        let display = format!("{}", color);
+        assert!(!display.is_empty());
+    }
+
+    #[test]
+    fn test_color_eq_hash() {
+        use std::collections::HashSet;
+
+        let color1 = Color::new("red").unwrap();
+        let color2 = Color::new("red").unwrap();
+        let color3 = Color::new("blue").unwrap();
+
+        assert_eq!(color1, color2);
+        assert_ne!(color1, color3);
+
+        let mut set = HashSet::new();
+        set.insert(color1);
+        assert!(set.contains(&color2));
+        assert!(!set.contains(&color3));
     }
 }

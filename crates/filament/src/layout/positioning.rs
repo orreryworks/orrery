@@ -6,7 +6,7 @@
 use std::cmp::Ordering;
 use std::iter::IntoIterator;
 
-use crate::{
+use filament_core::{
     draw,
     geometry::{Bounds, Size},
 };

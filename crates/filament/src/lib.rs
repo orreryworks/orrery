@@ -5,23 +5,22 @@
 //! text-based DSL.
 
 pub mod ast;
-pub mod color;
 pub mod config;
-pub mod draw;
-pub mod geometry;
-pub mod identifier;
-pub mod semantic;
 
 mod error;
 mod export;
 mod layout;
 mod structure;
 
+pub use filament_core::{color, draw, identifier, semantic};
+
 pub use error::FilamentError;
 
 use std::fs;
 
 use log::{debug, info, trace};
+
+use filament_core::geometry::Insets;
 
 use config::AppConfig;
 use export::Exporter;
@@ -146,7 +145,7 @@ impl DiagramBuilder {
 
         // Create layout engine
         let engine_builder = layout::EngineBuilder::new()
-            .with_padding(geometry::Insets::uniform(35.0))
+            .with_padding(Insets::uniform(35.0))
             .with_min_spacing(50.0)
             .with_horizontal_spacing(50.0)
             .with_vertical_spacing(50.0)

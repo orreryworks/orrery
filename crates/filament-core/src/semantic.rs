@@ -26,15 +26,6 @@
 //!
 //! - [`diagram`] - Core diagram structures: [`Diagram`], [`Scope`], [`Block`], [`LayoutEngine`]
 //! - [`element`] - Diagram elements: [`Node`], [`Relation`], [`Fragment`], [`Note`], etc.
-//!
-//! # Example
-//!
-//! ```rust
-//! use filament::semantic::{Diagram, Node, Relation, Scope, Element};
-//!
-//! // These types represent the semantic model of a diagram
-//! // after all parsing and elaboration is complete
-//! ```
 
 pub mod diagram;
 pub mod element;

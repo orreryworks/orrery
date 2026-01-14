@@ -2,6 +2,7 @@
 members = [
     "crates/filament",
     "crates/filament-cli",
+    "crates/filament-core",
 ]
 default-members = ["crates/filament-cli"]
 resolver = "3"

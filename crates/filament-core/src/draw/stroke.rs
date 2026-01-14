@@ -22,8 +22,8 @@
 //! ## Creating Strokes
 //!
 //! ```
-//! use filament::draw::{StrokeDefinition, StrokeStyle, StrokeCap, StrokeJoin};
-//! use filament::color::Color;
+//! use filament_core::draw::{StrokeDefinition, StrokeStyle, StrokeCap, StrokeJoin};
+//! use filament_core::color::Color;
 //!
 //! // Simple solid stroke
 //! let stroke = StrokeDefinition::solid(Color::new("black").unwrap(), 2.0);
@@ -42,8 +42,8 @@
 //! Use the [`apply_stroke!`](crate::apply_stroke!) macro to apply all stroke attributes at once:
 //!
 //! ```
-//! use filament::draw::StrokeDefinition;
-//! use filament::color::Color;
+//! use filament_core::draw::StrokeDefinition;
+//! use filament_core::color::Color;
 //! use svg::node::element as svg_element;
 //!
 //! let stroke = StrokeDefinition::solid(Color::new("black").unwrap(), 2.0);
@@ -52,7 +52,7 @@
 //!     .set("y", 0);
 //!
 //! // Apply all stroke attributes (color, opacity, width, cap, join, dasharray)
-//! let rect = filament::apply_stroke!(rect, &stroke);
+//! let rect = filament_core::apply_stroke!(rect, &stroke);
 //! ```
 //!
 //! # SVG Attribute Mapping
@@ -236,8 +236,8 @@ impl FromStr for StrokeJoin {
 /// # Examples
 ///
 /// ```
-/// use filament::draw::{StrokeDefinition, StrokeStyle, StrokeCap, StrokeJoin};
-/// use filament::color::Color;
+/// use filament_core::draw::{StrokeDefinition, StrokeStyle, StrokeCap, StrokeJoin};
+/// use filament_core::color::Color;
 ///
 /// // Default stroke (black, 1px, solid)
 /// let stroke = StrokeDefinition::default();
@@ -310,8 +310,8 @@ impl StrokeDefinition {
     /// # Examples
     ///
     /// ```
-    /// use filament::draw::StrokeDefinition;
-    /// use filament::color::Color;
+    /// use filament_core::draw::StrokeDefinition;
+    /// use filament_core::color::Color;
     ///
     /// let stroke = StrokeDefinition::new(Color::new("black").unwrap(), 2.0);
     /// ```
@@ -330,8 +330,8 @@ impl StrokeDefinition {
     /// # Examples
     ///
     /// ```
-    /// use filament::draw::StrokeDefinition;
-    /// use filament::color::Color;
+    /// use filament_core::draw::StrokeDefinition;
+    /// use filament_core::color::Color;
     ///
     /// let stroke = StrokeDefinition::solid(Color::new("black").unwrap(), 1.0);
     /// ```
@@ -344,8 +344,8 @@ impl StrokeDefinition {
     /// # Examples
     ///
     /// ```
-    /// use filament::draw::StrokeDefinition;
-    /// use filament::color::Color;
+    /// use filament_core::draw::StrokeDefinition;
+    /// use filament_core::color::Color;
     ///
     /// let stroke = StrokeDefinition::dashed(Color::new("blue").unwrap(), 1.5);
     /// ```
@@ -360,8 +360,8 @@ impl StrokeDefinition {
     /// # Examples
     ///
     /// ```
-    /// use filament::draw::StrokeDefinition;
-    /// use filament::color::Color;
+    /// use filament_core::draw::StrokeDefinition;
+    /// use filament_core::color::Color;
     ///
     /// let stroke = StrokeDefinition::dotted(Color::new("red").unwrap(), 1.0);
     /// ```
@@ -442,8 +442,8 @@ impl Default for StrokeDefinition {
 /// # Examples
 ///
 /// ```
-/// use filament::draw::StrokeDefinition;
-/// use filament::color::Color;
+/// use filament_core::draw::StrokeDefinition;
+/// use filament_core::color::Color;
 /// use svg::node::element as svg_element;
 ///
 /// let stroke = StrokeDefinition::solid(Color::new("black").unwrap(), 2.0);
@@ -453,7 +453,7 @@ impl Default for StrokeDefinition {
 ///     .set("width", 100)
 ///     .set("height", 50);
 ///
-/// let rect = filament::apply_stroke!(rect, &stroke);
+/// let rect = filament_core::apply_stroke!(rect, &stroke);
 /// ```
 #[macro_export]
 macro_rules! apply_stroke {

@@ -15,8 +15,9 @@
 
 use std::rc::Rc;
 
+use filament_core::{draw, identifier::Id};
+
 use super::elaborate_utils::TypeDefinition;
-use crate::{draw, identifier::Id};
 
 /// Built-in base type for rectangular shapes
 pub const RECTANGLE: &str = "Rectangle";

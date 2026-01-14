@@ -23,7 +23,7 @@
 
 use std::{collections::HashMap, marker::PhantomData};
 
-use crate::identifier::Id;
+use filament_core::identifier::Id;
 
 // =============================================================================
 // Low-level primitive types and internal data structures

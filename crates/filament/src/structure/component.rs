@@ -21,11 +21,13 @@
 
 use log::debug;
 
+use filament_core::{identifier::Id, semantic};
+
 use super::{
     HierarchyNode,
     graph_base::{EdgeIndex, GraphInternal},
 };
-use crate::{FilamentError, identifier::Id, semantic};
+use crate::FilamentError;
 
 /// Represents a containment scope within a component diagram.
 ///

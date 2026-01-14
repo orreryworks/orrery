@@ -18,7 +18,9 @@
 use indexmap::IndexMap;
 use log::debug;
 
-use crate::{FilamentError, identifier::Id, semantic};
+use filament_core::{identifier::Id, semantic};
+
+use crate::FilamentError;
 
 /// Represents ordered events in a sequence diagram.
 ///
@@ -254,12 +256,13 @@ impl<'a> SequenceGraph<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
+
+    use std::rc::Rc;
+
+    use filament_core::{
         draw,
-        identifier::Id,
         semantic::{Block, Node},
     };
-    use std::rc::Rc;
 
     /// Helper function to create a minimal mock node for testing
     fn create_test_node(id_str: &str) -> Node {

@@ -7,16 +7,14 @@ use std::{fs::File, io::Write};
 use log::{debug, error, info};
 use svg::{Document, node::element::Rectangle};
 
-use crate::{
+use filament_core::{
     color::Color,
-    config::StyleConfig,
     draw::ArrowWithTextDrawer,
-    error::FilamentError,
-    export,
     geometry::{Insets, Size},
-    layout::layer::LayeredLayout,
     semantic,
 };
+
+use crate::{config::StyleConfig, error::FilamentError, export, layout::layer::LayeredLayout};
 
 /// SVG exporter builder to configure and build the SVG exporter
 pub struct SvgBuilder<'a> {

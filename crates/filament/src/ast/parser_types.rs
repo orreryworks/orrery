@@ -10,8 +10,9 @@
 
 use std::fmt;
 
+use filament_core::{identifier::Id, semantic::DiagramKind};
+
 use super::span::{Span, Spanned};
-use crate::identifier::Id;
 
 /// Type Specifier - used in both declarations and invocations
 ///
@@ -232,22 +233,6 @@ pub struct TypeDefinition<'a> {
 impl TypeDefinition<'_> {
     pub fn span(&self) -> Span {
         self.name.span().union(self.type_spec.span())
-    }
-}
-
-/// The kind of a diagram: component or sequence.
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum DiagramKind {
-    Component,
-    Sequence,
-}
-
-impl fmt::Display for DiagramKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DiagramKind::Component => write!(f, "component"),
-            DiagramKind::Sequence => write!(f, "sequence"),
-        }
     }
 }
 

@@ -6,6 +6,8 @@ use winnow::{
     token::any,
 };
 
+use filament_core::{identifier::Id, semantic::DiagramKind};
+
 use crate::{
     ast::{
         parser_types as types,
@@ -13,7 +15,6 @@ use crate::{
         tokens::{PositionedToken, Token},
     },
     error::diagnostic::DiagnosticError,
-    identifier::Id,
 };
 
 /// Context type for parser errors
@@ -1125,10 +1126,10 @@ fn invalid_statement_with_semicolon<'src>(
 }
 
 /// Parse diagram type (component, sequence, etc.)
-fn diagram_type<'src>(input: &mut Input<'src>) -> IResult<Spanned<types::DiagramKind>> {
+fn diagram_type<'src>(input: &mut Input<'src>) -> IResult<Spanned<DiagramKind>> {
     any.verify_map(|token: &PositionedToken<'_>| match &token.token {
-        Token::Component => Some(make_spanned(types::DiagramKind::Component, token.span)),
-        Token::Sequence => Some(make_spanned(types::DiagramKind::Sequence, token.span)),
+        Token::Component => Some(make_spanned(DiagramKind::Component, token.span)),
+        Token::Sequence => Some(make_spanned(DiagramKind::Sequence, token.span)),
         _ => None,
     })
     .context(Context::Label("diagram type"))
@@ -1138,7 +1139,7 @@ fn diagram_type<'src>(input: &mut Input<'src>) -> IResult<Spanned<types::Diagram
 /// Parse diagram header with unwrapped attributes
 fn diagram_header<'src>(
     input: &mut Input<'src>,
-) -> IResult<(Spanned<types::DiagramKind>, Vec<types::Attribute<'src>>)> {
+) -> IResult<(Spanned<DiagramKind>, Vec<types::Attribute<'src>>)> {
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Diagram))
         .parse_next(input)?;
     ws_comments1.parse_next(input)?;
@@ -1153,7 +1154,7 @@ fn diagram_header<'src>(
 /// Parse diagram header with semicolon
 pub fn diagram_header_with_semicolon<'src>(
     input: &mut Input<'src>,
-) -> IResult<(Spanned<types::DiagramKind>, Vec<types::Attribute<'src>>)> {
+) -> IResult<(Spanned<DiagramKind>, Vec<types::Attribute<'src>>)> {
     let (kind, attributes) = diagram_header.parse_next(input)?;
     semicolon.parse_next(input)?;
     Ok((kind, attributes))

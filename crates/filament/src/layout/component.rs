@@ -2,13 +2,17 @@ use std::{collections::HashMap, rc::Rc};
 
 use log::{debug, error};
 
-use crate::{
+use filament_core::{
     draw,
-    error::FilamentError,
     geometry::{Bounds, Point},
     identifier::Id,
+    semantic,
+};
+
+use crate::{
+    error::FilamentError,
     layout::{layer, positioning::LayoutBounds},
-    semantic, structure,
+    structure,
 };
 
 /// Represents a diagram component with a reference to its AST node and positioning information

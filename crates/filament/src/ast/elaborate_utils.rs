@@ -6,13 +6,11 @@
 
 use std::{rc::Rc, str::FromStr};
 
+use filament_core::{color::Color, draw, geometry::Insets, identifier::Id};
+
 use crate::{
     ast::parser_types,
-    color::Color,
-    draw,
     error::diagnostic::{DiagnosticError, Result as DiagnosticResult},
-    geometry::Insets,
-    identifier::Id,
 };
 
 /// Unified drawing definition for types: either a shape or an arrow.

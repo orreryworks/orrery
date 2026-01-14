@@ -3,17 +3,20 @@ use std::{collections::HashMap, rc::Rc};
 use log::debug;
 use rust_sugiyama::configure::Config;
 
-use crate::{
+use filament_core::{
     draw::{self, Drawable},
-    error::FilamentError,
     geometry::{Insets, Point, Size},
     identifier::Id,
+    semantic,
+};
+
+use crate::{
+    error::FilamentError,
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
         layer::{ContentStack, PositionedContent},
     },
-    semantic,
     structure::{ComponentGraph, ContainmentScope},
 };
 

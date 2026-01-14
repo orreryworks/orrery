@@ -1,12 +1,11 @@
 //! Core diagram structure types.
 //!
 //! This module contains the fundamental building blocks of the semantic diagram model:
+//! - [`DiagramKind`] - The type of diagram (component or sequence)
 //! - [`Diagram`] - The root diagram type with kind, scope, and layout configuration
 //! - [`Scope`] - Container for diagram elements
 //! - [`Block`] - Represents nested content (none, scope, or embedded diagram)
 //! - [`LayoutEngine`] - Enumeration of available layout algorithms
-
-pub use crate::ast::DiagramKind;
 
 use std::{
     fmt::{self, Display},
@@ -17,6 +16,25 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{color::Color, draw, semantic::element::Element};
+
+/// The kind of a diagram: component or sequence.
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Hash)]
+pub enum DiagramKind {
+    /// A component diagram showing structural relationships
+    #[default]
+    Component,
+    /// A sequence diagram showing interactions over time
+    Sequence,
+}
+
+impl Display for DiagramKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DiagramKind::Component => write!(f, "component"),
+            DiagramKind::Sequence => write!(f, "sequence"),
+        }
+    }
+}
 
 /// A scope containing a sequence of diagram elements.
 ///

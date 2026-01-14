@@ -300,6 +300,7 @@ version = "0.1.0"
 dependencies = [
  "color",
  "cosmic-text",
+ "filament-core",
  "indexmap",
  "layout-rs",
  "log",
@@ -328,6 +329,19 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
+]
+
+[[package]]
+name = "filament-core"
+version = "0.1.0"
+dependencies = [
+ "color",
+ "cosmic-text",
+ "log",
+ "serde",
+ "string-interner",
+ "svg",
+ "thiserror",
 ]
 
 [[package]]

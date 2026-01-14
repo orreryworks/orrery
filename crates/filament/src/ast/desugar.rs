@@ -15,16 +15,16 @@
 //! For example, a reference to "child1" inside "parent" becomes "parent::child1".
 //! This enables the validation phase to perform comprehensive cross-reference checks.
 
+use filament_core::{identifier::Id, semantic::DiagramKind};
+
 use super::{
     builtin_types,
     parser_types::{
-        Attribute, AttributeValue, Diagram, DiagramKind, Element, Fragment, FragmentSection, Note,
+        Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
         TypeDefinition, TypeSpec,
     },
     span::Spanned,
 };
-
-use crate::identifier::Id;
 
 /// Stack tracking the current namespace path for identifier resolution
 #[derive(Debug)]

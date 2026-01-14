@@ -2,13 +2,14 @@ use std::{collections::HashMap, rc::Rc};
 
 use log::warn;
 
-use crate::{
+use filament_core::{
     draw,
     geometry::{Bounds, Point, Size},
     identifier::Id,
-    layout::{component, positioning::LayoutBounds},
     semantic,
 };
+
+use crate::layout::{component, positioning::LayoutBounds};
 
 /// Sequence diagram participant that holds its drawable component and lifeline.
 #[derive(Debug, Clone)]
@@ -523,7 +524,7 @@ impl<'a> LayoutBounds for Layout<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::draw::Drawable;
+    use filament_core::draw::Drawable;
 
     #[test]
     fn test_activation_box_is_active_at_y() {

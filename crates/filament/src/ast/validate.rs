@@ -14,17 +14,16 @@
 
 use std::collections::HashMap;
 
+use filament_core::{identifier::Id, semantic::DiagramKind};
+
 use super::{
     parser_types::{
-        Attribute, AttributeValue, Diagram, DiagramKind, Element, Fragment, FragmentSection, Note,
+        Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
         TypeDefinition, TypeSpec,
     },
     span::{Span, Spanned},
 };
-use crate::{
-    error::diagnostic::{DiagnosticError, Result},
-    identifier::Id,
-};
+use crate::error::diagnostic::{DiagnosticError, Result};
 
 /// Visitor trait for traversing/analyzing AST nodes.
 ///

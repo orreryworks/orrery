@@ -1,16 +1,14 @@
 use log::debug;
 use svg::{self, node::element as svg_element};
 
+use filament_core::{draw::LayeredOutput, geometry::Bounds};
+
 use super::Svg;
-use crate::{
-    draw::LayeredOutput,
-    geometry::Bounds,
-    layout::{
-        component,
-        layer::{ContentStack, Layer, LayeredLayout, LayoutContent},
-        positioning::LayoutBounds,
-        sequence,
-    },
+use crate::layout::{
+    component,
+    layer::{ContentStack, Layer, LayeredLayout, LayoutContent},
+    positioning::LayoutBounds,
+    sequence,
 };
 
 impl Svg {

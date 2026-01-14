@@ -7,7 +7,9 @@ use std::rc::Rc;
 
 use filament::{
     DiagramBuilder,
-    draw::{ArrowDefinition, ArrowDirection, RectangleDefinition, StrokeDefinition},
+    draw::{
+        ArrowDefinition, ArrowDirection, RectangleDefinition, ShapeDefinition, StrokeDefinition,
+    },
     identifier::Id,
     semantic::{Block, Diagram, DiagramKind, Element, LayoutEngine, Node, Relation, Scope},
 };
@@ -16,8 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Building diagram from semantic model...\n");
 
     // Create shape definitions for our nodes
-    let rectangle_def: Rc<Box<dyn filament::draw::ShapeDefinition>> =
-        Rc::new(Box::new(RectangleDefinition::new()));
+    let rectangle_def: Rc<Box<dyn ShapeDefinition>> = Rc::new(Box::new(RectangleDefinition::new()));
 
     // Create arrow definition for relations
     let stroke_def = Rc::new(StrokeDefinition::default());

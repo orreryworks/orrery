@@ -1,11 +1,10 @@
-use super::Svg;
-
-use crate::{
+use filament_core::{
     draw::{self, LayeredOutput},
     geometry::{Bounds, Point},
-    layout::component,
-    layout::layer::ContentStack,
 };
+
+use super::Svg;
+use crate::{layout::component, layout::layer::ContentStack};
 
 impl Svg {
     // Find the point where a line from the shape entity to an external point intersects with the shape entity's boundary

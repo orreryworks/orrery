@@ -13,9 +13,9 @@
 //! # Examples
 //!
 //! ```
-//! # use filament::draw::{Note, NoteDefinition};
-//! # use filament::geometry::Point;
-//! # use filament::draw::Drawable;
+//! # use filament_core::draw::{Note, NoteDefinition};
+//! # use filament_core::geometry::Point;
+//! # use filament_core::draw::Drawable;
 //! # use std::rc::Rc;
 //! #
 //! // Create a note with default styling
@@ -36,8 +36,8 @@
 //! ```
 //! # use std::rc::Rc;
 //! #
-//! # use filament::draw::{NoteDefinition, StrokeStyle};
-//! # use filament::color::Color;
+//! # use filament_core::draw::{NoteDefinition, StrokeStyle};
+//! # use filament_core::color::Color;
 //! #
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut definition = NoteDefinition::new();
@@ -90,8 +90,8 @@ const CORNER_FOLD_SIZE: f32 = 12.0;
 /// ```
 /// # use std::rc::Rc;
 /// #
-/// # use filament::draw::{NoteDefinition, StrokeDefinition};
-/// # use filament::color::Color;
+/// # use filament_core::draw::{NoteDefinition, StrokeDefinition};
+/// # use filament_core::color::Color;
 /// #
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create with defaults
@@ -123,7 +123,7 @@ impl NoteDefinition {
     /// # Examples
     ///
     /// ```
-    /// # use filament::draw::NoteDefinition;
+    /// # use filament_core::draw::NoteDefinition;
     /// let definition = NoteDefinition::new();
     /// ```
     pub fn new() -> Self {
@@ -142,8 +142,8 @@ impl NoteDefinition {
     /// # Examples
     ///
     /// ```
-    /// # use filament::draw::NoteDefinition;
-    /// # use filament::color::Color;
+    /// # use filament_core::draw::NoteDefinition;
+    /// # use filament_core::color::Color;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut definition = NoteDefinition::new();
     /// definition.set_background_color(Some(Color::new("lightyellow")?));
@@ -220,8 +220,8 @@ impl Default for NoteDefinition {
 /// # Examples
 ///
 /// ```
-/// # use filament::draw::{Note, NoteDefinition, Drawable};
-/// # use filament::geometry::Point;
+/// # use filament_core::draw::{Note, NoteDefinition, Drawable};
+/// # use filament_core::geometry::Point;
 /// # use std::rc::Rc;
 /// #
 /// let definition = NoteDefinition::new();
@@ -252,7 +252,7 @@ impl Note {
     /// # Examples
     ///
     /// ```
-    /// # use filament::draw::{Note, NoteDefinition};
+    /// # use filament_core::draw::{Note, NoteDefinition};
     /// # use std::rc::Rc;
     /// #
     /// let definition = NoteDefinition::new();

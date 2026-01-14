@@ -5,18 +5,21 @@
 
 use std::{cmp::Ordering, collections::HashMap, rc::Rc};
 
-use crate::{
+use filament_core::{
     draw::{self, Drawable as _},
-    error::FilamentError,
     geometry::{Insets, Point, Size},
     identifier::Id,
+    semantic,
+};
+
+use crate::{
+    error::FilamentError,
     layout::{
         component::Component,
         engines::{EmbeddedLayouts, SequenceEngine},
         layer::{ContentStack, PositionedContent},
         sequence::{ActivationBox, ActivationTiming, FragmentTiming, Layout, Message, Participant},
     },
-    semantic,
     structure::{SequenceEvent, SequenceGraph},
 };
 

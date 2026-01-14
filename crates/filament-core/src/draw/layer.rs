@@ -12,7 +12,7 @@
 //! # Example
 //!
 //! ```
-//! # use filament::draw::{RenderLayer, LayeredOutput};
+//! # use filament_core::draw::{RenderLayer, LayeredOutput};
 //! # use svg::node::element::Rectangle;
 //!
 //! let mut output = LayeredOutput::new();
@@ -83,7 +83,7 @@ impl RenderLayer {
 /// # Example
 ///
 /// ```
-/// # use filament::draw::{RenderLayer, LayeredOutput};
+/// # use filament_core::draw::{RenderLayer, LayeredOutput};
 /// # use svg::node::element::{Rectangle, Text as SvgText};
 ///
 /// let mut output = LayeredOutput::new();
@@ -96,7 +96,7 @@ impl RenderLayer {
 /// output.add_to_layer(RenderLayer::Text, Box::new(text));
 ///
 /// let border = Rectangle::new().set("stroke", "black");
-/// output.add_to_layer(RenderLayer::Foreground, Box::new(border));
+/// output.add_to_layer(RenderLayer::Content, Box::new(border));
 ///
 /// // Render all layers in order
 /// let svg_nodes = output.render();
@@ -121,7 +121,7 @@ impl LayeredOutput {
     /// # Example
     ///
     /// ```
-    /// # use filament::draw::{RenderLayer, LayeredOutput};
+    /// # use filament_core::draw::{RenderLayer, LayeredOutput};
     /// # use svg::node::element::Rectangle;
     ///
     /// let mut output = LayeredOutput::new();
@@ -140,7 +140,7 @@ impl LayeredOutput {
     /// # Example
     ///
     /// ```
-    /// # use filament::draw::{RenderLayer, LayeredOutput};
+    /// # use filament_core::draw::{RenderLayer, LayeredOutput};
     /// # use svg::node::element::Rectangle;
     ///
     /// let mut output1 = LayeredOutput::new();
@@ -161,7 +161,7 @@ impl LayeredOutput {
     /// # Example
     ///
     /// ```
-    /// # use filament::draw::{RenderLayer, LayeredOutput};
+    /// # use filament_core::draw::{RenderLayer, LayeredOutput};
     /// # use svg::node::element::Rectangle;
     ///
     /// let mut output = LayeredOutput::new();
@@ -191,15 +191,15 @@ impl LayeredOutput {
     /// # Example
     ///
     /// ```
-    /// use filament::draw::{RenderLayer, LayeredOutput};
+    /// use filament_core::draw::{RenderLayer, LayeredOutput};
     /// # use svg::node::element::Rectangle;
     ///
     /// let mut output = LayeredOutput::new();
     /// output.add_to_layer(RenderLayer::Background, Box::new(Rectangle::new()));
-    /// output.add_to_layer(RenderLayer::Foreground, Box::new(Rectangle::new()));
+    /// output.add_to_layer(RenderLayer::Content, Box::new(Rectangle::new()));
     ///
     /// let svg_nodes = output.render(); // Consumes output
-    /// // Background layer renders first, then Foreground
+    /// // Background layer renders first, then Content
     /// assert_eq!(svg_nodes.len(), 2);
     /// ```
     pub fn render(mut self) -> Vec<SvgNode> {

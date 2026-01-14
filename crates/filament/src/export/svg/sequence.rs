@@ -1,9 +1,10 @@
-use super::Svg;
-use crate::{
+use filament_core::{
     draw::{self, Drawable as _, LayeredOutput},
     geometry::{Bounds, Point},
-    layout::{layer::ContentStack, sequence},
 };
+
+use super::Svg;
+use crate::layout::{layer::ContentStack, sequence};
 
 impl Svg {
     pub fn render_participant(&self, participant: &sequence::Participant) -> LayeredOutput {

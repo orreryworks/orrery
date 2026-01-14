@@ -16,18 +16,17 @@ use std::collections::HashMap;
 
 use log::trace;
 
+use filament_core::{geometry, identifier::Id, semantic::LayoutEngine};
+
 use super::layer::ContentStack;
 use crate::{
     error::FilamentError,
-    geometry,
-    identifier::Id,
     layout::{
         component,
         layer::{LayeredLayout, LayoutContent},
         positioning::LayoutBounds,
         sequence,
     },
-    semantic::LayoutEngine,
     structure,
 };
 

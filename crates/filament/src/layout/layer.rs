@@ -1,9 +1,12 @@
 use log::debug;
 
-use crate::{
+use filament_core::{
     draw,
-    error::FilamentError,
     geometry::{Bounds, Point, Size},
+};
+
+use crate::{
+    error::FilamentError,
     layout::{component, positioning::LayoutBounds, sequence},
 };
 

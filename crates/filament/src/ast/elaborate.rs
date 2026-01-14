@@ -8,16 +8,13 @@ use std::{collections::HashMap, rc::Rc, str::FromStr};
 
 use log::{debug, info, trace};
 
+use filament_core::{color::Color, draw, geometry::Insets, identifier::Id, semantic};
+
 use super::{builtin_types, elaborate_utils, parser_types};
 use crate::{
     ast::span::{Span, Spanned},
-    color::Color,
     config::AppConfig,
-    draw,
     error::diagnostic::{DiagnosticError, Result},
-    geometry::Insets,
-    identifier::Id,
-    semantic,
 };
 
 pub struct Builder<'a> {
@@ -1337,7 +1334,7 @@ mod tests {
         }];
 
         let diagram = parser_types::Diagram {
-            kind: Spanned::new(parser_types::DiagramKind::Component, Span::new(0..9)),
+            kind: Spanned::new(semantic::DiagramKind::Component, Span::new(0..9)),
             attributes: vec![],
             type_definitions: vec![],
             elements,
@@ -1389,7 +1386,7 @@ mod tests {
         ];
 
         let diagram = parser_types::Diagram {
-            kind: Spanned::new(parser_types::DiagramKind::Sequence, Span::new(0..8)),
+            kind: Spanned::new(semantic::DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements,
@@ -1498,7 +1495,7 @@ mod tests {
         ];
 
         let diagram = parser_types::Diagram {
-            kind: Spanned::new(parser_types::DiagramKind::Sequence, Span::new(0..8)),
+            kind: Spanned::new(semantic::DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements,
@@ -1611,7 +1608,7 @@ mod tests {
         ];
 
         let diagram = parser_types::Diagram {
-            kind: Spanned::new(parser_types::DiagramKind::Sequence, Span::new(0..8)),
+            kind: Spanned::new(semantic::DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements,
@@ -1685,7 +1682,7 @@ mod tests {
         ];
 
         let diagram = parser_types::Diagram {
-            kind: Spanned::new(parser_types::DiagramKind::Component, Span::new(0..9)),
+            kind: Spanned::new(semantic::DiagramKind::Component, Span::new(0..9)),
             attributes: vec![],
             type_definitions: vec![],
             elements,
@@ -1830,7 +1827,7 @@ mod tests {
         ];
 
         let diagram = parser_types::Diagram {
-            kind: Spanned::new(parser_types::DiagramKind::Sequence, Span::new(0..8)),
+            kind: Spanned::new(semantic::DiagramKind::Sequence, Span::new(0..8)),
             attributes: vec![],
             type_definitions: vec![],
             elements,

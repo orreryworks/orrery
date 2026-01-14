@@ -18,7 +18,7 @@ name = "filament"
 path = "src/main.rs"
 
 [dependencies]
-filament = { path = "../filament", version = "0.1.0" }
+filament = { path = "../filament" }
 clap = { version = "4.5.53", features = ["derive"] }
 env_logger = { version = "0.11.8", features = ["kv"] }
 log = { version = "0.4.29", features = ["kv", "kv_std"] }

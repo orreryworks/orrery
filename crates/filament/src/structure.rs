@@ -10,16 +10,18 @@
 //! - **Hierarchy management**: Tree structure for nested diagrams [`DiagramHierarchy`], [`HierarchyNode`]
 //! - **Specialized graphs**: Type-specific graph implementations for component and sequence diagrams
 
-use log::trace;
-
-use crate::{FilamentError, ast, identifier::Id, semantic};
-
 mod component;
 mod graph_base;
 mod sequence;
 
 pub use component::{ComponentGraph, ContainmentScope};
 pub use sequence::{SequenceEvent, SequenceGraph};
+
+use log::trace;
+
+use filament_core::{identifier::Id, semantic};
+
+use crate::FilamentError;
 
 /// Unified representation of different diagram graph types.
 ///
@@ -156,10 +158,10 @@ impl<'a, 'idx> HierarchyNode<'a, 'idx> {
         container_id: Option<Id>,
     ) -> Result<Self, FilamentError> {
         let (graph, children) = match ast_diagram.kind() {
-            ast::DiagramKind::Component => {
+            semantic::DiagramKind::Component => {
                 GraphKind::build_component(ast_diagram.scope().elements())?
             }
-            ast::DiagramKind::Sequence => {
+            semantic::DiagramKind::Sequence => {
                 GraphKind::build_sequence(ast_diagram.scope().elements())?
             }
         };

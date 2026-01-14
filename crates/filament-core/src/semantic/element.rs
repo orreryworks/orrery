@@ -156,9 +156,9 @@ impl FromStr for NoteAlign {
 /// # Examples
 ///
 /// ```
-/// # use filament::semantic::{Note, NoteAlign};
-/// # use filament::identifier::Id;
-/// # use filament::draw::NoteDefinition;
+/// # use filament_core::semantic::{Note, NoteAlign};
+/// # use filament_core::identifier::Id;
+/// # use filament_core::draw::NoteDefinition;
 /// # use std::rc::Rc;
 /// #
 /// // Create a margin note (not attached to any elements)

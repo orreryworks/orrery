@@ -24,7 +24,7 @@ static INTERNER: OnceLock<Mutex<DefaultStringInterner>> = OnceLock::new();
 /// # Examples
 ///
 /// ```
-/// use filament::identifier::Id;
+/// use filament_core::identifier::Id;
 ///
 /// // Create identifiers from names
 /// let rect_id = Id::new("Rectangle");
@@ -50,7 +50,7 @@ impl Id {
     /// # Examples
     ///
     /// ```
-    /// use filament::identifier::Id;
+    /// use filament_core::identifier::Id;
     ///
     /// let component_id = Id::new("user_service");
     /// let type_id = Id::new("Rectangle");
@@ -73,7 +73,7 @@ impl Id {
     /// # Examples
     ///
     /// ```
-    /// use filament::identifier::Id;
+    /// use filament_core::identifier::Id;
     ///
     /// let anon_id = Id::from_anonymous(42);
     /// ```
@@ -91,7 +91,7 @@ impl Id {
     /// # Examples
     ///
     /// ```
-    /// use filament::identifier::Id;
+    /// use filament_core::identifier::Id;
     ///
     /// let parent = Id::new("user");
     /// let child = Id::new("profile");
@@ -149,7 +149,7 @@ impl From<&str> for Id {
     /// # Examples
     ///
     /// ```
-    /// use filament::identifier::Id;
+    /// use filament_core::identifier::Id;
     ///
     /// let id: Id = "example".into();
     /// assert_eq!(id, "example");
@@ -165,7 +165,7 @@ impl PartialEq<str> for Id {
     /// # Examples
     ///
     /// ```
-    /// use filament::identifier::Id;
+    /// use filament_core::identifier::Id;
     ///
     /// let id = Id::new("Rectangle");
     /// assert!(id == "Rectangle");
@@ -188,7 +188,7 @@ impl PartialEq<&str> for Id {
     /// # Examples
     ///
     /// ```
-    /// use filament::identifier::Id;
+    /// use filament_core::identifier::Id;
     ///
     /// let id = Id::new("Rectangle");
     /// let name = "Rectangle";
