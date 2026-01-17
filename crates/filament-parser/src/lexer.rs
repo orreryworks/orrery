@@ -6,11 +6,11 @@ use winnow::{
     token::{literal, none_of, one_of, take_while},
 };
 
-use super::{
+use crate::{
+    error::DiagnosticError,
     span::Span,
     tokens::{PositionedToken, Token},
 };
-use crate::error::diagnostic::DiagnosticError;
 
 type Input<'a> = &'a str;
 type IResult<'a, O> = ModalResult<O, ContextError>;

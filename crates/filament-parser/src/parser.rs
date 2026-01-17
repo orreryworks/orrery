@@ -9,12 +9,10 @@ use winnow::{
 use filament_core::{identifier::Id, semantic::DiagramKind};
 
 use crate::{
-    ast::{
-        parser_types as types,
-        span::{Span, Spanned},
-        tokens::{PositionedToken, Token},
-    },
-    error::diagnostic::DiagnosticError,
+    error::DiagnosticError,
+    parser_types as types,
+    span::{Span, Spanned},
+    tokens::{PositionedToken, Token},
 };
 
 /// Context type for parser errors
@@ -1350,7 +1348,7 @@ pub fn build_diagram<'src>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::lexer::tokenize;
+    use crate::lexer::tokenize;
 
     // Test helpers
     fn parse_tokens(input: &str) -> Vec<PositionedToken<'_>> {
@@ -1852,7 +1850,7 @@ mod tests {
             );
 
             match &tokens[0].token {
-                crate::ast::tokens::Token::Identifier(name) => {
+                Token::Identifier(name) => {
                     assert_eq!(
                         *name, expected,
                         "Expected identifier '{}', got '{}'",
@@ -2572,12 +2570,12 @@ mod tests {
     fn test_standalone_keywords_still_work() {
         // Ensure that standalone keywords are still recognized as keywords
         let test_cases = vec![
-            ("component", crate::ast::tokens::Token::Component),
-            ("type", crate::ast::tokens::Token::Type),
-            ("diagram", crate::ast::tokens::Token::Diagram),
-            ("sequence", crate::ast::tokens::Token::Sequence),
-            ("embed", crate::ast::tokens::Token::Embed),
-            ("as", crate::ast::tokens::Token::As),
+            ("component", Token::Component),
+            ("type", Token::Type),
+            ("diagram", Token::Diagram),
+            ("sequence", Token::Sequence),
+            ("embed", Token::Embed),
+            ("as", Token::As),
         ];
 
         for (input, expected_token) in test_cases {

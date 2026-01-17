@@ -16,14 +16,14 @@ use std::collections::HashMap;
 
 use filament_core::{identifier::Id, semantic::DiagramKind};
 
-use super::{
+use crate::{
+    error::{DiagnosticError, Result},
     parser_types::{
         Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
         TypeDefinition, TypeSpec,
     },
     span::{Span, Spanned},
 };
-use crate::error::diagnostic::{DiagnosticError, Result};
 
 /// Visitor trait for traversing/analyzing AST nodes.
 ///
@@ -842,7 +842,7 @@ mod tests {
 #[cfg(test)]
 mod note_validation_tests {
     use super::*;
-    use crate::ast::{lexer::tokenize, parser::build_diagram};
+    use crate::{lexer::tokenize, parser::build_diagram};
 
     #[test]
     fn test_valid_note_sequence_diagram() {

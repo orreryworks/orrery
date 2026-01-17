@@ -1,0 +1,22 @@
+[package]
+name = "filament-parser"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Parser for the Filament diagram language"
+keywords = ["diagram", "parser", "ast"]
+categories = ["parsing"]
+
+[lib]
+name = "filament_parser"
+path = "src/lib.rs"
+
+[dependencies]
+filament-core = { path = "../filament-core" }
+winnow = "0.7.14"
+log = { version = "0.4.29", features = ["kv", "kv_std"] }
+thiserror = "2.0.17"
+
+[dev-dependencies]

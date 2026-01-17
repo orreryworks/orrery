@@ -10,21 +10,46 @@ use log::{debug, info, trace};
 
 use filament_core::{color::Color, draw, geometry::Insets, identifier::Id, semantic};
 
-use super::{builtin_types, elaborate_utils, parser_types};
 use crate::{
-    ast::span::{Span, Spanned},
-    config::AppConfig,
-    error::diagnostic::{DiagnosticError, Result},
+    builtin_types, elaborate_utils,
+    error::{DiagnosticError, Result},
+    parser_types,
+    span::{Span, Spanned},
 };
 
+/// Configuration for the elaboration phase.
+///
+/// This struct holds the default layout engine settings that are used
+/// when no explicit layout_engine attribute is specified in the diagram.
+#[derive(Debug, Clone, Default)]
+pub struct ElaborateConfig {
+    /// Default layout engine for component diagrams
+    pub component_layout: semantic::LayoutEngine,
+    /// Default layout engine for sequence diagrams
+    pub sequence_layout: semantic::LayoutEngine,
+}
+
+impl ElaborateConfig {
+    /// Create a new ElaborateConfig with specified layout engines
+    pub fn new(
+        component_layout: semantic::LayoutEngine,
+        sequence_layout: semantic::LayoutEngine,
+    ) -> Self {
+        Self {
+            component_layout,
+            sequence_layout,
+        }
+    }
+}
+
 pub struct Builder<'a> {
-    cfg: &'a AppConfig,
+    cfg: ElaborateConfig,
     type_definitions: HashMap<Id, elaborate_utils::TypeDefinition>,
-    _phantom: std::marker::PhantomData<&'a str>, // Use PhantomData to maintain the lifetime parameter
+    _phantom: std::marker::PhantomData<&'a str>,
 }
 
 impl<'a> Builder<'a> {
-    pub fn new(cfg: &'a AppConfig, _source: &'a str) -> Self {
+    pub fn new(cfg: ElaborateConfig, _source: &'a str) -> Self {
         let type_definitions = builtin_types::defaults();
         let type_definition_map = type_definitions
             .into_iter()
@@ -1116,8 +1141,8 @@ impl<'a> Builder<'a> {
     )> {
         // Set the default layout engine based on the diagram kind and config
         let mut layout_engine = match kind {
-            semantic::DiagramKind::Component => self.cfg.layout().component(),
-            semantic::DiagramKind::Sequence => self.cfg.layout().sequence(),
+            semantic::DiagramKind::Component => self.cfg.component_layout,
+            semantic::DiagramKind::Sequence => self.cfg.sequence_layout,
         };
 
         let mut background_color = None;
@@ -1343,8 +1368,8 @@ mod tests {
         let spanned_element =
             Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
 
-        let config = AppConfig::default();
-        let builder = Builder::new(&config, "test");
+        let config = ElaborateConfig::default();
+        let builder = Builder::new(config, "test");
         // This should panic due to unreachable!() on ActivateBlock during elaboration
         let _ = builder.build(&spanned_element);
     }
@@ -1395,8 +1420,8 @@ mod tests {
         let spanned_element =
             Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
 
-        let config = AppConfig::default();
-        let builder = Builder::new(&config, "test");
+        let config = ElaborateConfig::default();
+        let builder = Builder::new(config, "test");
         let result = builder.build(&spanned_element);
 
         assert!(
@@ -1504,8 +1529,8 @@ mod tests {
         let spanned_element =
             Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
 
-        let config = AppConfig::default();
-        let builder = Builder::new(&config, "test");
+        let config = ElaborateConfig::default();
+        let builder = Builder::new(config, "test");
         let result = builder.build(&spanned_element);
 
         assert!(
@@ -1577,9 +1602,8 @@ mod tests {
 
     #[test]
     fn test_explicit_activate_in_sequence_diagram() {
-        use crate::config::AppConfig;
-        let config = AppConfig::default();
-        let builder = Builder::new(&config, "test");
+        let config = ElaborateConfig::default();
+        let builder = Builder::new(config, "test");
 
         // Create a simple sequence diagram with explicit activate
         let elements = vec![
@@ -1658,9 +1682,8 @@ mod tests {
 
     #[test]
     fn test_explicit_activate_not_allowed_in_component_diagram() {
-        use crate::config::AppConfig;
-        let config = AppConfig::default();
-        let builder = Builder::new(&config, "test");
+        let config = ElaborateConfig::default();
+        let builder = Builder::new(config, "test");
 
         // Create a component diagram with explicit activate (should fail)
         let elements = vec![
@@ -1836,8 +1859,8 @@ mod tests {
         let spanned_element =
             Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
 
-        let config = AppConfig::default();
-        let builder = Builder::new(&config, "test");
+        let config = ElaborateConfig::default();
+        let builder = Builder::new(config, "test");
         let result = builder.build(&spanned_element);
 
         assert!(
@@ -1882,8 +1905,8 @@ mod tests {
 
     #[test]
     fn test_note_with_default_alignment_sequence() {
-        let cfg = AppConfig::default();
-        let mut builder = Builder::new(&cfg, "");
+        let cfg = ElaborateConfig::default();
+        let mut builder = Builder::new(cfg, "");
 
         let note = parser_types::Note {
             type_spec: parser_types::TypeSpec {
@@ -1909,8 +1932,8 @@ mod tests {
 
     #[test]
     fn test_note_with_default_alignment_component() {
-        let cfg = AppConfig::default();
-        let mut builder = Builder::new(&cfg, "");
+        let cfg = ElaborateConfig::default();
+        let mut builder = Builder::new(cfg, "");
 
         let note = parser_types::Note {
             type_spec: parser_types::TypeSpec {
@@ -1936,8 +1959,8 @@ mod tests {
 
     #[test]
     fn test_note_with_styling_attributes() {
-        let cfg = AppConfig::default();
-        let mut builder = Builder::new(&cfg, "");
+        let cfg = ElaborateConfig::default();
+        let mut builder = Builder::new(cfg, "");
 
         let attributes = vec![
             parser_types::Attribute {
@@ -2012,7 +2035,7 @@ mod tests {
 
     #[test]
     fn test_extract_type_spec_success() {
-        use crate::ast::parser_types::{Attribute, AttributeValue, TypeSpec};
+        use crate::parser_types::{Attribute, AttributeValue, TypeSpec};
 
         let type_spec = TypeSpec {
             type_name: Some(Spanned::new(Id::new("BoldText"), Span::new(0..8))),
@@ -2029,7 +2052,7 @@ mod tests {
 
     #[test]
     fn test_extract_type_spec_error() {
-        use crate::ast::parser_types::{Attribute, AttributeValue};
+        use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
             name: Spanned::new("text", Span::new(0..4)),
@@ -2047,7 +2070,7 @@ mod tests {
 
     #[test]
     fn test_extract_string_success() {
-        use crate::ast::parser_types::{Attribute, AttributeValue};
+        use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
             name: Spanned::new("style", Span::new(0..5)),
@@ -2061,7 +2084,7 @@ mod tests {
 
     #[test]
     fn test_extract_string_error() {
-        use crate::ast::parser_types::{Attribute, AttributeValue};
+        use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
             name: Spanned::new("style", Span::new(0..5)),
@@ -2076,7 +2099,7 @@ mod tests {
 
     #[test]
     fn test_extract_color_success() {
-        use crate::ast::parser_types::{Attribute, AttributeValue};
+        use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
             name: Spanned::new("fill_color", Span::new(0..10)),
@@ -2089,7 +2112,7 @@ mod tests {
 
     #[test]
     fn test_extract_color_invalid_string() {
-        use crate::ast::parser_types::{Attribute, AttributeValue};
+        use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
             name: Spanned::new("fill_color", Span::new(0..10)),
@@ -2104,7 +2127,7 @@ mod tests {
 
     #[test]
     fn test_extract_color_invalid_color() {
-        use crate::ast::parser_types::{Attribute, AttributeValue};
+        use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
             name: Spanned::new("fill_color", Span::new(0..10)),
@@ -2122,7 +2145,7 @@ mod tests {
 
     #[test]
     fn test_extract_positive_float_success() {
-        use crate::ast::parser_types::{Attribute, AttributeValue};
+        use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
             name: Spanned::new("width", Span::new(0..5)),
@@ -2136,7 +2159,7 @@ mod tests {
 
     #[test]
     fn test_extract_positive_float_error() {
-        use crate::ast::parser_types::{Attribute, AttributeValue};
+        use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
             name: Spanned::new("width", Span::new(0..5)),
@@ -2154,7 +2177,7 @@ mod tests {
 
     #[test]
     fn test_extract_usize_success() {
-        use crate::ast::parser_types::{Attribute, AttributeValue};
+        use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
             name: Spanned::new("rounded", Span::new(0..7)),
@@ -2168,7 +2191,7 @@ mod tests {
 
     #[test]
     fn test_extract_usize_error() {
-        use crate::ast::parser_types::{Attribute, AttributeValue};
+        use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
             name: Spanned::new("rounded", Span::new(0..7)),
@@ -2186,10 +2209,10 @@ mod tests {
 
     #[test]
     fn test_fragment_with_both_text_attributes() {
-        use crate::ast::parser_types::{Attribute, AttributeValue, TypeSpec};
+        use crate::parser_types::{Attribute, AttributeValue, TypeSpec};
 
-        let cfg = AppConfig::default();
-        let mut builder = Builder::new(&cfg, "");
+        let cfg = ElaborateConfig::default();
+        let mut builder = Builder::new(cfg, "");
 
         // Create a fragment type with both operation_label_text and section_title_text attributes
         let type_spec = TypeSpec {

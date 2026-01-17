@@ -4,7 +4,6 @@
 //! diagram language. It supports component diagrams and sequence diagrams with a
 //! text-based DSL.
 
-pub mod ast;
 pub mod config;
 
 mod error;
@@ -21,6 +20,7 @@ use std::fs;
 use log::{debug, info, trace};
 
 use filament_core::geometry::Insets;
+use filament_parser::ElaborateConfig;
 
 use config::AppConfig;
 use export::Exporter;
@@ -101,11 +101,20 @@ impl DiagramBuilder {
     ///     .expect("Failed to parse diagram");
     /// ```
     pub fn parse(&self, source: &str) -> Result<semantic::Diagram, FilamentError> {
-        info!("Building diagram AST");
-        let elaborated_ast = ast::build_ast(&self.config, source)?;
-        debug!("AST built successfully");
-        trace!(elaborated_ast:?; "Elaborated AST");
-        Ok(elaborated_ast)
+        info!("Parsing diagram");
+
+        let elaborate_config = ElaborateConfig::new(
+            self.config.layout().component(),
+            self.config.layout().sequence(),
+        );
+
+        let diagram = filament_parser::parse(source, elaborate_config)
+            .map_err(|err| FilamentError::new_parse_error(err, source))?;
+
+        debug!("Diagram parsed successfully");
+        trace!(diagram:?; "Parsed diagram");
+
+        Ok(diagram)
     }
 
     /// Render a semantic diagram to SVG string.

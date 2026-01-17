@@ -12,7 +12,7 @@ use std::fmt;
 
 use filament_core::{identifier::Id, semantic::DiagramKind};
 
-use super::span::{Span, Spanned};
+use crate::span::{Span, Spanned};
 
 /// Type Specifier - used in both declarations and invocations
 ///

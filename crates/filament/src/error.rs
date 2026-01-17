@@ -3,13 +3,11 @@
 //! This module provides the main error type [`FilamentError`] which wraps
 //! various error conditions that can occur during diagram processing.
 
-pub mod diagnostic;
-
-pub use diagnostic::DiagnosticError;
-
 use std::io;
 
 use thiserror::Error;
+
+use filament_parser::DiagnosticError;
 
 /// The main error type for Filament operations.
 ///
@@ -25,16 +23,7 @@ pub enum FilamentError {
     Io(#[from] io::Error),
 
     #[error("{err}")]
-    LexerDiagnostic { err: DiagnosticError, src: String },
-
-    #[error("{err}")]
     ParseDiagnostic { err: DiagnosticError, src: String },
-
-    #[error("{err}")]
-    ElaborationDiagnostic { err: DiagnosticError, src: String },
-
-    #[error("{err}")]
-    ValidationDiagnostic { err: DiagnosticError, src: String },
 
     #[error("Graph error: {0}")]
     Graph(String),
@@ -53,30 +42,6 @@ impl From<crate::export::Error> for FilamentError {
 }
 
 impl FilamentError {
-    /// Create a new `LexerDiagnostic` error with the associated source code.
-    pub fn new_lexer_error(err: DiagnosticError, src: impl Into<String>) -> Self {
-        Self::LexerDiagnostic {
-            err,
-            src: src.into(),
-        }
-    }
-
-    /// Create a new `ElaborationDiagnostic` error with the associated source code.
-    pub fn new_elaboration_error(err: DiagnosticError, src: impl Into<String>) -> Self {
-        Self::ElaborationDiagnostic {
-            err,
-            src: src.into(),
-        }
-    }
-
-    /// Create a new `ValidationDiagnostic` error with the associated source code.
-    pub fn new_validation_error(err: DiagnosticError, src: impl Into<String>) -> Self {
-        Self::ValidationDiagnostic {
-            err,
-            src: src.into(),
-        }
-    }
-
     /// Create a new `ParseDiagnostic` error with the associated source code.
     pub fn new_parse_error(err: DiagnosticError, src: impl Into<String>) -> Self {
         Self::ParseDiagnostic {

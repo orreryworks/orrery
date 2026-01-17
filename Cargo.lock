@@ -301,6 +301,7 @@ dependencies = [
  "color",
  "cosmic-text",
  "filament-core",
+ "filament-parser",
  "indexmap",
  "layout-rs",
  "log",
@@ -308,11 +309,9 @@ dependencies = [
  "rand",
  "rust-sugiyama",
  "serde",
- "string-interner",
  "svg",
  "tempfile",
  "thiserror",
- "winnow",
 ]
 
 [[package]]
@@ -323,6 +322,7 @@ dependencies = [
  "directories",
  "env_logger",
  "filament",
+ "filament-parser",
  "log",
  "miette",
  "serde",
@@ -342,6 +342,16 @@ dependencies = [
  "string-interner",
  "svg",
  "thiserror",
+]
+
+[[package]]
+name = "filament-parser"
+version = "0.1.0"
+dependencies = [
+ "filament-core",
+ "log",
+ "thiserror",
+ "winnow",
 ]
 
 [[package]]

@@ -2,7 +2,7 @@ use std::fmt;
 
 use winnow::stream::Location;
 
-use crate::ast::span::Span;
+use crate::span::Span;
 
 /// Token types for the Filament language
 #[derive(Debug, Clone, PartialEq)]

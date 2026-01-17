@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::ast::span::Span;
+use crate::span::Span;
 
 /// A rich diagnostic error for compiler issues in the Filament language.
 ///
@@ -9,12 +9,12 @@ use crate::ast::span::Span;
 /// - A descriptive message and label
 /// - Optional help text with suggestions to fix the error
 ///
-/// This is a shared diagnostic type used across all compilation phases
-/// (parsing, validation, elaboration, etc.). Phase context is provided
-/// by the `FilamentError` variant that wraps this diagnostic.
+/// This is a shared diagnostic type used across all parsing phases
+/// (lexing, parsing, validation, elaboration, etc.). Phase context is provided
+/// by the container error type.
 ///
 /// The source code itself is expected to be provided by the container error
-/// type (e.g., `FilamentError::ValidationDiagnostic`).
+/// type (e.g., `FilamentError`).
 #[derive(Debug, Error)]
 #[error("{message}")]
 pub struct DiagnosticError {
@@ -75,13 +75,4 @@ impl DiagnosticError {
 }
 
 /// A type alias for `Result<T, DiagnosticError>`
-///
-/// # Usage
-///
-/// ```text
-/// fn process() -> Result<ElaboratedElement> {
-///     // Function that may return DiagnosticError
-///     Ok(ElaboratedElement)
-/// }
-/// ```
 pub type Result<T> = std::result::Result<T, DiagnosticError>;

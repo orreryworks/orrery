@@ -17,7 +17,7 @@
 
 use filament_core::{identifier::Id, semantic::DiagramKind};
 
-use super::{
+use crate::{
     builtin_types,
     parser_types::{
         Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
@@ -711,7 +711,7 @@ pub fn desugar<'a>(diagram: Spanned<Element<'a>>) -> Spanned<Element<'a>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::span::Span;
+    use crate::span::Span;
 
     // Test-only IdentityFolder for verifying identity transformations
     struct IdentityFolder;

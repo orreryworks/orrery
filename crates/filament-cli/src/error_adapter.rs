@@ -7,7 +7,8 @@ use std::fmt;
 
 use miette::{Diagnostic, LabeledSpan, SourceSpan};
 
-use filament::{FilamentError, ast::span::Span};
+use filament::FilamentError;
+use filament_parser::Span;
 
 /// Adapter that wraps [`FilamentError`] and implements [`miette::Diagnostic`].
 ///
@@ -38,10 +39,7 @@ impl Diagnostic for ErrorAdapter {
     fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
         match &self.0 {
             FilamentError::Io(_) => Some(Box::new("filament::error::io")),
-            FilamentError::LexerDiagnostic { .. }
-            | FilamentError::ParseDiagnostic { .. }
-            | FilamentError::ElaborationDiagnostic { .. }
-            | FilamentError::ValidationDiagnostic { .. } => {
+            FilamentError::ParseDiagnostic { .. } => {
                 // Suppress error code for diagnostic errors
                 None
             }
@@ -53,10 +51,7 @@ impl Diagnostic for ErrorAdapter {
 
     fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
         match &self.0 {
-            FilamentError::LexerDiagnostic { err, .. }
-            | FilamentError::ParseDiagnostic { err, .. }
-            | FilamentError::ElaborationDiagnostic { err, .. }
-            | FilamentError::ValidationDiagnostic { err, .. } => {
+            FilamentError::ParseDiagnostic { err, .. } => {
                 err.help().map(|h| Box::new(h) as Box<dyn fmt::Display>)
             }
             _ => None,
@@ -65,22 +60,14 @@ impl Diagnostic for ErrorAdapter {
 
     fn source_code(&self) -> Option<&dyn miette::SourceCode> {
         match &self.0 {
-            FilamentError::LexerDiagnostic { src, .. }
-            | FilamentError::ParseDiagnostic { src, .. }
-            | FilamentError::ElaborationDiagnostic { src, .. }
-            | FilamentError::ValidationDiagnostic { src, .. } => {
-                Some(src as &dyn miette::SourceCode)
-            }
+            FilamentError::ParseDiagnostic { src, .. } => Some(src as &dyn miette::SourceCode),
             _ => None,
         }
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         match &self.0 {
-            FilamentError::LexerDiagnostic { err, .. }
-            | FilamentError::ParseDiagnostic { err, .. }
-            | FilamentError::ElaborationDiagnostic { err, .. }
-            | FilamentError::ValidationDiagnostic { err, .. } => {
+            FilamentError::ParseDiagnostic { err, .. } => {
                 let span = err.span();
                 let miette_span = span_to_miette(span);
                 let label = err.label().to_string();

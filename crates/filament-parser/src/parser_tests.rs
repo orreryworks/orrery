@@ -3,7 +3,7 @@
 //! These tests verify that the winnow parser correctly handles all Filament
 //! language constructs and provides proper error handling.
 
-use crate::ast::{lexer, parser};
+use crate::{lexer, parser};
 
 /// Helper function to parse a source string and return success/failure
 fn parse_source(source: &str) -> Result<(), String> {

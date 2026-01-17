@@ -9,8 +9,8 @@ use std::{rc::Rc, str::FromStr};
 use filament_core::{color::Color, draw, geometry::Insets, identifier::Id};
 
 use crate::{
-    ast::parser_types,
-    error::diagnostic::{DiagnosticError, Result as DiagnosticResult},
+    error::{DiagnosticError, Result as DiagnosticResult},
+    parser_types,
 };
 
 /// Unified drawing definition for types: either a shape or an arrow.
@@ -396,7 +396,7 @@ impl StrokeAttributeExtractor {
 #[cfg(test)]
 mod elaborate_tests {
     use super::*;
-    use crate::ast::span::{Span, Spanned};
+    use crate::span::{Span, Spanned};
 
     #[test]
     fn test_new_stroke_type() {
