@@ -7,23 +7,22 @@ use std::io;
 
 use thiserror::Error;
 
-use filament_parser::DiagnosticError;
+use filament_parser::error::ParseError;
 
 /// The main error type for Filament operations.
 ///
 /// # Diagnostic Variants
 ///
-/// The `LexerDiagnostic`, `ParseDiagnostic`, `ElaborationDiagnostic`, and
-/// `ValidationDiagnostic` variants contain structured error information with
-/// source code spans. These provide detailed error information that can be
-/// used for rich error reporting.
+/// The `Parse` variant contains structured error information with source code
+/// spans. This provides detailed error information that can be used for rich
+/// error reporting.
 #[derive(Debug, Error)]
 pub enum FilamentError {
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
 
     #[error("{err}")]
-    ParseDiagnostic { err: DiagnosticError, src: String },
+    Parse { err: ParseError, src: String },
 
     #[error("Graph error: {0}")]
     Graph(String),
@@ -42,9 +41,9 @@ impl From<crate::export::Error> for FilamentError {
 }
 
 impl FilamentError {
-    /// Create a new `ParseDiagnostic` error with the associated source code.
-    pub fn new_parse_error(err: DiagnosticError, src: impl Into<String>) -> Self {
-        Self::ParseDiagnostic {
+    /// Create a new `Parse` error with the associated source code.
+    pub fn new_parse_error(err: ParseError, src: impl Into<String>) -> Self {
+        Self::Parse {
             err,
             src: src.into(),
         }

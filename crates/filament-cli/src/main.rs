@@ -3,7 +3,7 @@ use std::{process, str::FromStr};
 use clap::Parser;
 use log::{LevelFilter, debug, error, info};
 
-use filament_cli::{Args, ErrorAdapter};
+use filament_cli::{Args, error_adapter::to_reportables};
 
 fn main() {
     // Install miette's pretty panic hook early for better panic reports
@@ -30,17 +30,18 @@ fn main() {
 
     // Run the application
     if let Err(err) = filament_cli::run(&args) {
-        // Wrap error in ErrorAdapter for rich miette formatting
-        let adapted_error = ErrorAdapter(err);
-
-        // Use miette to display the diagnostic error
         let reporter = miette::GraphicalReportHandler::new();
-        let mut writer = String::new();
-        reporter
-            .render_report(&mut writer, &adapted_error)
-            .expect("Writing to String buffer is infallible");
 
-        error!("Failed\n{writer}");
+        // Render each diagnostic independently
+        for reportable in to_reportables(&err) {
+            let mut writer = String::new();
+            reporter
+                .render_report(&mut writer, &reportable)
+                .expect("Writing to String buffer is infallible");
+
+            error!("{writer}");
+        }
+
         process::exit(1);
     }
 

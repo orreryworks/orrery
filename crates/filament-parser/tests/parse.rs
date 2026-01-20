@@ -171,8 +171,10 @@ fn test_syntax_error() {
     assert!(result.is_err(), "Should fail on syntax error");
 
     let err = result.unwrap_err();
-    assert!(!err.message().is_empty());
-    assert!(err.span().len() > 0);
+    assert!(!err.diagnostics().is_empty());
+    let diag = &err.diagnostics()[0];
+    assert!(!diag.message().is_empty());
+    assert!(!diag.labels().is_empty() && !diag.labels()[0].span().is_empty());
 }
 
 #[test]

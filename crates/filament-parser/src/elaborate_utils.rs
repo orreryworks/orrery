@@ -9,7 +9,7 @@ use std::{rc::Rc, str::FromStr};
 use filament_core::{color::Color, draw, geometry::Insets, identifier::Id};
 
 use crate::{
-    error::{DiagnosticError, Result as DiagnosticResult},
+    error::{Diagnostic, ErrorCode, Result as DiagnosticResult},
     parser_types,
 };
 
@@ -177,88 +177,71 @@ impl TextAttributeExtractor {
         match *name {
             "font_size" => {
                 let val = value.as_u16().map_err(|_| {
-                    DiagnosticError::from_span(
-                        format!("Invalid font_size value '{value}'"),
-                        attr.span(),
-                        "invalid number",
-                        Some("Font size must be a positive integer".to_string()),
-                    )
-                })?;
+                        Diagnostic::error(format!("invalid font_size value `{value}`"))
+                            .with_code(ErrorCode::E302)
+                            .with_label(attr.span(), "invalid number")
+                            .with_help("font size must be a positive integer")
+                    })?;
                 text_def.set_font_size(val);
                 Ok(())
             }
             "font_family" => {
                 text_def.set_font_family(value.as_str().map_err(|err| {
-                    DiagnosticError::from_span(
-                        err.to_string(),
-                        attr.span(),
-                        "invalid font family",
-                        Some("Font family must be a string value".to_string()),
-                    )
+                    Diagnostic::error(err.to_string())
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid font family")
+                        .with_help("font family must be a string value")
                 })?);
                 Ok(())
             }
             "background_color" => {
                 let val = Color::new(value.as_str().map_err(|err| {
-                    DiagnosticError::from_span(
-                        err.to_string(),
-                        attr.span(),
-                        "invalid color value",
-                        Some("Color values must be strings".to_string()),
-                    )
+                    Diagnostic::error(err.to_string())
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid color value")
+                        .with_help("color values must be strings")
                 })?)
                 .map_err(|err| {
-                    DiagnosticError::from_span(
-                        format!("Invalid background_color: {err}"),
-                        attr.span(),
-                        "invalid color",
-                        Some("Use a CSS color".to_string()),
-                    )
+                    Diagnostic::error(format!("invalid background_color: {err}"))
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid color")
+                        .with_help("use a CSS color")
                 })?;
                 text_def.set_background_color(Some(val));
                 Ok(())
             }
             "padding" => {
                 let val = value.as_float().map_err(|err| {
-                    DiagnosticError::from_span(
-                        format!("Invalid padding value: {err}"),
-                        attr.span(),
-                        "invalid number",
-                        Some("Text padding must be a positive number".to_string()),
-                    )
+                    Diagnostic::error(format!("invalid padding value: {err}"))
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid number")
+                        .with_help("text padding must be a positive number")
                 })?;
                 text_def.set_padding(Insets::uniform(val));
                 Ok(())
             }
             "color" => {
                 let val = Color::new(value.as_str().map_err(|err| {
-                    DiagnosticError::from_span(
-                        err.to_string(),
-                        attr.span(),
-                        "invalid color value",
-                        Some("Color values must be strings".to_string()),
-                    )
+                    Diagnostic::error(err.to_string())
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid color value")
+                        .with_help("color values must be strings")
                 })?)
                 .map_err(|err| {
-                    DiagnosticError::from_span(
-                        format!("Invalid color: {err}"),
-                        attr.span(),
-                        "invalid color",
-                        Some("Use a CSS color".to_string()),
-                    )
+                    Diagnostic::error(format!("invalid color: {err}"))
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid color")
+                        .with_help("use a CSS color")
                 })?;
                 text_def.set_color(Some(val));
                 Ok(())
             }
-            name => Err(DiagnosticError::from_span(
-                format!("Unknown text attribute '{name}'"),
-                attr.span(),
-                "unknown text attribute",
-                Some(
-                    "Valid text attributes are: font_size, font_family, background_color, padding, color"
-                        .to_string(),
-                ),
-            )),
+            name => Err(Diagnostic::error(format!("unknown text attribute `{name}`"))
+                .with_code(ErrorCode::E303)
+                .with_label(attr.span(), "unknown attribute")
+                .with_help(
+                    "valid text attributes are: font_size, font_family, background_color, padding, color",
+                )),
         }
     }
 }
@@ -289,55 +272,43 @@ impl StrokeAttributeExtractor {
         match name {
             "color" => {
                 let color_str = value.as_str().map_err(|err| {
-                    DiagnosticError::from_span(
-                        err.to_string(),
-                        attr.span(),
-                        "invalid color value",
-                        Some("Color values must be strings".to_string()),
-                    )
+                    Diagnostic::error(err.to_string())
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid color value")
+                        .with_help("color values must be strings")
                 })?;
                 let val = Color::new(color_str).map_err(|err| {
-                    DiagnosticError::from_span(
-                        format!("Invalid stroke color: {err}"),
-                        attr.span(),
-                        "invalid color",
-                        Some("Use a CSS color".to_string()),
-                    )
+                    Diagnostic::error(format!("invalid stroke color: {err}"))
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid color")
+                        .with_help("use a CSS color")
                 })?;
                 stroke_def.set_color(val);
                 Ok(())
             }
             "width" => {
                 let val = value.as_float().map_err(|err| {
-                    DiagnosticError::from_span(
-                        format!("Invalid stroke width value: {err}"),
-                        attr.span(),
-                        "invalid number",
-                        Some("Width must be a positive number".to_string()),
-                    )
+                    Diagnostic::error(format!("invalid stroke width value: {err}"))
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid number")
+                        .with_help("width must be a positive number")
                 })?;
                 stroke_def.set_width(val);
                 Ok(())
             }
             "style" => {
                 let style_str = value.as_str().map_err(|err| {
-                    DiagnosticError::from_span(
-                        err.to_string(),
-                        attr.span(),
-                        "invalid stroke style value",
-                        Some("Stroke style must be a string".to_string()),
-                    )
+                    Diagnostic::error(err.to_string())
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid stroke style value")
+                        .with_help("stroke style must be a string")
                 })?;
 
-                // Parse as predefined style or custom pattern
-                // Note: Currently never fails, but may fail in the future when custom pattern validation is added
                 let style = draw::StrokeStyle::from_str(style_str).map_err(|err| {
-                    DiagnosticError::from_span(
-                        err,
-                        attr.span(),
-                        "invalid stroke style",
-                        Some("Use a valid style name or dasharray pattern".to_string()),
-                    )
+                    Diagnostic::error(err)
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid stroke style")
+                        .with_help("use a valid style name or dasharray pattern")
                 })?;
 
                 stroke_def.set_style(style);
@@ -345,50 +316,42 @@ impl StrokeAttributeExtractor {
             }
             "cap" => {
                 let cap_str = value.as_str().map_err(|err| {
-                    DiagnosticError::from_span(
-                        err.to_string(),
-                        attr.span(),
-                        "invalid stroke cap value",
-                        Some("Stroke cap must be a string".to_string()),
-                    )
+                    Diagnostic::error(err.to_string())
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid stroke cap value")
+                        .with_help("stroke cap must be a string")
                 })?;
                 let cap = draw::StrokeCap::from_str(cap_str).map_err(|err| {
-                    DiagnosticError::from_span(
-                        err,
-                        attr.span(),
-                        "invalid stroke cap",
-                        Some("Valid values are: butt, round, square".to_string()),
-                    )
+                    Diagnostic::error(err)
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid stroke cap")
+                        .with_help("valid values are: butt, round, square")
                 })?;
                 stroke_def.set_cap(cap);
                 Ok(())
             }
             "join" => {
                 let join_str = value.as_str().map_err(|err| {
-                    DiagnosticError::from_span(
-                        err.to_string(),
-                        attr.span(),
-                        "invalid stroke join value",
-                        Some("Stroke join must be a string".to_string()),
-                    )
+                    Diagnostic::error(err.to_string())
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid stroke join value")
+                        .with_help("stroke join must be a string")
                 })?;
                 let join = draw::StrokeJoin::from_str(join_str).map_err(|err| {
-                    DiagnosticError::from_span(
-                        err,
-                        attr.span(),
-                        "invalid stroke join",
-                        Some("Valid values are: miter, round, bevel".to_string()),
-                    )
+                    Diagnostic::error(err)
+                        .with_code(ErrorCode::E302)
+                        .with_label(attr.span(), "invalid stroke join")
+                        .with_help("valid values are: miter, round, bevel")
                 })?;
                 stroke_def.set_join(join);
                 Ok(())
             }
-            name => Err(DiagnosticError::from_span(
-                format!("Unknown stroke attribute '{name}'"),
-                attr.span(),
-                "unknown stroke attribute",
-                Some("Valid stroke attributes are: color, width, style, cap, join".to_string()),
-            )),
+            name => Err(
+                Diagnostic::error(format!("unknown stroke attribute `{name}`"))
+                    .with_code(ErrorCode::E303)
+                    .with_label(attr.span(), "unknown attribute")
+                    .with_help("valid stroke attributes are: color, width, style, cap, join"),
+            ),
         }
     }
 }
@@ -497,7 +460,7 @@ mod elaborate_tests {
 
         if let Err(err) = result {
             let error_message = err.to_string();
-            assert!(error_message.contains("Unknown text attribute 'invalid_attribute'"));
+            assert!(error_message.contains("unknown text attribute `invalid_attribute`"));
         }
     }
 
@@ -567,7 +530,7 @@ mod elaborate_tests {
         assert!(result.is_err());
         if let Err(err) = result {
             let error_message = format!("{err}");
-            assert!(error_message.contains("Unknown stroke attribute"));
+            assert!(error_message.contains("unknown stroke attribute"));
             assert!(error_message.contains("invalid_attr"));
         }
     }
@@ -585,7 +548,7 @@ mod elaborate_tests {
         assert!(result.is_err());
         if let Err(err) = result {
             let error_message = format!("{err}");
-            assert!(error_message.contains("Invalid stroke color"));
+            assert!(error_message.contains("invalid stroke color"));
         }
     }
 
@@ -599,7 +562,7 @@ mod elaborate_tests {
         assert!(result.is_err());
         if let Err(err) = result {
             let error_message = format!("{err}");
-            assert!(error_message.contains("Invalid stroke cap"));
+            assert!(error_message.contains("invalid stroke cap"));
         }
     }
 
@@ -616,7 +579,7 @@ mod elaborate_tests {
         assert!(result.is_err());
         if let Err(err) = result {
             let error_message = format!("{err}");
-            assert!(error_message.contains("Invalid stroke join"));
+            assert!(error_message.contains("invalid stroke join"));
         }
     }
 

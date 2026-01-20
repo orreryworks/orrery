@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use filament_core::{identifier::Id, semantic::DiagramKind};
 
 use crate::{
-    error::{DiagnosticError, Result},
+    error::{Diagnostic, DiagnosticCollector, ErrorCode, ParseError},
     parser_types::{
         Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
         TypeDefinition, TypeSpec,
@@ -345,7 +345,7 @@ pub struct Validator {
     diagram_kind: Option<DiagramKind>,
 
     // Shared error collection
-    errors: Vec<DiagnosticError>,
+    diagnostics: DiagnosticCollector,
 }
 
 impl Validator {
@@ -354,7 +354,7 @@ impl Validator {
             activation_stack: Vec::new(),
             component_registry: Vec::new(),
             diagram_kind: None,
-            errors: Vec::new(),
+            diagnostics: DiagnosticCollector::new(),
         }
     }
 
@@ -376,31 +376,34 @@ impl Validator {
         match self.diagram_kind {
             Some(DiagramKind::Sequence) => {
                 if !matches!(align_value, "over" | "left" | "right") {
-                    self.errors.push(DiagnosticError::from_span(
-                        format!("Invalid align value '{}' for sequence diagram. Valid values: over, left, right", align_value),
-                        span,
-                        "invalid align value",
-                        None,
-                    ));
+                    self.diagnostics.emit(
+                        Diagnostic::error(format!(
+                            "invalid align value `{align_value}` for sequence diagram"
+                        ))
+                        .with_code(ErrorCode::E203)
+                        .with_label(span, "invalid align value")
+                        .with_help("valid values: over, left, right"),
+                    );
                 }
             }
             Some(DiagramKind::Component) => {
                 if !matches!(align_value, "left" | "right" | "top" | "bottom") {
-                    self.errors.push(DiagnosticError::from_span(
-                        format!("Invalid align value '{}' for component diagram. Valid values: left, right, top, bottom", align_value),
-                        span,
-                        "invalid align value",
-                        None,
-                    ));
+                    self.diagnostics.emit(
+                        Diagnostic::error(format!(
+                            "invalid align value `{align_value}` for component diagram"
+                        ))
+                        .with_code(ErrorCode::E203)
+                        .with_label(span, "invalid align value")
+                        .with_help("valid values: left, right, top, bottom"),
+                    );
                 }
             }
             None => {
-                self.errors.push(DiagnosticError::from_span(
-                    "Diagram type not set. Cannot validate align attribute".to_string(),
-                    span,
-                    "missing diagram type",
-                    None,
-                ));
+                self.diagnostics.emit(
+                    Diagnostic::error("diagram type not set, cannot validate align attribute")
+                        .with_code(ErrorCode::E203)
+                        .with_label(span, "missing diagram type"),
+                );
             }
         }
     }
@@ -440,18 +443,14 @@ impl<'a> Visitor<'a> for Validator {
             for (component_id, spans) in state.iter() {
                 if !spans.is_empty() {
                     let span = spans.last().cloned().unwrap_or_default();
-                    self.errors.push(DiagnosticError::from_span(
-                        format!(
-                            "Component '{}' was activated but never deactivated",
-                            component_id
-                        ),
-                        span,
-                        "unpaired activate",
-                        Some(
-                            "Every activate statement must have a corresponding deactivate statement"
-                                .to_string(),
-                        ),
-                    ));
+                    self.diagnostics.emit(
+                        Diagnostic::error(format!(
+                            "component `{component_id}` was activated but never deactivated"
+                        ))
+                        .with_code(ErrorCode::E201)
+                        .with_label(span, "unpaired activate")
+                        .with_help("every activate statement must have a corresponding deactivate statement"),
+                    );
                 }
             }
         }
@@ -493,18 +492,15 @@ impl<'a> Visitor<'a> for Validator {
             }
             _ => {
                 // No matching activate
-                self.errors.push(DiagnosticError::from_span(
-                    format!(
-                        "Cannot deactivate component '{}': no matching activate statement",
+                self.diagnostics.emit(
+                    Diagnostic::error(format!(
+                        "cannot deactivate component `{}`: no matching activate statement",
                         component.inner()
-                    ),
-                    component.span(),
-                    "unpaired deactivate",
-                    Some(
-                        "Deactivate statements must be preceded by a corresponding activate statement"
-                            .to_string(),
-                    ),
-                ));
+                    ))
+                    .with_code(ErrorCode::E202)
+                    .with_label(component.span(), "unpaired deactivate")
+                    .with_help("deactivate statements must be preceded by a corresponding activate statement"),
+                );
             }
         }
     }
@@ -532,12 +528,12 @@ impl<'a> Visitor<'a> for Validator {
             .expect("component registry not initialized");
 
         if !registry.contains_key(identifier.inner()) {
-            self.errors.push(DiagnosticError::from_span(
-                format!("Component '{}' not found", identifier.inner()),
-                identifier.span(),
-                "undefined component",
-                Some("Component must be defined before it can be referenced".to_string()),
-            ));
+            self.diagnostics.emit(
+                Diagnostic::error(format!("component `{}` not found", identifier.inner()))
+                    .with_code(ErrorCode::E200)
+                    .with_label(identifier.span(), "undefined component")
+                    .with_help("component must be defined before it can be referenced"),
+            );
         }
     }
 }
@@ -546,16 +542,11 @@ impl<'a> Visitor<'a> for Validator {
 ///
 /// Returns:
 /// - Ok(()) when no validation issues are found
-/// - Err(DiagnosticError) with the first collected error otherwise
-pub fn validate_diagram(diagram: &Diagram<'_>) -> Result<()> {
+/// - Err(ParseError) with all collected errors otherwise
+pub fn validate_diagram(diagram: &Diagram<'_>) -> Result<(), ParseError> {
     let mut validator = Validator::new();
     visit_diagram(&mut validator, diagram);
-    // TODO: Support multi error.
-    if let Some(err) = validator.errors.into_iter().next() {
-        Err(err)
-    } else {
-        Ok(())
-    }
+    validator.diagnostics.finish()
 }
 
 #[cfg(test)]
@@ -904,7 +895,7 @@ mod note_validation_tests {
             assert!(result.is_err(), "Invalid align should fail validation");
 
             let err = result.unwrap_err();
-            assert!(format!("{}", err).contains("Invalid align value 'top' for sequence diagram"));
+            assert!(format!("{}", err).contains("invalid align value `top` for sequence diagram"));
         } else {
             panic!("Expected Diagram element");
         }
@@ -927,7 +918,7 @@ mod note_validation_tests {
 
             let err = result.unwrap_err();
             assert!(
-                format!("{}", err).contains("Invalid align value 'over' for component diagram")
+                format!("{}", err).contains("invalid align value `over` for component diagram")
             );
         } else {
             panic!("Expected Diagram element");
@@ -1052,7 +1043,7 @@ mod identifier_validation_tests {
 
         // All components should be registered at diagram level with fully qualified names
         // This includes: frontend, frontend::app, frontend::ui, backend, backend::api
-        assert!(validator.errors.is_empty());
+        assert!(validator.diagnostics.finish().is_ok());
     }
 
     #[test]
@@ -1070,11 +1061,12 @@ mod identifier_validation_tests {
         validator.visit_identifier(&Spanned::new(Id::new("unknown"), Span::new(10..17)));
 
         // Should have an error
-        assert_eq!(validator.errors.len(), 1);
+        let err = validator.diagnostics.finish().unwrap_err();
+        assert_eq!(err.diagnostics().len(), 1);
         assert!(
-            validator.errors[0]
+            err.diagnostics()[0]
                 .to_string()
-                .contains("Component 'unknown' not found")
+                .contains("component `unknown` not found")
         );
     }
 
@@ -1097,7 +1089,7 @@ mod identifier_validation_tests {
         validator.visit_identifier(&Spanned::new(Id::new("server"), Span::new(48..54)));
 
         // Should not add any errors
-        assert!(validator.errors.is_empty());
+        assert!(validator.diagnostics.finish().is_ok());
     }
 
     #[test]
@@ -1116,11 +1108,12 @@ mod identifier_validation_tests {
         validator.visit_identifier(&Spanned::new(Id::new("unknown"), Span::new(48..55)));
 
         // Should have one error for the missing component
-        assert_eq!(validator.errors.len(), 1);
+        let err = validator.diagnostics.finish().unwrap_err();
+        assert_eq!(err.diagnostics().len(), 1);
         assert!(
-            validator.errors[0]
+            err.diagnostics()[0]
                 .to_string()
-                .contains("Component 'unknown' not found")
+                .contains("component `unknown` not found")
         );
     }
 
@@ -1192,7 +1185,7 @@ mod identifier_validation_tests {
         let result = validate_diagram(&diagram);
         assert!(result.is_err(), "Invalid source should fail validation");
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Component 'unknown' not found"));
+        assert!(err.to_string().contains("component `unknown` not found"));
     }
 
     #[test]
@@ -1224,7 +1217,7 @@ mod identifier_validation_tests {
         let result = validate_diagram(&diagram);
         assert!(result.is_err(), "Invalid target should fail validation");
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Component 'missing' not found"));
+        assert!(err.to_string().contains("component `missing` not found"));
     }
 
     #[test]
@@ -1283,7 +1276,7 @@ mod identifier_validation_tests {
         let result = validate_diagram(&diagram);
         assert!(result.is_err(), "Invalid activate should fail validation");
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Component 'unknown' not found"));
+        assert!(err.to_string().contains("component `unknown` not found"));
     }
 
     #[test]
@@ -1311,7 +1304,7 @@ mod identifier_validation_tests {
         let result = validate_diagram(&diagram);
         assert!(result.is_err(), "Invalid deactivate should fail validation");
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Component 'missing' not found"));
+        assert!(err.to_string().contains("component `missing` not found"));
     }
 
     #[test]
@@ -1349,7 +1342,7 @@ mod identifier_validation_tests {
         let result = validate_diagram(&diagram);
         assert!(result.is_err(), "Note with invalid component should fail");
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Component 'unknown' not found"));
+        assert!(err.to_string().contains("component `unknown` not found"));
     }
 
     #[test]

@@ -9,7 +9,7 @@ use winnow::{
 use filament_core::{identifier::Id, semantic::DiagramKind};
 
 use crate::{
-    error::DiagnosticError,
+    error::{Diagnostic, ErrorCode},
     parser_types as types,
     span::{Span, Spanned},
     tokens::{PositionedToken, Token},
@@ -1223,7 +1223,7 @@ fn convert_error(
     error: ErrMode<ContextError<Context>>,
     tokens: &[PositionedToken],
     current_remaining: usize,
-) -> DiagnosticError {
+) -> Diagnostic {
     // Extract start offset from error context if available
     let start_remaining = match &error {
         ErrMode::Backtrack(e) | ErrMode::Cut(e) => e.context().find_map(|ctx| match ctx {
@@ -1293,12 +1293,10 @@ fn convert_error(
                 first.union(last)
             };
 
-            DiagnosticError::from_span(
-                format!("Parse error: {message}"),
-                error_span,
-                "here",
-                Some("Check syntax and token positioning".to_string()),
-            )
+            Diagnostic::error(format!("unexpected token: {message}"))
+                .with_code(ErrorCode::E100)
+                .with_label(error_span, "unexpected token")
+                .with_help("check syntax and token positioning")
         }
         ErrMode::Incomplete(_) => {
             // This should not happen as we are not supporting streaming input.
@@ -1313,12 +1311,10 @@ fn convert_error(
                     .unwrap_or(tokens[tokens.len() - 1].span)
             };
 
-            DiagnosticError::from_span(
-                "Incomplete input - more tokens expected".to_string(),
-                error_span,
-                "here",
-                Some("Ensure input is complete".to_string()),
-            )
+            Diagnostic::error("incomplete input, more tokens expected")
+                .with_code(ErrorCode::E101)
+                .with_label(error_span, "incomplete")
+                .with_help("ensure input is complete")
         }
     }
 }
@@ -1326,7 +1322,7 @@ fn convert_error(
 /// Build a diagram from tokens
 pub fn build_diagram<'src>(
     tokens: &'src [PositionedToken<'src>],
-) -> Result<Spanned<types::Element<'src>>, DiagnosticError> {
+) -> Result<Spanned<types::Element<'src>>, Diagnostic> {
     let mut token_slice = TokenSlice::new(tokens);
 
     match diagram.parse_next(&mut token_slice) {
@@ -3178,7 +3174,7 @@ mod tests {
         // Should span from first token to last token
         // Span union: (0..1) union (5..6) = (0..6), which has length 6
         let debug = format!("{:?}", result);
-        assert!(debug.contains("Parse error: expected semicolon"));
+        assert!(debug.contains("unexpected token: expected semicolon"));
     }
 
     #[test]

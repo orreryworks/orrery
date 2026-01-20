@@ -41,7 +41,7 @@ impl Color {
     pub fn new(color_str: &str) -> Result<Self, String> {
         match DynamicColor::from_str(color_str) {
             Ok(color) => Ok(Self { color }),
-            Err(err) => Err(format!("Invalid color '{color_str}': {err}")),
+            Err(err) => Err(format!("invalid color `{color_str}`: {err}")),
         }
     }
 

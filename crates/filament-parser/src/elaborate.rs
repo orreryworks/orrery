@@ -12,7 +12,7 @@ use filament_core::{color::Color, draw, geometry::Insets, identifier::Id, semant
 
 use crate::{
     builtin_types, elaborate_utils,
-    error::{DiagnosticError, Result},
+    error::{Diagnostic, ErrorCode, Result},
     parser_types,
     span::{Span, Spanned},
 };
@@ -99,12 +99,10 @@ impl<'a> Builder<'a> {
                         scope
                     }
                     semantic::Block::Diagram(_) => {
-                        return Err(DiagnosticError::from_span(
-                            "Nested diagram not allowed".to_string(),
-                            diag.kind.span(),
-                            "invalid diagram structure",
-                            Some("Diagrams cannot be nested inside other diagrams".to_string()),
-                        ));
+                        return Err(Diagnostic::error("nested diagram not allowed")
+                            .with_code(ErrorCode::E305)
+                            .with_label(diag.kind.span(), "nested diagram")
+                            .with_help("diagrams cannot be nested inside other diagrams"));
                     }
                 };
 
@@ -120,12 +118,9 @@ impl<'a> Builder<'a> {
                     lifeline_definition,
                 ))
             }
-            _ => Err(DiagnosticError::from_span(
-                "Invalid element, expected Diagram".to_string(),
-                diag.span(),
-                "invalid element",
-                None,
-            )),
+            _ => Err(Diagnostic::error("invalid element, expected diagram")
+                .with_code(ErrorCode::E306)
+                .with_label(diag.span(), "expected diagram")),
         }
     }
 
@@ -145,14 +140,12 @@ impl<'a> Builder<'a> {
         key: &str,
     ) -> Result<&'b parser_types::TypeSpec<'b>> {
         attr.value.as_type_spec().map_err(|err| {
-            DiagnosticError::from_span(
-                err.to_string(),
-                attr.span(),
-                format!("invalid {key} attribute value"),
-                Some(format!(
+            Diagnostic::error(err.to_string())
+                .with_code(ErrorCode::E302)
+                .with_label(attr.span(), format!("invalid {key} attribute value"))
+                .with_help(format!(
                     "{key} attribute must be a type reference or inline attributes"
-                )),
-            )
+                ))
         })
     }
 
@@ -163,12 +156,10 @@ impl<'a> Builder<'a> {
     /// * `key` - Display name for error messages (e.g., "style", "layout_engine")
     fn extract_string<'b>(attr: &'b parser_types::Attribute<'b>, key: &str) -> Result<&'b str> {
         attr.value.as_str().map_err(|err| {
-            DiagnosticError::from_span(
-                err.to_string(),
-                attr.span(),
-                format!("invalid {key} value"),
-                Some(format!("{key} values must be strings")),
-            )
+            Diagnostic::error(err.to_string())
+                .with_code(ErrorCode::E302)
+                .with_label(attr.span(), format!("invalid {key} value"))
+                .with_help(format!("{key} values must be strings"))
         })
     }
 
@@ -180,21 +171,17 @@ impl<'a> Builder<'a> {
     /// * `key` - Display name for error messages (e.g., "fill_color", "background_color")
     fn extract_color(attr: &parser_types::Attribute<'_>, key: &str) -> Result<Color> {
         let color_str = attr.value.as_str().map_err(|err| {
-            DiagnosticError::from_span(
-                err.to_string(),
-                attr.span(),
-                "invalid color value",
-                Some("Color values must be strings".to_string()),
-            )
+            Diagnostic::error(err.to_string())
+                .with_code(ErrorCode::E302)
+                .with_label(attr.span(), "invalid color value")
+                .with_help("color values must be strings")
         })?;
 
         Color::new(color_str).map_err(|err| {
-            DiagnosticError::from_span(
-                format!("Invalid {key} '{color_str}': {err}"),
-                attr.span(),
-                "invalid color",
-                Some("Use a valid CSS color".to_string()),
-            )
+            Diagnostic::error(format!("invalid {key} `{color_str}`: {err}"))
+                .with_code(ErrorCode::E302)
+                .with_label(attr.span(), "invalid color")
+                .with_help("use a valid CSS color")
         })
     }
 
@@ -205,12 +192,10 @@ impl<'a> Builder<'a> {
     /// * `key` - Display name for error messages (e.g., "width", "padding")
     fn extract_positive_float(attr: &parser_types::Attribute<'_>, key: &str) -> Result<f32> {
         attr.value.as_float().map_err(|err| {
-            DiagnosticError::from_span(
-                err.to_string(),
-                attr.span(),
-                format!("invalid {key} value"),
-                Some(format!("{key} must be a positive number")),
-            )
+            Diagnostic::error(err.to_string())
+                .with_code(ErrorCode::E302)
+                .with_label(attr.span(), format!("invalid {key} value"))
+                .with_help(format!("{key} must be a positive number"))
         })
     }
 
@@ -222,12 +207,10 @@ impl<'a> Builder<'a> {
     /// * `hint` - Additional hint for the error message (e.g., "must be a positive number")
     fn extract_usize(attr: &parser_types::Attribute<'_>, key: &str, hint: &str) -> Result<usize> {
         attr.value.as_usize().map_err(|err| {
-            DiagnosticError::from_span(
-                err.to_string(),
-                attr.span(),
-                format!("invalid {key} value"),
-                Some(format!("{key} {hint}")),
-            )
+            Diagnostic::error(err.to_string())
+                .with_code(ErrorCode::E302)
+                .with_label(attr.span(), format!("invalid {key} value"))
+                .with_help(format!("{key} {hint}"))
         })
     }
 
@@ -249,12 +232,11 @@ impl<'a> Builder<'a> {
         } else {
             // We could use a span here if we tracked where the duplicate was defined
             // For now, we use a simple error since we don't store that information
-            Err(DiagnosticError::from_span(
-                format!("Type definition '{id}' already exists"),
-                span,
-                "duplicate type definition",
-                None,
-            ))
+            Err(
+                Diagnostic::error(format!("type definition `{id}` already exists"))
+                    .with_code(ErrorCode::E301)
+                    .with_label(span, "duplicate type definition"),
+            )
         }
     }
 
@@ -304,12 +286,10 @@ impl<'a> Builder<'a> {
                     semantic::Block::None => semantic::Scope::default(),
                     semantic::Block::Scope(scope) => scope,
                     semantic::Block::Diagram(_) => {
-                        return Err(DiagnosticError::from_span(
-                            "Nested diagram not allowed".to_string(),
-                            diag.kind.span(),
-                            "invalid nesting",
-                            Some("Diagrams cannot be nested inside other diagrams".to_string()),
-                        ));
+                        return Err(Diagnostic::error("nested diagram not allowed")
+                            .with_code(ErrorCode::E305)
+                            .with_label(diag.kind.span(), "nested diagram")
+                            .with_help("diagrams cannot be nested inside other diagrams"));
                     }
                 };
 
@@ -324,12 +304,9 @@ impl<'a> Builder<'a> {
                     lifeline_definition,
                 ))
             }
-            _ => Err(DiagnosticError::from_span(
-                "Invalid element, expected Diagram".to_string(),
-                diag.span(),
-                "invalid element",
-                None,
-            )),
+            _ => Err(Diagnostic::error("invalid element, expected diagram")
+                .with_code(ErrorCode::E306)
+                .with_label(diag.span(), "expected diagram")),
         }
     }
 
@@ -345,12 +322,10 @@ impl<'a> Builder<'a> {
                 semantic::Block::None => semantic::Scope::default(),
                 semantic::Block::Scope(scope) => scope,
                 semantic::Block::Diagram(_) => {
-                    return Err(DiagnosticError::from_span(
-                        "Nested diagram not allowed".to_string(),
-                        diag.kind.span(),
-                        "invalid nesting",
-                        Some("Diagrams cannot be nested inside other diagrams".to_string()),
-                    ));
+                    return Err(Diagnostic::error("nested diagram not allowed")
+                        .with_code(ErrorCode::E305)
+                        .with_label(diag.kind.span(), "nested diagram")
+                        .with_help("diagrams cannot be nested inside other diagrams"));
                 }
             };
 
@@ -365,12 +340,9 @@ impl<'a> Builder<'a> {
                 lifeline_definition,
             ))
         } else {
-            Err(DiagnosticError::from_span(
-                "Expected diagram element".to_string(),
-                element.span(),
-                "invalid element",
-                None,
-            ))
+            Err(Diagnostic::error("expected diagram element")
+                .with_code(ErrorCode::E306)
+                .with_label(element.span(), "expected diagram"))
         }
     }
 
@@ -391,15 +363,12 @@ impl<'a> Builder<'a> {
             for parser_elm in parser_elements {
                 if let parser_types::Element::Diagram(diag) = parser_elm {
                     // If we found a diagram mixed with other elements, provide a rich error
-                    return Err(DiagnosticError::from_span(
-                        "Diagram cannot share scope with other elements".to_string(),
-                        diag.kind.span(), // Use the diagram kind span as the error location
-                        "invalid nesting",
-                        Some(
-                            "A diagram declaration must be the only element in its scope"
-                                .to_string(),
-                        ),
-                    ));
+                    return Err(Diagnostic::error(
+                        "diagram cannot share scope with other elements",
+                    )
+                    .with_code(ErrorCode::E309)
+                    .with_label(diag.kind.span(), "must be sole element")
+                    .with_help("a diagram declaration must be the only element in its scope"));
                 }
             }
 
@@ -444,12 +413,9 @@ impl<'a> Builder<'a> {
                 }
                 parser_types::Element::Diagram(_) => {
                     // This should never happen since we already filtered out invalid elements
-                    return Err(DiagnosticError::from_span(
-                        "Invalid element type".to_string(),
-                        parser_elm.span(),
-                        "invalid element type",
-                        None,
-                    ));
+                    return Err(Diagnostic::error("invalid element type")
+                        .with_code(ErrorCode::E306)
+                        .with_label(parser_elm.span(), "invalid element"));
                 }
                 parser_types::Element::ActivateBlock { .. } => {
                     unreachable!(
@@ -496,7 +462,9 @@ impl<'a> Builder<'a> {
         let type_def = self.build_type_definition(type_spec)?;
 
         let shape_def = type_def.shape_definition().map_err(|err| {
-            DiagnosticError::from_span(err, type_spec.span(), "invalid shape type", None)
+            Diagnostic::error(err)
+                .with_code(ErrorCode::E307)
+                .with_label(type_spec.span(), "invalid shape type")
         })?;
 
         if !nested_elements.is_empty() && !shape_def.supports_content() {
@@ -504,14 +472,14 @@ impl<'a> Builder<'a> {
                 .type_name
                 .as_ref()
                 .map_or(type_def.id(), |name| *name.inner());
-            return Err(DiagnosticError::from_span(
-                format!("Shape type '{type_name}' does not support nested content",),
-                parser_elm.span(),
-                "content not supported",
-                Some(format!(
-                    "The '{type_name}' shape is content-free and cannot contain nested elements or embedded diagrams"
-                )),
-            ));
+            return Err(Diagnostic::error(format!(
+                "shape type `{type_name}` does not support nested content"
+            ))
+            .with_code(ErrorCode::E308)
+            .with_label(parser_elm.span(), "content not supported")
+            .with_help(format!(
+                "shape `{type_name}` is content-free and cannot contain nested elements or embedded diagrams"
+            )));
         }
 
         // Check if there's a nested diagram element
@@ -551,16 +519,16 @@ impl<'a> Builder<'a> {
         let relation_type_def = self.build_type_definition(type_spec)?;
 
         let arrow_def = relation_type_def.arrow_definition().map_err(|err| {
-            DiagnosticError::from_span(err, type_spec.span(), "invalid arrow type", None)
+            Diagnostic::error(err)
+                .with_code(ErrorCode::E307)
+                .with_label(type_spec.span(), "invalid arrow type")
         })?;
 
         let arrow_direction = draw::ArrowDirection::from_str(relation_type).map_err(|_| {
-            DiagnosticError::from_span(
-                format!("Invalid arrow direction '{relation_type}'"),
-                relation_type.span(),
-                "invalid direction",
-                Some("Arrow direction must be '->', '<-', '<->', or '-'".to_string()),
-            )
+            Diagnostic::error(format!("Invalid arrow direction '{relation_type}'"))
+                .with_code(ErrorCode::E302)
+                .with_label(relation_type.span(), "invalid direction")
+                .with_help("Arrow direction must be '->', '<-', '<->', or '-'")
         })?;
 
         Ok(semantic::Element::Relation(semantic::Relation::new(
@@ -581,15 +549,12 @@ impl<'a> Builder<'a> {
     ) -> Result<semantic::Element> {
         // Only allow activate in sequence diagrams
         if diagram_kind != semantic::DiagramKind::Sequence {
-            return Err(DiagnosticError::from_span(
-                "Activate statements are only supported in sequence diagrams".to_string(),
-                component.span(),
-                "activate not allowed here",
-                Some(
-                    "Activate statements are used for temporal grouping in sequence diagrams"
-                        .to_string(),
-                ),
-            ));
+            return Err(Diagnostic::error(
+                "Activate statements are only supported in sequence diagrams",
+            )
+            .with_code(ErrorCode::E304)
+            .with_label(component.span(), "activate not allowed here")
+            .with_help("Activate statements are used for temporal grouping in sequence diagrams"));
         }
 
         let activate_type_def = self.build_type_definition(type_spec)?;
@@ -597,12 +562,9 @@ impl<'a> Builder<'a> {
         let activation_box_def = activate_type_def
             .activation_box_definition()
             .map_err(|err| {
-                DiagnosticError::from_span(
-                    err,
-                    type_spec.span(),
-                    "invalid activation box type",
-                    None,
-                )
+                Diagnostic::error(err)
+                    .with_code(ErrorCode::E307)
+                    .with_label(type_spec.span(), "invalid activation box type")
             })?;
 
         Ok(semantic::Element::Activate(semantic::Activate::new(
@@ -619,14 +581,13 @@ impl<'a> Builder<'a> {
     ) -> Result<semantic::Element> {
         // Only allow deactivate in sequence diagrams
         if diagram_kind != semantic::DiagramKind::Sequence {
-            return Err(DiagnosticError::from_span(
-                "Deactivate statements are only supported in sequence diagrams".to_string(),
-                component.span(),
-                "deactivate not allowed here",
-                Some(
-                    "Deactivate statements are used for temporal grouping in sequence diagrams"
-                        .to_string(),
-                ),
+            return Err(Diagnostic::error(
+                "Deactivate statements are only supported in sequence diagrams",
+            )
+            .with_code(ErrorCode::E304)
+            .with_label(component.span(), "deactivate not allowed here")
+            .with_help(
+                "Deactivate statements are used for temporal grouping in sequence diagrams",
             ));
         }
 
@@ -641,36 +602,31 @@ impl<'a> Builder<'a> {
     ) -> Result<semantic::Element> {
         // Only allow fragments in sequence diagrams
         if diagram_kind != semantic::DiagramKind::Sequence {
-            return Err(DiagnosticError::from_span(
-                "Fragment blocks are only supported in sequence diagrams".to_string(),
-                fragment.span(),
-                "fragment not allowed here",
-                Some("Fragment blocks are used for grouping in sequence diagrams".to_string()),
-            ));
+            return Err(Diagnostic::error(
+                "Fragment blocks are only supported in sequence diagrams",
+            )
+            .with_code(ErrorCode::E304)
+            .with_label(fragment.span(), "fragment not allowed here")
+            .with_help("Fragment blocks are used for grouping in sequence diagrams"));
         }
 
         // Build the type definition for this fragment
         let type_def = self
             .build_type_definition(&fragment.type_spec)
             .map_err(|_| {
-                DiagnosticError::from_span(
-                    format!(
-                        "Invalid fragment type for operation '{}'",
-                        fragment.operation.inner()
-                    ),
-                    fragment.operation.span(),
-                    "invalid fragment type",
-                    Some("Fragment types must be defined in the type system".to_string()),
-                )
+                Diagnostic::error(format!(
+                    "invalid fragment type for operation `{}`",
+                    fragment.operation.inner()
+                ))
+                .with_code(ErrorCode::E300)
+                .with_label(fragment.operation.span(), "invalid fragment type")
+                .with_help("Fragment types must be defined in the type system")
             })?;
 
         let fragment_def = type_def.fragment_definition().map_err(|err| {
-            DiagnosticError::from_span(
-                err,
-                fragment.type_spec.span(),
-                "invalid fragment type",
-                None,
-            )
+            Diagnostic::error(err)
+                .with_code(ErrorCode::E307)
+                .with_label(fragment.type_spec.span(), "invalid fragment type")
         })?;
 
         let mut sections = Vec::new();
@@ -696,12 +652,9 @@ impl<'a> Builder<'a> {
         type_spec: &parser_types::TypeSpec,
     ) -> Result<elaborate_utils::TypeDefinition> {
         let type_name = type_spec.type_name.as_ref().ok_or_else(|| {
-            DiagnosticError::from_span(
-                "Base Type type_spec must have a type name".to_string(),
-                type_spec.span(),
-                "missing type name",
-                None,
-            )
+            Diagnostic::error("base type type_spec must have a type name")
+                .with_code(ErrorCode::E306)
+                .with_label(type_spec.span(), "missing type name")
         })?;
         // Look up the base type
         let Some(base) = self.type_definitions.get(type_name.inner()) else {
@@ -738,21 +691,21 @@ impl<'a> Builder<'a> {
                 .type_definitions
                 .get(type_name.inner())
                 .ok_or_else(|| {
-                    DiagnosticError::from_span(
-                        format!("Undefined text type '{}'", type_name.inner()),
-                        type_spec.span(),
-                        "undefined type",
-                        Some("Type must be defined with 'type' statement before use".to_string()),
-                    )
+                    Diagnostic::error(format!("undefined text type `{}`", type_name.inner()))
+                        .with_code(ErrorCode::E300)
+                        .with_label(type_spec.span(), "undefined type")
+                        .with_help("Type must be defined with 'type' statement before use")
                 })?;
 
             let base_text_rc = base_type.text_definition_from_draw().map_err(|err| {
-                DiagnosticError::from_span(
-                    format!("Type '{}' is not a text type: {}", type_name.inner(), err),
-                    type_spec.span(),
-                    "invalid type reference",
-                    Some("Only Text types can be used for text attributes".to_string()),
-                )
+                Diagnostic::error(format!(
+                    "type `{}` is not a text type: {}",
+                    type_name.inner(),
+                    err
+                ))
+                .with_code(ErrorCode::E307)
+                .with_label(type_spec.span(), "invalid type reference")
+                .with_help("Only Text types can be used for text attributes")
             })?;
 
             Rc::clone(base_text_rc)
@@ -788,21 +741,21 @@ impl<'a> Builder<'a> {
                 .type_definitions
                 .get(type_name.inner())
                 .ok_or_else(|| {
-                    DiagnosticError::from_span(
-                        format!("Undefined stroke type '{}'", type_name.inner()),
-                        type_spec.span(),
-                        "undefined type",
-                        Some("Type must be defined with 'type' statement before use".to_string()),
-                    )
+                    Diagnostic::error(format!("undefined stroke type `{}`", type_name.inner()))
+                        .with_code(ErrorCode::E300)
+                        .with_label(type_spec.span(), "undefined type")
+                        .with_help("Type must be defined with 'type' statement before use")
                 })?;
 
             let base_stroke_rc = base_type.stroke_definition().map_err(|err| {
-                DiagnosticError::from_span(
-                    format!("Type '{}' is not a stroke type: {}", type_name.inner(), err),
-                    type_spec.span(),
-                    "invalid type reference",
-                    Some("Only Stroke types can be used for stroke attributes".to_string()),
-                )
+                Diagnostic::error(format!(
+                    "type `{}` is not a stroke type: {}",
+                    type_name.inner(),
+                    err
+                ))
+                .with_code(ErrorCode::E307)
+                .with_label(type_spec.span(), "invalid type reference")
+                .with_help("Only Stroke types can be used for stroke attributes")
             })?;
 
             Rc::clone(base_stroke_rc)
@@ -843,12 +796,9 @@ impl<'a> Builder<'a> {
                         "fill_color" => {
                             let color = Self::extract_color(attr, "fill_color")?;
                             shape_def_mut.set_fill_color(Some(color)).map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "unsupported attribute",
-                                    None,
-                                )
+                                Diagnostic::error(err.to_string())
+                                    .with_code(ErrorCode::E304)
+                                    .with_label(attr.span(), "unsupported attribute")
                             })?;
                         }
                         "stroke" => {
@@ -861,12 +811,9 @@ impl<'a> Builder<'a> {
                             let val =
                                 Self::extract_usize(attr, "rounded", "must be a positive number")?;
                             shape_def_mut.set_rounded(val).map_err(|err| {
-                                DiagnosticError::from_span(
-                                    err.to_string(),
-                                    attr.span(),
-                                    "unsupported attribute",
-                                    None,
-                                )
+                                Diagnostic::error(err.to_string())
+                                    .with_code(ErrorCode::E304)
+                                    .with_label(attr.span(), "unsupported attribute")
                             })?;
                         }
                         "text" => {
@@ -876,14 +823,13 @@ impl<'a> Builder<'a> {
                             shape_def_mut.set_text(text_rc);
                         }
                         name => {
-                            return Err(DiagnosticError::from_span(
-                                format!("Unknown shape attribute '{name}'"),
-                                attr.span(),
-                                "unknown attribute",
-                                Some(
-                                    "Valid shape attributes are: fill_color, stroke=[...], rounded, text=[...]"
-                                        .to_string(),
-                                ),
+                            return Err(Diagnostic::error(format!(
+                                "unknown shape attribute `{name}`"
+                            ))
+                            .with_code(ErrorCode::E303)
+                            .with_label(attr.span(), "unknown attribute")
+                            .with_help(
+                                "Valid shape attributes are: fill_color, stroke=[...], rounded, text=[...]",
                             ));
                         }
                     }
@@ -911,15 +857,12 @@ impl<'a> Builder<'a> {
                         "style" => {
                             let style_str = Self::extract_string(attr, "style")?;
                             let val = draw::ArrowStyle::from_str(style_str).map_err(|_| {
-                                DiagnosticError::from_span(
-                                    "Invalid arrow style".to_string(),
-                                    attr.span(),
-                                    "invalid style",
-                                    Some(
-                                        "Arrow style must be 'straight', 'curved', or 'orthogonal'"
-                                            .to_string(),
-                                    ),
-                                )
+                                Diagnostic::error("invalid arrow style")
+                                    .with_code(ErrorCode::E302)
+                                    .with_label(attr.span(), "invalid style")
+                                    .with_help(
+                                        "Arrow style must be 'straight', 'curved', or 'orthogonal'",
+                                    )
                             })?;
                             arrow_def_mut.set_style(val);
                         }
@@ -930,14 +873,13 @@ impl<'a> Builder<'a> {
                             arrow_def_mut.set_text(text_rc);
                         }
                         name => {
-                            return Err(DiagnosticError::from_span(
-                                format!("Unknown arrow attribute '{name}'"),
-                                attr.span(),
-                                "unknown attribute",
-                                Some(
-                                    "Valid arrow attributes are: stroke=[...], style, text=[...]"
-                                        .to_string(),
-                                ),
+                            return Err(Diagnostic::error(format!(
+                                "unknown arrow attribute `{name}`"
+                            ))
+                            .with_code(ErrorCode::E303)
+                            .with_label(attr.span(), "unknown attribute")
+                            .with_help(
+                                "Valid arrow attributes are: stroke=[...], style, text=[...]",
                             ));
                         }
                     }
@@ -997,12 +939,12 @@ impl<'a> Builder<'a> {
                             fragment_def_mut.set_section_title_text(text_rc);
                         }
                         name => {
-                            return Err(DiagnosticError::from_span(
-                                format!("Unknown fragment attribute '{name}'"),
-                                attr.span(),
-                                "unknown attribute",
-                                Some("Valid fragment attributes are: border_stroke=[...], separator_stroke=[...], background_color, content_padding, operation_label_text=[...], section_title_text=[...]".to_string()),
-                            ));
+                            return Err(Diagnostic::error(format!(
+                                "unknown fragment attribute `{name}`"
+                            ))
+                            .with_code(ErrorCode::E303)
+                            .with_label(attr.span(), "unknown attribute")
+                            .with_help("Valid fragment attributes are: border_stroke=[...], separator_stroke=[...], background_color, content_padding, operation_label_text=[...], section_title_text=[...]"));
                         }
                     }
                 }
@@ -1041,11 +983,13 @@ impl<'a> Builder<'a> {
                             // and are not part of the note's styling definition
                         }
                         name => {
-                            return Err(DiagnosticError::from_span(
-                                format!("Unknown note attribute '{name}'"),
-                                attr.span(),
-                                "unknown attribute",
-                                Some("Valid note attributes are: background_color, stroke=[...], text=[...]".to_string()),
+                            return Err(Diagnostic::error(format!(
+                                "unknown note attribute `{name}`"
+                            ))
+                            .with_code(ErrorCode::E303)
+                            .with_label(attr.span(), "unknown attribute")
+                            .with_help(
+                                "Valid note attributes are: background_color, stroke=[...], text=[...]",
                             ));
                         }
                     }
@@ -1082,12 +1026,12 @@ impl<'a> Builder<'a> {
                             activation_box_def_mut.set_stroke(stroke_rc);
                         }
                         name => {
-                            return Err(DiagnosticError::from_span(
-                                format!("Unknown activation box attribute '{name}'"),
-                                attr.span(),
-                                "unknown attribute",
-                                Some("Valid activation box attributes are: width, nesting_offset, fill_color, stroke=[...]".to_string()),
-                            ));
+                            return Err(Diagnostic::error(format!(
+                                "unknown activation box attribute `{name}`"
+                            ))
+                            .with_code(ErrorCode::E303)
+                            .with_label(attr.span(), "unknown attribute")
+                            .with_help("Valid activation box attributes are: width, nesting_offset, fill_color, stroke=[...]"));
                         }
                     }
                 }
@@ -1117,16 +1061,14 @@ impl<'a> Builder<'a> {
     }
 
     /// Creates a standardized error for undefined type situations
-    fn create_undefined_type_error(&self, span: &Spanned<Id>, message: &str) -> DiagnosticError {
-        DiagnosticError::from_span(
-            message.to_string(),
-            span.span(),
-            "undefined type",
-            Some(format!(
-                "Type '{}' must be a built-in type or defined with a 'type' statement before it can be used as a base type",
+    fn create_undefined_type_error(&self, span: &Spanned<Id>, message: &str) -> Diagnostic {
+        Diagnostic::error(message)
+            .with_code(ErrorCode::E300)
+            .with_label(span.span(), "undefined type")
+            .with_help(format!(
+                "type `{}` must be a built-in type or defined with a 'type' statement before it can be used as a base type",
                 span.inner()
-            )),
-        )
+            ))
     }
 
     /// Extract diagram attributes (layout engine, background color, and lifeline definition)
@@ -1161,23 +1103,22 @@ impl<'a> Builder<'a> {
                 "lifeline" => {
                     // Only valid for sequence diagrams
                     if kind != semantic::DiagramKind::Sequence {
-                        return Err(DiagnosticError::from_span(
-                            "lifeline attribute is only valid for sequence diagrams".to_string(),
-                            attr.span(),
-                            "invalid attribute",
-                            None,
-                        ));
+                        return Err(Diagnostic::error(
+                            "`lifeline` attribute is only valid for sequence diagrams",
+                        )
+                        .with_code(ErrorCode::E304)
+                        .with_label(attr.span(), "invalid attribute"));
                     }
                     let definition = self.extract_lifeline_definition(attr)?;
                     lifeline_definition = Some(Rc::new(definition));
                 }
                 _ => {
-                    return Err(DiagnosticError::from_span(
-                        format!("Unsupported diagram attribute '{}'", attr.name),
-                        attr.span(),
-                        "unsupported attribute",
-                        None,
-                    ));
+                    return Err(Diagnostic::error(format!(
+                        "unsupported diagram attribute `{}`",
+                        attr.name
+                    ))
+                    .with_code(ErrorCode::E303)
+                    .with_label(attr.span(), "unsupported attribute"));
                 }
             }
         }
@@ -1207,15 +1148,13 @@ impl<'a> Builder<'a> {
 
                 self.resolve_stroke_type_reference(stroke_type_spec, &default_stroke_rc)?
             } else if !type_spec.attributes.is_empty() {
-                return Err(DiagnosticError::from_span(
-                    format!(
-                        "Unknown lifeline attribute '{}'",
-                        type_spec.attributes[0].name
-                    ),
-                    type_spec.attributes[0].span(),
-                    "unknown attribute",
-                    Some("Valid lifeline attributes are: stroke=[...]".to_string()),
-                ));
+                return Err(Diagnostic::error(format!(
+                    "unknown lifeline attribute `{}`",
+                    type_spec.attributes[0].name
+                ))
+                .with_code(ErrorCode::E303)
+                .with_label(type_spec.attributes[0].span(), "unknown attribute")
+                .with_help("Valid lifeline attributes are: stroke=[...]"));
             } else {
                 default_stroke_rc
             };
@@ -1229,12 +1168,10 @@ impl<'a> Builder<'a> {
     ) -> Result<semantic::LayoutEngine> {
         let engine_str = Self::extract_string(engine_attr, "layout_engine")?;
         semantic::LayoutEngine::from_str(engine_str).map_err(|_| {
-            DiagnosticError::from_span(
-                format!("Invalid layout_engine value: '{engine_str}'"),
-                engine_attr.value.span(),
-                "unsupported layout engine",
-                Some("Supported layout engines are: 'basic', 'sugiyama'".to_string()),
-            )
+            Diagnostic::error(format!("invalid `layout_engine` value: `{engine_str}`"))
+                .with_code(ErrorCode::E302)
+                .with_label(engine_attr.value.span(), "unsupported layout engine")
+                .with_help("Supported layout engines are: 'basic', 'sugiyama'")
         })
     }
 
@@ -1268,7 +1205,9 @@ impl<'a> Builder<'a> {
 
         // Extract NoteDefinition from TypeDefinition
         let note_def_ref = type_def.note_definition().map_err(|err| {
-            DiagnosticError::from_span(err, note.content.span(), "invalid note type", None)
+            Diagnostic::error(err)
+                .with_code(ErrorCode::E307)
+                .with_label(note.content.span(), "invalid note type")
         })?;
         let note_def = Rc::clone(note_def_ref);
 
@@ -1305,12 +1244,10 @@ impl<'a> Builder<'a> {
             match *attr.name.inner() {
                 "on" => {
                     let ids = attr.value.as_identifiers().map_err(|_| {
-                        DiagnosticError::from_span(
-                            "'on' attribute must be a list of element identifiers".to_string(),
-                            attr.value.span(),
-                            "invalid on value",
-                            Some("Use syntax: on=[element1, element2]".to_string()),
-                        )
+                        Diagnostic::error("`on` attribute must be a list of element identifiers")
+                            .with_code(ErrorCode::E302)
+                            .with_label(attr.value.span(), "invalid on value")
+                            .with_help("Use syntax: on=[element1, element2]")
                     })?;
 
                     on = Some(ids.iter().map(|id| *id.inner()).collect());
@@ -1319,12 +1256,10 @@ impl<'a> Builder<'a> {
                     let align_str = Self::extract_string(attr, "align")?;
 
                     let alignment = align_str.parse::<semantic::NoteAlign>().map_err(|_| {
-                        DiagnosticError::from_span(
-                            format!("Invalid alignment value: '{}'", align_str),
-                            attr.value.span(),
-                            "invalid alignment",
-                            Some("Valid values: over, left, right, top, bottom".to_string()),
-                        )
+                        Diagnostic::error(format!("invalid alignment value: `{}`", align_str))
+                            .with_code(ErrorCode::E302)
+                            .with_label(attr.value.span(), "invalid alignment")
+                            .with_help("Valid values: over, left, right, top, bottom")
                     })?;
 
                     align = Some(alignment);
@@ -2140,7 +2075,7 @@ mod tests {
         let result = Builder::extract_color(&attr, "fill_color");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Invalid fill_color"));
+        assert!(err.to_string().contains("invalid fill_color"));
     }
 
     #[test]

@@ -7,7 +7,7 @@ use winnow::{
 };
 
 use crate::{
-    error::DiagnosticError,
+    error::{Diagnostic, ErrorCode},
     span::Span,
     tokens::{PositionedToken, Token},
 };
@@ -256,8 +256,8 @@ fn lexer<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<PositionedToken<'sr
     .parse_next(input)
 }
 
-/// Convert a winnow lexer error to a DiagnosticError with helpful messaging
-fn convert_lexer_error(error: ParseError<&str, ContextError>) -> DiagnosticError {
+/// Convert a winnow lexer error to a Diagnostic with helpful messaging
+fn convert_lexer_error(error: ParseError<&str, ContextError>) -> Diagnostic {
     let char_range = error.char_span();
     let span = Span::new(char_range);
 
@@ -270,20 +270,28 @@ fn convert_lexer_error(error: ParseError<&str, ContextError>) -> DiagnosticError
         })
         .collect();
 
-    let message = if !contexts.is_empty() {
-        format!(
-            "Invalid or unexpected token: expected {}",
-            contexts.join(" or ")
+    // Determine error code based on context
+    let (code, message) = if contexts.iter().any(|c| c.contains("string")) {
+        (
+            ErrorCode::E001,
+            "unterminated or invalid string literal".to_string(),
+        )
+    } else if !contexts.is_empty() {
+        (
+            ErrorCode::E002,
+            format!("unexpected character, expected {}", contexts.join(" or ")),
         )
     } else {
-        "Invalid or unexpected token".to_string()
+        (ErrorCode::E002, "unexpected character".to_string())
     };
 
-    DiagnosticError::from_span(message, span, "here", None)
+    Diagnostic::error(message)
+        .with_code(code)
+        .with_label(span, "here")
 }
 
 /// Parse tokens from a string input
-pub fn tokenize(input: &str) -> Result<Vec<PositionedToken<'_>>, DiagnosticError> {
+pub fn tokenize(input: &str) -> Result<Vec<PositionedToken<'_>>, Diagnostic> {
     match lexer.parse(input) {
         Ok(tokens) => Ok(tokens),
         Err(e) => Err(convert_lexer_error(e)),

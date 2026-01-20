@@ -1,78 +1,46 @@
-use thiserror::Error;
+//! Error and diagnostic system for the Filament parser.
+//!
+//! This module provides an error handling system with:
+//! - Error codes for documentation and searchability
+//! - Multiple labeled spans for rich error context
+//! - Severity levels
+//! - Diagnostic collector for accumulating multiple errors
+//!
+//! # Overview
+//!
+//! The error system is built around the [`Diagnostic`] type, which represents
+//! a single error or warning message with optional error code, multiple source
+//! locations, and help text. Multiple diagnostics are wrapped in [`ParseError`]
+//! for returning from the parsing lifecycle.
+//!
+//! # Example
+//!
+//! ```
+//! # use filament_parser::error::{Diagnostic, ErrorCode};
+//! # use filament_parser::Span;
+//!
+//! let span = Span::new(100..120);
+//! let original_span = Span::new(50..70);
+//!
+//! let diag = Diagnostic::error("type `User` is defined multiple times")
+//!     .with_code(ErrorCode::E301)
+//!     .with_label(span, "duplicate definition")
+//!     .with_secondary_label(original_span, "first defined here")
+//!     .with_help("remove the duplicate or use a different name");
+//! ```
 
-use crate::span::Span;
+mod collector;
+mod diagnostic;
+mod error_code;
+mod label;
+mod parse_error;
+mod severity;
 
-/// A rich diagnostic error for compiler issues in the Filament language.
-///
-/// This error provides detailed diagnostic information including:
-/// - A precise location ([`Span`]) in the source code
-/// - A descriptive message and label
-/// - Optional help text with suggestions to fix the error
-///
-/// This is a shared diagnostic type used across all parsing phases
-/// (lexing, parsing, validation, elaboration, etc.). Phase context is provided
-/// by the container error type.
-///
-/// The source code itself is expected to be provided by the container error
-/// type (e.g., `FilamentError`).
-#[derive(Debug, Error)]
-#[error("{message}")]
-pub struct DiagnosticError {
-    /// Error message to display
-    message: String,
+pub(crate) use collector::DiagnosticCollector;
+pub(crate) use parse_error::Result;
 
-    /// The error span in the source
-    span: Span,
-
-    /// Label for the error span
-    label: String,
-
-    /// Optional help text
-    help: Option<String>,
-}
-
-impl DiagnosticError {
-    /// Create a new diagnostic error from a Span value.
-    ///
-    /// # Arguments
-    /// * `message` - The main error message
-    /// * `span` - The source location where the error occurred
-    /// * `label` - A label describing the error location
-    /// * `help` - Optional help text with suggestions to fix the error
-    pub fn from_span(
-        message: String,
-        span: Span,
-        label: impl Into<String>,
-        help: Option<String>,
-    ) -> Self {
-        Self {
-            message,
-            span,
-            label: label.into(),
-            help,
-        }
-    }
-
-    /// Get the error message.
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-
-    /// Get the error span in the source code.
-    pub fn span(&self) -> Span {
-        self.span
-    }
-
-    /// Get the label describing the error.
-    pub fn label(&self) -> &str {
-        &self.label
-    }
-
-    /// Get the help text, if any
-    pub fn help(&self) -> Option<&str> {
-        self.help.as_deref()
-    }
-}
-
-/// A type alias for `Result<T, DiagnosticError>`
-pub type Result<T> = std::result::Result<T, DiagnosticError>;
+pub use diagnostic::Diagnostic;
+pub use error_code::ErrorCode;
+pub use label::Label;
+pub use parse_error::ParseError;
+pub use severity::Severity;

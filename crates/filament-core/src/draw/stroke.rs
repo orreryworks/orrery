@@ -172,8 +172,7 @@ impl FromStr for StrokeCap {
             "round" => Ok(Self::Round),
             "square" => Ok(Self::Square),
             _ => Err(format!(
-                "Invalid stroke cap: '{}'. Valid values: butt, round, square",
-                s
+                "invalid stroke cap `{s}`, valid values: butt, round, square"
             )),
         }
     }
@@ -213,8 +212,7 @@ impl FromStr for StrokeJoin {
             "round" => Ok(Self::Round),
             "bevel" => Ok(Self::Bevel),
             _ => Err(format!(
-                "Invalid stroke join: '{}'. Valid values: miter, round, bevel",
-                s
+                "invalid stroke join `{s}`, valid values: miter, round, bevel"
             )),
         }
     }
@@ -574,7 +572,7 @@ mod tests {
 
         let result = StrokeCap::from_str("invalid");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Invalid stroke cap"));
+        assert!(result.unwrap_err().contains("invalid stroke cap"));
     }
 
     #[test]
@@ -587,7 +585,7 @@ mod tests {
 
         let result = StrokeJoin::from_str("invalid");
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Invalid stroke join"));
+        assert!(result.unwrap_err().contains("invalid stroke join"));
     }
 
     #[test]

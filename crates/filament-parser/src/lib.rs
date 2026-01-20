@@ -6,9 +6,9 @@
 //! ## Usage
 //!
 //! ```
-//! # use filament_parser::{parse, ElaborateConfig, DiagnosticError};
+//! # use filament_parser::{parse, ElaborateConfig, error::ParseError};
 //!
-//! fn main() -> Result<(), DiagnosticError> {
+//! fn main() -> Result<(), ParseError> {
 //!     let source = r#"
 //!         diagram component;
 //!         user: Rectangle;
@@ -21,11 +21,12 @@
 //! }
 //! ```
 
+pub mod error;
+
 mod builtin_types;
 mod desugar;
 mod elaborate;
 mod elaborate_utils;
-mod error;
 mod lexer;
 mod parser;
 #[cfg(test)]
@@ -36,12 +37,12 @@ mod tokens;
 mod validate;
 
 pub use elaborate::ElaborateConfig;
-pub use error::DiagnosticError;
 pub use span::Span;
 
 use filament_core::semantic::Diagram;
 
 use elaborate::Builder;
+use error::ParseError;
 use parser_types::Element;
 
 /// Parse source text into a semantic diagram.
@@ -63,25 +64,25 @@ use parser_types::Element;
 /// # Returns
 ///
 /// Returns the parsed [`filament_core::semantic::Diagram`] on success,
-/// or a [`DiagnosticError`] with location information on failure.
+/// or a [`ParseError`] with location information on failure.
 ///
 /// # Example
 ///
 /// ```
-/// # use filament_parser::{parse, ElaborateConfig, DiagnosticError};
+/// # use filament_parser::{parse, ElaborateConfig, error::ParseError};
 ///
-/// fn main() -> Result<(), DiagnosticError> {
+/// fn main() -> Result<(), ParseError> {
 ///     let source = "diagram component; box: Rectangle;";
 ///     let diagram = parse(source, ElaborateConfig::default())?;
 ///     Ok(())
 /// }
 /// ```
-pub fn parse(source: &str, config: ElaborateConfig) -> Result<Diagram, DiagnosticError> {
+pub fn parse(source: &str, config: ElaborateConfig) -> Result<Diagram, ParseError> {
     // Step 1: Tokenize
-    let tokens = lexer::tokenize(source)?;
+    let tokens = lexer::tokenize(source).map_err(ParseError::from)?;
 
     // Step 2: Parse
-    let ast = parser::build_diagram(&tokens)?;
+    let ast = parser::build_diagram(&tokens).map_err(ParseError::from)?;
 
     // Step 3: Desugar
     let desugared = desugar::desugar(ast);
@@ -93,5 +94,5 @@ pub fn parse(source: &str, config: ElaborateConfig) -> Result<Diagram, Diagnosti
 
     // Step 5: Elaborate
     let builder = Builder::new(config, source);
-    builder.build(&desugared)
+    builder.build(&desugared).map_err(ParseError::from)
 }
