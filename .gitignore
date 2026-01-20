@@ -9,3 +9,6 @@
 
 /*.svg
 /*.fil
+
+# AI Agents
+.rules
