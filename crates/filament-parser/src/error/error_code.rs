@@ -24,6 +24,29 @@ pub enum ErrorCode {
     /// A character was encountered that is not valid in this context.
     E002,
 
+    /// Invalid escape sequence.
+    ///
+    /// An unrecognized escape sequence was used in a string literal.
+    /// Valid escapes are: `\n`, `\r`, `\t`, `\b`, `\f`, `\\`, `\/`, `\'`, `\"`, `\0`, `\u{...}`.
+    E003,
+
+    /// Invalid unicode escape format.
+    ///
+    /// A unicode escape sequence was malformed. Unicode escapes must use
+    /// the format `\u{XXXX}` with 1-6 hexadecimal digits.
+    E004,
+
+    /// Invalid unicode codepoint.
+    ///
+    /// The unicode codepoint is out of range or in the surrogate range.
+    /// Valid codepoints are 0x0000-0xD7FF and 0xE000-0x10FFFF.
+    E005,
+
+    /// Empty unicode escape.
+    ///
+    /// A unicode escape `\u{}` was found with no hexadecimal digits.
+    E006,
+
     // =========================================================================
     // Parser Errors (E1xx)
     // =========================================================================
@@ -124,6 +147,10 @@ impl ErrorCode {
             // Lexer errors
             ErrorCode::E001 => "E001",
             ErrorCode::E002 => "E002",
+            ErrorCode::E003 => "E003",
+            ErrorCode::E004 => "E004",
+            ErrorCode::E005 => "E005",
+            ErrorCode::E006 => "E006",
             // Parser errors
             ErrorCode::E100 => "E100",
             ErrorCode::E101 => "E101",
@@ -152,6 +179,10 @@ impl ErrorCode {
             // Lexer errors
             ErrorCode::E001 => "unterminated string literal",
             ErrorCode::E002 => "unexpected character",
+            ErrorCode::E003 => "invalid escape sequence",
+            ErrorCode::E004 => "invalid unicode escape",
+            ErrorCode::E005 => "invalid unicode codepoint",
+            ErrorCode::E006 => "empty unicode escape",
             // Parser errors
             ErrorCode::E100 => "unexpected token",
             ErrorCode::E101 => "incomplete input",

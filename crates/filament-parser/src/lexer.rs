@@ -1,8 +1,11 @@
+use std::char;
+
 use winnow::{
     Parser as _,
     ascii::{float, multispace1},
-    combinator::{alt, delimited, not, peek, preceded, repeat, terminated},
-    error::{ContextError, ModalResult, ParseError, StrContext},
+    combinator::{alt, cut_err, delimited, not, peek, preceded, repeat, terminated},
+    error::{AddContext, ContextError, ErrMode, ModalResult, ParseError},
+    stream::{LocatingSlice, Location, Stream},
     token::{literal, none_of, one_of, take_while},
 };
 
@@ -12,8 +15,142 @@ use crate::{
     tokens::{PositionedToken, Token},
 };
 
-type Input<'a> = &'a str;
-type IResult<'a, O> = ModalResult<O, ContextError>;
+/// Rich diagnostic information for lexer errors.
+///
+/// Attached to winnow errors via `.context()` to provide detailed error
+/// messages with codes, help text, and precise span information.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LexerDiagnostic {
+    pub code: ErrorCode,
+    pub message: &'static str,
+    pub help: Option<&'static str>,
+    /// The error span covers from `start` to the error position.
+    pub start: usize,
+}
+
+type Input<'a> = LocatingSlice<&'a str>;
+type IResult<'a, O> = ModalResult<O, ContextError<LexerDiagnostic>>;
+
+/// Parse a unicode escape sequence in a string: `\u{XXXX}` where XXXX is 1-6 hex digits.
+///
+/// This parser handles the portion after the backslash, starting with 'u'.
+/// It validates:
+/// - Format: must be `u{...}` with hex digits inside braces
+/// - Length: 1-6 hex digits allowed
+/// - Codepoint: must be valid Unicode (0x0000-0xD7FF or 0xE000-0x10FFFF)
+///
+/// Takes `escape_start` position (before `\`) for error span calculation.
+/// Uses `cut_err` after 'u' to commit and preserve diagnostic context.
+fn string_escape_unicode<'a>(input: &mut Input<'a>, escape_start: usize) -> IResult<'a, char> {
+    preceded(
+        'u',
+        cut_err(
+            delimited(
+                '{',
+                take_while(1..=6, |c: char| c.is_ascii_hexdigit()).context(LexerDiagnostic {
+                    code: ErrorCode::E006,
+                    message: "empty unicode escape",
+                    help: Some("provide 1-6 hex digits: `\\u{1F602}`"),
+                    start: escape_start,
+                }),
+                '}',
+            )
+            .context(LexerDiagnostic {
+                code: ErrorCode::E004,
+                message: "invalid unicode escape",
+                help: Some("use format `\\u{XXXX}` with 1-6 hex digits"),
+                start: escape_start,
+            })
+            .verify(|hex_str: &str| {
+                u32::from_str_radix(hex_str, 16)
+                    .ok()
+                    .and_then(char::from_u32)
+                    .is_some()
+            })
+            .context(LexerDiagnostic {
+                code: ErrorCode::E005,
+                message: "invalid unicode codepoint",
+                help: Some("valid range: `0x0000`-`0xD7FF` or `0xE000`-`0x10FFFF`"),
+                start: escape_start,
+            })
+            .map(|hex_str: &str| {
+                u32::from_str_radix(hex_str, 16)
+                    .ok()
+                    .and_then(char::from_u32)
+                    .expect("verified hex digits form valid unicode codepoint")
+            }),
+        ),
+    )
+    .parse_next(input)
+}
+
+/// Parse a standard escape character in a string after the backslash.
+fn string_escape_char<'a>(input: &mut Input<'a>) -> IResult<'a, char> {
+    one_of(['n', 'r', 't', 'b', 'f', '\\', '/', '\'', '"', '0'])
+        .map(|c| match c {
+            'n' => '\n',
+            'r' => '\r',
+            't' => '\t',
+            'b' => '\u{08}',
+            'f' => '\u{0C}',
+            '\\' => '\\',
+            '/' => '/',
+            '\'' => '\'',
+            '"' => '"',
+            '0' => '\0',
+            _ => unreachable!(),
+        })
+        .parse_next(input)
+}
+
+/// Parse escaped whitespace in a string (backslash followed by whitespace).
+///
+/// Returns a placeholder character (`\u{E000}`) that is filtered out later.
+/// This allows multi-line string formatting where trailing backslash
+/// consumes the following whitespace.
+fn string_escape_whitespace<'a>(input: &mut Input<'a>) -> IResult<'a, char> {
+    multispace1.value('\u{E000}').parse_next(input)
+}
+
+/// Parse an escape sequence in a string starting with backslash.
+///
+/// Handles:
+/// - Unicode escapes: `\u{XXXX}`
+/// - Standard escapes: `\n`, `\r`, `\t`, `\b`, `\f`, `\\`, `\/`, `\'`, `\"`, `\0`
+/// - Escaped whitespace: `\` followed by whitespace (consumed and ignored)
+fn string_escape<'a>(input: &mut Input<'a>) -> IResult<'a, char> {
+    let escape_start = input.current_token_start();
+
+    '\\'.parse_next(input)?;
+
+    match string_escape_unicode(input, escape_start) {
+        Ok(ch) => return Ok(ch),
+        Err(ErrMode::Backtrack(_)) => {} // Try next alternative
+        Err(e) => return Err(e),         // Propagate cut errors (E004, E005, E006)
+    }
+
+    if let Ok(ch) = string_escape_char(input) {
+        return Ok(ch);
+    }
+
+    if let Ok(ch) = string_escape_whitespace(input) {
+        return Ok(ch);
+    }
+
+    // None matched - return error with context for invalid escape
+    Err(ErrMode::Cut(ContextError::new().add_context(
+        input,
+        &input.checkpoint(),
+        LexerDiagnostic {
+            code: ErrorCode::E003,
+            message: "invalid escape sequence",
+            help: Some(
+                "valid escapes: `\\n`, `\\r`, `\\t`, `\\b`, `\\f`, `\\\\`, `\\/`, `\\'`, `\\\"`, `\\0`, `\\u{}`",
+            ),
+            start: escape_start,
+        },
+    )))
+}
 
 /// Parse a complete string literal with double quotes.
 ///
@@ -24,52 +161,12 @@ type IResult<'a, O> = ModalResult<O, ContextError>;
 /// - Escaped whitespace: "before\   \n  after" (whitespace is consumed)
 /// - Empty strings: ""
 fn string_literal<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
-    // Helper for parsing escape sequences
-    let escape_sequence = preceded(
-        '\\',
-        alt((
-            // Unicode escape sequence: u{1-6 hex digits}
-            preceded(
-                'u',
-                delimited('{', take_while(1..=6, |c: char| c.is_ascii_hexdigit()), '}')
-                    .verify(|hex_str: &str| {
-                        u32::from_str_radix(hex_str, 16)
-                            .ok()
-                            .and_then(std::char::from_u32)
-                            .is_some()
-                    })
-                    .map(|hex_str: &str| {
-                        u32::from_str_radix(hex_str, 16)
-                            .ok()
-                            .and_then(std::char::from_u32)
-                            .expect("verified hex digits form valid unicode codepoint")
-                    }),
-            ),
-            // Standard escape sequences
-            one_of(['n', 'r', 't', 'b', 'f', '\\', '/', '\'', '"', '0']).map(|c| match c {
-                'n' => '\n',
-                'r' => '\r',
-                't' => '\t',
-                'b' => '\u{08}',
-                'f' => '\u{0C}',
-                '\\' => '\\',
-                '/' => '/',
-                '\'' => '\'',
-                '"' => '"',
-                '0' => '\0',
-                _ => unreachable!(),
-            }),
-            // Escaped whitespace (consumed and ignored)
-            multispace1.value('\u{E000}'), // Use private use char as placeholder to be filtered
-        )),
-    );
-
     // Regular string content (not quotes, backslashes, or newlines)
     let string_char = none_of(['"', '\\', '\n', '\r']);
 
     // String content: mix of regular chars and escapes
     let string_content =
-        repeat(0.., alt((escape_sequence, string_char))).fold(String::new, |mut acc, ch| {
+        repeat(0.., alt((string_escape, string_char))).fold(String::new, |mut acc, ch| {
             if ch != '\u{E000}' {
                 // Filter out escaped whitespace placeholders
                 acc.push(ch);
@@ -77,11 +174,25 @@ fn string_literal<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
             acc
         });
 
-    // Complete string literal
-    delimited('"', string_content, '"')
-        .map(Token::StringLiteral)
-        .context(StrContext::Label("string literal"))
+    let start_pos = input.current_token_start();
+
+    // Parse opening quote using combinator (properly advances LocatingSlice)
+    '"'.parse_next(input)
+        .map_err(|_: ErrMode<ContextError<LexerDiagnostic>>| {
+            ErrMode::Backtrack(ContextError::new())
+        })?;
+
+    // Parse content with cut_err to commit after opening quote
+    // Include start_pos so error span covers from opening quote to error position
+    cut_err(terminated(string_content, '"'))
+        .context(LexerDiagnostic {
+            code: ErrorCode::E001,
+            message: "unterminated string literal",
+            help: Some("add closing `\"`"),
+            start: start_pos,
+        })
         .parse_next(input)
+        .map(Token::StringLiteral)
 }
 
 /// Parse a float literal
@@ -93,7 +204,6 @@ fn float_literal<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
         peek(not(one_of(|c: char| c.is_alphanumeric() || c == '_'))),
     )
         .map(|(f, _)| Token::FloatLiteral(f))
-        .context(StrContext::Label("float literal"))
         .parse_next(input)
 }
 
@@ -101,7 +211,6 @@ fn float_literal<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
 fn line_comment<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
     preceded("//", take_while(0.., |c| c != '\n'))
         .map(Token::LineComment)
-        .context(StrContext::Label("line comment"))
         .parse_next(input)
 }
 
@@ -109,24 +218,24 @@ fn line_comment<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
 fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
     terminated(
         alt((
-            literal("diagram").context(StrContext::Label("diagram keyword")),
-            literal("component").context(StrContext::Label("component keyword")),
-            literal("sequence").context(StrContext::Label("sequence keyword")),
-            literal("type").context(StrContext::Label("type keyword")),
-            literal("embed").context(StrContext::Label("embed keyword")),
-            literal("as").context(StrContext::Label("as keyword")),
-            literal("deactivate").context(StrContext::Label("deactivate keyword")),
-            literal("activate").context(StrContext::Label("activate keyword")),
-            literal("fragment").context(StrContext::Label("fragment keyword")),
-            literal("section").context(StrContext::Label("section keyword")),
-            literal("critical").context(StrContext::Label("critical keyword")),
-            literal("break").context(StrContext::Label("break keyword")),
-            literal("else").context(StrContext::Label("else keyword")),
-            literal("loop").context(StrContext::Label("loop keyword")),
-            literal("alt").context(StrContext::Label("alt keyword")),
-            literal("opt").context(StrContext::Label("opt keyword")),
-            literal("par").context(StrContext::Label("par keyword")),
-            literal("note").context(StrContext::Label("note keyword")),
+            literal("diagram"),
+            literal("component"),
+            literal("sequence"),
+            literal("type"),
+            literal("embed"),
+            literal("as"),
+            literal("deactivate"),
+            literal("activate"),
+            literal("fragment"),
+            literal("section"),
+            literal("critical"),
+            literal("break"),
+            literal("else"),
+            literal("loop"),
+            literal("alt"),
+            literal("opt"),
+            literal("par"),
+            literal("note"),
         )),
         // Ensure keyword is not followed by identifier character (word boundary)
         peek(not(one_of(|c: char| c.is_ascii_alphanumeric() || c == '_'))),
@@ -152,7 +261,6 @@ fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
         "note" => Token::Note,
         _ => unreachable!(),
     })
-    .context(StrContext::Label("keyword"))
     .parse_next(input)
 }
 
@@ -168,7 +276,6 @@ fn identifier<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
             .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
     })
     .map(Token::Identifier)
-    .context(StrContext::Label("identifier"))
     .parse_next(input)
 }
 
@@ -180,7 +287,6 @@ fn multi_char_operator<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
         literal("<-").value(Token::LeftArrow),
         literal("::").value(Token::DoubleColon),
     ))
-    .context(StrContext::Label("multi-character operator"))
     .parse_next(input)
 }
 
@@ -198,7 +304,6 @@ fn single_char_token<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
         ';'.value(Token::Semicolon),
         ','.value(Token::Comma),
     ))
-    .context(StrContext::Label("single character token"))
     .parse_next(input)
 }
 
@@ -206,23 +311,17 @@ fn single_char_token<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
 fn whitespace<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
     take_while(1.., |c: char| c.is_whitespace() && c != '\n')
         .value(Token::Whitespace)
-        .context(StrContext::Label("whitespace"))
         .parse_next(input)
 }
 
 /// Parse newline
 fn newline<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
-    '\n'.value(Token::Newline)
-        .context(StrContext::Label("newline"))
-        .parse_next(input)
+    '\n'.value(Token::Newline).parse_next(input)
 }
 
 /// Parse a single token with position tracking
-fn positioned_token<'a>(
-    input: &mut Input<'a>,
-    original_len: usize,
-) -> IResult<'a, PositionedToken<'a>> {
-    let start_len = input.len();
+fn positioned_token<'a>(input: &mut Input<'a>) -> IResult<'a, PositionedToken<'a>> {
+    let start_pos = input.current_token_start();
 
     let token = alt((
         line_comment,        // Must come before single char '-'
@@ -235,12 +334,9 @@ fn positioned_token<'a>(
         newline,             // Must come before whitespace
         whitespace,          // General whitespace
     ))
-    .context(StrContext::Label("token"))
     .parse_next(input)?;
 
-    let end_len = input.len();
-    let start_pos = original_len - start_len;
-    let end_pos = original_len - end_len;
+    let end_pos = input.current_token_start();
     let span = Span::new(start_pos..end_pos);
 
     Ok(PositionedToken::new(token, span))
@@ -248,51 +344,55 @@ fn positioned_token<'a>(
 
 /// Main lexer function that tokenizes the entire input
 fn lexer<'src>(input: &mut Input<'src>) -> IResult<'src, Vec<PositionedToken<'src>>> {
-    let original_len = input.len();
-    repeat(0.., move |input: &mut Input<'src>| {
-        positioned_token(input, original_len)
-    })
-    .context(StrContext::Label("lexer"))
-    .parse_next(input)
+    repeat(0.., positioned_token).parse_next(input)
 }
 
-/// Convert a winnow lexer error to a Diagnostic with helpful messaging
-fn convert_lexer_error(error: ParseError<&str, ContextError>) -> Diagnostic {
+/// Convert a winnow lexer error to a Diagnostic with helpful messaging.
+///
+/// Extracts `LexerDiagnostic` from the error context for rich error info
+/// with code, message, and help. Falls back to E002 (unexpected character)
+/// if no diagnostic context is found.
+///
+/// The error span is calculated from `start` to the error position, giving
+/// better context (e.g., highlighting the entire unterminated string).
+fn convert_lexer_error(
+    error: ParseError<LocatingSlice<&str>, ContextError<LexerDiagnostic>>,
+) -> Diagnostic {
     let char_range = error.char_span();
-    let span = Span::new(char_range);
+    let error_end = char_range.end;
 
     let context_error = error.inner();
-    let contexts: Vec<String> = context_error
-        .context()
-        .filter_map(|ctx| match ctx {
-            StrContext::Label(label) => Some(label.to_string()),
-            _ => None,
-        })
-        .collect();
 
-    // Determine error code based on context
-    let (code, message) = if contexts.iter().any(|c| c.contains("string")) {
-        (
-            ErrorCode::E001,
-            "unterminated or invalid string literal".to_string(),
-        )
-    } else if !contexts.is_empty() {
-        (
-            ErrorCode::E002,
-            format!("unexpected character, expected {}", contexts.join(" or ")),
-        )
-    } else {
-        (ErrorCode::E002, "unexpected character".to_string())
-    };
+    // Use the first diagnostic context if available
+    if let Some(LexerDiagnostic {
+        code,
+        message,
+        help,
+        start,
+    }) = context_error.context().next()
+    {
+        let span = Span::new(*start..error_end);
 
-    Diagnostic::error(message)
-        .with_code(code)
-        .with_label(span, "here")
+        let mut diag = Diagnostic::error(*message)
+            .with_code(*code)
+            .with_label(span, code.description());
+        if let Some(h) = help {
+            diag = diag.with_help(*h);
+        }
+        return diag;
+    }
+
+    // Fallback when no context is present
+    let span = Span::new(char_range);
+    Diagnostic::error("unexpected character")
+        .with_code(ErrorCode::E002)
+        .with_label(span, ErrorCode::E002.description())
 }
 
 /// Parse tokens from a string input
 pub fn tokenize(input: &str) -> Result<Vec<PositionedToken<'_>>, Diagnostic> {
-    match lexer.parse(input) {
+    let located_input = LocatingSlice::new(input);
+    match lexer.parse(located_input) {
         Ok(tokens) => Ok(tokens),
         Err(e) => Err(convert_lexer_error(e)),
     }
@@ -303,9 +403,8 @@ mod tests {
     use super::*;
 
     fn test_single_token(input: &str, expected: Token<'_>) {
-        let mut input_ref = input;
-        let original_len = input.len();
-        let result = positioned_token(&mut input_ref, original_len);
+        let mut located_input = LocatingSlice::new(input);
+        let result = positioned_token(&mut located_input);
         assert!(result.is_ok(), "Failed to parse: {}", input);
         let positioned = result.unwrap();
         assert_eq!(positioned.token, expected);
@@ -841,6 +940,95 @@ mod tests {
                 result.is_err(),
                 "Expected lexer to fail on invalid token '>'"
             );
+        }
+
+        /// Helper to verify error code in diagnostic
+        fn assert_error_code(input: &str, expected_code: ErrorCode) {
+            let result = tokenize(input);
+            assert!(
+                result.is_err(),
+                "Expected lexer to fail on input: '{}'",
+                input
+            );
+            let diagnostic = result.unwrap_err();
+            assert_eq!(
+                diagnostic.code(),
+                Some(expected_code),
+                "Expected error code {:?} for input '{}', got {:?}",
+                expected_code,
+                input,
+                diagnostic.code()
+            );
+        }
+
+        #[test]
+        fn test_error_code_e003_invalid_escape_sequence() {
+            // Invalid escape characters should produce E003
+            assert_error_code("\"test\\x\"", ErrorCode::E003);
+            assert_error_code("\"test\\q\"", ErrorCode::E003);
+            assert_error_code("\"test\\z\"", ErrorCode::E003);
+            assert_error_code("\"test\\1\"", ErrorCode::E003);
+        }
+
+        #[test]
+        fn test_error_code_e005_invalid_unicode_codepoint() {
+            // Invalid codepoints (out of range) should produce E005
+            assert_error_code("\"test\\u{110000}\"", ErrorCode::E005);
+            assert_error_code("\"test\\u{FFFFFF}\"", ErrorCode::E005);
+            // Surrogate range
+            assert_error_code("\"test\\u{D800}\"", ErrorCode::E005);
+            assert_error_code("\"test\\u{DFFF}\"", ErrorCode::E005);
+        }
+
+        #[test]
+        fn test_error_code_e006_empty_unicode_escape() {
+            // Empty unicode escape should produce E006
+            assert_error_code("\"test\\u{}\"", ErrorCode::E006);
+        }
+
+        #[test]
+        fn test_error_code_e001_unterminated_string() {
+            // Unterminated string should still produce E001
+            assert_error_code("\"unterminated", ErrorCode::E001);
+            assert_error_code("\"", ErrorCode::E001);
+        }
+
+        #[test]
+        fn test_start_offset_span_for_unterminated_string() {
+            // Verify StartOffset creates span from opening quote to error position
+            // Use multi-line input with tokens before the string so it doesn't start at 0
+            let input = "foo \"hello world\nbar";
+            //           ^   ^            ^
+            //           0   4            17 (after newline at 16)
+            //           |   |            |
+            //           |   string start |
+            //           identifier       error position
+            let result = tokenize(input);
+            assert!(result.is_err());
+
+            let diagnostic = result.unwrap_err();
+            let labels = diagnostic.labels();
+            assert!(!labels.is_empty(), "Expected at least one label");
+
+            let span = labels[0].span();
+            // Span should start at 4 (opening quote after "foo ") and end after newline
+            assert_eq!(
+                span.start(),
+                4,
+                "Span should start at opening quote position (after 'foo ')"
+            );
+            assert_eq!(
+                span.end(),
+                17,
+                "Span should end after newline (error position)"
+            );
+        }
+
+        #[test]
+        fn test_error_code_e002_unexpected_character() {
+            // Invalid token should produce E002
+            assert_error_code(">", ErrorCode::E002);
+            assert_error_code("$", ErrorCode::E002);
         }
     }
 }
