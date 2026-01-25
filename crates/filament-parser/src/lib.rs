@@ -79,7 +79,7 @@ use parser_types::Element;
 /// ```
 pub fn parse(source: &str, config: ElaborateConfig) -> Result<Diagram, ParseError> {
     // Step 1: Tokenize
-    let tokens = lexer::tokenize(source).map_err(ParseError::from)?;
+    let tokens = lexer::tokenize(source)?;
 
     // Step 2: Parse
     let ast = parser::build_diagram(&tokens).map_err(ParseError::from)?;
