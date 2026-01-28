@@ -297,3 +297,122 @@ fn find_rectangle_intersection(a: Point, b: Point, a_size: Size) -> Point {
         dy_norm.mul_add(t, a.y()), // a.y + dy_norm * t
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use float_cmp::assert_approx_eq;
+
+    use super::*;
+
+    fn assert_point_eq(actual: Point, expected: Point) {
+        assert_approx_eq!(f32, actual.x(), expected.x());
+        assert_approx_eq!(f32, actual.y(), expected.y());
+    }
+
+    #[test]
+    fn test_intersection_from_right() {
+        // Ray from center (100,100) going right to (200,100)
+        // Should intersect right edge at (120, 100)
+        let a = Point::new(100.0, 100.0);
+        let b = Point::new(200.0, 100.0);
+        let size = Size::new(40.0, 40.0);
+
+        let result = find_rectangle_intersection(a, b, size);
+
+        assert_point_eq(result, Point::new(120.0, 100.0));
+    }
+
+    #[test]
+    fn test_intersection_from_left() {
+        // Ray from center (100,100) going left to (0,100)
+        // Should intersect left edge at (80, 100)
+        let a = Point::new(100.0, 100.0);
+        let b = Point::new(0.0, 100.0);
+        let size = Size::new(40.0, 40.0);
+
+        let result = find_rectangle_intersection(a, b, size);
+
+        assert_point_eq(result, Point::new(80.0, 100.0));
+    }
+
+    #[test]
+    fn test_intersection_from_bottom() {
+        // Ray from center (100,100) going down to (100,200)
+        // Should intersect bottom edge at (100, 120)
+        let a = Point::new(100.0, 100.0);
+        let b = Point::new(100.0, 200.0);
+        let size = Size::new(40.0, 40.0);
+
+        let result = find_rectangle_intersection(a, b, size);
+
+        assert_point_eq(result, Point::new(100.0, 120.0));
+    }
+
+    #[test]
+    fn test_intersection_from_top() {
+        // Ray from center (100,100) going up to (100,0)
+        // Should intersect top edge at (100, 80)
+        let a = Point::new(100.0, 100.0);
+        let b = Point::new(100.0, 0.0);
+        let size = Size::new(40.0, 40.0);
+
+        let result = find_rectangle_intersection(a, b, size);
+
+        assert_point_eq(result, Point::new(100.0, 80.0));
+    }
+
+    #[test]
+    fn test_intersection_diagonal() {
+        // Ray from center (100,100) going diagonally to (200,200)
+        // For a square, 45-degree diagonal hits corner region
+        // Should intersect at (120, 120) - the corner of the rectangle
+        let a = Point::new(100.0, 100.0);
+        let b = Point::new(200.0, 200.0);
+        let size = Size::new(40.0, 40.0);
+
+        let result = find_rectangle_intersection(a, b, size);
+
+        assert_point_eq(result, Point::new(120.0, 120.0));
+    }
+
+    #[test]
+    fn test_intersection_same_point() {
+        // Edge case: start and end are the same point
+        // Should return b as fallback (avoid division by zero)
+        let a = Point::new(100.0, 100.0);
+        let b = Point::new(100.0, 100.0);
+        let size = Size::new(40.0, 40.0);
+
+        let result = find_rectangle_intersection(a, b, size);
+
+        assert_point_eq(result, b);
+    }
+
+    #[test]
+    fn test_intersection_zero_size() {
+        // Edge case: zero-size shape (degenerate rectangle)
+        // All edges collapse to center, no valid intersection possible
+        // Should return b as fallback
+        let a = Point::new(100.0, 100.0);
+        let b = Point::new(200.0, 100.0);
+        let size = Size::new(0.0, 0.0);
+
+        let result = find_rectangle_intersection(a, b, size);
+
+        assert_point_eq(result, b);
+    }
+
+    #[test]
+    fn test_intersection_very_close_points() {
+        // Edge case: points extremely close together (distance < 0.001)
+        // Algorithm returns b as fallback to avoid numerical instability
+        let a = Point::new(100.0, 100.0);
+        let b = Point::new(100.0005, 100.0005);
+        let size = Size::new(40.0, 40.0);
+
+        let result = find_rectangle_intersection(a, b, size);
+
+        // Distance ≈ 0.000707 < 0.001 threshold, so returns b
+        assert_point_eq(result, b);
+    }
+}
