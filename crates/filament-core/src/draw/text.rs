@@ -338,3 +338,234 @@ impl TextManager {
 
 // Create a global instance for use throughout the application
 static TEXT_MANAGER: OnceLock<TextManager> = OnceLock::new();
+
+#[cfg(test)]
+mod tests {
+    use std::ptr;
+
+    use float_cmp::assert_approx_eq;
+
+    use super::*;
+
+    #[test]
+    fn test_text_definition_default_borrowed_returns_static() {
+        let borrowed1 = TextDefinition::default_borrowed();
+        let borrowed2 = TextDefinition::default_borrowed();
+        // Should return same static reference
+        assert!(ptr::eq(borrowed1, borrowed2));
+    }
+
+    #[test]
+    fn test_text_definition_default_borrowed_values() {
+        let borrowed = TextDefinition::default_borrowed();
+        // Static default has different values than Default trait
+        assert_eq!(borrowed.font_size(), 12);
+        assert_eq!(borrowed.font_family(), "sans-serif");
+        assert!(borrowed.background_color().is_none());
+        assert!(borrowed.color().is_none());
+        // Static default has 4px uniform padding
+        assert_approx_eq!(f32, borrowed.padding().top(), 4.0);
+        assert_approx_eq!(f32, borrowed.padding().right(), 4.0);
+        assert_approx_eq!(f32, borrowed.padding().bottom(), 4.0);
+        assert_approx_eq!(f32, borrowed.padding().left(), 4.0);
+    }
+
+    #[test]
+    fn test_text_definition_set_font_size() {
+        let mut def = TextDefinition::new();
+        assert_eq!(def.font_size(), 15); // default
+
+        def.set_font_size(24);
+        assert_eq!(def.font_size(), 24);
+
+        def.set_font_size(8);
+        assert_eq!(def.font_size(), 8);
+    }
+
+    #[test]
+    fn test_text_definition_set_font_family() {
+        let mut def = TextDefinition::new();
+        assert_eq!(def.font_family(), "Arial"); // default
+
+        def.set_font_family("Helvetica");
+        assert_eq!(def.font_family(), "Helvetica");
+
+        def.set_font_family("Times New Roman");
+        assert_eq!(def.font_family(), "Times New Roman");
+
+        def.set_font_family("monospace");
+        assert_eq!(def.font_family(), "monospace");
+    }
+
+    #[test]
+    fn test_text_definition_set_background_color() {
+        let mut def = TextDefinition::new();
+        assert!(def.background_color().is_none()); // default
+
+        let yellow = Color::new("yellow").unwrap();
+        def.set_background_color(Some(yellow));
+        assert!(def.background_color().is_some());
+
+        def.set_background_color(None);
+        assert!(def.background_color().is_none());
+    }
+
+    #[test]
+    fn test_text_definition_set_color() {
+        let mut def = TextDefinition::new();
+        assert!(def.color().is_none()); // default
+
+        let blue = Color::new("blue").unwrap();
+        def.set_color(Some(blue));
+        assert!(def.color().is_some());
+
+        def.set_color(None);
+        assert!(def.color().is_none());
+    }
+
+    #[test]
+    fn test_text_definition_set_padding() {
+        let mut def = TextDefinition::new();
+        // Default padding is all zeros
+        assert_approx_eq!(f32, def.padding().horizontal_sum(), 0.0);
+        assert_approx_eq!(f32, def.padding().vertical_sum(), 0.0);
+
+        def.set_padding(Insets::uniform(10.0));
+        assert_approx_eq!(f32, def.padding().top(), 10.0);
+        assert_approx_eq!(f32, def.padding().right(), 10.0);
+        assert_approx_eq!(f32, def.padding().bottom(), 10.0);
+        assert_approx_eq!(f32, def.padding().left(), 10.0);
+
+        def.set_padding(Insets::new(5.0, 10.0, 15.0, 20.0));
+        assert_approx_eq!(f32, def.padding().top(), 5.0);
+        assert_approx_eq!(f32, def.padding().right(), 10.0);
+        assert_approx_eq!(f32, def.padding().bottom(), 15.0);
+        assert_approx_eq!(f32, def.padding().left(), 20.0);
+    }
+
+    #[test]
+    fn test_text_calculate_size_empty() {
+        let def = TextDefinition::new();
+        let text = Text::new(&def, "");
+        let size = text.calculate_size();
+        assert_approx_eq!(f32, size.width(), 0.0);
+        assert_approx_eq!(f32, size.height(), 0.0);
+    }
+
+    #[test]
+    fn test_text_calculate_size_single_line() {
+        let def = TextDefinition::new();
+        let text = Text::new(&def, "Hello World");
+        let size = text.calculate_size();
+        // Single line should have positive dimensions
+        assert!(size.width() > 0.0, "Width should be positive");
+        assert!(size.height() > 0.0, "Height should be positive");
+    }
+
+    #[test]
+    fn test_text_calculate_size_multiline() {
+        let def = TextDefinition::new();
+        let single = Text::new(&def, "Line 1");
+        let multi = Text::new(&def, "Line 1\nLine 2\nLine 3");
+
+        let single_size = single.calculate_size();
+        let multi_size = multi.calculate_size();
+
+        // Multi-line should be taller than single line
+        assert!(
+            multi_size.height() > single_size.height(),
+            "Multi-line text ({}) should be taller than single line ({})",
+            multi_size.height(),
+            single_size.height()
+        );
+    }
+
+    #[test]
+    fn test_text_calculate_size_includes_padding() {
+        let mut def_no_padding = TextDefinition::new();
+        def_no_padding.set_padding(Insets::uniform(0.0));
+        let text_no_padding = Text::new(&def_no_padding, "Test");
+        let size_no_padding = text_no_padding.calculate_size();
+
+        let mut def_with_padding = TextDefinition::new();
+        def_with_padding.set_padding(Insets::uniform(20.0));
+        let text_with_padding = Text::new(&def_with_padding, "Test");
+        let size_with_padding = text_with_padding.calculate_size();
+
+        // Verify the difference is exactly the padding amount (40 total)
+        let width_diff = size_with_padding.width() - size_no_padding.width();
+        let height_diff = size_with_padding.height() - size_no_padding.height();
+        assert_approx_eq!(f32, width_diff, 40.0);
+        assert_approx_eq!(f32, height_diff, 40.0);
+    }
+
+    #[test]
+    fn test_text_calculate_size_larger_font() {
+        let mut small_def = TextDefinition::new();
+        small_def.set_font_size(12);
+        small_def.set_padding(Insets::uniform(0.0));
+
+        let mut large_def = TextDefinition::new();
+        large_def.set_font_size(24);
+        large_def.set_padding(Insets::uniform(0.0));
+
+        let small_text = Text::new(&small_def, "Test");
+        let large_text = Text::new(&large_def, "Test");
+
+        let small_size = small_text.calculate_size();
+        let large_size = large_text.calculate_size();
+
+        // Larger font should produce larger size
+        assert!(
+            large_size.height() > small_size.height(),
+            "Larger font height ({}) should be greater than smaller font ({})",
+            large_size.height(),
+            small_size.height()
+        );
+        assert!(
+            large_size.width() > small_size.width(),
+            "Larger font width ({}) should be greater than smaller font ({})",
+            large_size.width(),
+            small_size.width()
+        );
+    }
+
+    #[test]
+    fn test_text_render_to_layers_has_content() {
+        let def = TextDefinition::new();
+        let text = Text::new(&def, "Hello");
+        let output = text.render_to_layers(Point::new(100.0, 100.0));
+        // Should have content (at least the Text layer)
+        assert!(!output.is_empty());
+    }
+
+    #[test]
+    fn test_text_render_with_background_adds_layer() {
+        let mut def = TextDefinition::new();
+        def.set_background_color(Some(Color::new("yellow").unwrap()));
+        let text = Text::new(&def, "With Background");
+        let output = text.render_to_layers(Point::new(0.0, 0.0));
+        // Should have content on both Background and Text layers
+        assert!(!output.is_empty());
+        // Render and verify we get multiple layer groups
+        let rendered = output.render();
+        assert!(
+            rendered.len() >= 2,
+            "Should have at least 2 layers (Background and Text), got {}",
+            rendered.len()
+        );
+    }
+
+    #[test]
+    fn test_text_content_accessor() {
+        let def = TextDefinition::new();
+        let text = Text::new(&def, "My Content");
+        assert_eq!(text.content(), "My Content");
+
+        let empty_text = Text::new(&def, "");
+        assert_eq!(empty_text.content(), "");
+
+        let multiline = Text::new(&def, "Line 1\nLine 2");
+        assert_eq!(multiline.content(), "Line 1\nLine 2");
+    }
+}
