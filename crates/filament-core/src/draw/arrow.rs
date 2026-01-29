@@ -375,3 +375,90 @@ impl Arrow {
             )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_arrow_style_from_str_valid() {
+        let straight: ArrowStyle = "straight".parse().unwrap();
+        assert_eq!(straight, ArrowStyle::Straight);
+
+        let curved: ArrowStyle = "curved".parse().unwrap();
+        assert_eq!(curved, ArrowStyle::Curved);
+
+        let orthogonal: ArrowStyle = "orthogonal".parse().unwrap();
+        assert_eq!(orthogonal, ArrowStyle::Orthogonal);
+    }
+
+    #[test]
+    fn test_arrow_style_from_str_invalid() {
+        let result: Result<ArrowStyle, _> = "invalid".parse();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_arrow_definition_setters() {
+        // Test set_style
+        let stroke = Rc::new(StrokeDefinition::default());
+        let mut def = ArrowDefinition::new(stroke);
+        def.set_style(ArrowStyle::Curved);
+        assert_eq!(*def.style(), ArrowStyle::Curved);
+        def.set_style(ArrowStyle::Orthogonal);
+        assert_eq!(*def.style(), ArrowStyle::Orthogonal);
+
+        // Test set_stroke
+        let mut new_stroke = StrokeDefinition::default();
+        new_stroke.set_width(5.0);
+        def.set_stroke(Rc::new(new_stroke));
+        assert_eq!(def.stroke().width(), 5.0);
+
+        // Test set_text
+        let new_text = Rc::new(TextDefinition::new());
+        def.set_text(new_text.clone());
+        assert!(Rc::ptr_eq(def.text(), &new_text));
+    }
+
+    #[test]
+    fn test_arrow_direction_from_str_valid() {
+        let forward: ArrowDirection = "->".parse().unwrap();
+        assert_eq!(forward, ArrowDirection::Forward);
+
+        let backward: ArrowDirection = "<-".parse().unwrap();
+        assert_eq!(backward, ArrowDirection::Backward);
+
+        let bidirectional: ArrowDirection = "<->".parse().unwrap();
+        assert_eq!(bidirectional, ArrowDirection::Bidirectional);
+
+        let plain: ArrowDirection = "-".parse().unwrap();
+        assert_eq!(plain, ArrowDirection::Plain);
+    }
+
+    #[test]
+    fn test_arrow_direction_from_str_invalid() {
+        let result: Result<ArrowDirection, _> = ">>".parse();
+        assert!(result.is_err());
+
+        let result: Result<ArrowDirection, _> = "invalid".parse();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_arrow_direction_display() {
+        assert_eq!(format!("{}", ArrowDirection::Forward), "->");
+        assert_eq!(format!("{}", ArrowDirection::Backward), "<-");
+        assert_eq!(format!("{}", ArrowDirection::Bidirectional), "<->");
+        assert_eq!(format!("{}", ArrowDirection::Plain), "-");
+    }
+
+    #[test]
+    fn test_create_path_data_from_points() {
+        let start = Point::new(10.0, 20.0);
+        let end = Point::new(100.0, 50.0);
+
+        let path = Arrow::create_path_data_from_points(start, end);
+
+        assert_eq!(path, "M 10 20 L 100 50");
+    }
+}
