@@ -3,7 +3,7 @@ use crate::geometry::{Insets, Point, Size};
 const BLOW_SHAPE_TEXT_GAP: f32 = 8.0;
 
 /// Enum defining different text positioning strategies
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextPositioningStrategy {
     /// Text is rendered inside/on top of the shape within its content area
     /// Used for content-supporting shapes
