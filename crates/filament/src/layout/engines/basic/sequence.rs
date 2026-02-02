@@ -211,9 +211,11 @@ impl Engine {
                 let position = component.position();
                 let lifeline_start_y = component.bounds().max_y();
                 let height = (lifeline_end - lifeline_start_y).max(0.0);
-                let lifeline =
-                    draw::PositionedDrawable::new(draw::Lifeline::with_default_style(height))
-                        .with_position(Point::new(position.x(), lifeline_start_y));
+                let lifeline = draw::PositionedDrawable::new(draw::Lifeline::new(
+                    Rc::new(draw::LifelineDefinition::default()),
+                    height,
+                ))
+                .with_position(Point::new(position.x(), lifeline_start_y));
 
                 (id, Participant::new(component, lifeline))
             })

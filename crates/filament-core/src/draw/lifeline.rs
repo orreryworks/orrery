@@ -86,11 +86,6 @@ impl Lifeline {
     pub fn new(definition: Rc<LifelineDefinition>, height: f32) -> Self {
         Self { definition, height }
     }
-
-    /// Creates a new Lifeline with default style and given height
-    pub fn with_default_style(height: f32) -> Self {
-        Self::new(Rc::new(LifelineDefinition::default()), height)
-    }
 }
 
 impl Drawable for Lifeline {
@@ -115,5 +110,54 @@ impl Drawable for Lifeline {
     fn size(&self) -> Size {
         // The lifeline has minimal width (just the stroke width) and its height
         Size::new(self.definition.stroke().width(), self.height)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use float_cmp::assert_approx_eq;
+
+    use super::*;
+    use crate::draw::StrokeStyle;
+
+    #[test]
+    fn test_lifeline_definition_new() {
+        let custom_stroke = Rc::new(StrokeDefinition::default_solid());
+        let def = LifelineDefinition::new(custom_stroke);
+
+        assert_eq!(*def.stroke().style(), StrokeStyle::Solid);
+        assert_approx_eq!(f32, def.stroke().width(), 2.0);
+    }
+
+    #[test]
+    fn test_lifeline_definition_set_stroke() {
+        let mut def = LifelineDefinition::default();
+
+        assert_eq!(*def.stroke().style(), StrokeStyle::Dashed);
+
+        let new_stroke = Rc::new(StrokeDefinition::default_solid());
+        def.set_stroke(new_stroke);
+
+        assert_eq!(*def.stroke().style(), StrokeStyle::Solid);
+        assert_approx_eq!(f32, def.stroke().width(), 2.0);
+    }
+
+    #[test]
+    fn test_lifeline_size() {
+        let def = Rc::new(LifelineDefinition::default());
+        let lifeline = Lifeline::new(def, 100.0);
+
+        let size = lifeline.size();
+        assert_approx_eq!(f32, size.width(), 1.0);
+        assert_approx_eq!(f32, size.height(), 100.0);
+    }
+
+    #[test]
+    fn test_lifeline_render_to_layers() {
+        let def = Rc::new(LifelineDefinition::default());
+        let lifeline = Lifeline::new(def, 200.0);
+
+        let output = lifeline.render_to_layers(Point::new(50.0, 10.0));
+        assert!(!output.is_empty());
     }
 }
