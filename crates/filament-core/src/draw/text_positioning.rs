@@ -107,3 +107,123 @@ impl TextPositioningStrategy {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_in_content_total_size() {
+        let strategy = TextPositioningStrategy::InContent;
+        let shape_size = Size::new(100.0, 50.0);
+        let text_size = Size::new(30.0, 10.0);
+
+        let total_size = strategy.calculate_total_size(shape_size, text_size);
+
+        // For InContent, the total size is just the shape size (text is inside)
+        assert_eq!(total_size.width(), shape_size.width());
+        assert_eq!(total_size.height(), shape_size.height());
+    }
+
+    #[test]
+    fn test_below_shape_total_size() {
+        let strategy = TextPositioningStrategy::BelowShape;
+        let shape_size = Size::new(50.0, 40.0);
+        let text_size = Size::new(30.0, 10.0);
+
+        let total_size = strategy.calculate_total_size(shape_size, text_size);
+
+        // Width should be max of shape and text widths (shaph is wider)
+        assert_eq!(total_size.width(), 50.0);
+        // Height = shape (40) + gap (8) + text (10) = 58
+        assert_eq!(total_size.height(), 58.0);
+    }
+
+    #[test]
+    fn test_below_shape_total_size_wide_text() {
+        let strategy = TextPositioningStrategy::BelowShape;
+        let shape_size = Size::new(30.0, 40.0);
+        let text_size = Size::new(80.0, 10.0);
+
+        let total_size = strategy.calculate_total_size(shape_size, text_size);
+
+        // Width should be max of shape and text widths (text is wider)
+        assert_eq!(total_size.width(), 80.0);
+        // Height = shape (40) + gap (8) + text (10) = 58
+        assert_eq!(total_size.height(), 58.0);
+    }
+
+    #[test]
+    fn test_below_shape_total_size_zero_text() {
+        let strategy = TextPositioningStrategy::BelowShape;
+        let shape_size = Size::new(50.0, 40.0);
+        let text_size = Size::new(0.0, 0.0);
+
+        let total_size = strategy.calculate_total_size(shape_size, text_size);
+
+        // When text is zero, should return shape size without gap
+        assert_eq!(total_size.width(), shape_size.width());
+        assert_eq!(total_size.height(), shape_size.height());
+    }
+
+    #[test]
+    fn test_text_affects_shape_content() {
+        // InContent: text is inside shape, so it affects content size
+        assert!(
+            TextPositioningStrategy::InContent.text_affects_shape_content(),
+            "InContent should return true - text affects shape content"
+        );
+
+        // BelowShape: text is outside shape, so it doesn't affect content size
+        assert!(
+            !TextPositioningStrategy::BelowShape.text_affects_shape_content(),
+            "BelowShape should return false - text doesn't affect shape content"
+        );
+    }
+
+    #[test]
+    fn test_calculate_shape_position_in_content() {
+        let strategy = TextPositioningStrategy::InContent;
+        let total_position = Point::new(100.0, 100.0);
+        let shape_size = Size::new(80.0, 60.0);
+        let text_size = Size::new(40.0, 12.0);
+
+        let shape_position =
+            strategy.calculate_shape_position(total_position, shape_size, text_size);
+
+        assert_eq!(shape_position, total_position);
+    }
+
+    #[test]
+    fn test_calculate_shape_position_below_shape() {
+        let strategy = TextPositioningStrategy::BelowShape;
+        let total_position = Point::new(100.0, 100.0);
+        let shape_size = Size::new(50.0, 40.0);
+        let text_size = Size::new(30.0, 10.0);
+
+        let shape_position =
+            strategy.calculate_shape_position(total_position, shape_size, text_size);
+
+        // Y should be higher (smaller value) since text is below
+        // Total height = 40 + 8 + 10 = 58
+        // Shape offset = (58 - 40) / 2 = 9
+        // Shape Y = 100 - 9 = 91
+        assert_eq!(shape_position, Point::new(100.0, 91.0));
+    }
+
+    #[test]
+    fn test_calculate_inner_content_min_point() {
+        let base_point = Point::new(10.0, 20.0);
+        let text_size = Size::new(50.0, 15.0);
+
+        // InContent: inner content starts below the text (20 + 15 = 35)
+        let in_content_result = TextPositioningStrategy::InContent
+            .calculate_inner_content_min_point(base_point, text_size);
+        assert_eq!(in_content_result, Point::new(10.0, 35.0));
+
+        // BelowShape: inner content starts at base point (text is outside shape)
+        let below_shape_result = TextPositioningStrategy::BelowShape
+            .calculate_inner_content_min_point(base_point, text_size);
+        assert_eq!(below_shape_result, base_point);
+    }
+}
