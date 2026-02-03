@@ -353,3 +353,21 @@ pub enum Element {
     /// Note annotation
     Note(Note),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_note_align_from_str() {
+        assert_eq!("over".parse::<NoteAlign>().unwrap(), NoteAlign::Over);
+        assert_eq!("left".parse::<NoteAlign>().unwrap(), NoteAlign::Left);
+        assert_eq!("right".parse::<NoteAlign>().unwrap(), NoteAlign::Right);
+        assert_eq!("top".parse::<NoteAlign>().unwrap(), NoteAlign::Top);
+        assert_eq!("bottom".parse::<NoteAlign>().unwrap(), NoteAlign::Bottom);
+
+        let result: Result<NoteAlign, _> = "invalid".parse();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Invalid alignment value");
+    }
+}

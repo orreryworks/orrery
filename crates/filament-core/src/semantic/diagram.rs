@@ -18,10 +18,9 @@ use serde::{Deserialize, Serialize};
 use crate::{color::Color, draw, semantic::element::Element};
 
 /// The kind of a diagram: component or sequence.
-#[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum DiagramKind {
     /// A component diagram showing structural relationships
-    #[default]
     Component,
     /// A sequence diagram showing interactions over time
     Sequence,
@@ -187,4 +186,42 @@ pub enum Block {
     Scope(Scope),
     /// An embedded diagram
     Diagram(Diagram),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_diagram_kind_display() {
+        assert_eq!(DiagramKind::Component.to_string(), "component");
+        assert_eq!(DiagramKind::Sequence.to_string(), "sequence");
+    }
+
+    #[test]
+    fn test_layout_engine_from_str() {
+        assert_eq!(
+            "basic".parse::<LayoutEngine>().unwrap(),
+            LayoutEngine::Basic
+        );
+        assert_eq!(
+            "sugiyama".parse::<LayoutEngine>().unwrap(),
+            LayoutEngine::Sugiyama
+        );
+
+        let result: Result<LayoutEngine, _> = "invalid".parse();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Unsupported layout engine");
+    }
+
+    #[test]
+    fn test_layout_engine_default() {
+        assert_eq!(LayoutEngine::default(), LayoutEngine::Basic);
+    }
+
+    #[test]
+    fn test_layout_engine_display() {
+        assert_eq!(LayoutEngine::Basic.to_string(), "basic");
+        assert_eq!(LayoutEngine::Sugiyama.to_string(), "sugiyama");
+    }
 }
