@@ -955,3 +955,239 @@ mod tests {
         assert_eq!(uniform_modified.left(), 5.0);
     }
 }
+
+#[cfg(test)]
+mod proptest_tests {
+    use float_cmp::approx_eq;
+    use proptest::prelude::*;
+
+    use super::*;
+
+    // ===================
+    // Strategies
+    // ===================
+
+    fn bounds_strategy() -> impl Strategy<Value = Bounds> {
+        (
+            -1000.0f32..1000.0,
+            -1000.0f32..1000.0,
+            1.0f32..500.0,
+            1.0f32..500.0,
+        )
+            .prop_map(|(x, y, w, h)| Bounds::new_from_top_left(Point::new(x, y), Size::new(w, h)))
+    }
+
+    fn size_strategy() -> impl Strategy<Value = Size> {
+        (0.0f32..1000.0, 0.0f32..1000.0).prop_map(|(w, h)| Size::new(w, h))
+    }
+
+    fn point_strategy() -> impl Strategy<Value = Point> {
+        (-1000.0f32..1000.0, -1000.0f32..1000.0).prop_map(|(x, y)| Point::new(x, y))
+    }
+
+    fn scale_strategy() -> impl Strategy<Value = f32> {
+        0.1f32..10.0
+    }
+
+    // ===================
+    // Property Test Functions
+    // ===================
+
+    /// Point addition should be commutative: p1 + p2 == p2 + p1.
+    fn check_point_add_is_commutative(p1: Point, p2: Point) -> Result<(), TestCaseError> {
+        let result1 = p1.add_point(p2);
+        let result2 = p2.add_point(p1);
+
+        prop_assert!(approx_eq!(f32, result1.x(), result2.x()));
+        prop_assert!(approx_eq!(f32, result1.y(), result2.y()));
+        Ok(())
+    }
+
+    /// Midpoint should always be between (or equal to) both points.
+    fn check_midpoint_is_between_points(p1: Point, p2: Point) -> Result<(), TestCaseError> {
+        let mid = p1.midpoint(p2);
+
+        let min_x = p1.x().min(p2.x());
+        let max_x = p1.x().max(p2.x());
+        let min_y = p1.y().min(p2.y());
+        let max_y = p1.y().max(p2.y());
+
+        prop_assert!(mid.x() >= min_x && mid.x() <= max_x);
+        prop_assert!(mid.y() >= min_y && mid.y() <= max_y);
+        Ok(())
+    }
+
+    /// Scaling then unscaling should return approximately the original point.
+    fn check_scale_inverse_roundtrip(p: Point, scale: f32) -> Result<(), TestCaseError> {
+        let scaled = p.scale(scale);
+        let unscaled = scaled.scale(1.0 / scale);
+
+        prop_assert!(approx_eq!(f32, unscaled.x(), p.x()));
+        prop_assert!(approx_eq!(f32, unscaled.y(), p.y()));
+        Ok(())
+    }
+
+    /// Adding then subtracting a point should return the original.
+    fn check_add_sub_inverse(p1: Point, p2: Point) -> Result<(), TestCaseError> {
+        let result = p1.add_point(p2).sub_point(p2);
+
+        prop_assert!(approx_eq!(f32, result.x(), p1.x(), epsilon = 0.001));
+        prop_assert!(approx_eq!(f32, result.y(), p1.y(), epsilon = 0.001));
+        Ok(())
+    }
+
+    /// Bounds merge should be commutative: a.merge(b) == b.merge(a).
+    fn check_bounds_merge_is_commutative(b1: Bounds, b2: Bounds) -> Result<(), TestCaseError> {
+        let merged1 = b1.merge(&b2);
+        let merged2 = b2.merge(&b1);
+
+        prop_assert!(approx_eq!(f32, merged1.min_x(), merged2.min_x()));
+        prop_assert!(approx_eq!(f32, merged1.min_y(), merged2.min_y()));
+        prop_assert!(approx_eq!(f32, merged1.max_x(), merged2.max_x()));
+        prop_assert!(approx_eq!(f32, merged1.max_y(), merged2.max_y()));
+        Ok(())
+    }
+
+    /// Bounds merge should be associative: (a.merge(b)).merge(c) == a.merge(b.merge(c)).
+    fn check_bounds_merge_is_associative(
+        b1: Bounds,
+        b2: Bounds,
+        b3: Bounds,
+    ) -> Result<(), TestCaseError> {
+        let left_assoc = b1.merge(&b2).merge(&b3);
+        let right_assoc = b1.merge(&b2.merge(&b3));
+
+        prop_assert!(approx_eq!(f32, left_assoc.min_x(), right_assoc.min_x()));
+        prop_assert!(approx_eq!(f32, left_assoc.min_y(), right_assoc.min_y()));
+        prop_assert!(approx_eq!(f32, left_assoc.max_x(), right_assoc.max_x()));
+        prop_assert!(approx_eq!(f32, left_assoc.max_y(), right_assoc.max_y()));
+        Ok(())
+    }
+
+    /// Merged bounds should contain both original bounds.
+    fn check_bounds_merge_contains_both(b1: Bounds, b2: Bounds) -> Result<(), TestCaseError> {
+        let merged = b1.merge(&b2);
+
+        // Merged bounds should contain b1
+        prop_assert!(merged.min_x() <= b1.min_x() + 0.001);
+        prop_assert!(merged.min_y() <= b1.min_y() + 0.001);
+        prop_assert!(merged.max_x() >= b1.max_x() - 0.001);
+        prop_assert!(merged.max_y() >= b1.max_y() - 0.001);
+
+        // Merged bounds should contain b2
+        prop_assert!(merged.min_x() <= b2.min_x() + 0.001);
+        prop_assert!(merged.min_y() <= b2.min_y() + 0.001);
+        prop_assert!(merged.max_x() >= b2.max_x() - 0.001);
+        prop_assert!(merged.max_y() >= b2.max_y() - 0.001);
+        Ok(())
+    }
+
+    /// Translating then inverse translating should return the original bounds.
+    fn check_translate_inverse_roundtrip(
+        bounds: Bounds,
+        offset: Point,
+    ) -> Result<(), TestCaseError> {
+        let roundtrip = bounds.translate(offset).inverse_translate(offset);
+
+        prop_assert!(approx_eq!(
+            f32,
+            roundtrip.min_x(),
+            bounds.min_x(),
+            epsilon = 0.001
+        ));
+        prop_assert!(approx_eq!(
+            f32,
+            roundtrip.min_y(),
+            bounds.min_y(),
+            epsilon = 0.001
+        ));
+        prop_assert!(approx_eq!(
+            f32,
+            roundtrip.max_x(),
+            bounds.max_x(),
+            epsilon = 0.001
+        ));
+        prop_assert!(approx_eq!(
+            f32,
+            roundtrip.max_y(),
+            bounds.max_y(),
+            epsilon = 0.001
+        ));
+        Ok(())
+    }
+
+    /// Size max should be commutative: a.max(b) == b.max(a).
+    fn check_size_max_is_commutative(s1: Size, s2: Size) -> Result<(), TestCaseError> {
+        let max1 = s1.max(s2);
+        let max2 = s2.max(s1);
+
+        prop_assert!(approx_eq!(f32, max1.width(), max2.width()));
+        prop_assert!(approx_eq!(f32, max1.height(), max2.height()));
+        Ok(())
+    }
+
+    /// Size max should be idempotent: a.max(a) == a.
+    fn check_size_max_is_idempotent(s: Size) -> Result<(), TestCaseError> {
+        let max_self = s.max(s);
+
+        prop_assert!(approx_eq!(f32, max_self.width(), s.width()));
+        prop_assert!(approx_eq!(f32, max_self.height(), s.height()));
+        Ok(())
+    }
+
+    // ===================
+    // Proptest Wrappers
+    // ===================
+
+    proptest! {
+        #[test]
+        fn point_add_is_commutative(p1 in point_strategy(), p2 in point_strategy()) {
+            check_point_add_is_commutative(p1, p2)?;
+        }
+
+        #[test]
+        fn midpoint_is_between_points(p1 in point_strategy(), p2 in point_strategy()) {
+            check_midpoint_is_between_points(p1, p2)?;
+        }
+
+        #[test]
+        fn scale_inverse_roundtrip(p in point_strategy(), scale in scale_strategy()) {
+            check_scale_inverse_roundtrip(p, scale)?;
+        }
+
+        #[test]
+        fn add_sub_inverse(p1 in point_strategy(), p2 in point_strategy()) {
+            check_add_sub_inverse(p1, p2)?;
+        }
+
+        #[test]
+        fn bounds_merge_is_commutative(b1 in bounds_strategy(), b2 in bounds_strategy()) {
+            check_bounds_merge_is_commutative(b1, b2)?;
+        }
+
+        #[test]
+        fn bounds_merge_is_associative(b1 in bounds_strategy(), b2 in bounds_strategy(), b3 in bounds_strategy()) {
+            check_bounds_merge_is_associative(b1, b2, b3)?;
+        }
+
+        #[test]
+        fn bounds_merge_contains_both(b1 in bounds_strategy(), b2 in bounds_strategy()) {
+            check_bounds_merge_contains_both(b1, b2)?;
+        }
+
+        #[test]
+        fn translate_inverse_roundtrip(bounds in bounds_strategy(), offset in point_strategy()) {
+            check_translate_inverse_roundtrip(bounds, offset)?;
+        }
+
+        #[test]
+        fn size_max_is_commutative(s1 in size_strategy(), s2 in size_strategy()) {
+            check_size_max_is_commutative(s1, s2)?;
+        }
+
+        #[test]
+        fn size_max_is_idempotent(s in size_strategy()) {
+            check_size_max_is_idempotent(s)?;
+        }
+    }
+}

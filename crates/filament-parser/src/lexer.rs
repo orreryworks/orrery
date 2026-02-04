@@ -1114,3 +1114,99 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod proptest_tests {
+    use proptest::prelude::*;
+
+    use super::*;
+
+    // ===================
+    // Strategies
+    // ===================
+
+    /// Strategy for generating valid identifier strings.
+    /// Identifiers start with a letter and contain letters, digits, and underscores.
+    fn valid_identifier_strategy() -> impl Strategy<Value = String> {
+        "[a-z][a-z0-9_]{0,20}".prop_filter("avoid keywords", |s| {
+            !matches!(
+                s.as_str(),
+                "diagram"
+                    | "component"
+                    | "sequence"
+                    | "note"
+                    | "on"
+                    | "left"
+                    | "right"
+                    | "over"
+                    | "activate"
+                    | "deactivate"
+                    | "alt"
+                    | "else"
+                    | "opt"
+                    | "loop"
+                    | "par"
+                    | "critical"
+                    | "group"
+                    | "break"
+                    | "ref"
+                    | "type"
+                    | "of"
+                    | "true"
+                    | "false"
+                    | "inf"
+            )
+        })
+    }
+
+    /// Strategy for generating valid float literal strings.
+    fn float_literal_strategy() -> impl Strategy<Value = String> {
+        (0u32..10000, 0u32..10000).prop_map(|(integer, fraction)| format!("{integer}.{fraction}"))
+    }
+
+    // ===================
+    // Property Test Functions
+    // ===================
+
+    /// Valid identifiers should always tokenize successfully.
+    fn check_valid_identifiers_tokenize(id: &str) -> Result<(), TestCaseError> {
+        let source = format!("diagram component; {id}: Rectangle;");
+        let result = tokenize(&source);
+
+        let err = result.err();
+        prop_assert!(
+            err.is_none(),
+            "Failed to tokenize valid identifier `{id}`: {err:?}"
+        );
+        Ok(())
+    }
+
+    /// Float literals with various integer and fractional parts should parse.
+    fn check_float_literals_parse(float_literal: &str) -> Result<(), TestCaseError> {
+        let source = format!("diagram component; x: Rectangle [width={float_literal}];");
+        let result = tokenize(&source);
+
+        let err = result.err();
+        prop_assert!(
+            err.is_none(),
+            "Failed to tokenize float literal `{float_literal}`: {err:?}"
+        );
+        Ok(())
+    }
+
+    // ===================
+    // Proptest Wrappers
+    // ===================
+
+    proptest! {
+        #[test]
+        fn valid_identifiers_tokenize(id in valid_identifier_strategy()) {
+            check_valid_identifiers_tokenize(&id)?;
+        }
+
+        #[test]
+        fn float_literals_parse(float_literal in float_literal_strategy()) {
+            check_float_literals_parse(&float_literal)?;
+        }
+    }
+}

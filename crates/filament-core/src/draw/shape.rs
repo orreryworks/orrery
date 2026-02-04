@@ -416,3 +416,86 @@ mod tests {
         assert_point_eq(result, b);
     }
 }
+
+#[cfg(test)]
+mod proptest_tests {
+    use float_cmp::approx_eq;
+    use proptest::prelude::*;
+
+    use super::*;
+
+    // ===================
+    // Strategies
+    // ===================
+
+    fn point_strategy() -> impl Strategy<Value = Point> {
+        (-1000.0f32..1000.0, -1000.0f32..1000.0).prop_map(|(x, y)| Point::new(x, y))
+    }
+
+    fn size_strategy() -> impl Strategy<Value = Size> {
+        (0.0f32..1000.0, 0.0f32..1000.0).prop_map(|(w, h)| Size::new(w, h))
+    }
+
+    // ===================
+    // Property Test Functions
+    // ===================
+
+    /// The intersection result should always have finite coordinates (no NaN or infinity).
+    fn check_intersection_result_is_finite(
+        a: Point,
+        b: Point,
+        size: Size,
+    ) -> Result<(), TestCaseError> {
+        let result = find_rectangle_intersection(a, b, size);
+
+        let x = result.x();
+        let y = result.y();
+        prop_assert!(x.is_finite(), "x coordinate is not finite: {x}");
+        prop_assert!(y.is_finite(), "y coordinate is not finite: {y}");
+        Ok(())
+    }
+
+    /// The intersection should either be on the rectangle boundary or equal to b (fallback).
+    fn check_intersection_on_boundary_or_fallback(
+        a: Point,
+        b: Point,
+        size: Size,
+    ) -> Result<(), TestCaseError> {
+        let result = find_rectangle_intersection(a, b, size);
+
+        let half_w = size.width() / 2.0;
+        let half_h = size.height() / 2.0;
+
+        // Check if result is on any of the four edges (with tolerance)
+        let on_left = approx_eq!(f32, result.x(), a.x() - half_w, epsilon = 0.1);
+        let on_right = approx_eq!(f32, result.x(), a.x() + half_w, epsilon = 0.1);
+        let on_top = approx_eq!(f32, result.y(), a.y() - half_h, epsilon = 0.1);
+        let on_bottom = approx_eq!(f32, result.y(), a.y() + half_h, epsilon = 0.1);
+
+        // Or check if result equals b (fallback case)
+        let is_fallback = approx_eq!(f32, result.x(), b.x(), epsilon = 0.1)
+            && approx_eq!(f32, result.y(), b.y(), epsilon = 0.1);
+
+        prop_assert!(
+            on_left || on_right || on_top || on_bottom || is_fallback,
+            "Result {result:?} is neither on boundary of rect at {a:?} with size {size:?} nor fallback to {b:?}"
+        );
+        Ok(())
+    }
+
+    // ===================
+    // Proptest Wrappers
+    // ===================
+
+    proptest! {
+        #[test]
+        fn intersection_result_is_finite(a in point_strategy(), b in point_strategy(), size in size_strategy()) {
+            check_intersection_result_is_finite(a, b, size)?;
+        }
+
+        #[test]
+        fn intersection_on_boundary_or_fallback(a in point_strategy(), b in point_strategy(), size in size_strategy()) {
+            check_intersection_on_boundary_or_fallback(a, b, size)?;
+        }
+    }
+}
