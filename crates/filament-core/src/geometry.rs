@@ -1,3 +1,34 @@
+//! Geometric primitives for diagram layout and positioning.
+//!
+//! This module provides fundamental geometric types used throughout Filament
+//! for calculating positions, sizes, and bounding boxes of diagram elements.
+//!
+//! # Overview
+//!
+//! - [`Point`] - A 2D coordinate in diagram space
+//! - [`Size`] - Width and height dimensions
+//! - [`Bounds`] - A rectangular bounding box defined by minimum and maximum coordinates
+//! - [`Insets`] - Padding/margin values for four sides
+//!
+//! # Coordinate System
+//!
+//! Filament uses a coordinate system consistent with SVG:
+//!
+//! ```text
+//!   (0,0) ────────► +X
+//!     │
+//!     │
+//!     │
+//!     ▼
+//!    +Y
+//! ```
+//!
+//! - **Origin**: Top-left corner at `(0, 0)`
+//! - **X-axis**: Increases rightward (positive to the right)
+//! - **Y-axis**: Increases downward (positive downward)
+//!
+//! This convention matches SVG and most screen coordinate systems.
+
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Point {
     x: f32,
