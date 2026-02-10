@@ -1,5 +1,45 @@
+//! Source code span tracking.
+//!
+//! This module provides types for tracking positions within source text,
+//! enabling precise source location information for diagnostics, suggestions,
+//! logging, and other tools that reference source code.
+//!
+//! - [`Span`] - A byte range within source text
+//! - [`Spanned<T>`] - A value with associated source location
+//!
+//! # Example
+//!
+//! ```
+//! # use filament_parser::Span;
+//! let span = Span::new(10..25);
+//! assert_eq!(span.start(), 10);
+//! assert_eq!(span.end(), 25);
+//! assert_eq!(span.len(), 15);
+//! ```
+
 use std::fmt;
 
+/// A byte range representing a location in source text.
+///
+/// Spans track the start and end byte offsets of syntax elements,
+/// enabling precise source mapping for diagnostics, suggestions, and tooling.
+///
+/// # Examples
+///
+/// ```
+/// # use filament_parser::Span;
+/// // Create a span covering bytes 10-25
+/// let span = Span::new(10..25);
+/// assert_eq!(span.start(), 10);
+/// assert_eq!(span.end(), 25);
+/// assert_eq!(span.len(), 15);
+///
+/// // Combine two spans into one that covers both
+/// let other = Span::new(30..40);
+/// let combined = span.union(other);
+/// assert_eq!(combined.start(), 10);
+/// assert_eq!(combined.end(), 40);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span {
     start: usize,
