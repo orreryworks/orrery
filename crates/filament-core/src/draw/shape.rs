@@ -56,8 +56,19 @@ pub trait ShapeDefinition: std::fmt::Debug {
         )
     }
 
+    /// Renders this shape to an SVG node element.
+    ///
+    /// # Arguments
+    ///
+    /// * `size` - The dimensions of the shape to render.
+    /// * `position` - The center position of the shape.
+    ///
+    /// # Returns
+    ///
+    /// A boxed SVG node representing the rendered shape.
     fn render_to_svg(&self, size: Size, position: Point) -> Box<dyn svg::Node>;
 
+    /// Creates a boxed clone of this shape definition.
     fn clone_box(&self) -> Box<dyn ShapeDefinition>;
 
     /// Set the fill color for the rectangle
@@ -82,6 +93,11 @@ pub trait ShapeDefinition: std::fmt::Debug {
     /// Set stroke definition using Rc.
     fn set_stroke(&mut self, stroke: Rc<StrokeDefinition>);
 
+    /// Returns the minimum content size required for the shape.
+    ///
+    /// For shapes that support content, this returns a minimum size
+    /// to ensure the shape has adequate space. For content-free shapes,
+    /// returns a zero size.
     fn min_content_size(&self) -> Size {
         if self.supports_content() {
             Size::new(10.0, 10.0)
