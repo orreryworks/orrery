@@ -29,6 +29,29 @@
 //!
 //! This convention matches SVG and most screen coordinate systems.
 
+/// A 2D point representing a position in diagram coordinate space.
+///
+/// Points use `f32` coordinates and provide operations for basic vector math.
+/// The coordinate system has origin at top-left with Y increasing downward,
+/// (see [module documentation](self) for details).
+///
+/// # Examples
+///
+/// ```
+/// # use filament_core::geometry::Point;
+/// let p1 = Point::new(10.0, 20.0);
+/// let p2 = Point::new(5.0, 5.0);
+///
+/// // Vector addition
+/// let sum = p1.add_point(p2);
+/// assert_eq!(sum.x(), 15.0);
+/// assert_eq!(sum.y(), 25.0);
+///
+/// // Midpoint calculation
+/// let mid = p1.midpoint(p2);
+/// assert_eq!(mid.x(), 7.5);
+/// assert_eq!(mid.y(), 12.5);
+/// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Point {
     x: f32,
@@ -68,7 +91,19 @@ impl Point {
         self.x == 0.0 && self.y == 0.0
     }
 
-    /// Adds another point to this point, returning a new point
+    /// Adds another point to this point, returning a new point.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use filament_core::geometry::Point;
+    /// let position = Point::new(100.0, 50.0);
+    /// let offset = Point::new(10.0, -5.0);
+    ///
+    /// let moved = position.add_point(offset);
+    /// assert_eq!(moved.x(), 110.0);
+    /// assert_eq!(moved.y(), 45.0);
+    /// ```
     pub fn add_point(self, other: Point) -> Self {
         Self {
             x: self.x + other.x,
@@ -97,7 +132,22 @@ impl Point {
         self.x.hypot(self.y)
     }
 
-    /// Multiplies both coordinates by the given factor
+    /// Multiplies both coordinates by the given factor.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use filament_core::geometry::Point;
+    /// let point = Point::new(10.0, 20.0);
+    ///
+    /// let doubled = point.scale(2.0);
+    /// assert_eq!(doubled.x(), 20.0);
+    /// assert_eq!(doubled.y(), 40.0);
+    ///
+    /// let halved = point.scale(0.5);
+    /// assert_eq!(halved.x(), 5.0);
+    /// assert_eq!(halved.y(), 10.0);
+    /// ```
     pub fn scale(self, factor: f32) -> Self {
         Self {
             x: self.x * factor,
@@ -285,10 +335,24 @@ impl Bounds {
         }
     }
 
-    /// Merges two bounds to create a larger bounds that contains both
+    /// Merges two bounds to create a larger bounds that contains both.
     ///
     /// The resulting bounds will have the minimum values of both bounds for min_x and min_y,
     /// and the maximum values of both bounds for max_x and max_y.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use filament_core::geometry::{Bounds, Point, Size};
+    /// let header = Bounds::new_from_top_left(Point::new(0.0, 0.0), Size::new(100.0, 30.0));
+    /// let content = Bounds::new_from_top_left(Point::new(10.0, 40.0), Size::new(120.0, 80.0));
+    ///
+    /// let combined = header.merge(&content);
+    /// assert_eq!(combined.min_x(), 0.0);   // From header
+    /// assert_eq!(combined.min_y(), 0.0);   // From header
+    /// assert_eq!(combined.width(), 130.0); // Spans both (0 to 130)
+    /// assert_eq!(combined.height(), 120.0); // Spans both (0 to 120)
+    /// ```
     pub fn merge(&self, other: &Self) -> Self {
         Self {
             min_x: self.min_x.min(other.min_x),
@@ -298,9 +362,23 @@ impl Bounds {
         }
     }
 
-    /// Moves the bounds by the specified offset
+    /// Moves the bounds by the specified offset.
     ///
     /// This translates both the minimum and maximum coordinates by the given amount.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use filament_core::geometry::{Bounds, Point, Size};
+    /// let bounds = Bounds::new_from_top_left(Point::new(10.0, 20.0), Size::new(50.0, 30.0));
+    /// let offset = Point::new(100.0, 50.0);
+    ///
+    /// let moved = bounds.translate(offset);
+    /// assert_eq!(moved.min_x(), 110.0);
+    /// assert_eq!(moved.min_y(), 70.0);
+    /// assert_eq!(moved.width(), 50.0);  // Size unchanged
+    /// assert_eq!(moved.height(), 30.0); // Size unchanged
+    /// ```
     pub fn translate(&self, offset: Point) -> Self {
         Self {
             min_x: self.min_x + offset.x,
