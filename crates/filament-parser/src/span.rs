@@ -118,6 +118,9 @@ impl<T> Spanned<T> {
         Self { value, span }
     }
 
+    /// Returns the source span associated with this value.
+    ///
+    /// The span indicates where in the source text this value originated.
     pub fn span(&self) -> Span {
         self.span
     }

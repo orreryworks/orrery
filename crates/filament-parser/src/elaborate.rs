@@ -42,6 +42,19 @@ impl ElaborateConfig {
     }
 }
 
+/// Builds semantic diagrams from parser AST.
+///
+/// The builder transforms validated AST nodes into the semantic model,
+/// resolving type references and constructing the final diagram structure
+/// ready for layout and rendering.
+///
+/// # Overview
+///
+/// The elaboration process:
+/// 1. Registers built-in type definitions
+/// 2. Processes user-defined types from the AST
+/// 3. Resolves type references and validates structure
+/// 4. Constructs the semantic [`Diagram`](filament_core::semantic::Diagram)
 pub struct Builder<'a> {
     cfg: ElaborateConfig,
     type_definitions: HashMap<Id, elaborate_utils::TypeDefinition>,
@@ -49,6 +62,16 @@ pub struct Builder<'a> {
 }
 
 impl<'a> Builder<'a> {
+    /// Creates a new builder with the given configuration.
+    ///
+    /// Initializes the builder with built-in type definitions and prepares
+    /// it for elaborating diagram AST nodes.
+    ///
+    /// # Arguments
+    ///
+    /// * `cfg` - Configuration controlling elaboration behavior, including
+    ///   default layout engines for different diagram types.
+    /// * `_source` - Source text reference that provides the lifetime `'a` for the builder.
     pub fn new(cfg: ElaborateConfig, _source: &'a str) -> Self {
         let type_definitions = builtin_types::defaults();
         let type_definition_map = type_definitions
@@ -67,6 +90,25 @@ impl<'a> Builder<'a> {
     // Main Entry Methods
     // ============================================================================
 
+    /// Builds a semantic diagram from a parser AST element.
+    ///
+    /// Transforms the validated AST into the semantic model by processing
+    /// type definitions, resolving references, and constructing the final
+    /// diagram structure.
+    ///
+    /// # Arguments
+    ///
+    /// * `diag` - A spanned parser element that must be a diagram.
+    ///
+    /// # Returns
+    ///
+    /// The elaborated semantic diagram ready for layout and rendering.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if elaboration fails. This includes all semantic
+    /// errors in the `E3xx` range, such as undefined types, invalid
+    /// attributes, nested diagrams, or structural validation failures.
     pub fn build(mut self, diag: &Spanned<parser_types::Element<'a>>) -> Result<semantic::Diagram> {
         debug!("Building elaborated diagram");
         match diag.inner() {
