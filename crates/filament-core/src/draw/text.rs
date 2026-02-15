@@ -1,3 +1,37 @@
+//! Text rendering definitions for diagram labels and content.
+//!
+//! This module provides types for configuring text appearance and rendering
+//! text elements in diagrams. Text is rendered as SVG `<text>` elements with
+//! optional background rectangles.
+//!
+//! # Overview
+//!
+//! - [`TextDefinition`] - Reusable text style configuration
+//! - [`Text`] - A renderable text element combining content with a [`TextDefinition`]
+//!
+//! # Quick Start
+//!
+//! ```
+//! # use filament_core::draw::{TextDefinition, Text};
+//! // Create a text style
+//! let mut style = TextDefinition::new();
+//! style.set_font_family("Helvetica");
+//! style.set_font_size(14);
+//!
+//! // Create a text element
+//! let text = Text::new(&style, "Hello, Diagram!");
+//! let size = text.calculate_size();
+//! assert!(size.width() > 0.0);
+//! ```
+//!
+//! # Rendering
+//!
+//! When rendered via the [`Drawable`] trait, [`Text`] produces:
+//! - An SVG `<text>` element on the [`Text`](crate::draw::RenderLayer::Text) layer
+//! - An optional background on the
+//!   [`Background`](crate::draw::RenderLayer::Background) layer (depending on
+//!   the [`TextDefinition`] configuration)
+
 use std::sync::{Arc, Mutex, OnceLock};
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
@@ -29,6 +63,35 @@ static DEFAULT_TEXT: OnceLock<TextDefinition> = OnceLock::new();
 // Type Definitions
 // =============================================================================
 
+/// Defines the visual style for text elements in diagrams.
+///
+/// `TextDefinition` configures font properties, colors, and padding for text
+/// rendered in diagram nodes, labels, and annotations. Multiple [`Text`]
+/// elements can share the same definition for consistent styling.
+///
+/// # Default Values
+///
+/// | Property | Default |
+/// |----------|---------|
+/// | Font family | `"Arial"` |
+/// | Font size | `15` |
+/// | Background color | `None` |
+/// | Text color | `None` (SVG default, typically black) |
+/// | Padding | Zero on all sides |
+///
+/// # Examples
+///
+/// ```
+/// # use filament_core::draw::TextDefinition;
+/// # use filament_core::color::Color;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let mut style = TextDefinition::new();
+/// style.set_font_family("Helvetica");
+/// style.set_font_size(14);
+/// style.set_color(Some(Color::new("navy")?));
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct TextDefinition {
     font_family: String,
@@ -56,11 +119,16 @@ impl TextDefinition {
         })
     }
 
-    /// Create a new text definition with default values
+    /// Creates a new text definition with default values.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Sets the font size in points.
+    ///
+    /// # Arguments
+    ///
+    /// * `size` - The font size in points.
     pub fn set_font_size(&mut self, size: u16) {
         self.font_size = size;
     }
@@ -103,6 +171,10 @@ impl TextDefinition {
     /// Padding affects the size of the background rectangle (if present) and creates
     /// space between the text and the background edges. Padding is applied even when
     /// no background color is set, affecting the overall size calculations.
+    ///
+    /// # Arguments
+    ///
+    /// * `padding` - The [`Insets`] defining padding on each side.
     pub fn set_padding(&mut self, padding: Insets) {
         self.padding = padding;
     }
@@ -143,6 +215,27 @@ impl Default for TextDefinition {
     }
 }
 
+/// A renderable text element combining content with styling.
+///
+/// `Text` pairs a string value with a [`TextDefinition`] to produce a
+/// measurable and renderable text element. It is used for node labels,
+/// edge annotations, and other textual content in diagrams.
+///
+/// # Examples
+///
+/// ```
+/// # use filament_core::draw::{TextDefinition, Text};
+/// let style = TextDefinition::new();
+/// let text = Text::new(&style, "Component");
+///
+/// // Measure the text
+/// let size = text.calculate_size();
+/// assert!(size.width() > 0.0);
+/// assert!(size.height() > 0.0);
+///
+/// // Access the content
+/// assert_eq!(text.content(), "Component");
+/// ```
 #[derive(Debug, Clone)]
 pub struct Text<'a> {
     definition: &'a TextDefinition,
@@ -150,6 +243,12 @@ pub struct Text<'a> {
 }
 
 impl<'a> Text<'a> {
+    /// Creates a new text element with the given definition and content.
+    ///
+    /// # Arguments
+    ///
+    /// * `definition` - The [`TextDefinition`] controlling text appearance.
+    /// * `content` - The text string to render.
     pub fn new(definition: &'a TextDefinition, content: &'a str) -> Self {
         Self {
             definition,
@@ -157,6 +256,7 @@ impl<'a> Text<'a> {
         }
     }
 
+    /// Returns the text content of this element.
     pub fn content(&self) -> &str {
         self.content
     }
