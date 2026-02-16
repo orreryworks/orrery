@@ -1,50 +1,86 @@
+//! Configuration types for Filament diagram rendering.
+//!
+//! This module provides configuration structures that control how diagrams
+//! are laid out and styled. All types implement [`serde::Deserialize`] for
+//! flexible loading from external sources.
+//!
+//! # Overview
+//!
+//! - [`AppConfig`] - Top-level application configuration combining layout and style settings.
+//! - [`LayoutConfig`] - Controls which [`LayoutEngine`] is used for each diagram type.
+//! - [`StyleConfig`] - Controls visual styling options such as background color.
+//!
+//! # Example
+//!
+//! ```
+//! # use filament::config::AppConfig;
+//! // Use default configuration
+//! let config = AppConfig::default();
+//! assert!(config.style().background_color().is_ok());
+//! ```
+
 use serde::Deserialize;
 
 use filament_core::{color::Color, semantic::LayoutEngine};
 
-/// Application configuration loaded from TOML file
+/// Top-level application configuration combining layout and style settings.
+///
+/// Groups [`LayoutConfig`] and [`StyleConfig`] into a single configuration
+/// root.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct AppConfig {
-    /// Layout configuration section
+    /// Layout configuration section.
     #[serde(default)]
     layout: LayoutConfig,
 
-    /// Style configuration section
+    /// Style configuration section.
     #[serde(default)]
     style: StyleConfig,
 }
 
 impl AppConfig {
-    /// Create a new AppConfig with the specified layout and style configurations
+    /// Creates a new [`AppConfig`] with the specified layout and style configurations.
+    ///
+    /// # Arguments
+    ///
+    /// * `layout` - Layout engine settings for diagram types.
+    /// * `style` - Visual styling options.
     pub fn new(layout: LayoutConfig, style: StyleConfig) -> Self {
         Self { layout, style }
     }
 
-    /// Get the layout configuration
+    /// Returns the layout configuration.
     pub fn layout(&self) -> &LayoutConfig {
         &self.layout
     }
 
-    /// Get the style configuration
+    /// Returns the style configuration.
     pub fn style(&self) -> &StyleConfig {
         &self.style
     }
 }
 
-/// Layout configuration section
+/// Layout engine configuration for different diagram types.
+///
+/// Controls which [`LayoutEngine`] variant is used for each diagram type.
 #[derive(Debug, Default, Clone, Deserialize)]
 pub struct LayoutConfig {
-    /// Default layout engine for component diagrams
+    /// Default [`LayoutEngine`] for component diagrams.
     #[serde(default)]
     component: LayoutEngine,
 
-    /// Default layout engine for sequence diagrams
+    /// Default [`LayoutEngine`] for sequence diagrams.
     #[serde(default)]
     sequence: LayoutEngine,
 }
 
 impl LayoutConfig {
-    /// Create a new LayoutConfig with the specified layout engines
+    /// Creates a new [`LayoutConfig`] with the specified layout engines.
+    ///
+    /// # Arguments
+    ///
+    /// * `component` - Layout engine for component diagrams.
+    /// * `sequence` - Layout engine for sequence diagrams.
     pub fn new(component: LayoutEngine, sequence: LayoutEngine) -> Self {
         Self {
             component,
@@ -52,28 +88,35 @@ impl LayoutConfig {
         }
     }
 
-    /// Get the layout engine for component diagrams
+    /// Returns the [`LayoutEngine`] for component diagrams.
     pub fn component(&self) -> LayoutEngine {
         self.component
     }
 
-    /// Get the layout engine for sequence diagrams
+    /// Returns the [`LayoutEngine`] for sequence diagrams.
     pub fn sequence(&self) -> LayoutEngine {
         self.sequence
     }
 }
 
-/// Style configuration section
+/// Visual styling configuration for rendered diagrams.
+///
+/// Controls appearance options such as background color. Fields that are
+/// not set fall back to renderer defaults.
 #[derive(Debug, Default, Clone, Deserialize)]
 pub struct StyleConfig {
-    /// Default background color for diagrams
+    /// Default background [`Color`] for diagrams, as a color string.
     #[serde(default)]
     background_color: Option<String>,
 }
 
 impl StyleConfig {
-    /// Get the background color from configuration
-    /// Returns None if no background color is configured
+    /// Returns the parsed background [`Color`], or `None` if no color is configured.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configured color string cannot be parsed
+    /// into a valid [`Color`].
     pub fn background_color(&self) -> Result<Option<Color>, String> {
         self.background_color
             .as_ref()
