@@ -1,3 +1,15 @@
+//! Positioned diagram elements and their relationships.
+//!
+//! This module provides the core layout types for representing diagram elements
+//! with computed positions and sizes. A [`Component`] wraps a semantic node with
+//! positioning information and is used across all diagram kinds.
+//!
+//! # Types
+//!
+//! - [`Component`] - A positioned diagram element with bounds
+//! - [`LayoutRelation`] - A relation between components with layout-specific data
+//! - [`Layout`] - A complete layout of components and their connecting relations
+
 use std::{collections::HashMap, rc::Rc};
 
 use log::{debug, error};

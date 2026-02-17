@@ -1,3 +1,17 @@
+//! Layer organization for diagram rendering.
+//!
+//! Layers control the z-order of diagram elements during export.
+//! Elements on higher layers render on top of elements on lower layers,
+//! enabling nested diagrams to overlay their containers.
+//!
+//! # Types
+//!
+//! - [`LayoutContent`] - Content types that can be placed in a layer
+//! - [`Layer`] - A single rendering layer with z-index, offset, and optional clipping
+//! - [`LayeredLayout`] - Complete layout organized into ordered layers
+//! - [`ContentStack`] - A stack of positioned content items for layout management
+//! - [`PositionedContent`] - Content item with an associated position offset
+
 use log::debug;
 
 use filament_core::{
