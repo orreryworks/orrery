@@ -45,10 +45,22 @@ impl Color {
         }
     }
 
-    /// Get the sanitized ID-safe string for this color (for use in markers)
+    /// Returns a sanitized, ID-safe string representation of this color.
     ///
-    /// This converts the color to a string representation that is safe to use
-    /// as an SVG ID attribute.
+    /// Converts the color to a string suitable for use as an SVG ID attribute
+    /// (e.g., in marker definitions). The result contains only alphanumeric
+    /// characters and underscores, with a letter prefix guaranteed.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use filament_core::color::Color;
+    ///
+    /// let color = Color::new("#ff8000").unwrap();
+    /// let id_str = color.to_id_safe_string();
+    /// assert!(id_str.chars().all(|c| c.is_alphanumeric() || c == '_'));
+    /// assert!(!id_str.contains('#'));
+    /// ```
     pub fn to_id_safe_string(self) -> String {
         let color_str = self.to_string();
         // Replace invalid ID characters with underscores

@@ -1,3 +1,9 @@
+//! SVG export backend for Filament diagrams.
+//!
+//! This module provides `SvgBuilder` for configuring and `Svg` for rendering
+//! laid-out diagrams to SVG files. It delegates to submodules for
+//! diagram-kind-specific rendering.
+
 mod component;
 mod layer;
 mod sequence;
@@ -16,14 +22,14 @@ use filament_core::{
 
 use crate::{config::StyleConfig, error::FilamentError, export, layout::layer::LayeredLayout};
 
-/// SVG exporter builder to configure and build the SVG exporter
+/// SVG exporter builder to configure and build the SVG exporter.
 pub struct SvgBuilder<'a> {
     file_name: String,
     style: Option<&'a StyleConfig>,
     diagram: Option<&'a semantic::Diagram>,
 }
 
-/// Base SVG exporter structure with common properties and methods
+/// Base SVG exporter structure with common properties and methods.
 pub struct Svg {
     file_name: String,
     background_color: Option<Color>,
@@ -39,19 +45,19 @@ impl<'a> SvgBuilder<'a> {
         }
     }
 
-    /// Set style configuration
+    /// Sets the style configuration.
     pub fn with_style(mut self, style: &'a StyleConfig) -> Self {
         self.style = Some(style);
         self
     }
 
-    /// Set diagram to extract styles from
+    /// Sets the diagram to extract styles from.
     pub fn with_diagram(mut self, diagram: &'a semantic::Diagram) -> Self {
         self.diagram = Some(diagram);
         self
     }
 
-    /// Build the SVG exporter with the configured options
+    /// Builds the SVG exporter with the configured options.
     pub fn build(self) -> Result<Svg, FilamentError> {
         let mut background_color = None;
 

@@ -1,3 +1,5 @@
+//! Filament CLI entry point.
+
 use std::{process, str::FromStr};
 
 use clap::Parser;

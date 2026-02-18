@@ -1,3 +1,5 @@
+//! Component shape definition for diagram elements.
+
 use std::{fmt, rc::Rc};
 
 use svg::{self, node::element as svg_element};

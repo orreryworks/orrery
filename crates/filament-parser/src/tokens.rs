@@ -1,3 +1,11 @@
+//! Token definitions for the Filament lexer.
+//!
+//! This module defines the token types produced by lexical analysis,
+//! representing the smallest meaningful units of Filament source code.
+//!
+//! - [`Token`] - The token type enum covering keywords, literals, operators, and punctuation.
+//! - [`PositionedToken`] - A token paired with its [`Span`] in the source text.
+
 use std::fmt;
 
 use winnow::stream::Location;

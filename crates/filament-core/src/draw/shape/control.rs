@@ -1,3 +1,5 @@
+//! Control shape definition for diagram elements.
+
 use std::rc::Rc;
 
 use svg::{self, node::element as svg_element};

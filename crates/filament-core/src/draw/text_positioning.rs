@@ -1,3 +1,8 @@
+//! Text positioning strategies for shape labels.
+//!
+//! This module defines [`TextPositioningStrategy`], which controls how
+//! text is positioned relative to a shape.
+
 use crate::geometry::{Insets, Point, Size};
 
 const BLOW_SHAPE_TEXT_GAP: f32 = 8.0;

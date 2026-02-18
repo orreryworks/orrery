@@ -1,3 +1,8 @@
+//! Arrow drawable types and SVG marker generation.
+//!
+//! This module provides types for defining and rendering arrows in diagrams,
+//! including stroke styling, path shapes, direction markers, and SVG output.
+
 use std::{collections::HashMap, fmt, rc::Rc, str};
 
 use svg::{self, node::element as svg_element};

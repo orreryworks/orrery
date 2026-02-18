@@ -1,3 +1,5 @@
+//! SVG rendering for layout layers.
+
 use log::debug;
 use svg::{self, node::element as svg_element};
 
@@ -12,7 +14,7 @@ use crate::layout::{
 };
 
 impl Svg {
-    /// Render the complete layered layout to an SVG document
+    /// Renders the complete layered layout to an SVG document.
     pub fn render_layered_layout(&mut self, layout: &LayeredLayout) -> svg::Document {
         // Calculate content bounds
         let content_bounds = self.calculate_layered_layout_bounds(layout);
@@ -70,14 +72,15 @@ impl Svg {
         doc.add(main_group)
     }
 
-    /// Creates SVG clip path for a layer
+    /// Creates an SVG clip path for a layer.
     ///
     /// This generates an SVG Definitions element containing a ClipPath with the specified ID.
     /// The clip path contains a rectangle that matches the provided bounds.
     ///
-    /// # Parameters
-    /// * `clip_id` - Unique identifier for the clip path
-    /// * `bounds` - The bounds to use for clipping
+    /// # Arguments
+    ///
+    /// * `clip_id` - Unique identifier for the clip path.
+    /// * `bounds` - The bounds to use for clipping.
     fn create_clip_path(&self, clip_id: &str, bounds: Bounds) -> svg_element::Definitions {
         let defs = svg_element::Definitions::new();
 
@@ -95,14 +98,15 @@ impl Svg {
         defs.add(clip_path)
     }
 
-    /// Calculate the combined bounds of all layers, considering their offsets
+    /// Calculates the combined bounds of all layers, considering their offsets.
     ///
-    /// This method computes the total bounding box that contains all layers in the layout,
+    /// Computes the total bounding box that contains all layers in the layout,
     /// accounting for layer offsets. This is used to determine the overall size needed
     /// for the SVG document.
     ///
     /// # Returns
-    /// A Bounds object that encompasses all content in all layers
+    ///
+    /// A `Bounds` object that encompasses all content in all layers.
     fn calculate_layered_layout_bounds(&self, layout: &LayeredLayout) -> Bounds {
         let mut layout_iter = layout.iter_from_bottom();
         // Start with the bounds of the first (bottom) layer.
@@ -126,7 +130,7 @@ impl Svg {
         combined_bounds
     }
 
-    /// Calculate bounds for a single layer
+    /// Calculates bounds for a single layer.
     fn calculate_layer_bounds(&self, layer: &Layer) -> Bounds {
         match layer.content() {
             LayoutContent::Component(comp_layout) => {
@@ -138,16 +142,18 @@ impl Svg {
         }
     }
 
-    /// Render a single layer to SVG
+    /// Renders a single layer to SVG.
     ///
-    /// This method creates an SVG group for the layer, applies transformations and clipping,
+    /// Creates an SVG group for the layer, applies transformations and clipping,
     /// and renders the layer's content (either component or sequence diagram).
     ///
-    /// # Parameters
-    /// * `layer` - The layer to render
+    /// # Arguments
+    ///
+    /// * `layer` - The layer to render.
     ///
     /// # Returns
-    /// An SVG Group element containing the rendered layer
+    ///
+    /// An SVG `Group` element containing the rendered layer.
     fn render_layer(&mut self, layer: &Layer) -> svg_element::Group {
         // Create a group for this layer
         let mut layer_group = svg_element::Group::new();
@@ -175,7 +181,7 @@ impl Svg {
             .fold(layer_group, |group, content_group| group.add(content_group))
     }
 
-    /// Render layer content by dispatching to appropriate content-specific renderer
+    /// Renders layer content by dispatching to the appropriate content-specific renderer.
     fn render_layer_content(&mut self, content: &LayoutContent) -> Vec<Box<dyn svg::Node>> {
         match content {
             LayoutContent::Component(layout) => self
@@ -185,7 +191,7 @@ impl Svg {
         }
     }
 
-    /// Generic function to render a ContentStack with positioned content
+    /// Renders a [`ContentStack`] with positioned content.
     fn render_content_stack<T: LayoutBounds>(
         &mut self,
         content_stack: &ContentStack<T>,
@@ -222,7 +228,7 @@ impl Svg {
         groups
     }
 
-    /// Render component-specific content
+    /// Renders component-specific content.
     fn render_component_content(&mut self, content: &component::Layout) -> Vec<Box<dyn svg::Node>> {
         let mut output = LayeredOutput::new();
 
@@ -245,7 +251,7 @@ impl Svg {
         output.render()
     }
 
-    /// Render sequence-specific content
+    /// Renders sequence-specific content.
     fn render_sequence_content(&mut self, content: &sequence::Layout) -> Vec<Box<dyn svg::Node>> {
         let mut output = LayeredOutput::new();
 

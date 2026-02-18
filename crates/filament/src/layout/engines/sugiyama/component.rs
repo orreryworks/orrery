@@ -1,3 +1,5 @@
+//! Sugiyama layout engine for component diagrams.
+
 use std::{collections::HashMap, rc::Rc};
 
 use log::debug;

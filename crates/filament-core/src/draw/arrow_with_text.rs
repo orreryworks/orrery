@@ -1,3 +1,8 @@
+//! Arrow-with-text composite drawable.
+//!
+//! This module combines an [`Arrow`] with a [`Text`] label, positioning the
+//! text along the arrow path.
+
 use crate::{
     draw::{Arrow, ArrowDrawer, Drawable, LayeredOutput, RenderLayer, Text},
     geometry::Point,

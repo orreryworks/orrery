@@ -1,3 +1,5 @@
+//! SVG rendering for sequence diagrams.
+
 use filament_core::{
     draw::{self, Drawable as _, LayeredOutput},
     geometry::{Bounds, Point},
@@ -61,15 +63,17 @@ impl Svg {
         )
     }
 
-    /// Render a fragment box in a sequence diagram.
+    /// Renders a fragment box in a sequence diagram.
     ///
     /// Converts a fragment into its SVG representation.
     ///
     /// # Arguments
-    /// * `fragment` - The fragment to render with its sections and bounds
+    ///
+    /// * `fragment` - The fragment to render with its sections and bounds.
     ///
     /// # Returns
-    /// A boxed SVG node representing the fragment
+    ///
+    /// A [`LayeredOutput`] representing the fragment.
     pub fn render_fragment(
         &self,
         fragment: &draw::PositionedDrawable<draw::Fragment>,
@@ -77,15 +81,17 @@ impl Svg {
         fragment.render_to_layers()
     }
 
-    /// Render a note in a sequence diagram.
+    /// Renders a note in a sequence diagram.
     ///
     /// Converts a note into its SVG representation.
     ///
     /// # Arguments
-    /// * `note` - The positioned note to render
+    ///
+    /// * `note` - The positioned note to render.
     ///
     /// # Returns
-    /// A boxed SVG node representing the note
+    ///
+    /// A [`LayeredOutput`] representing the note.
     pub fn render_note(&self, note: &draw::PositionedDrawable<draw::Note>) -> LayeredOutput {
         note.render_to_layers()
     }

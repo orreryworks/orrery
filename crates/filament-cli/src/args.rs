@@ -1,4 +1,8 @@
-//! Command-line argument definitions
+//! Command-line argument definitions for the Filament CLI.
+//!
+//! This module defines the [`Args`] structure parsed from the command line
+//! using [`clap`]. Arguments control input/output paths, configuration file
+//! selection, and logging verbosity.
 
 use clap::Parser;
 

@@ -1,3 +1,12 @@
+//! Lexical analyzer for Filament source text.
+//!
+//! The lexer converts source text into a stream of [`Token`]s for parsing.
+//! It handles whitespace, comments, string literals, and all language tokens
+//! defined in the [`tokens`](super::tokens) module.
+//!
+//! The public entry point is [`tokenize`], which performs error-recovering
+//! lexical analysis and collects all diagnostics in a single pass.
+
 use std::char;
 
 use winnow::{

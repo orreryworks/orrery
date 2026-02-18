@@ -1,3 +1,9 @@
+//! Parser for Filament source tokens.
+//!
+//! This module transforms a token stream from the [`lexer`](super::lexer) into
+//! a parsed AST defined in [`parser_types`](super::parser_types). The public
+//! entry point is [`build_diagram`].
+
 use winnow::{
     Parser as _,
     combinator::{alt, delimited, opt, preceded, repeat, separated},

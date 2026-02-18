@@ -1,3 +1,8 @@
+//! Shape definitions and rendering traits.
+//!
+//! This module provides the [`ShapeDefinition`] trait and [`Shape`] wrapper
+//! for rendering diagram node shapes (rectangles, ovals, actors, etc.).
+
 use std::rc::Rc;
 
 use crate::{

@@ -1,3 +1,8 @@
+//! Sequence diagram layout algorithms.
+//!
+//! This module computes positions for participants, messages, activations,
+//! and fragments in sequence diagrams.
+
 use std::{collections::HashMap, rc::Rc};
 
 use log::warn;

@@ -1,3 +1,8 @@
+//! Shape-with-text composite drawable.
+//!
+//! This module provides [`ShapeWithText`], which combines a [`Shape`] with an
+//! optional header [`Text`] label, handling size calculation and positioning.
+
 use crate::{
     draw::{Drawable, LayeredOutput, Shape, Text, text_positioning::TextPositioningStrategy},
     geometry::{Point, Size},

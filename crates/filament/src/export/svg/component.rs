@@ -1,3 +1,5 @@
+//! SVG rendering for component diagrams.
+
 use filament_core::{
     draw::{self, LayeredOutput},
     geometry::{Bounds, Point},
