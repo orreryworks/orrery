@@ -2,12 +2,16 @@
 name = "filament-cli"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
 description = "Command-line interface for the Filament diagram language"
 keywords = ["diagram", "uml", "visualization", "cli", "architecture"]
 categories = ["command-line-utilities", "visualization"]
+readme = "README.md"
 
 [lib]
 name = "filament_cli"
@@ -18,8 +22,8 @@ name = "filament"
 path = "src/main.rs"
 
 [dependencies]
-filament = { path = "../filament" }
-filament-parser = { path = "../filament-parser" }
+filament.workspace = true
+filament-parser.workspace = true
 clap = { version = "4.5.53", features = ["derive"] }
 env_logger = { version = "0.11.8", features = ["kv"] }
 log = { version = "0.4.29", features = ["kv", "kv_std"] }

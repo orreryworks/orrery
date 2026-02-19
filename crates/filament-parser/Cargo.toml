@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+rust-version.workspace = true
+readme = "README.md"
 description = "Parser for the Filament diagram language"
 keywords = ["diagram", "parser", "ast"]
 categories = ["parsing"]
@@ -14,7 +18,7 @@ name = "filament_parser"
 path = "src/lib.rs"
 
 [dependencies]
-filament-core = { path = "../filament-core" }
+filament-core.workspace = true
 winnow = "0.7.14"
 log = { version = "0.4.29", features = ["kv", "kv_std"] }
 thiserror = "2.0.17"

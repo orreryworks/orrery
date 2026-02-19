@@ -79,7 +79,7 @@ filament input.fil -o output.svg --log-level debug
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/filament.git
+git clone https://github.com/foadnh/filament.git
 cd filament
 
 # Build the workspace

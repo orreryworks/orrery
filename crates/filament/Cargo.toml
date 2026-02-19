@@ -2,9 +2,13 @@
 name = "filament"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
 description = "A diagram language for creating component and sequence diagrams"
 keywords = ["diagram", "uml", "visualization", "dsl"]
 categories = ["visualization", "parser-implementations"]
@@ -14,8 +18,8 @@ name = "filament"
 path = "src/lib.rs"
 
 [dependencies]
-filament-core = { path = "../filament-core" }
-filament-parser = { path = "../filament-parser" }
+filament-core = { workspace = true }
+filament-parser = { workspace = true }
 color = "0.3.2"
 indexmap = "2.12"
 layout-rs = "0.1.3"
