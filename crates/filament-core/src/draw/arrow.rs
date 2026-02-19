@@ -149,7 +149,7 @@ impl fmt::Display for ArrowDirection {
     }
 }
 
-/// Represents a drawable arrow with styling and specific direction.
+/// A drawable arrow with styling and direction markers.
 ///
 /// An Arrow combines an `ArrowDefinition` (containing visual properties
 /// like color, width, and style) with an `ArrowDirection` that determines

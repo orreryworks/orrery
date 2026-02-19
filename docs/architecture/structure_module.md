@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `structure` module provides the core graph data structures for representing Filament diagrams after parsing and elaboration. It replaces the previous petgraph-based implementation with a custom, lightweight graph structure that is better optimized for Filament's specific needs.
+After parsing and elaboration, Filament diagrams are represented as custom, lightweight graph structures in the `structure` module. This replaces the previous petgraph-based implementation with a graph structure better optimized for Filament's specific needs.
 
 ## Design Decisions
 

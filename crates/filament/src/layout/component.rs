@@ -7,7 +7,7 @@
 //! # Types
 //!
 //! - [`Component`] - A positioned diagram element with bounds
-//! - [`LayoutRelation`] - A relation between components with layout-specific data
+//! - [`LayoutRelation`] - A relation between components carrying layout-specific data
 //! - [`Layout`] - A complete layout of components and their connecting relations
 
 use std::{collections::HashMap, rc::Rc};
@@ -27,9 +27,9 @@ use crate::{
     structure,
 };
 
-/// Represents a diagram component with a reference to its AST node and positioning information
-/// TODO: Do I need Clone?!
-/// Find a better name and location for this struct.
+// TODO: Do I need Clone?!
+// TODO: Find a better name and location for this struct.
+/// A positioned diagram component linking a semantic node to its rendered shape and location.
 #[derive(Debug, Clone)]
 pub struct Component<'a> {
     node_id: Id, // TODO: Can I get rid of this?
@@ -79,7 +79,7 @@ impl<'a> Component<'a> {
     }
 }
 
-/// Represents a relation (connection) in a component layout with positional information.
+/// A relation (connection) in a component layout with positional information.
 ///
 /// LayoutRelation wraps an AST relation with additional layout-specific data,
 /// including the indices of the source and target components within the layout.
@@ -127,7 +127,7 @@ impl<'a> LayoutRelation<'a> {
     }
 }
 
-/// Represents a complete layout of components and their relationships.
+/// A complete layout of components and their relationships.
 ///
 /// A `Layout` contains all the positioned components and their connecting relations
 /// for a diagram. It provides methods to access related components and calculate

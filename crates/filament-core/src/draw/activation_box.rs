@@ -1,4 +1,4 @@
-//! Activation Box Drawable Implementation
+//! Activation box drawable for sequence diagrams.
 //!
 //! This module provides drawable components for rendering activation boxes in sequence diagrams.
 //! Activation boxes represent periods of activity on a participant's lifeline and appear as

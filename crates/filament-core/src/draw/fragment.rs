@@ -1,4 +1,4 @@
-//! Fragment Drawable Implementation
+//! Fragment block drawable for sequence diagrams.
 //!
 //! This module provides drawable components for rendering fragment blocks in sequence diagrams.
 //! Fragments group related interactions into labeled sections (e.g., "alt" for alternatives,
@@ -232,7 +232,7 @@ impl Default for FragmentDefinition {
     }
 }
 
-/// Represents a section within a fragment block.
+/// A section within a fragment block.
 ///
 /// Each section can have an optional title and a specific height
 /// determined by its content. Sections are visually separated by

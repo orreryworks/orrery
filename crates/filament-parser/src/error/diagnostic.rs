@@ -1,4 +1,4 @@
-//! The core diagnostic type for the Filament error system.
+//! Core diagnostic type for the Filament error system.
 //!
 //! A [`Diagnostic`] represents a single error or warning with optional
 //! error code, multiple labeled source spans, and help text.

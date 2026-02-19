@@ -1,8 +1,7 @@
-//! Filament - A diagram language for creating component and sequence diagrams
+//! Filament - A diagram language for creating component and sequence diagrams.
 //!
-//! This library provides parsing, layout, and rendering capabilities for the Filament
-//! diagram language. It supports component diagrams and sequence diagrams with a
-//! text-based DSL.
+//! Parsing, layout, and rendering for the Filament diagram language. Both component
+//! diagrams and sequence diagrams are supported through a text-based DSL.
 
 pub mod config;
 

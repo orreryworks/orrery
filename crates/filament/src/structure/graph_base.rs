@@ -12,9 +12,9 @@
 //! - [`Edge`]: Edge structure storing source, target, and associated data
 //! - [`GraphInternal`]: Core graph implementation with nodes and edges
 //!
-//! The graph implementation supports:
-//! - Efficient node and edge storage using HashMap and Vec
-//! - Tracking of both incoming and outgoing edges for each node
+//! Capabilities:
+//! - Node and edge storage via `HashMap` and `Vec`
+//! - Tracking of both incoming and outgoing edges per node
 //! - Root detection (nodes with no incoming edges)
 //! - Type-safe node and edge access with lifetime guarantees
 //!
@@ -44,7 +44,7 @@ impl<'idx> EdgeIndex<'idx> {
     }
 }
 
-/// Represents a directed edge in the graph.
+/// A directed edge in the graph.
 ///
 /// Stores the source and target node IDs along with an associated value
 /// of generic type `E`.

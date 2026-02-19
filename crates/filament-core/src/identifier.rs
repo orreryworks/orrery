@@ -1,6 +1,6 @@
 //! Identifier management using string interning for efficient string storage and comparison
 //!
-//! This module provides the `Id` type with an efficient string-interner based approach.
+//! This module provides the [`Id`] type with an efficient string-interner based approach.
 
 use std::{
     fmt,

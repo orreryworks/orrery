@@ -1,4 +1,4 @@
-//! Filament CLI library
+//! CLI logic for the Filament diagram tool.
 //!
 //! This module contains the core CLI logic for the Filament diagram tool.
 

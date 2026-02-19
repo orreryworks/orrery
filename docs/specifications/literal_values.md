@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Filament supports two primary data types for attribute values: string literals and float literals. This specification provides comprehensive documentation on the syntax, usage, and behavior of these literal value types within the Filament language.
+Filament supports two primary data types for attribute values: string literals and float literals. This specification documents the syntax, usage, and behavior of these literal value types within the Filament language.
 
 ## 2. String Literals
 

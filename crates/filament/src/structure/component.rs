@@ -29,7 +29,7 @@ use super::{
 };
 use crate::FilamentError;
 
-/// Represents a containment scope within a component diagram.
+/// A containment scope within a component diagram.
 ///
 /// A containment scope groups nodes and relations that belong to the same
 /// hierarchical level, optionally within a container node. This structure

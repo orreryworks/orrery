@@ -148,7 +148,7 @@ impl FromStr for NoteAlign {
     }
 }
 
-/// Represents a note annotation in a diagram.
+/// A note annotation in a diagram.
 ///
 /// Notes provide additional context or documentation without participating
 /// in the diagram's structural relationships.
@@ -229,7 +229,7 @@ impl Note {
     }
 }
 
-/// Represents an activation in a sequence diagram.
+/// An activation box highlighting a participant's active period in a sequence diagram.
 #[derive(Debug, Clone)]
 pub struct Activate {
     /// Component ID being activated
@@ -258,7 +258,7 @@ impl Activate {
     }
 }
 
-/// Represents a fragment block in a sequence diagram.
+/// A fragment block that groups related interactions in a sequence diagram.
 ///
 /// Fragments group related interactions into labeled sections, helping structure
 /// complex message flows and illustrate alternatives, loops, parallel execution,
@@ -305,7 +305,7 @@ impl Fragment {
     }
 }
 
-/// Represents a section within a fragment.
+/// A section within a fragment.
 ///
 /// Each section can have an optional title and contains a sequence of elements
 /// that represent one phase within the fragment.

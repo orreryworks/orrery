@@ -4,7 +4,7 @@ Filament is a domain-specific language designed for creating and rendering diagr
 
 ## 1. Introduction
 
-Filament allows you to define diagrams using a text-based syntax, which is then parsed, processed, and rendered as SVG graphics. The language provides a flexible type system for customizing appearance and a simple way to express relationships between elements.
+Diagrams are defined in a text-based syntax, which is then parsed, processed, and rendered as SVG graphics. The language provides a flexible type system for customizing appearance and a simple way to express relationships between elements.
 
 ## 2. Basic Structure
 
@@ -79,7 +79,7 @@ type ThickRedArrow = RedArrow [stroke=[width=3.0]];
 
 ## 5. Literal Values and Data Types
 
-Filament supports two primary data types for attribute values: string literals and float literals. For comprehensive documentation on syntax, usage, and examples, see:
+Filament supports two primary data types for attribute values: string literals and float literals. For detailed documentation on syntax, usage, and examples, see:
 
 **[Literal Values and Data Types Specification](literal_values.md)**
 
@@ -1203,7 +1203,7 @@ auth_service -> database;
 
 ## 13. Error Handling
 
-Filament provides comprehensive error handling with precise location tracking and user-friendly error messages. For detailed information about error handling architecture, message formats, and implementation details, see:
+Filament provides error handling with precise location tracking and user-friendly error messages. For detailed information about error handling architecture, message formats, and implementation details, see:
 
 **[Error Handling Specification](error_handling.md)**
 

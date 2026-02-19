@@ -1,4 +1,4 @@
-//! Lifeline Drawable Implementation
+//! Lifeline drawable for sequence diagrams.
 //!
 //! This module provides drawable components for rendering lifelines in sequence diagrams.
 //! Lifelines represent the existence of a participant over time and appear as vertical
@@ -13,10 +13,10 @@
 //!
 //! # Positioning Logic
 //!
-//! The lifeline uses relative positioning for consistency with other drawables:
-//! 1. The lifeline stores only its height (no absolute coordinates)
-//! 2. Positioning is handled by wrapping with PositionedDrawable
-//! 3. The lifeline renders as a vertical line from (0,0) to (0,height)
+//! Lifelines use relative positioning for consistency with other drawables:
+//! 1. The lifeline stores only its height (no absolute coordinates).
+//! 2. Positioning is handled by wrapping with `PositionedDrawable`.
+//! 3. The lifeline renders as a vertical line from `(0,0)` to `(0, height)`.
 
 use std::rc::Rc;
 
@@ -69,7 +69,7 @@ impl Default for LifelineDefinition {
 
 /// A drawable lifeline for sequence diagrams.
 ///
-/// Represents a vertical line (typically dashed) that shows a participant's
+/// A vertical line (typically dashed) showing a participant's
 /// lifetime in the sequence. The lifeline is a simple vertical line with a
 /// specified height, designed to be used with PositionedDrawable for
 /// absolute positioning.

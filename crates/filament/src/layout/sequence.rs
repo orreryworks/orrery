@@ -108,7 +108,7 @@ impl<'a> Message<'a> {
     }
 }
 
-/// Represents a rendered activation box in a sequence diagram.
+/// A rendered activation box in a sequence diagram.
 ///
 /// An [`ActivationBox`] is the final result of activation timing calculations, containing
 /// all the information needed to render an activation period on a participant's lifeline.
@@ -134,7 +134,7 @@ pub struct ActivationBox {
     drawable: draw::ActivationBox,
 }
 
-/// Represents an activation period with precise timing information during processing.
+/// An activation period with precise timing information during processing.
 ///
 /// [`ActivationTiming`] is a lightweight processing object used by the ordered events
 /// system to track activation periods as they are being built. It contains the minimal

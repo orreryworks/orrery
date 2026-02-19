@@ -1,12 +1,12 @@
-//! Layout engine factory module
+//! Layout engine factory module.
 //!
-//! This module provides a system for selecting and using different layout engines
-//! based on the layout_engine attribute in the diagram. It supports both component
-//! and sequence diagram types, with different algorithm options for each.
+//! Different layout engines can be chosen per diagram via the `layout_engine`
+//! attribute. Both component and sequence diagram types are supported, each
+//! with its own set of algorithm options.
 //!
-//! The module uses a builder pattern for creating and configuring layout engines.
-//!
-//! The output format is LayeredLayout: A flattened structure with layers for easier rendering.
+//! [`EngineBuilder`] uses a builder pattern to configure and instantiate
+//! engines. Its final output is a [`LayeredLayout`] — a flattened layer
+//! structure ready for rendering.
 
 // Layout engine modules with different implementations
 mod basic;

@@ -14,7 +14,7 @@ use filament_core::{identifier::Id, semantic::DiagramKind};
 
 use crate::span::{Span, Spanned};
 
-/// Type Specifier - used in both declarations and invocations
+/// Type Specifier - used in both declarations and invocations.
 ///
 /// Represents a type with optional attributes:
 /// - `TypeName[attrs]` - Named with attributes

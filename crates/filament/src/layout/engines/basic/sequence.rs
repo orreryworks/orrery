@@ -1,4 +1,4 @@
-//! Basic sequence layout engine
+//! Basic sequence layout engine.
 //!
 //! This module provides a layout engine for sequence diagrams
 //! using a simple, deterministic algorithm.

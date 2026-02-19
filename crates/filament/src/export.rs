@@ -24,9 +24,9 @@
 //!
 //! # Error Handling
 //!
-//! Export operations return [`Error`], which covers both rendering failures
-//! and I/O errors. [`Error`] is converted into [`FilamentError::Export`] at
-//! the crate boundary.
+//! Export operations return [`Error`], covering rendering failures and I/O
+//! errors. [`Error`] converts into [`FilamentError::Export`] at the crate
+//! boundary.
 //!
 //! [`FilamentError::Export`]: crate::FilamentError::Export
 

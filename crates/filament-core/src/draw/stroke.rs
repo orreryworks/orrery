@@ -1,11 +1,11 @@
-//! Stroke Definition Module
+//! Stroke and line-style definitions.
 //!
 //! This module provides a unified, comprehensive stroke/line definition system for all drawable
 //! elements.
 //!
 //! # Overview
 //!
-//! The module exports:
+//! Exported types:
 //! - [`StrokeDefinition`]: The main struct containing all stroke properties (color, width, style, cap, join)
 //! - [`StrokeStyle`]: Enum defining line patterns (solid, dashed, dotted, etc.)
 //! - [`StrokeCap`]: Enum defining how line endpoints are rendered (butt, round, square)

@@ -1,8 +1,7 @@
-//! Color handling for Filament diagrams
+//! Color handling for Filament diagrams.
 //!
-//! This module provides the [`Color`] type which wraps the `DynamicColor` type
-//! from the color crate, providing convenience methods for working with colors
-//! in the Filament project.
+//! [`Color`] parses CSS color strings (hex, named, `rgb(...)`, etc.) and supports
+//! alpha manipulation, ID-safe serialization, and hashing.
 
 use std::{
     hash::{Hash, Hasher},

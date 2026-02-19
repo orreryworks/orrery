@@ -1,4 +1,4 @@
-//! Desugaring pass for the Filament AST
+//! Desugaring pass over the Filament AST.
 //!
 //! This module implements a fold-based rewriting system for AST transformations.
 //! It sits between the parser and elaboration phases, allowing for syntactic

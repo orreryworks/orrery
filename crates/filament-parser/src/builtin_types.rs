@@ -1,4 +1,4 @@
-//! Built-in type definitions for the Filament type system
+//! Built-in type definitions for the Filament type system.
 //!
 //! This module provides:
 //! - String constants for all built-in base types

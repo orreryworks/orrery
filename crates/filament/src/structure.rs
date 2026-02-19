@@ -111,7 +111,7 @@ impl<'a, 'idx> GraphedDiagram<'a, 'idx> {
 
 /// Internal node in the diagram hierarchy tree.
 ///
-/// Represents a single diagram within the hierarchy, tracking its graph representation,
+/// A single diagram within the hierarchy, tracking its graph representation,
 /// optional container (for embedded diagrams), and any child diagrams it contains.
 /// This structure enables recursive processing of nested diagram structures.
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-//! Layout positioning algorithms
+//! Reusable algorithms for calculating element positions in diagrams.
 //!
 //! This module provides algorithms for calculating element positions in diagrams.
 //! It contains reusable positioning logic that can be used by different layout engines.

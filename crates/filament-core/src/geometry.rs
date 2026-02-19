@@ -64,12 +64,12 @@ impl Point {
         Self { x, y }
     }
 
-    /// Returns the x-coordinate of the point
+    /// Returns the x-coordinate.
     pub fn x(self) -> f32 {
         self.x
     }
 
-    /// Returns the y-coordinate of the point
+    /// Returns the y-coordinate.
     pub fn y(self) -> f32 {
         self.y
     }
@@ -172,7 +172,7 @@ impl Point {
     }
 }
 
-/// Represents the dimensions of an element with width and height
+/// Width and height of a 2D element.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Size {
     width: f32,
@@ -184,12 +184,12 @@ impl Size {
         Self { width, height }
     }
 
-    /// Returns the width dimension of this size
+    /// Returns the width.
     pub fn width(self) -> f32 {
         self.width
     }
 
-    /// Returns the height dimension of this size
+    /// Returns the height.
     pub fn height(self) -> f32 {
         self.height
     }
@@ -242,7 +242,7 @@ impl Size {
     }
 }
 
-/// Represents a rectangular bounding box with minimum and maximum coordinates
+/// A rectangular bounding box defined by minimum and maximum coordinates.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Bounds {
     min_x: f32,
@@ -274,28 +274,28 @@ impl Bounds {
         }
     }
 
-    /// Returns the minimum x-coordinate of the bounds
+    /// Returns the minimum x-coordinate.
     pub fn min_x(self) -> f32 {
         self.min_x
     }
 
-    /// Returns the minimum y-coordinate of the bounds
+    /// Returns the minimum y-coordinate.
     pub fn min_y(self) -> f32 {
         self.min_y
     }
 
-    /// Returns the maximum x-coordinate of the bounds
     #[allow(dead_code)]
+    /// Returns the maximum x-coordinate.
     pub fn max_x(self) -> f32 {
         self.max_x
     }
 
-    /// Returns the maximum y-coordinate of the bounds
+    /// Returns the maximum y-coordinate.
     pub fn max_y(self) -> f32 {
         self.max_y
     }
 
-    /// Returns the center point of the bounds
+    /// Returns the center point.
     pub fn center(self) -> Point {
         Point::new(
             (self.min_x + self.max_x) / 2.0,
@@ -303,23 +303,23 @@ impl Bounds {
         )
     }
 
-    /// Sets the maximum y-coordinate of the bounds and returns the modified bounds
+    /// Sets the maximum y-coordinate and returns the modified bounds.
     pub fn with_max_y(mut self, max_y: f32) -> Self {
         self.max_y = max_y;
         self
     }
 
-    /// Returns the width of the bounds
+    /// Returns the width.
     pub fn width(self) -> f32 {
         self.max_x - self.min_x
     }
 
-    /// Returns the height of the bounds
+    /// Returns the height.
     pub fn height(self) -> f32 {
         self.max_y - self.min_y
     }
 
-    /// Returns the top-left corner as a Point
+    /// Returns the top-left corner.
     pub fn min_point(self) -> Point {
         Point {
             x: self.min_x,
@@ -327,7 +327,7 @@ impl Bounds {
         }
     }
 
-    /// Converts bounds to a Size object
+    /// Converts to a [`Size`].
     pub fn to_size(self) -> Size {
         Size {
             width: self.width(),
@@ -404,7 +404,6 @@ impl Bounds {
     ///
     /// This decreases the minimum coordinates by left/top insets and increases
     /// the maximum coordinates by right/bottom insets, effectively growing the bounds.
-    #[allow(dead_code)]
     pub fn add_padding(&self, insets: Insets) -> Self {
         Self {
             min_x: self.min_x - insets.left(),
@@ -427,7 +426,6 @@ pub struct Insets {
 
 impl Insets {
     /// Creates new insets with specified values for each side
-    #[allow(dead_code)]
     pub fn new(top: f32, right: f32, bottom: f32, left: f32) -> Self {
         Self {
             top,
@@ -447,37 +445,37 @@ impl Insets {
         }
     }
 
-    /// Returns the top inset value
+    /// Returns the top inset.
     pub fn top(self) -> f32 {
         self.top
     }
 
-    /// Returns the right inset value
+    /// Returns the right inset.
     pub fn right(self) -> f32 {
         self.right
     }
 
-    /// Returns the bottom inset value
+    /// Returns the bottom inset.
     pub fn bottom(self) -> f32 {
         self.bottom
     }
 
-    /// Returns the left inset value
+    /// Returns the left inset.
     pub fn left(self) -> f32 {
         self.left
     }
 
-    /// Returns a new Insets with the specified top value
+    /// Returns a new Insets with the specified top.
     pub fn with_top(self, top: f32) -> Self {
         Self { top, ..self }
     }
 
-    /// Returns the sum of left and right insets
+    /// Returns the horizontal sum.
     pub fn horizontal_sum(self) -> f32 {
         self.left + self.right
     }
 
-    /// Returns the sum of top and bottom insets
+    /// Returns the vertical sum.
     pub fn vertical_sum(self) -> f32 {
         self.top + self.bottom
     }

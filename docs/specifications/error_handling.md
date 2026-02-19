@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Filament provides a comprehensive error handling system designed to deliver precise, user-friendly error reporting that helps developers quickly identify and resolve issues in their diagram specifications. The system emphasizes accurate source location tracking, clear error messages, and actionable guidance.
+Filament provides an error handling system for precise, user-friendly error reporting that helps developers quickly identify and resolve issues in their diagram specifications. The system emphasizes accurate source location tracking, clear error messages, and actionable guidance.
 
 ## 2. Error Handling Architecture
 
@@ -144,7 +144,7 @@ help: Common syntax issues include:
 
 ## 7. Error Examples Repository
 
-The project includes a comprehensive collection of error examples in the `examples/errors/` directory. These examples demonstrate various error scenarios and can be used for:
+The project includes a collection of error examples in the `examples/errors/` directory. These examples demonstrate various error scenarios and can be used for:
 
 - **Testing error handling**: Validate error message improvements
 - **Learning common mistakes**: See typical syntax errors and their solutions
@@ -152,7 +152,7 @@ The project includes a comprehensive collection of error examples in the `exampl
 
 ### 7.1 Available Examples
 
-For a complete list of available error examples and their descriptions, see the comprehensive guide in [`examples/errors/README.md`](../../examples/errors/README.md). This documentation provides detailed information about each example file, its purpose, and the specific error scenarios it demonstrates.
+For a complete list of available error examples and their descriptions, see [`examples/errors/README.md`](../../examples/errors/README.md). This documentation provides detailed information about each example file, its purpose, and the specific error scenarios it demonstrates.
 
 ### 7.2 Usage
 

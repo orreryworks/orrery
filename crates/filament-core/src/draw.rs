@@ -1,8 +1,7 @@
-//! Drawable Components for Diagram Rendering
+//! Drawable abstractions for diagram elements.
 //!
-//! This module provides drawable abstractions for rendering various diagram elements.
-//! All drawable components implement the [`Drawable`] trait, which provides a consistent
-//! interface for rendering to layered SVG output and calculating size.
+//! Every drawable component implements the [`Drawable`] trait, giving it a consistent
+//! interface for rendering to layered SVG output and calculating its size.
 //!
 //! # Layer-Based Rendering
 //!

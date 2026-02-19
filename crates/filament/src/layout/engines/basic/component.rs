@@ -1,4 +1,4 @@
-//! Basic component layout engine
+//! Basic component layout engine.
 //!
 //! This module provides a layout engine for component diagrams
 //! using a simple, deterministic algorithm.
