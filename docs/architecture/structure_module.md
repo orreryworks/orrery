@@ -2,7 +2,7 @@
 
 ## Overview
 
-After parsing and elaboration, Filament diagrams are represented as custom, lightweight graph structures in the `structure` module. This replaces the previous petgraph-based implementation with a graph structure better optimized for Filament's specific needs.
+After parsing and elaboration, Orrery diagrams are represented as custom, lightweight graph structures in the `structure` module. This replaces the previous petgraph-based implementation with a graph structure better optimized for Orrery's specific needs.
 
 ## Design Decisions
 
@@ -10,7 +10,7 @@ After parsing and elaboration, Filament diagrams are represented as custom, ligh
 
 1. **Memory Efficiency**: Eliminated petgraph dependency and its overhead
 2. **Type Safety**: Stronger compile-time guarantees with lifetime tracking
-3. **Domain-Specific**: Optimized for Filament's specific graph patterns
+3. **Domain-Specific**: Optimized for Orrery's specific graph patterns
 4. **Simpler API**: Cleaner interface tailored to diagram needs
 
 ### Lifetime Management

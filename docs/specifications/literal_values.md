@@ -1,16 +1,16 @@
-# Filament Literal Values and Data Types Specification
+# Orrery Literal Values and Data Types Specification
 
 ## 1. Overview
 
-Filament supports two primary data types for attribute values: string literals and float literals. This specification documents the syntax, usage, and behavior of these literal value types within the Filament language.
+Orrery supports two primary data types for attribute values: string literals and float literals. This specification documents the syntax, usage, and behavior of these literal value types within the Orrery language.
 
 ## 2. String Literals
 
-String literals in Filament are enclosed in double quotes and support Rust-style escape sequences for enhanced text representation.
+String literals in Orrery are enclosed in double quotes and support Rust-style escape sequences for enhanced text representation.
 
 ### 2.1 Basic String Syntax
 
-```filament
+```orrery
 "hello world"           // Basic string
 "simple text"           // Alphanumeric content
 ""                      // Empty string
@@ -19,7 +19,7 @@ String literals in Filament are enclosed in double quotes and support Rust-style
 
 ### 2.2 Escape Sequences
 
-Filament supports the following escape sequences within string literals:
+Orrery supports the following escape sequences within string literals:
 
 #### Standard Escape Sequences
 - `\"` - Double quote
@@ -33,7 +33,7 @@ Filament supports the following escape sequences within string literals:
 - `\0` - Null character
 
 #### Examples
-```filament
+```orrery
 "quote: \"Hello World\""        // Contains quotes
 "path\\to\\file"                // Windows path
 "line 1\nline 2"               // Multi-line text
@@ -44,7 +44,7 @@ Filament supports the following escape sequences within string literals:
 
 Unicode characters can be included using the `\u{...}` syntax with 1-6 hexadecimal digits:
 
-```filament
+```orrery
 "emoji: \u{1F602}"             // 😂 (Face with Tears of Joy)
 "symbol: \u{00AC}"             // ¬ (Not Sign)
 "arrow: \u{2192}"              // → (Rightwards Arrow)
@@ -61,13 +61,13 @@ Unicode characters can be included using the `\u{...}` syntax with 1-6 hexadecim
 
 Whitespace immediately following a backslash at the end of a line is consumed, allowing for multi-line string formatting:
 
-```filament
+```orrery
 "This is a long string that spans \
  multiple lines but appears as one"
 // Results in: "This is a long string that spans multiple lines but appears as one"
 ```
 
-### 2.5 String Usage in Filament
+### 2.5 String Usage in Orrery
 
 String literals are used for:
 - **Color values**: `"red"`, `"#ff0000"`, `"rgb(255,0,0)"`
@@ -88,7 +88,7 @@ Float literals represent numeric values as 32-bit floating-point numbers (f32) a
 
 Basic decimal notation with explicit decimal point, including whole numbers:
 
-```filament
+```orrery
 2.5         // Standard decimal
 10.0        // Explicit decimal point
 0.75        // Leading zero
@@ -99,7 +99,7 @@ Basic decimal notation with explicit decimal point, including whole numbers:
 
 Whole numbers without decimal points are fully supported and treated as float literals:
 
-```filament
+```orrery
 1           // Equivalent to 1.0
 17          // Equivalent to 17.0
 42          // Equivalent to 42.0
@@ -113,7 +113,7 @@ Whole numbers provide a clean, readable syntax for integer-valued numeric attrib
 #### Leading Decimal Point
 When the integer part is zero, it can be omitted:
 
-```filament
+```orrery
 .5          // Equivalent to 0.5
 .25         // Equivalent to 0.25
 .125        // Equivalent to 0.125
@@ -123,7 +123,7 @@ When the integer part is zero, it can be omitted:
 #### Trailing Decimal Point
 When the fractional part is zero, it can be omitted but the decimal point is required:
 
-```filament
+```orrery
 5.          // Equivalent to 5.0
 100.        // Equivalent to 100.0
 42.         // Equivalent to 42.0
@@ -133,7 +133,7 @@ When the fractional part is zero, it can be omitted but the decimal point is req
 
 Scientific notation uses `e` or `E` followed by an optional sign and exponent:
 
-```filament
+```orrery
 1e5         // 100000.0 (1 × 10⁵)
 2.5e-3      // 0.0025 (2.5 × 10⁻³)
 1.23e+4     // 12300.0 (1.23 × 10⁴)
@@ -155,7 +155,7 @@ Float literals are stored as IEEE 754 single-precision floating-point numbers:
 - **Range**: Approximately ±3.4 × 10³⁸
 - **Smallest positive**: Approximately 1.2 × 10⁻³⁸
 
-### 3.5 Float Usage in Filament
+### 3.5 Float Usage in Orrery
 
 Float literals are used for:
 - **Stroke dimensions**: `stroke=[width=2.5]`
@@ -164,7 +164,7 @@ Float literals are used for:
 - **Positioning**: Coordinate and measurement values
 
 #### Examples by Attribute Type
-```filament
+```orrery
 // Shape attributes
 component: Rectangle [
     stroke=[width=2.5],     // Stroke width
@@ -197,7 +197,7 @@ Text attributes are used in components, relations, and notes. For note-specific 
 
 **Examples:**
 
-```filament
+```orrery
 // Basic styling
 type Styled = Rectangle [text=[font_size=16, color="white"]];
 
@@ -227,7 +227,7 @@ Stroke attributes are used in shapes, relations, fragments, and notes. For note-
 
 **Basic Styles:**
 
-```filament
+```orrery
 // Solid, dashed, dotted
 type Solid = Rectangle [stroke=[color="navy", width=2.0, style="solid"]];
 type Dashed = Rectangle [stroke=[color="red", width=1.5, style="dashed"]];
@@ -236,7 +236,7 @@ type Dotted = Rectangle [stroke=[color="black", width=1.0, style="dotted"]];
 
 **Custom Dash Patterns:**
 
-```filament
+```orrery
 // Pattern: "dash,gap" or "dash,gap,dash,gap" (repeating)
 type Pattern1 = Rectangle [stroke=[color="purple", width=2.0, style="5,3"]];
 type Pattern2 = Rectangle [stroke=[color="green", style="10,5,2,5", line_cap="round"]];
@@ -244,7 +244,7 @@ type Pattern2 = Rectangle [stroke=[color="green", style="10,5,2,5", line_cap="ro
 
 **Arrows and Relations:**
 
-```filament
+```orrery
 type RedArrow = Arrow [stroke=[color="red", width=2.0]];
 type DashedArrow = Arrow [stroke=[style="dashed", color="blue"]];
 
@@ -254,7 +254,7 @@ source -> [stroke=[color="purple", style="dashed"], style="curved"] target;
 
 **Fragments:**
 
-```filament
+```orrery
 fragment alt "Condition" {
     [border_stroke=[color="blue", width=2.0], separator_stroke=[color="gray", style="dashed"]]
 };
@@ -262,7 +262,7 @@ fragment alt "Condition" {
 
 **Line Caps and Joins:**
 
-```filament
+```orrery
 // Caps: "butt" (default), "round", "square"
 type RoundCap = Rectangle [stroke=[width=3.0, line_cap="round"]];
 
@@ -272,7 +272,7 @@ type RoundJoin = Rectangle [stroke=[width=2.0, line_join="round"]];
 
 **Full Configuration:**
 
-```filament
+```orrery
 type Complete = Rectangle [
     stroke=[color="darkblue", width=2.5, style="8,3,2,3", line_cap="round", line_join="round"]
 ];
@@ -280,7 +280,7 @@ type Complete = Rectangle [
 
 **Sequence Diagrams (Lifelines):**
 
-```filament
+```orrery
 diagram sequence [
     lifeline=[color="black", width=1.0, style="dashed"]
 ];
@@ -288,7 +288,7 @@ diagram sequence [
 
 ## 6. Type Safety and Usage Rules
 
-Filament enforces strict type safety for attribute values to prevent runtime errors and improve performance.
+Orrery enforces strict type safety for attribute values to prevent runtime errors and improve performance.
 
 ### 6.1 Strict Typing Rules
 
@@ -299,7 +299,7 @@ Filament enforces strict type safety for attribute values to prevent runtime err
 
 ### 6.2 Correct Usage Examples
 
-```filament
+```orrery
 // ✅ Correct: String for colors, floats for dimensions
 component: Rectangle [
     fill_color="blue",      // String literal
@@ -336,7 +336,7 @@ type TransparentText = Rectangle [
 
 ### 6.3 Incorrect Usage Examples
 
-```filament
+```orrery
 // ❌ Incorrect: Using string for numeric stroke width
 component: Rectangle [
     stroke=[width="2.5"]    // Error: Expected float, found string

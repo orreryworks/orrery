@@ -1,4 +1,4 @@
-# Filament Documentation Guidelines
+# Orrery Documentation Guidelines
 
 ## Core Principles
 

@@ -1,10 +1,10 @@
-# Filament
+# Orrery
 
 A diagram language for creating component and sequence diagrams with a simple text-based DSL.
 
 ## Overview
 
-Filament is a domain-specific language for describing software architecture diagrams. Write diagrams in a simple text format and render them to SVG.
+Orrery is a domain-specific language for describing software architecture diagrams. Write diagrams in a simple text format and render them to SVG.
 
 **Supported diagram types:**
 - Component diagrams
@@ -14,17 +14,17 @@ Filament is a domain-specific language for describing software architecture diag
 
 This project is organized as a Cargo workspace with two crates:
 
-- **`filament`** - Core library for parsing, layout, and rendering
-- **`filament-cli`** - Command-line tool built on the library
+- **`orrery`** - Core library for parsing, layout, and rendering
+- **`orrery-cli`** - Command-line tool built on the library
 
 ## Library Usage
 
-Add `filament` to your `Cargo.toml`.
+Add `orrery` to your `Cargo.toml`.
 
 ### Basic Example
 
 ```rust
-use filament::DiagramBuilder;
+use orrery::DiagramBuilder;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
@@ -51,26 +51,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Installation
 
 ```bash
-cargo install filament-cli
+cargo install orrery-cli
 ```
 
 ### Basic Usage
 
 ```bash
 # Render a diagram
-filament input.fil -o output.svg
+orrery input.orr -o output.svg
 
 # With custom config
-filament input.fil -o output.svg --config custom.toml
+orrery input.orr -o output.svg --config custom.toml
 
 # With debug logging
-filament input.fil -o output.svg --log-level debug
+orrery input.orr -o output.svg --log-level debug
 ```
 
 ## Documentation
 
 - [Language Specification](docs/specifications/specification.md) - Complete language reference
-- [API Documentation](https://docs.rs/filament) - Library API docs
+- [API Documentation](https://docs.rs/orrery) - Library API docs
 - [Examples](examples/) - Sample diagrams
 
 ## Development
@@ -79,8 +79,8 @@ filament input.fil -o output.svg --log-level debug
 
 ```bash
 # Clone the repository
-git clone https://github.com/foadnh/filament.git
-cd filament
+git clone https://github.com/foadnh/orrery.git
+cd orrery
 
 # Build the workspace
 cargo build --workspace
@@ -96,7 +96,7 @@ cargo build --release
 
 ```bash
 # Process an example
-cargo run -- examples/shape_types_showcase.fil -o output.svg
+cargo run -- examples/shape_types_showcase.orr -o output.svg
 ```
 
 ## Contributing

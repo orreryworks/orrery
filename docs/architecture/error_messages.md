@@ -1,6 +1,6 @@
 # Error Message Style Guide
 
-This document defines the conventions for error messages in Filament, following idiomatic Rust style as established by rustc, Clippy, and rust-analyzer.
+This document defines the conventions for error messages in Orrery, following idiomatic Rust style as established by rustc, Clippy, and rust-analyzer.
 
 ## Message Format
 
@@ -108,7 +108,7 @@ Error codes are organized by phase:
 
 ```
 error[E200]: component `server` not found
-  --> src/diagram.fil:10:5
+  --> src/diagram.orr:10:5
    |
 10 |     user -> server: "request";
    |             ^^^^^^ undefined component
@@ -120,12 +120,12 @@ error[E200]: component `server` not found
 
 ```
 error[E301]: type `ApiService` is defined multiple times
-  --> src/diagram.fil:15:1
+  --> src/diagram.orr:15:1
    |
 15 | type ApiService = Rectangle;
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ duplicate definition
    |
-  --> src/diagram.fil:8:1
+  --> src/diagram.orr:8:1
    |
  8 | type ApiService = Circle;
    | ------------------------- first defined here

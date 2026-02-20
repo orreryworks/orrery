@@ -1,11 +1,11 @@
 [workspace]
 members = [
-    "crates/filament",
-    "crates/filament-cli",
-    "crates/filament-core",
-    "crates/filament-parser",
+    "crates/orrery",
+    "crates/orrery-cli",
+    "crates/orrery-core",
+    "crates/orrery-parser",
 ]
-default-members = ["crates/filament-cli"]
+default-members = ["crates/orrery-cli"]
 resolver = "3"
 
 [workspace.package]
@@ -14,11 +14,11 @@ edition = "2024"
 rust-version = "1.86"
 authors = ["Foad Nosrati Habibi"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/foadnh/filament"
-homepage = "https://github.com/foadnh/filament"
-documentation = "https://docs.rs/filament"
+repository = "https://github.com/foadnh/orrery"
+homepage = "https://github.com/foadnh/orrery"
+documentation = "https://docs.rs/orrery"
 
 [workspace.dependencies]
-filament = { version = "0.1.0", path = "crates/filament" }
-filament-core = { version = "0.1.0", path = "crates/filament-core" }
-filament-parser = { version = "0.1.0", path = "crates/filament-parser" }
+orrery = { version = "0.1.0", path = "crates/orrery" }
+orrery-core = { version = "0.1.0", path = "crates/orrery-core" }
+orrery-parser = { version = "0.1.0", path = "crates/orrery-parser" }

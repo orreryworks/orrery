@@ -1,8 +1,8 @@
-# Filament Language Roadmap
+# Orrery Language Roadmap
 
 ## Overview
 
-This roadmap outlines the planned development path for the Filament language and its ecosystem. Filament is a domain-specific language for creating diagrams and visualizations with a focus on UML diagrams, sequence diagrams, and component diagrams.
+This roadmap outlines the planned development path for the Orrery language and its ecosystem. Orrery is a domain-specific language for creating diagrams and visualizations with a focus on UML diagrams, sequence diagrams, and component diagrams.
 
 The roadmap is organized into major feature categories, each containing specific improvements and new capabilities planned for future releases.
 
@@ -12,7 +12,7 @@ In sequence diagram, move max lifeline f32 to to lifeline property
 
 ### Core Components
 - **[Language Core](#language-core)** - Core language features, syntax, and semantics
-  - [Support for Importing Other .fil Files](#support-for-importing-other-fil-files)
+  - [Support for Importing Other .orr Files](#support-for-importing-other-orr-files)
   - [Add Support for Class Diagrams](#add-support-for-class-diagrams)
   - [Configurable Activation Box Definitions](#configurable-activation-box-definitions)
 - **[AST](#ast)** - Parser improvements and error handling
@@ -35,7 +35,7 @@ In sequence diagram, move max lifeline f32 to to lifeline property
 
 ### Tooling & Ecosystem
 - **[Tooling](#tooling)** - Development tools and utilities
-  - [fmt Feature for Formatting .fil Files](#fmt-feature-for-formatting-fil-files)
+  - [fmt Feature for Formatting .orr Files](#fmt-feature-for-formatting-orr-files)
   - [Add Support for Multi Config Loading with Priority](#add-support-for-multi-config-loading-with-priority)
   - [Language Server Protocol (LSP)](#language-server-protocol-lsp)
 - **[Integrations](#integrations)** - Editor extensions and IDE support
@@ -47,15 +47,15 @@ In sequence diagram, move max lifeline f32 to to lifeline property
 
 ### Language Core
 
-#### Support for Importing Other .fil Files
+#### Support for Importing Other .orr Files
 
 **Description**:
-Add support for importing and using types and components from other Filament files, enabling modular diagram development.
+Add support for importing and using types and components from other Orrery files, enabling modular diagram development.
 
 **Proposed Syntax**:
-```filament
-import "common/types.fil" as common;
-import "styles/buttons.fil" use ButtonStyle, PrimaryButton;
+```orrery
+import "common/types.orr" as common;
+import "styles/buttons.orr" use ButtonStyle, PrimaryButton;
 
 // Use imported types
 component: common.DatabaseType;
@@ -82,7 +82,7 @@ button: ButtonStyle;
 Introduce a new diagram type specifically designed for UML class diagrams with support for classes, interfaces, inheritance, and associations.
 
 **Proposed Syntax**:
-```filament
+```orrery
 diagram class;
 
 type Class = Rectangle [
@@ -142,7 +142,7 @@ Make activation box styling configurable from the language syntax, allowing user
 - Maintains backward compatibility with existing syntax
 
 **Example Usage**:
-```filament
+```orrery
 diagram sequence;
 
 user: Rectangle;
@@ -172,7 +172,7 @@ Enhance the error reporting system to collect and display multiple errors in a s
 The compiler currently stops at the first error, requiring multiple compilation cycles to identify all issues in a file.
 
 **Proposed Solution**:
-```filament
+```orrery
 // Instead of stopping at first error, report all issues:
 // Error 1: Missing semicolon at line 5
 // Error 2: Undefined type 'Rectangl' at line 8
@@ -300,7 +300,7 @@ This sequence engine optimization is particularly beneficial for complex sequenc
 Introduce a prelude system that automatically imports common shapes and types, reducing boilerplate in diagram files.
 
 **Proposed Implementation**:
-```filament
+```orrery
 // Automatically available without import:
 // Rectangle, Oval, Component, etc.
 // Common type aliases and utility types
@@ -328,7 +328,7 @@ component: Rectangle; // Automatically available
 Allow overriding attributes from base types when defining custom types, providing more flexible type composition.
 
 **Proposed Syntax**:
-```filament
+```orrery
 type BaseButton = Rectangle [fill_color="blue", line_width=1.0];
 
 // Override base attributes
@@ -383,7 +383,7 @@ Custom stroke patterns (e.g., `style="5,3"` or `style="10,5,2,5"`) are currently
 - Verify all values are positive numbers
 
 **Example Validation**:
-```filament
+```orrery
 // Valid patterns
 type Valid1 = Rectangle [stroke=[style="5,3"]];           // ✓ Simple pattern
 type Valid2 = Rectangle [stroke=[style="10,5,2,5"]];      // ✓ Complex pattern
@@ -425,7 +425,7 @@ Expand the built-in shape library with additional UML shapes to support comprehe
 - `Document`: Document shape with curved bottom
 
 **Example Usage**:
-```filament
+```orrery
 auth_service: Package [fill_color="lightblue"];
 user_note: Note [fill_color="yellow"];
 main_db: Database [fill_color="green"];
@@ -444,14 +444,14 @@ main_db: Database [fill_color="green"];
 Add syntactic sugar that links an activation block directly to the message that triggers it. This provides an extremely concise way to express simple request-response flows by combining message sending with activation in a single statement.
 
 **Proposed Syntax**:
-```filament
+```orrery
 <source> -> <target>: "message" activate {
     ... // Target is active here
 }
 ```
 
 **Example**:
-```filament
+```orrery
 diagram sequence;
 user: Rectangle;
 server: Rectangle;
@@ -485,7 +485,7 @@ This can be implemented as syntactic sugar that transforms into a standard messa
 Allow shapes to include custom icons or symbols, either from icon libraries or custom SVG definitions.
 
 **Proposed Syntax**:
-```filament
+```orrery
 type DatabaseService = Rectangle [
     fill_color="lightblue",
     icon="database", // From built-in icon set
@@ -512,7 +512,7 @@ type CustomService = Rectangle [
 Allow users to define custom shapes using SVG path notation or simple geometric primitives.
 
 **Example**:
-```filament
+```orrery
 shape CustomShape = path "M10,10 L20,20 L10,30 Z" [
     viewBox="0 0 40 40",
     fill_color="blue"
@@ -529,7 +529,7 @@ type MyComponent = CustomShape [fill_color="red"];
 Add support for basic animations in rendered SVG output.
 
 **Example**:
-```filament
+```orrery
 type PulsingComponent = Rectangle [
     fill_color="blue",
     animation=[
@@ -545,16 +545,16 @@ type PulsingComponent = Rectangle [
 
 ### Tooling
 
-#### fmt Feature for Formatting .fil Files
+#### fmt Feature for Formatting .orr Files
 
 **Description**:
-Implement a code formatter for Filament files to ensure consistent code style and improve readability.
+Implement a code formatter for Orrery files to ensure consistent code style and improve readability.
 
 **Proposed Usage**:
 ```bash
-filament fmt diagram.fil           # Format single file
-filament fmt src/                  # Format directory
-filament fmt --check diagram.fil   # Check formatting without changes
+orrery fmt diagram.orr           # Format single file
+orrery fmt src/                  # Format directory
+orrery fmt --check diagram.orr   # Check formatting without changes
 ```
 
 **Features**:
@@ -582,14 +582,14 @@ Enhance the configuration system to support loading multiple configuration files
 
 **Proposed Priority Order**:
 1. Command-line arguments (highest priority)
-2. Project-specific config (`./filament/config.toml`)
-3. User config (`~/.config/filament/config.toml`)
-4. System config (`/etc/filament/config.toml`)
+2. Project-specific config (`./orrery/config.toml`)
+3. User config (`~/.config/orrery/config.toml`)
+4. System config (`/etc/orrery/config.toml`)
 5. Built-in defaults (lowest priority)
 
 **Example Usage**:
 ```bash
-filament --config=project.toml --config=override.toml diagram.fil
+orrery --config=project.toml --config=override.toml diagram.orr
 ```
 
 **Benefits**:
@@ -607,7 +607,7 @@ filament --config=project.toml --config=override.toml diagram.fil
 #### Language Server Protocol (LSP)
 
 **Description**:
-Implement LSP support for Filament to enable rich editor features like syntax highlighting, error checking, auto-completion, and go-to-definition.
+Implement LSP support for Orrery to enable rich editor features like syntax highlighting, error checking, auto-completion, and go-to-definition.
 
 **Features**:
 - Syntax highlighting
@@ -624,13 +624,13 @@ Implement LSP support for Filament to enable rich editor features like syntax hi
 #### Zed Extension
 
 **Description**:
-Develop a Zed editor extension for Filament with syntax highlighting, error reporting, and basic language features.
+Develop a Zed editor extension for Orrery with syntax highlighting, error reporting, and basic language features.
 
 **Features**:
-- Syntax highlighting for .fil files
+- Syntax highlighting for .orr files
 - Error underlining and hover information
 - Basic auto-completion for built-in types
-- Integration with Filament compiler
+- Integration with Orrery compiler
 
 **Benefits**:
 - Native editor support for Zed users
@@ -642,7 +642,7 @@ Develop a Zed editor extension for Filament with syntax highlighting, error repo
 #### VS Code Extension
 
 **Description**:
-Create a comprehensive VS Code extension providing rich language support for Filament diagrams.
+Create a comprehensive VS Code extension providing rich language support for Orrery diagrams.
 
 **Features**:
 - Advanced syntax highlighting
@@ -662,7 +662,7 @@ Create a comprehensive VS Code extension providing rich language support for Fil
 #### JetBrains Extension
 
 **Description**:
-Develop a JetBrains plugin supporting Filament across IntelliJ IDEA, WebStorm, and other JetBrains IDEs.
+Develop a JetBrains plugin supporting Orrery across IntelliJ IDEA, WebStorm, and other JetBrains IDEs.
 
 **Features**:
 - Smart code completion

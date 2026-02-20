@@ -1,10 +1,10 @@
-# Filament Note Syntax Specification
+# Orrery Note Syntax Specification
 
-Notes are annotations attached to diagram elements or positioned in the diagram margins. They provide additional context, documentation, or explanatory text without participating in the diagram's structural relationships. This specification defines the syntax, attributes, and usage patterns for notes in Filament diagrams.
+Notes are annotations attached to diagram elements or positioned in the diagram margins. They provide additional context, documentation, or explanatory text without participating in the diagram's structural relationships. This specification defines the syntax, attributes, and usage patterns for notes in Orrery diagrams.
 
 ## 1. Overview
 
-The note system in Filament is designed around a minimal, attribute-driven syntax that provides flexible positioning and attachment capabilities. Notes can be:
+The note system in Orrery is designed around a minimal, attribute-driven syntax that provides flexible positioning and attachment capabilities. Notes can be:
 
 - **Attached to elements**: Positioned relative to specific diagram components
 - **Spanning multiple elements**: Displayed across several components
@@ -229,7 +229,7 @@ note [
 
 ## 4. Content Formatting
 
-Note content is provided as a string literal following the colon separator. The string follows Filament's standard string literal rules, supporting escape sequences:
+Note content is provided as a string literal following the colon separator. The string follows Orrery's standard string literal rules, supporting escape sequences:
 
 ```
 note [on=[component]]: "Simple text content";

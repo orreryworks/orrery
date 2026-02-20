@@ -316,69 +316,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
-name = "filament"
-version = "0.1.0"
-dependencies = [
- "color",
- "cosmic-text",
- "filament-core",
- "filament-parser",
- "indexmap",
- "layout-rs",
- "log",
- "petgraph",
- "rand",
- "rust-sugiyama",
- "serde",
- "svg",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
-name = "filament-cli"
-version = "0.1.0"
-dependencies = [
- "clap",
- "directories",
- "env_logger",
- "filament",
- "filament-parser",
- "log",
- "miette",
- "serde",
- "tempfile",
- "thiserror",
- "toml",
-]
-
-[[package]]
-name = "filament-core"
-version = "0.1.0"
-dependencies = [
- "color",
- "cosmic-text",
- "float-cmp",
- "log",
- "proptest",
- "serde",
- "string-interner",
- "svg",
- "thiserror",
-]
-
-[[package]]
-name = "filament-parser"
-version = "0.1.0"
-dependencies = [
- "filament-core",
- "log",
- "proptest",
- "thiserror",
- "winnow",
-]
-
-[[package]]
 name = "fixedbitset"
 version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -690,6 +627,69 @@ name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
+
+[[package]]
+name = "orrery"
+version = "0.1.0"
+dependencies = [
+ "color",
+ "cosmic-text",
+ "indexmap",
+ "layout-rs",
+ "log",
+ "orrery-core",
+ "orrery-parser",
+ "petgraph",
+ "rand",
+ "rust-sugiyama",
+ "serde",
+ "svg",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "orrery-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "directories",
+ "env_logger",
+ "log",
+ "miette",
+ "orrery",
+ "orrery-parser",
+ "serde",
+ "tempfile",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
+name = "orrery-core"
+version = "0.1.0"
+dependencies = [
+ "color",
+ "cosmic-text",
+ "float-cmp",
+ "log",
+ "proptest",
+ "serde",
+ "string-interner",
+ "svg",
+ "thiserror",
+]
+
+[[package]]
+name = "orrery-parser"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "orrery-core",
+ "proptest",
+ "thiserror",
+ "winnow",
+]
 
 [[package]]
 name = "owo-colors"

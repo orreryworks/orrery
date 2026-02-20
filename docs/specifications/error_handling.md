@@ -1,8 +1,8 @@
-# Filament Error Handling Specification
+# Orrery Error Handling Specification
 
 ## 1. Overview
 
-Filament provides an error handling system for precise, user-friendly error reporting that helps developers quickly identify and resolve issues in their diagram specifications. The system emphasizes accurate source location tracking, clear error messages, and actionable guidance.
+Orrery provides an error handling system for precise, user-friendly error reporting that helps developers quickly identify and resolve issues in their diagram specifications. The system emphasizes accurate source location tracking, clear error messages, and actionable guidance.
 
 ## 2. Error Handling Architecture
 
@@ -29,7 +29,7 @@ The system must process errors through these stages:
 
 ### 10.3 Syntax Errors (Blocks and Explicit)
 
-Errors detected during the parsing phase when source code doesn't conform to Filament's grammar:
+Errors detected during the parsing phase when source code doesn't conform to Orrery's grammar:
 
 - **Missing semicolons** - Statements not properly terminated
 - **Missing colons** - Component definitions lacking proper syntax
@@ -158,7 +158,7 @@ For a complete list of available error examples and their descriptions, see [`ex
 
 Test any error example with:
 ```bash
-cargo run examples/errors/[example_file.fil]
+cargo run examples/errors/[example_file.orr]
 ```
 
 ## 8. Help Text and Guidance
@@ -200,7 +200,7 @@ All error locations must be:
 
 **Error**: Using activation in component diagrams (block or explicit)
 
-```filament
+```orrery
 diagram component;
 user: Rectangle;
 server: Rectangle;
@@ -218,7 +218,7 @@ deactivate user;  // Error
 **Error Message**:
 ```
 Error: Activation is only supported in sequence diagrams
-  --> example.filament:5:1
+  --> example.orrery:5:1
    |
  5 | activate user {
    | ^^^^^^^^ activation not allowed here
@@ -231,7 +231,7 @@ Error: Activation is only supported in sequence diagrams
 
 **Error**: Referencing non-existent components in activation (block or explicit)
 
-```filament
+```orrery
 diagram sequence;
 user: Rectangle;
 
@@ -250,7 +250,7 @@ activate server;   // Error: 'server' component not defined
 **Error Message**:
 ```
 Error: Component 'server' is not defined
-  --> example.filament:4:10
+  --> example.orrery:4:10
    |
  4 | activate server {
    |          ^^^^^^ undefined component
@@ -263,7 +263,7 @@ Error: Component 'server' is not defined
 
 **Block form**: Missing semicolon after activate block
 
-```filament
+```orrery
 diagram sequence;
 user: Rectangle;
 server: Rectangle;
@@ -276,7 +276,7 @@ activate user {
 **Error Message**:
 ```
 Error: Expected ';' after activate block
-  --> example.filament:7:1
+  --> example.orrery:7:1
    |
  7 | }
    |  ^ expected ';'
@@ -293,7 +293,7 @@ Explicit activation statements provide fine-grained control over lifeline activa
 
 ```
 Error: Activate statements are only supported in sequence diagrams
-  --> example.filament:3:1
+  --> example.orrery:3:1
    |
  3 | activate user;
    | ^^^^^^^^ not allowed here
@@ -306,7 +306,7 @@ Error: Activate statements are only supported in sequence diagrams
 
 ```
 Error: Deactivate without matching activate
-  --> example.filament:6:1
+  --> example.orrery:6:1
    |
  6 | deactivate user;
    | ^^^^^^^^^^ no prior activation for 'user'
@@ -318,7 +318,7 @@ Error: Deactivate without matching activate
 
 ```
 Error: Unpaired activate at end of scope
-  --> example.filament:4:1
+  --> example.orrery:4:1
    |
  4 | activate server;
    | ^^^^^^^^ activation not closed by a matching deactivate

@@ -1,6 +1,6 @@
-# Filament Diagram Language Specification
+# Orrery Diagram Language Specification
 
-Filament is a domain-specific language designed for creating and rendering diagrams, with a focus on component and sequence diagrams. This specification documents the syntax, semantics, and features of the Filament language.
+Orrery is a domain-specific language designed for creating and rendering diagrams, with a focus on component and sequence diagrams. This specification documents the syntax, semantics, and features of the Orrery language.
 
 ## 1. Introduction
 
@@ -8,7 +8,7 @@ Diagrams are defined in a text-based syntax, which is then parsed, processed, an
 
 ## 2. Basic Structure
 
-A Filament document consists of a diagram declaration, optional type definitions, and diagram elements.
+A Orrery document consists of a diagram declaration, optional type definitions, and diagram elements.
 
 ```
 diagram <kind> [attributes...];
@@ -20,7 +20,7 @@ Whitespace is generally ignored, and comments can be added using Rust-style synt
 
 ## 3. Diagram Types
 
-Filament supports two types of diagrams:
+Orrery supports two types of diagrams:
 
 - **Component Diagrams** (`component`): For visualizing component structures and their relationships
 - **Sequence Diagrams** (`sequence`): For visualizing interactions and message flows between participants
@@ -38,7 +38,7 @@ diagram component [layout_engine="sugiyama"];
 
 ## 4. Type System
 
-Filament uses a unified Type System for defining and applying types to all language constructs. The system distinguishes between **declarations** (`:`) for creating named instances and **invocations** (`@`) for performing actions with types.
+Orrery uses a unified Type System for defining and applying types to all language constructs. The system distinguishes between **declarations** (`:`) for creating named instances and **invocations** (`@`) for performing actions with types.
 
 **For complete Type System documentation, see:** [Type System Specification](type_system.md)
 
@@ -79,7 +79,7 @@ type ThickRedArrow = RedArrow [stroke=[width=3.0]];
 
 ## 5. Literal Values and Data Types
 
-Filament supports two primary data types for attribute values: string literals and float literals. For detailed documentation on syntax, usage, and examples, see:
+Orrery supports two primary data types for attribute values: string literals and float literals. For detailed documentation on syntax, usage, and examples, see:
 
 **[Literal Values and Data Types Specification](literal_values.md)**
 
@@ -133,7 +133,7 @@ Where:
 
 #### 6.2.1 Relation Types
 
-Filament supports four relation types:
+Orrery supports four relation types:
 
 - **Forward** (`->`) - Arrow pointing from source to target
 - **Backward** (`<-`) - Arrow pointing from target to source
@@ -460,7 +460,7 @@ Diagram type restriction:
 
 #### 6.4.4 Sugar Syntax
 
-To improve ergonomics and readability, Filament provides dedicated keywords for common UML 2.5 interaction operators. These keywords are syntactic sugar that desugar to the base `fragment` syntax during compilation.
+To improve ergonomics and readability, Orrery provides dedicated keywords for common UML 2.5 interaction operators. These keywords are syntactic sugar that desugar to the base `fragment` syntax during compilation.
 
 **Available Keywords:**
 - `alt`/`else` - Alternatives (conditional branching)
@@ -789,7 +789,7 @@ Attributes customize the appearance and behavior of elements:
 
 ### 7.1 Attribute Value Types
 
-Filament supports two types of attribute values: string literals and float literals. For detailed documentation on syntax, formats, and usage rules, see:
+Orrery supports two types of attribute values: string literals and float literals. For detailed documentation on syntax, formats, and usage rules, see:
 
 **[Literal Values and Data Types Specification](literal_values.md)**
 
@@ -928,7 +928,7 @@ Nested components are positioned within their parent container and maintain thei
 
 ### 8.1 Embedded Diagrams
 
-Filament supports embedding different diagram types within components, allowing for richer multi-level visualizations. For example, you can embed a sequence diagram inside a component diagram to show the dynamic behavior of a component:
+Orrery supports embedding different diagram types within components, allowing for richer multi-level visualizations. For example, you can embed a sequence diagram inside a component diagram to show the dynamic behavior of a component:
 
 ```
 user_service: Rectangle embed diagram sequence {
@@ -969,7 +969,7 @@ When a component contains an embedded diagram:
 
 ## 10. Layout Behavior
 
-Filament supports multiple layout engines that can be specified using the `layout_engine` attribute in the diagram declaration:
+Orrery supports multiple layout engines that can be specified using the `layout_engine` attribute in the diagram declaration:
 
 ```
 diagram component [layout_engine="sugiyama", background_color="#f5f5f5"];
@@ -997,7 +997,7 @@ Available layout engines:
 
 ## 11. Rendering Output
 
-Filament diagrams are rendered as SVG files with the following characteristics:
+Orrery diagrams are rendered as SVG files with the following characteristics:
 
 - Components are rendered using their defined shape type
 - Relations are rendered as lines with appropriate arrowheads
@@ -1203,23 +1203,23 @@ auth_service -> database;
 
 ## 13. Error Handling
 
-Filament provides error handling with precise location tracking and user-friendly error messages. For detailed information about error handling architecture, message formats, and implementation details, see:
+Orrery provides error handling with precise location tracking and user-friendly error messages. For detailed information about error handling architecture, message formats, and implementation details, see:
 
 **[Error Handling Specification](error_handling.md)**
 
 ## 14. Configuration File
 
-Filament supports configuration through a TOML file that can specify default settings for diagram rendering.
+Orrery supports configuration through a TOML file that can specify default settings for diagram rendering.
 
 ### 14.1 Configuration File Locations
 
-Filament searches for configuration files in the following locations (in order of priority):
+Orrery searches for configuration files in the following locations (in order of priority):
 
 1. Explicitly provided path with the `-c/--config` command-line option
-2. Local directory: `./filament/config.toml`
+2. Local directory: `./orrery/config.toml`
 3. Platform-specific user config directory: `config.toml` in the standard configuration directory for your platform
 
-   The specific paths follow the [directories](https://docs.rs/directories/latest/directories/) crate's `ProjectDirs` convention, using the qualifier "com", organization "filament", and application name "filament".
+   The specific paths follow the [directories](https://docs.rs/directories/latest/directories/) crate's `ProjectDirs` convention, using the qualifier "com", organization "orrery", and application name "orrery".
 
 If no configuration file is found, default values are used.
 
@@ -1286,7 +1286,7 @@ The `[lifeline]` section configures the appearance of lifelines in sequence diag
 
 ### 14.6 Configuration Priority
 
-When determining which styles or layout engines to use, Filament follows this priority order:
+When determining which styles or layout engines to use, Orrery follows this priority order:
 
 #### Layout Engine Priority
 
@@ -1312,14 +1312,14 @@ For embedded diagrams:
 
 ## 15. Command Line Usage
 
-Filament diagrams can be rendered using the command line tool:
+Orrery diagrams can be rendered using the command line tool:
 
 ```
-filament [--log-level=LEVEL] [-c|--config=CONFIG.toml] [-o|--output=FILE.svg] input_file.fil
+orrery [--log-level=LEVEL] [-c|--config=CONFIG.toml] [-o|--output=FILE.svg] input_file.orr
 ```
 
 Where:
 - `--log-level`: Sets the logging verbosity (off, error, warn, info, debug, trace)
 - `-c, --config`: Path to a TOML configuration file (optional)
 - `-o, --output`: Specifies the output SVG file path (defaults to "out.svg")
-- `input_file.fil`: The path to the Filament source file
+- `input_file.orr`: The path to the Orrery source file

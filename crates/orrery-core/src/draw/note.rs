@@ -1,0 +1,477 @@
+//! Note drawable for diagram annotations.
+//!
+//! This module provides a note drawable that renders as a rectangle with a "dog-eared"
+//! (bent) top-right corner. Notes are commonly used for annotations and comments in diagrams.
+//!
+//! # Visual Appearance
+//!
+//! A note consists of three visual layers:
+//! - **Main body**: A rectangle with the top-right corner cut at a 45° angle
+//! - **Fold triangle**: A small triangle showing the folded corner (slightly darker)
+//! - **Fold line**: A diagonal line emphasizing where the corner bends
+//!
+//! # Examples
+//!
+//! ```
+//! # use orrery_core::draw::{Note, NoteDefinition};
+//! # use orrery_core::geometry::Point;
+//! # use orrery_core::draw::Drawable;
+//! # use std::rc::Rc;
+//! #
+//! // Create a note with default styling
+//! let definition = NoteDefinition::new();
+//! let note = Note::new(Rc::new(definition), "This is a note".to_string());
+//!
+//! // Get the size
+//! let size = note.size();
+//!
+//! // Render to layered output
+//! let position = Point::new(100.0, 100.0);
+//! let output = note.render_to_layers(position);
+//! let svg_nodes = output.render();
+//! ```
+//!
+//! # Customization
+//!
+//! ```
+//! # use std::rc::Rc;
+//! #
+//! # use orrery_core::draw::{NoteDefinition, StrokeStyle};
+//! # use orrery_core::color::Color;
+//! #
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let mut definition = NoteDefinition::new();
+//!
+//! // Customize background color
+//! definition.set_background_color(Some(Color::new("#ffebcd")?));
+//!
+//! // Customize border stroke
+//! let mut stroke = Rc::clone(&definition.stroke());
+//! let mut stroke_mut = Rc::make_mut(&mut stroke);
+//! stroke_mut.set_color(Color::new("blue")?);
+//! stroke_mut.set_width(2.0);
+//! stroke_mut.set_style(StrokeStyle::Dashed);
+//! definition.set_stroke(stroke);
+//! # Ok(())
+//! # }
+//! ```
+
+use std::rc::Rc;
+
+use svg::{self, node::element as svg_element};
+
+use crate::{
+    color::Color,
+    draw::{Drawable, LayeredOutput, RenderLayer, StrokeDefinition, Text, TextDefinition},
+    geometry::{Insets, Point, Size},
+};
+
+/// Fixed size for the dog-eared corner fold in pixels.
+///
+/// This constant defines the size of the cut corner at the top-right of the note.
+/// The fold appears as a 12px x 12px triangle that has been "bent over" to create
+/// the dog-eared effect.
+const CORNER_FOLD_SIZE: f32 = 12.0;
+
+/// Definition for note styling and appearance.
+///
+/// `NoteDefinition` is a configuration struct that defines how a note should be styled,
+/// including its background color, border stroke, and text styling. Multiple notes can
+/// share the same definition for consistent styling.
+///
+/// # Default Values
+///
+/// - **Background**: Light yellow (`#fffacd`)
+/// - **Stroke**: Default stroke
+/// - **Text**: Default text definition
+///
+/// # Examples
+///
+/// ```
+/// # use std::rc::Rc;
+/// #
+/// # use orrery_core::draw::{NoteDefinition, StrokeDefinition};
+/// # use orrery_core::color::Color;
+/// #
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // Create with defaults
+/// let mut definition = NoteDefinition::new();
+///
+/// // Customize
+/// definition.set_background_color(Some(Color::new("lightblue")?));
+/// let mut stroke = Rc::clone(&definition.stroke());
+/// let stroke_mut = Rc::make_mut(&mut stroke);
+/// stroke_mut.set_color(Color::new("navy")?);
+/// stroke_mut.set_width(2.0);
+/// definition.set_stroke(stroke);
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Debug, Clone)]
+pub struct NoteDefinition {
+    background_color: Option<Color>,
+    stroke: Rc<StrokeDefinition>,
+    text: Rc<TextDefinition>,
+    min_width: Option<f32>,
+}
+
+impl NoteDefinition {
+    /// Creates a new note definition with default values.
+    ///
+    /// This is equivalent to calling [`NoteDefinition::default()`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use orrery_core::draw::NoteDefinition;
+    /// let definition = NoteDefinition::new();
+    /// ```
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the background color for the note.
+    ///
+    /// When set to `Some(color)`, the note will be filled with the specified color.
+    /// When set to `None`, the note will not have a background color.
+    ///
+    /// # Arguments
+    ///
+    /// * `color` - Optional background color. Use `None` for no background.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use orrery_core::draw::NoteDefinition;
+    /// # use orrery_core::color::Color;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut definition = NoteDefinition::new();
+    /// definition.set_background_color(Some(Color::new("lightyellow")?));
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn set_background_color(&mut self, color: Option<Color>) {
+        self.background_color = color;
+    }
+
+    /// Sets the minimum width for the note.
+    ///
+    /// When set, the note will expand to at least this width, useful for spanning notes
+    /// across multiple participants in sequence diagrams.
+    ///
+    /// # Arguments
+    ///
+    /// * `width` - Optional minimum width in pixels. Use `None` for natural sizing.
+    pub fn set_min_width(&mut self, width: Option<f32>) {
+        self.min_width = width;
+    }
+
+    /// Returns the background color of the note.
+    fn background_color(&self) -> Option<Color> {
+        self.background_color
+    }
+
+    /// Gets the stroke definition
+    pub fn stroke(&self) -> &Rc<StrokeDefinition> {
+        &self.stroke
+    }
+
+    /// Gets the text definition
+    pub fn text(&self) -> &Rc<TextDefinition> {
+        &self.text
+    }
+
+    /// Set text definition using Rc.
+    pub fn set_text(&mut self, text: Rc<TextDefinition>) {
+        self.text = text;
+    }
+
+    /// Set stroke definition using Rc.
+    pub fn set_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
+        self.stroke = stroke;
+    }
+}
+
+impl Default for NoteDefinition {
+    fn default() -> Self {
+        Self {
+            background_color: Some(Color::new("lightyellow").expect("Invalid color")),
+            stroke: Rc::new(StrokeDefinition::default()),
+            text: Rc::new(TextDefinition::default()),
+            min_width: None,
+        }
+    }
+}
+
+/// A note drawable with a dog-eared corner.
+///
+/// `Note` represents a renderable note that combines a [`NoteDefinition`] with text content.
+/// The note is rendered as a rectangle with a bent top-right corner, commonly used for
+/// annotations in diagrams.
+///
+/// # Rendering
+///
+/// When rendered, the note creates an SVG group containing:
+/// 1. The main note body (rectangle with cut corner)
+/// 2. A small triangle showing the folded corner
+/// 3. A diagonal fold line
+/// 4. The text content
+///
+/// # Examples
+///
+/// ```
+/// # use orrery_core::draw::{Note, NoteDefinition, Drawable};
+/// # use orrery_core::geometry::Point;
+/// # use std::rc::Rc;
+/// #
+/// let definition = NoteDefinition::new();
+/// let note = Note::new(Rc::new(definition), "Important note".to_string());
+///
+/// // The note calculates its own size based on text
+/// let size = note.size();
+///
+/// // Render at a specific position (center point)
+/// let position = Point::new(150.0, 200.0);
+/// let output = note.render_to_layers(position);
+/// let svg_nodes = output.render();
+/// ```
+#[derive(Debug, Clone)]
+pub struct Note {
+    definition: Rc<NoteDefinition>,
+    content: String,
+}
+
+impl Note {
+    /// Creates a new note with the given definition and content.
+    ///
+    /// # Arguments
+    ///
+    /// * `definition` - The styling definition for the note (can be shared among multiple notes)
+    /// * `content` - The text content to display inside the note
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use orrery_core::draw::{Note, NoteDefinition};
+    /// # use std::rc::Rc;
+    /// #
+    /// let definition = NoteDefinition::new();
+    /// let note = Note::new(Rc::new(definition), "My note text".to_string());
+    /// ```
+    pub fn new(definition: Rc<NoteDefinition>, content: String) -> Self {
+        Self {
+            definition,
+            content,
+        }
+    }
+
+    /// Calculates the size of the text content without padding.
+    fn text_size(&self) -> Size {
+        if self.content.is_empty() {
+            return Size::default();
+        }
+        let text = Text::new(&self.definition.text, &self.content);
+        text.size()
+    }
+
+    /// Calculates the total size of the note including padding.
+    fn calculate_size(&self) -> Size {
+        let text_size = self.text_size();
+        let size = text_size.add_padding(Insets::new(10.0, 10.0 + CORNER_FOLD_SIZE, 10.0, 10.0));
+
+        // Apply minimum width if specified
+        if let Some(min_width) = self.definition.min_width {
+            let width = size.width().max(min_width);
+            Size::new(width, size.height())
+        } else {
+            size
+        }
+    }
+
+    /// Creates the SVG path element for the main note body with dog-eared corner.
+    fn create_dog_eared_path(&self, size: Size, position: Point) -> svg_element::Path {
+        let bounds = position.to_bounds(size);
+        let min_x = bounds.min_x();
+        let min_y = bounds.min_y();
+        let max_x = bounds.max_x();
+        let max_y = bounds.max_y();
+
+        // The dog-ear is at the top-right corner
+        let fold_x = max_x - CORNER_FOLD_SIZE;
+        let fold_y = min_y + CORNER_FOLD_SIZE;
+
+        // Create path for the main body (rectangle with top-right corner cut)
+        let path_data = format!(
+            "M {} {} L {} {} L {} {} L {} {} L {} {} L {} {} Z",
+            min_x,
+            min_y, // Start at top-left
+            fold_x,
+            min_y, // Go to where fold starts (top edge)
+            max_x,
+            fold_y, // Diagonal to right edge at fold height
+            max_x,
+            max_y, // Down to bottom-right
+            min_x,
+            max_y, // Across to bottom-left
+            min_x,
+            min_y // Back up to top-left
+        );
+
+        let path = svg_element::Path::new().set("d", path_data);
+        crate::apply_stroke!(path, self.definition.stroke())
+    }
+
+    /// Creates the SVG path element for the diagonal fold line.
+    fn create_fold_line_path(&self, size: Size, position: Point) -> svg_element::Path {
+        let bounds = position.to_bounds(size);
+        let max_x = bounds.max_x();
+        let min_y = bounds.min_y();
+
+        // Fold line goes from the cut point on top edge to the cut point on right edge
+        let fold_x = max_x - CORNER_FOLD_SIZE;
+        let fold_y = min_y + CORNER_FOLD_SIZE;
+
+        let path_data = format!(
+            "M {} {} L {} {}",
+            fold_x,
+            min_y, // Start at top edge fold point
+            max_x,
+            fold_y // Go to right edge fold point
+        );
+
+        let path = svg_element::Path::new()
+            .set("d", path_data)
+            .set("fill", "none");
+        crate::apply_stroke!(path, self.definition.stroke())
+    }
+
+    /// Creates the SVG path element for the small triangular fold-over.
+    fn create_fold_triangle_path(&self, size: Size, position: Point) -> svg_element::Path {
+        let bounds = position.to_bounds(size);
+        let max_x = bounds.max_x();
+        let min_y = bounds.min_y();
+
+        let fold_x = max_x - CORNER_FOLD_SIZE;
+        let fold_y = min_y + CORNER_FOLD_SIZE;
+
+        // Small triangle to show the folded corner
+        let path_data = format!(
+            "M {} {} L {} {} L {} {} Z",
+            fold_x,
+            min_y, // Top edge fold point
+            max_x,
+            fold_y, // Right edge fold point
+            fold_x,
+            fold_y // Corner point of triangle
+        );
+
+        let path = svg_element::Path::new().set("d", path_data);
+        crate::apply_stroke!(path, self.definition.stroke())
+    }
+}
+
+impl Drawable for Note {
+    fn render_to_layers(&self, position: Point) -> LayeredOutput {
+        let mut output = LayeredOutput::new();
+        let size = self.size();
+
+        // Create the main note body with dog-eared corner
+        let mut note_body = self.create_dog_eared_path(size, position);
+
+        // Apply background color
+        if let Some(bg_color) = self.definition.background_color() {
+            note_body = note_body
+                .set("fill", bg_color.to_string())
+                .set("fill-opacity", bg_color.alpha());
+        }
+
+        output.add_to_layer(RenderLayer::Note, Box::new(note_body));
+
+        // Add the small triangle for the folded corner (slightly darker)
+        let mut fold_triangle = self.create_fold_triangle_path(size, position);
+
+        // Make the fold slightly darker than the background
+        if let Some(bg_color) = self.definition.background_color() {
+            let darker = bg_color.with_alpha(bg_color.alpha() * 0.8);
+            fold_triangle = fold_triangle
+                .set("fill", darker.to_string())
+                .set("fill-opacity", darker.alpha());
+        } else {
+            fold_triangle = fold_triangle
+                .set("fill", "#e0e0e0")
+                .set("fill-opacity", 0.8);
+        }
+
+        output.add_to_layer(RenderLayer::Note, Box::new(fold_triangle));
+
+        // Add the fold line
+        let fold_line = self.create_fold_line_path(size, position);
+
+        output.add_to_layer(RenderLayer::Note, Box::new(fold_line));
+
+        // Render the text content if present
+        if !self.content.is_empty() {
+            let text = Text::new(&self.definition.text, &self.content);
+            let text_output = text.render_to_layers(position);
+            output.merge(text_output);
+        }
+
+        output
+    }
+
+    fn size(&self) -> Size {
+        self.calculate_size()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_note_definition_default() {
+        let def = NoteDefinition::default();
+        assert!(def.background_color().is_some());
+        assert_eq!(def.stroke().width(), 1.0);
+    }
+
+    #[test]
+    fn test_note_creation() {
+        let def = NoteDefinition::new();
+        let note = Note::new(Rc::new(def.clone()), "Test note".to_string());
+        let size = note.size();
+        // Verify note was created with non-zero size (indicates content was stored)
+        assert!(size.width() > 0.0);
+        assert!(size.height() > 0.0);
+    }
+
+    #[test]
+    fn test_note_size_calculation() {
+        let def = NoteDefinition::new();
+        let note = Note::new(Rc::new(def.clone()), "Test".to_string());
+        let size = note.size();
+        assert!(size.width() > 0.0);
+        assert!(size.height() > 0.0);
+    }
+
+    #[test]
+    fn test_empty_note() {
+        let def = NoteDefinition::new();
+        let note = Note::new(Rc::new(def.clone()), String::new());
+        let size = note.size();
+        // Even empty notes should have some size due to padding
+        assert!(size.width() > 0.0);
+        assert!(size.height() > 0.0);
+    }
+
+    #[test]
+    fn test_note_definition_customization() {
+        let mut def = NoteDefinition::new();
+        def.set_background_color(Some(Color::new("blue").expect("valid color")));
+        let _note = Note::new(Rc::new(def.clone()), String::new());
+        assert_eq!(
+            def.background_color(),
+            Some(Color::new("blue").expect("valid color"))
+        );
+    }
+}

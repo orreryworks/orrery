@@ -1,0 +1,27 @@
+[package]
+name = "orrery-parser"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+description = "Parser for the Orrery diagram language"
+keywords = ["diagram", "parser", "ast"]
+categories = ["parsing"]
+
+[lib]
+name = "orrery_parser"
+path = "src/lib.rs"
+
+[dependencies]
+orrery-core.workspace = true
+winnow = "0.7.14"
+log = { version = "0.4.29", features = ["kv", "kv_std"] }
+thiserror = "2.0.17"
+
+[dev-dependencies]
+proptest = "1.9"

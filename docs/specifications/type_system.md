@@ -1,8 +1,8 @@
-# Filament Type System Specification
+# Orrery Type System Specification
 
 ## 1. Introduction
 
-The Filament Type System provides a unified, generic, and compositional framework for defining and applying types (styles) to all language constructs.
+The Orrery Type System provides a unified, generic, and compositional framework for defining and applying types (styles) to all language constructs.
 
 ## 2. Core Principles
 
@@ -283,7 +283,7 @@ The `@` symbol clearly indicates "perform this action with the style of this typ
 
 ## 7. Syntactic Sugar
 
-For common cases, Filament allows omitting the `@TypeSpec` to maintain clean and simple syntax. When omitted, the language applies a default base type for that construct. Instance attributes can still be applied to the default type.
+For common cases, Orrery allows omitting the `@TypeSpec` to maintain clean and simple syntax. When omitted, the language applies a default base type for that construct. Instance attributes can still be applied to the default type.
 
 ### 7.1 Overview
 
