@@ -1,0 +1,117 @@
+// Sequence Fragments
+//
+// Demonstrates:
+//   - Base fragment syntax with sections
+//   - Sugar keywords: alt/else, opt, loop, par, break, critical
+//   - Nested fragments
+//   - Fragments with activation blocks inside
+//   - Custom fragment types (@TypeSpec)
+//   - Fragment attribute styling (border_stroke, separator_stroke, background_color)
+
+diagram sequence;
+
+// --- Type Definitions ---
+
+type Participant = Rectangle[fill_color="#e6f3ff", stroke=[color="#336699"]];
+type Store = Rectangle[fill_color="#e0f0e0", stroke=[color="#339966"], rounded=8];
+type RequestArrow = Arrow[stroke=[color="steelblue", width=1.5]];
+type ResponseArrow = Arrow[stroke=[color="seagreen", style="dashed"]];
+type ErrorArrow = Arrow[stroke=[color="#cc3333", width=2.0]];
+type SecurityFragment = Fragment[background_color="rgba(255,220,220,0.15)", border_stroke=[color="red", width=2.0]];
+
+// --- Participants ---
+
+client as "Browser": Participant;
+server as "API Server": Participant;
+db as "Database": Store;
+cache as "Cache": Store;
+
+// --- Base Fragment Syntax ---
+
+fragment "Request Handling" {
+    section "cache hit" {
+        client -> @RequestArrow server: "GET /products";
+        server -> @RequestArrow cache: "Lookup key";
+        cache -> @ResponseArrow server: "Cached response";
+        server -> @ResponseArrow client: "200 OK";
+    };
+    section "cache miss" {
+        server -> @RequestArrow db: "SELECT products";
+        db -> @ResponseArrow server: "Result set";
+        server -> @RequestArrow cache: "SET key";
+        server -> @ResponseArrow client: "200 OK";
+    };
+};
+
+// --- alt/else ---
+
+alt @SecurityFragment "valid session" {
+    client -> @RequestArrow server: "Request with JWT";
+    server -> @ResponseArrow client: "Protected resource";
+} else "expired session" {
+    client -> @RequestArrow server: "Request with stale JWT";
+    server -> @ErrorArrow client: "401 Unauthorized";
+};
+
+// --- opt ---
+
+opt [background_color="rgba(220,240,255,0.15)"] "cache warm" {
+    server -> @RequestArrow cache: "GET session";
+    cache -> @ResponseArrow server: "Session data";
+};
+
+// --- loop ---
+
+loop [border_stroke=[color="purple"]] "for each page 1..N" {
+    client -> @RequestArrow server: "GET /items?page=N";
+    server -> @RequestArrow db: "SELECT LIMIT 50 OFFSET N";
+    db -> @ResponseArrow server: "Page rows";
+    server -> @ResponseArrow client: "JSON page";
+};
+
+// --- par ---
+
+par "fetch user profile" {
+    server -> @RequestArrow db: "SELECT user";
+    db -> @ResponseArrow server: "User row";
+} par "fetch preferences" {
+    server -> @RequestArrow cache: "GET prefs";
+    cache -> @ResponseArrow server: "Preferences";
+};
+
+// --- break ---
+
+break [border_stroke=[color="red", style="dashed"]] "rate limit exceeded" {
+    server -> @ErrorArrow client: "429 Too Many Requests";
+};
+
+// --- critical ---
+
+critical [background_color="rgba(255,255,200,0.2)", border_stroke=[color="goldenrod", width=2.0]] "payment transaction" {
+    server -> @RequestArrow db: "BEGIN";
+    server -> @RequestArrow db: "UPDATE balance";
+    server -> @RequestArrow db: "INSERT ledger_entry";
+    server -> @RequestArrow db: "COMMIT";
+};
+
+// --- Nested Fragments with Activation ---
+
+alt "order placed" {
+    client -> @RequestArrow server: "POST /order";
+
+    activate server {
+        critical "inventory reservation" {
+            server -> @RequestArrow db: "UPDATE stock SET qty = qty - 1";
+            db -> @ResponseArrow server: "Row updated";
+        };
+
+        opt "loyalty member" {
+            server -> @RequestArrow db: "INSERT reward_points";
+        };
+
+        server -> @ResponseArrow client: "201 Created";
+    };
+} else "validation failed" {
+    client -> @RequestArrow server: "POST /order (invalid)";
+    server -> @ErrorArrow client: "422 Unprocessable Entity";
+};

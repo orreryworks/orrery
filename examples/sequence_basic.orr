@@ -1,0 +1,56 @@
+// Sequence Basics
+//
+// Demonstrates:
+//   - Participant definitions with display names
+//   - Custom types for participants and arrows
+//   - Relation types: ->, <-, <->, -
+//   - Relation labels with text styling
+//   - Self-messages
+
+diagram sequence;
+
+// --- Type Definitions ---
+
+type Participant = Rectangle[fill_color="#e6f3ff", stroke=[color="#336699"]];
+type Store = Rectangle[fill_color="#e0f0e0", stroke=[color="#339966"], rounded=8];
+type AsyncArrow = Arrow[stroke=[color="#888888", style="dashed"]];
+type ErrorArrow = Arrow[stroke=[color="#cc3333", width=2.0]];
+
+// --- Participants ---
+
+client as "Browser": Participant;
+api as "API Gateway": Participant;
+auth as "Auth Service": Participant;
+db as "Database": Store;
+
+// --- Forward Arrow ---
+
+client -> api: "POST /login";
+api -> [stroke=[color="blue"]] auth: "Validate credentials";
+auth -> [text=[color="darkgreen"]] db: "SELECT user WHERE email = ?";
+db -> auth: "User row";
+auth -> [stroke=[color="green"], text=[color="green"]] api: "JWT token";
+api -> client: "200 OK";
+
+// --- Backward Arrow ---
+
+client <- @AsyncArrow api: "SSE push event";
+
+// --- Bidirectional ---
+
+api <-> [stroke=[color="purple"]] auth: "Healthcheck";
+
+// --- Plain Line (no arrowhead) ---
+
+auth - [stroke=[style="dotted", color="gray"]] db: "Connection pool";
+
+// --- Self-Message ---
+
+api -> [stroke=[color="orange"]] api: "Rate limit check";
+
+// --- Typed Relations ---
+
+client -> @ErrorArrow api: "Malformed request";
+api -> @ErrorArrow client: "400 Bad Request";
+
+client -> @AsyncArrow api: "WebSocket upgrade";

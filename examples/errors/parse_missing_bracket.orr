@@ -1,0 +1,15 @@
+// Error [E100]: missing closing bracket
+// Phase: Parse
+//
+// The attribute block on `backend` is missing its closing `]`.
+// Expected: parse error pointing to the unclosed `[`
+
+diagram component;
+
+type Service = Rectangle [fill_color="#e6f3ff"];
+
+frontend: Service;
+
+backend: Service [fill_color="lightgreen"
+
+database: Rectangle;

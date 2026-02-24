@@ -1,0 +1,61 @@
+// Component Nesting
+//
+// Demonstrates:
+//   - Single-level nesting
+//   - Multi-level nesting
+//   - Cross-level relations (parent::child syntax)
+//
+// Spec: specification.md § 8
+
+diagram component;
+
+// --- Type Definitions ---
+
+type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
+type Database = Rectangle [fill_color="#e0f0e0", rounded=10];
+
+// --- Single-Level Nesting ---
+
+backend: Rectangle [fill_color="#f5f5f5"] {
+    api: Service;
+    auth: Service;
+    api -> auth;
+};
+
+// --- Multi-Level Nesting ---
+
+platform: Rectangle [fill_color="#fafafa"] {
+    gateway: Service;
+
+    services: Rectangle [fill_color="#f0f0f0"] {
+        users: Service;
+        orders: Service;
+        users -> orders;
+    };
+
+    data: Rectangle [fill_color="#f0f0f0"] {
+        primary_db: Database;
+        replica_db: Database;
+        primary_db -> replica_db: "Replication";
+    };
+
+    gateway -> services;
+    services -> data;
+};
+
+// --- Cross-Level Relations ---
+
+// Top-level to nested
+monitoring: Service;
+monitoring -> platform::gateway;
+monitoring -> platform::data::primary_db;
+
+// Nested to top-level
+platform::services::orders -> monitoring: "Metrics";
+
+// Across nesting boundaries
+platform::gateway -> platform::data::primary_db;
+
+// --- Top-Level Relations ---
+
+backend -> platform;

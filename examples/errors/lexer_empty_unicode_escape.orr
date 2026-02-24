@@ -1,0 +1,14 @@
+// Error [E006]: empty unicode escape
+// Phase: Lexer
+//
+// The unicode escape `\u{}` contains no hexadecimal digits.
+// Unicode escapes require 1–6 hex digits: `\u{1F602}`.
+// Expected: lexer error reporting empty unicode escape
+
+diagram sequence;
+
+client: Rectangle;
+server: Rectangle;
+
+// ❌ Empty unicode escape — no hex digits inside braces
+client -> server: "Send \u{} emoji";

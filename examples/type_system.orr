@@ -1,0 +1,101 @@
+// Type System
+//
+// Demonstrates:
+//   - Type declarations (type keyword)
+//   - Type composition and extension
+//   - Attribute group types (Stroke, Text)
+//   - Declarations (:) vs Invocations (@)
+//   - Named vs Anonymous TypeSpec
+//   - Syntactic sugar (omitting @TypeSpec)
+
+diagram sequence;
+
+// --- Attribute Group Types ---
+// Reusable groups of stroke and text attributes.
+
+type ThinDashed = Stroke[color="slategray", width=1.0, style="dashed"];
+type ThickSolid = Stroke[color="steelblue", width=2.5];
+type BoldText = Text[font_size=16, color="darkblue", font_family="Arial"];
+type SmallText = Text[font_size=11, color="gray"];
+
+// --- Component Types ---
+// Extending built-in base types with attributes.
+
+type Service = Rectangle[fill_color="#e6f3ff", stroke=ThickSolid, text=BoldText];
+type Store = Rectangle[fill_color="#e0f0e0", stroke=[color="#339966"], rounded=8, text=[color="#2d6a2d"]];
+
+// Extending user-defined types — later attributes override earlier ones.
+type CriticalService = Service[fill_color="#ffe0e0", stroke=[color="red", width=3.0]];
+type ReadReplica = Store[fill_color="#f0f0e0", stroke=ThinDashed];
+
+// --- Arrow Types ---
+
+type RequestArrow = Arrow[stroke=ThickSolid];
+type ResponseArrow = Arrow[stroke=ThinDashed];
+type ErrorArrow = Arrow[stroke=[color="#cc3333", width=2.0, style="dashed"]];
+
+// Extending a custom arrow type
+type UrgentRequest = RequestArrow[stroke=[color="red"]];
+
+// --- Construct Types ---
+
+type WarningNote = Note[background_color="#fff3cd", stroke=[color="orange", width=2.0], text=[color="#856404"]];
+type CriticalActivation = Activate[fill_color="rgba(255,180,180,0.3)", stroke=[color="red", width=2.0]];
+type HighlightFragment = Fragment[background_color="rgba(200,220,255,0.15)", border_stroke=[color="blue", width=2.0]];
+
+// --- Participants (Declarations using `:`) ---
+
+client as "Browser": Service;
+api as "API Gateway": CriticalService;
+auth as "Auth Service": Service;
+primary_db as "Primary DB": Store;
+replica_db as "Read Replica": ReadReplica;
+
+// --- Sugar Syntax (default types omitted) ---
+// Equivalent to @Arrow, @Note, @Activate, @Fragment.
+
+client -> api: "GET /dashboard";
+note [on=[api]]: "Default @Note styling";
+
+// --- Named TypeSpec Invocations (@) ---
+
+api -> @RequestArrow auth: "Validate session";
+auth -> @ResponseArrow api: "Session valid";
+note @WarningNote [on=[auth]]: "Token expires in 60s";
+
+// --- Anonymous TypeSpec Invocations ---
+// One-off types created inline without a name.
+
+api -> @Arrow[stroke=[color="purple", width=2.0]] primary_db: "SELECT dashboard";
+note @Note[on=[primary_db], background_color="lavender", stroke=[color="slateblue"]]: "Query plan cached";
+
+// --- Named + Instance Overrides ---
+// Instance attributes override the type's attributes.
+
+primary_db -> @ResponseArrow[stroke=[color="green"]] api: "Result set";
+
+// --- Custom Activation Type ---
+
+activate @CriticalActivation api {
+    api -> @UrgentRequest primary_db: "UPDATE session.last_active";
+    primary_db -> @ResponseArrow api: "Ack";
+};
+
+// --- Custom Fragment Type ---
+
+alt @HighlightFragment "replica available" {
+    api -> @RequestArrow replica_db: "SELECT analytics (read replica)";
+    replica_db -> @ResponseArrow api: "Analytics data";
+} else "replica down" {
+    api -> @RequestArrow primary_db: "SELECT analytics (fallback)";
+    primary_db -> @ResponseArrow api: "Analytics data";
+};
+
+api -> @ResponseArrow client: "Dashboard payload";
+
+// --- Composition in Practice ---
+// CriticalService extends Service which extends Rectangle:
+//   Rectangle → Service[fill_color, stroke=ThickSolid, text=BoldText]
+//              → CriticalService[fill_color override, stroke override]
+// UrgentRequest extends RequestArrow which extends Arrow:
+//   Arrow → RequestArrow[stroke=ThickSolid] → UrgentRequest[stroke.color override]

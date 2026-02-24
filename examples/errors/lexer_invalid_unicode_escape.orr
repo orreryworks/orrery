@@ -1,0 +1,16 @@
+// Error [E004]: invalid unicode escape format
+// Phase: Lexer
+//
+// The unicode escape `\u1F602` is missing the required braces.
+// Unicode escapes must use the format `\u{XXXX}` with 1-6 hex digits.
+// Expected: lexer error reporting invalid unicode escape format
+
+diagram component;
+
+type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
+
+api: Service;
+db: Rectangle;
+
+// ❌ `\u1F602` should be `\u{1F602}`
+api -> db: "Emoji \u1F602 query";

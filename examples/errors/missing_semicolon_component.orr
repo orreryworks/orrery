@@ -1,9 +1,0 @@
-diagram component;
-
-type Database = Rectangle [color="blue"];
-
-// This component is missing a semicolon - should trigger parse error
-frontend: Rectangle [color="red"]
-
-// This line should cause the parser to fail due to missing semicolon above
-backend: Database;

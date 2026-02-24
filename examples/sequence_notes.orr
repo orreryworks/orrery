@@ -1,0 +1,84 @@
+// Sequence Notes
+//
+// Demonstrates:
+//   - Attached notes (on=[element])
+//   - Spanning notes (on=[elem1, elem2])
+//   - Margin and over-all notes
+//   - Alignment: over, left, right
+//   - Styling: background_color, stroke, text
+//   - Notes inside activation blocks and fragments
+//   - Custom note types (@TypeSpec)
+//
+// Spec: note_syntax.md, specification.md § 6
+
+diagram sequence;
+
+// --- Type Definitions ---
+
+type Participant = Rectangle[fill_color="#e6f3ff", stroke=[color="#336699"]];
+type Store = Rectangle[fill_color="#e0f0e0", stroke=[color="#339966"], rounded=8];
+type WarningNote = Note[background_color="#fff3cd", stroke=[color="orange", width=2.0], text=[color="#856404"]];
+type ErrorNote = Note[background_color="#f8d7da", stroke=[color="red", width=2.0], text=[color="#721c24"]];
+type InfoNote = Note[background_color="#d1ecf1", stroke=[color="#0c5460"], text=[color="#0c5460", font_size=12]];
+type RequestArrow = Arrow[stroke=[color="steelblue", width=1.5]];
+type ResponseArrow = Arrow[stroke=[color="seagreen", style="dashed"]];
+
+// --- Participants ---
+
+client as "Browser": Participant;
+api as "API Gateway": Participant;
+auth as "Auth Service": Participant;
+db as "Database": Store;
+
+// --- Attached + Alignment ---
+
+note [on=[client], align="right"]: "SPA client with local token cache";
+note [on=[db], align="left"]: "PostgreSQL 16 cluster";
+
+client -> @RequestArrow api: "POST /login";
+
+// Default alignment is "over"
+note [on=[api]]: "Validating request schema";
+
+// --- Spanning Notes ---
+
+api -> @RequestArrow auth: "Verify credentials";
+note [on=[api, auth, db]]: "Authentication boundary";
+
+auth -> @RequestArrow db: "SELECT user WHERE email = ?";
+db -> @ResponseArrow auth: "User row";
+
+// --- Margin and Over-All Notes ---
+
+note [align="left"]: "Left margin: audit trail";
+note [align="right"]: "Right margin: latency budget 250ms";
+
+// Over all participants (on omitted = on=[])
+note: "System-wide maintenance window 02:00–04:00 UTC";
+
+auth -> @ResponseArrow api: "JWT issued";
+
+// --- Custom Note Types ---
+
+note @WarningNote [on=[api]]: "Token cache nearing capacity";
+note @ErrorNote [on=[db]]: "Replication lag > 5s";
+note @InfoNote [on=[auth, db]]: "mTLS connection established";
+
+api -> @ResponseArrow client: "200 OK + token";
+
+// --- Notes Inside Activation + Fragment ---
+
+client -> @RequestArrow api: "GET /dashboard";
+
+activate api {
+    note @InfoNote [on=[api]]: "Rate limiter: 42/100 requests used";
+
+    alt "cache hit" {
+        api -> @ResponseArrow client: "Cached dashboard";
+    } else "cache miss" {
+        api -> @RequestArrow db: "SELECT dashboard_data";
+        note @WarningNote [on=[db]]: "Slow query: full table scan";
+        db -> @ResponseArrow api: "Result set";
+        api -> @ResponseArrow client: "Fresh dashboard";
+    };
+};

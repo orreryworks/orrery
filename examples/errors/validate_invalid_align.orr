@@ -1,0 +1,20 @@
+// Error [E203]: invalid align value for diagram type
+// Phase: Validation
+//
+// The note uses `align="top"` which is not valid for sequence diagrams.
+// Valid sequence diagram align values: over, left, right.
+// Expected: validation error reporting invalid align value
+
+diagram sequence;
+
+type Service = Rectangle [fill_color="#e6f3ff", stroke=[color="#336699"]];
+
+client: Service;
+server: Service;
+
+client -> server: "Request";
+
+// ❌ `top` is not a valid align value for sequence diagrams
+note [on=[client], align="top"]: "This alignment is invalid here";
+
+server -> client: "Response";

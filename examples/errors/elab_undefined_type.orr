@@ -1,0 +1,18 @@
+// Error [E300]: undefined type reference
+// Phase: Elaboration
+//
+// The component `api` references type `ApiService` which extends
+// `rectangle` (lowercase) instead of the built-in `Rectangle`.
+// Expected: elaboration error reporting undefined base type
+
+diagram component;
+
+type Database = Rectangle [fill_color="lightblue", rounded=10];
+
+// ❌ `rectangle` is not a valid type (should be `Rectangle`)
+type ApiService = rectangle [fill_color="green"];
+
+db: Database;
+api: ApiService;
+
+api -> db: "Query";

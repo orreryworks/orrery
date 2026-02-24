@@ -1,0 +1,91 @@
+// Styling Attributes
+//
+// Demonstrates:
+//   - Stroke attributes: color, width, style, dash patterns, line_cap, line_join
+//   - Text attributes: font_size, font_family, color, background_color, padding
+//   - Color formats: named, hex (#rrggbb), rgb(), rgba()
+//   - Styling on components, relations, notes, activations, and fragments
+
+diagram sequence;
+
+// --- Stroke Types ---
+
+type SolidStroke = Stroke[color="navy", width=2.0, style="solid"];
+type DashedStroke = Stroke[color="crimson", width=1.5, style="dashed"];
+type DottedStroke = Stroke[color="gray", width=1.0, style="dotted"];
+type CustomDashStroke = Stroke[color="purple", width=2.0, style="5,3,2,3"];
+type RoundCapStroke = Stroke[color="teal", width=3.0, cap="round", join="round"];
+
+// --- Text Types ---
+
+type HeaderText = Text[font_size=18, font_family="Arial", color="darkblue"];
+type MonoText = Text[font_size=12, font_family="Courier New", color="#333333"];
+type HighlightText = Text[font_size=14, color="darkred", background_color="lightyellow", padding=4.0];
+
+// --- Component Types Using Stroke and Text Groups ---
+
+type Primary = Rectangle[fill_color="#e6f3ff", stroke=SolidStroke, text=HeaderText];
+type Secondary = Rectangle[fill_color="#f0f0f0", stroke=DashedStroke, text=MonoText];
+type Accent = Rectangle[fill_color="#fff0f5", stroke=RoundCapStroke, text=HighlightText];
+
+// --- Arrow Types ---
+
+type SolidArrow = Arrow[stroke=SolidStroke];
+type DashedArrow = Arrow[stroke=DashedStroke];
+type DottedArrow = Arrow[stroke=DottedStroke];
+type PatternArrow = Arrow[stroke=CustomDashStroke];
+
+// --- Color Formats ---
+// Named:  "red", "steelblue", "lightyellow"
+// Hex:    "#cc3333", "#e6f3ff"
+// RGB:    "rgb(100, 149, 237)"
+// RGBA:   "rgba(255, 0, 0, 0.3)"
+
+type NamedColor = Arrow[stroke=[color="coral", width=2.0]];
+type HexColor = Arrow[stroke=[color="#2e8b57", width=2.0]];
+type RgbColor = Arrow[stroke=[color="rgb(100, 149, 237)", width=2.0]];
+type RgbaColor = Arrow[stroke=[color="rgba(148, 0, 211, 0.6)", width=2.0]];
+
+// --- Participants ---
+
+client: Primary;
+server: Secondary;
+store: Accent;
+
+// --- Styled Relations ---
+
+client -> @SolidArrow server: "Solid stroke";
+server -> @DashedArrow store: "Dashed stroke";
+store -> @DottedArrow server: "Dotted stroke";
+server -> @PatternArrow client: "Custom dash pattern (5,3,2,3)";
+
+// --- Inline Stroke + Text on Relations ---
+
+client -> [stroke=[color="darkorange", width=2.5], text=[color="darkorange", font_size=14, font_family="Arial"]] server: "Inline stroke + text";
+
+server -> [stroke=[color="rgb(100, 149, 237)", width=2.0, style="dashed"], text=[color="#4169e1", background_color="white", padding=3.0]] store: "RGB stroke, highlighted label";
+
+// --- Color Format Showcase on Relations ---
+
+client -> @NamedColor server: "Named: coral";
+server -> @HexColor store: "Hex: #2e8b57";
+store -> @RgbColor server: "RGB: cornflower";
+server -> @RgbaColor client: "RGBA: semi-transparent violet";
+
+// --- Styled Notes ---
+
+note @Note[on=[server], background_color="rgba(255, 255, 200, 0.8)", stroke=[color="goldenrod", width=2.0, style="dashed"], text=[font_size=13, color="darkgoldenrod"]]: "Fully styled note: bg, stroke, text";
+
+// --- Styled Activation ---
+
+activate @Activate[fill_color="rgba(70, 130, 180, 0.15)", stroke=[color="steelblue", width=2.0]] server {
+    server -> [stroke=RoundCapStroke, text=HighlightText] store: "Round cap + join, highlighted text";
+    store -> @DashedArrow server: "Response";
+};
+
+// --- Styled Fragment ---
+
+opt @Fragment[background_color="rgba(144, 238, 144, 0.1)", border_stroke=[color="seagreen", width=2.0], separator_stroke=[color="gray", style="dotted"], operation_label_text=[font_size=14, color="seagreen"], section_title_text=[font_size=12, color="gray"]] "cache available" {
+    server -> [stroke=[color="seagreen"]] store: "Cache lookup";
+    store -> @DashedArrow server: "Cache hit";
+};

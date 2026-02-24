@@ -1,0 +1,48 @@
+// Component Basics
+//
+// Demonstrates:
+//   - Component definitions with built-in types
+//   - Display names (as "...")
+//   - Custom types with attributes
+//   - Relation types: ->, <-, <->, -
+//   - Relation labels
+//   - Diagram attributes
+
+diagram component [background_color="#f8f8f8"];
+
+// --- Type Definitions ---
+
+type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
+type Database = Rectangle [fill_color="#e0f0e0", rounded=10];
+type Client = Oval [fill_color="#fff0e0"];
+
+// --- Elements ---
+
+// Display name via `as` syntax
+web_app as "Web Application": Client;
+api as "API Gateway": Service;
+auth as "Auth Service": Service;
+users_db as "Users DB": Database;
+orders_db as "Orders DB": Database;
+
+// Without display name — identifier shown as label
+cache: Service;
+
+// --- Relation Types ---
+
+// Forward arrow
+web_app -> api: "HTTP request";
+
+// Backward arrow
+web_app <- api: "Push notification";
+
+// Bidirectional
+api <-> auth: "Verify / Result";
+
+// Plain line (no arrowhead)
+users_db - orders_db: "Shared cluster";
+
+// Unlabeled relations
+auth -> users_db;
+api -> orders_db;
+api -> cache;

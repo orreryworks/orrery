@@ -1,0 +1,15 @@
+// Error [E002]: unexpected character
+// Phase: Lexer
+//
+// The `$` character is not valid in the Orrery language.
+// Expected: lexer error reporting unexpected character
+
+diagram component;
+
+type Service = Rectangle [fill_color="#e6f3ff"];
+
+api: Service;
+db: Rectangle;
+
+// ❌ `$` is not a valid token
+api $-> db: "Query";

@@ -1,0 +1,11 @@
+// Error [E308]: nested content inside a content-free shape
+// Phase: Elaboration
+//
+// The `Actor` shape is content-free and cannot contain nested elements.
+// Expected: elaboration error indicating nested content is not supported
+
+diagram component;
+
+customer as "Customer": Actor {
+    profile: Rectangle;
+};

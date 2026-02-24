@@ -1,0 +1,17 @@
+// Error [E200]: undefined component in relation
+// Phase: Validation
+//
+// The relation references `cache` which is never declared.
+// Expected: validation error reporting undefined component
+
+diagram component;
+
+type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
+
+api: Service;
+db: Rectangle;
+
+api -> db: "Query";
+
+// ❌ `cache` is not defined
+api -> cache: "Lookup";

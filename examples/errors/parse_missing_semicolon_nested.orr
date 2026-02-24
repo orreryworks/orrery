@@ -1,0 +1,24 @@
+// Error [E100]: missing semicolon after relation inside nested block
+// Phase: Parse
+//
+// A relation inside a nested component block is missing its terminating `;`.
+// Expected: parse error pointing to the unterminated relation
+
+diagram component;
+
+type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
+type Database = Rectangle [fill_color="#e0f0e0", rounded=10];
+
+api_gateway: Service;
+
+backend: Service {
+    auth: Service;
+    user_db: Database;
+
+    // ❌ Missing semicolon after this relation
+    auth -> user_db
+
+    auth -> user_db: "Fallback";
+};
+
+api_gateway -> backend;

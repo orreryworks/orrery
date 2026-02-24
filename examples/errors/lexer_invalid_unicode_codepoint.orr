@@ -1,0 +1,16 @@
+// Error [E005]: invalid unicode codepoint
+// Phase: Lexer
+//
+// The unicode escape `\u{110000}` exceeds the maximum valid codepoint (0x10FFFF).
+// Valid codepoints are 0x0000–0xD7FF and 0xE000–0x10FFFF.
+// Expected: lexer error reporting invalid unicode codepoint
+
+diagram sequence;
+
+type Service = Rectangle[fill_color="#e6f3ff", stroke=[color="#336699"]];
+
+client: Service;
+server: Service;
+
+// ❌ Codepoint 0x110000 is out of range
+client -> server: "Send \u{110000} data";

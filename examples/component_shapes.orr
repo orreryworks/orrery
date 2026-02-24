@@ -1,0 +1,50 @@
+// Component Shapes
+//
+// Demonstrates:
+//   - Content-supporting shapes: Rectangle, Oval, Component
+//   - Content-free shapes: Actor, Entity, Control, Interface, Boundary
+//   - Nesting inside content-supporting shapes
+//   - Styling on all shape types
+
+diagram component;
+
+// --- Content-Supporting Shapes ---
+// Can contain nested elements.
+
+rect as "Rectangle": Rectangle [fill_color="#e3f2fd", rounded=5];
+oval as "Oval": Oval [fill_color="#fce4ec"];
+comp as "UML Component": Component [fill_color="#e8f5e9"];
+
+// Nesting inside content-supporting shapes
+container as "Service Container": Rectangle [fill_color="#f5f5f5"] {
+    inner_api: Rectangle [fill_color="#fff9c4"];
+    inner_db: Rectangle [fill_color="#c8e6c9", rounded=8];
+    inner_api -> inner_db;
+};
+
+// --- Content-Free Shapes ---
+// Text label renders below the shape. Cannot contain nested elements.
+
+customer as "Customer": Actor;
+account as "Account": Entity;
+auth_logic as "Auth Logic": Control;
+rest_api as "REST API": Interface;
+external as "External System": Boundary;
+
+// --- Styled Content-Free Shapes ---
+
+vip as "VIP User": Actor [stroke=[color="gold"], fill_color="#fff8dc"];
+ledger as "Ledger": Entity [stroke=[color="purple"], fill_color="#f3e5f5"];
+security as "Security": Control [stroke=[color="red"], fill_color="#ffebee"];
+graphql as "GraphQL API": Interface [stroke=[color="blue"], fill_color="#e3f2fd"];
+partner as "Partner Gateway": Boundary [stroke=[color="green"], fill_color="#e8f5e9"];
+
+// --- Relations ---
+
+customer -> rest_api: "Request";
+rest_api -> auth_logic: "Authenticate";
+auth_logic -> account: "Validate";
+account -> external: "Sync";
+
+rect -> container;
+oval -> comp;

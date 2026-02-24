@@ -1,0 +1,14 @@
+// Error [E100]: missing semicolon after type definition
+// Phase: Parse
+//
+// The type definition is missing its terminating `;`.
+// Expected: parse error pointing to the line after the type definition
+
+diagram component;
+
+type Database = Rectangle [fill_color="lightblue", rounded=10];
+
+// ❌ Missing semicolon
+type Service = Rectangle [fill_color="#e6f3ff"]
+
+backend: Service;

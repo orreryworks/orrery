@@ -96,7 +96,7 @@ cargo build --release
 
 ```bash
 # Process an example
-cargo run -- examples/shape_types_showcase.orr -o output.svg
+cargo run -- examples/component_shapes.orr -o output.svg
 ```
 
 ## Contributing

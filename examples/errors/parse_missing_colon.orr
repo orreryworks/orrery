@@ -1,0 +1,15 @@
+// Error [E100]: missing colon in component definition
+// Phase: Parse
+//
+// The component definition uses `backend Service` instead of `backend: Service`.
+// Expected: parse error pointing at the missing `:`
+
+diagram component;
+
+type Service = Rectangle [fill_color="#e6f3ff"];
+
+frontend: Service;
+
+backend Service;
+
+database: Service;

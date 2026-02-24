@@ -1,0 +1,17 @@
+// Error [E304]: fragment used in a component diagram
+// Phase: Elaboration
+//
+// Fragment blocks are only supported in sequence diagrams.
+// Expected: elaboration error indicating fragments are not allowed in component diagrams
+
+diagram component;
+
+api: Rectangle;
+db: Rectangle;
+
+// ❌ Fragments are sequence-diagram-only
+fragment "Not allowed here" {
+    section "attempt" {
+        api -> db: "Query";
+    };
+};

@@ -1,0 +1,12 @@
+// Error [E100]: incomplete diagram header
+// Phase: Parse
+//
+// The diagram declaration is missing its type (component/sequence).
+// Expected: parse error on `diagram;`
+
+diagram;
+
+api: Rectangle;
+db: Rectangle;
+
+api -> db: "Query";

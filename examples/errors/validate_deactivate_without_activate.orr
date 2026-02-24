@@ -1,0 +1,20 @@
+// Error [E202]: deactivate without prior activate
+// Phase: Validation
+//
+// A `deactivate` statement is issued for `client` but no matching
+// `activate client;` precedes it in the current scope.
+// Expected: validation error reporting unpaired deactivate
+
+diagram sequence;
+
+type Service = Rectangle[fill_color="#e6f3ff", stroke=[color="#336699"]];
+
+client: Service;
+server: Service;
+
+client -> server: "Request";
+
+// ❌ No prior `activate client;` in this scope
+deactivate client;
+
+server -> client: "Response";

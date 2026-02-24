@@ -1,0 +1,17 @@
+// Error [E304]: activation used in component diagram
+// Phase: Elaboration
+//
+// Activation (block and explicit forms) is only supported in sequence diagrams.
+// Expected: error indicating activation is not allowed in component diagrams
+
+diagram component;
+
+type Service = Rectangle[fill_color="#e6f3ff", rounded=5];
+
+client: Service;
+server: Service;
+
+// ❌ Block-form activation not allowed in component diagrams
+activate client {
+    client -> server: "Request";
+};

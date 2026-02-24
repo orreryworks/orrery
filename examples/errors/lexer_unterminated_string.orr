@@ -1,0 +1,14 @@
+// Error [E001]: unterminated string literal
+// Phase: Lexer
+//
+// The relation label string is opened with `"` but never closed.
+// Expected: lexer error reporting unterminated string literal
+
+diagram component;
+
+type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
+
+api: Service;
+db: Service;
+
+api -> db: "Query that never ends

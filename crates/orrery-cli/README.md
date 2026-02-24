@@ -83,7 +83,7 @@ See the [examples directory](../../../examples/) for sample `.orr` files.
 Process an example:
 
 ```bash
-orrery examples/shape_types_showcase.orr -o showcase.svg
+orrery examples/component_shapes.orr -o showcase.svg
 ```
 
 ## License

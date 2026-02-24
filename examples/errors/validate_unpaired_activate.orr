@@ -1,0 +1,19 @@
+// Error [E201]: unpaired activate at end of scope
+// Phase: Validation
+//
+// `activate server` has no matching `deactivate server` before end of scope.
+// Expected: validation error for unpaired activation
+
+diagram sequence;
+
+server: Rectangle;
+client: Rectangle;
+
+// Correctly paired for comparison
+activate client;
+client -> server: "Ping";
+deactivate client;
+
+// ❌ Unpaired: no matching `deactivate server`
+activate server;
+server -> client: "Processing";

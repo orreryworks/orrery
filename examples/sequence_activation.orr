@@ -1,0 +1,119 @@
+// Sequence Activation
+//
+// Demonstrates:
+//   - Block-form activation (sugar for explicit statements)
+//   - Explicit activate/deactivate statements
+//   - Nested and deeply nested activation
+//   - Stacked activation on the same participant
+//   - Mixed block and explicit usage
+//   - Custom activation types (@TypeSpec)
+
+diagram sequence;
+
+// --- Type Definitions ---
+
+type Participant = Rectangle[fill_color="#e6f3ff", stroke=[color="#336699"]];
+type Store = Rectangle[fill_color="#e0f0e0", stroke=[color="#339966"], rounded=8];
+type RequestArrow = Arrow[stroke=[color="steelblue", width=1.5]];
+type ResponseArrow = Arrow[stroke=[color="seagreen", style="dashed"]];
+type CriticalActivation = Activate[fill_color="rgba(255,180,180,0.4)", stroke=[color="red", width=2.0]];
+type HighlightActivation = Activate[fill_color="rgba(180,200,255,0.3)"];
+
+// --- Participants ---
+
+client as "Browser": Participant;
+api as "API Gateway": Participant;
+auth as "Auth Service": Participant;
+db as "Database": Store;
+
+// --- Block Form with Deep Nesting ---
+
+activate client {
+    client -> @RequestArrow api: "POST /checkout";
+
+    activate api {
+        api -> @RequestArrow auth: "Verify session";
+
+        activate auth {
+            auth -> @RequestArrow db: "SELECT session";
+
+            activate db {
+                db -> db: "Validate TTL";
+                db -> @ResponseArrow auth: "Session valid";
+            };
+
+            auth -> @ResponseArrow api: "Token refreshed";
+        };
+
+        api -> @RequestArrow db: "INSERT order";
+        db -> @ResponseArrow api: "Order ID";
+        api -> @ResponseArrow client: "201 Created";
+    };
+};
+
+// --- Stacked Activation (Same Participant) ---
+
+activate api {
+    client -> @RequestArrow api: "POST /payment";
+    api -> @RequestArrow db: "Check balance";
+    db -> @ResponseArrow api: "Balance OK";
+
+    activate api {
+        api -> @RequestArrow auth: "Fraud check";
+        auth -> @ResponseArrow api: "Cleared";
+
+        activate api {
+            api -> @RequestArrow db: "INSERT transaction";
+            db -> @ResponseArrow api: "Transaction ID";
+        };
+    };
+
+    api -> @ResponseArrow client: "Payment confirmed";
+};
+
+// --- Explicit Statements ---
+
+activate client;
+client -> @RequestArrow api: "Start export job";
+deactivate client;
+
+activate api;
+api -> @RequestArrow db: "SELECT * FROM records";
+activate db;
+db -> db: "Stream rows";
+db -> @ResponseArrow api: "Result set";
+deactivate db;
+api -> @ResponseArrow client: "Export ready";
+deactivate api;
+
+// --- Mixed: Explicit Outer + Block Inner ---
+
+activate client;
+client -> @RequestArrow api: "DELETE /account";
+
+activate @CriticalActivation api {
+    api -> @RequestArrow auth: "Revoke tokens";
+    auth -> @ResponseArrow api: "Revoked";
+
+    activate @CriticalActivation db {
+        api -> @RequestArrow db: "DELETE cascade";
+        db -> @ResponseArrow api: "Purged";
+    };
+
+    api -> @ResponseArrow client: "Account deleted";
+};
+
+deactivate client;
+
+// --- Custom Activation Types ---
+
+activate @HighlightActivation api {
+    api -> @RequestArrow db: "ANALYZE tables";
+    db -> @ResponseArrow api: "Statistics updated";
+};
+
+// Anonymous TypeSpec
+activate @Activate[fill_color="rgba(255,240,200,0.4)", stroke=[color="orange"]] auth {
+    auth -> @RequestArrow db: "Rotate encryption keys";
+    db -> @ResponseArrow auth: "Keys rotated";
+};

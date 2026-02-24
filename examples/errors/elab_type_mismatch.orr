@@ -1,0 +1,18 @@
+// Error [E307]: type mismatch
+// Phase: Elaboration
+//
+// The component `api` uses type `MyArrow` which is an Arrow type,
+// but components require a Shape type (Rectangle, Oval, Actor, etc.).
+// Expected: elaboration error reporting type mismatch
+
+diagram component;
+
+type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
+
+// ❌ Arrow is not a valid shape type for a component
+type MyArrow = Arrow;
+
+db: Service;
+api: MyArrow;
+
+api -> db: "Query";

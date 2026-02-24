@@ -1,0 +1,14 @@
+// Error [E100]: keyword typo in diagram header
+// Phase: Parse
+//
+// The keyword `diagramm` is not recognized.
+// Expected: parse error on unrecognized token
+
+diagramm componnet;
+
+type Service = Rectangle [fill_color="#e6f3ff"];
+
+api: Service;
+db: Rectangle;
+
+api -> db;

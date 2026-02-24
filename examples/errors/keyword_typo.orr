@@ -1,9 +1,0 @@
-diagramm componnet;
-
-type Database = Rectangle [color="blue"];
-
-// This should trigger keyword typo detection
-frontend: Rectangle [color="red"];
-backend: Database;
-
-frontend -> backend;

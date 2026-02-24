@@ -1,0 +1,17 @@
+// Error [E301]: duplicate type definition
+// Phase: Elaboration
+//
+// The type `Service` is defined twice. Type names must be unique.
+// Expected: elaboration error reporting duplicate type definition
+
+diagram component;
+
+type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
+
+// ❌ `Service` is already defined above
+type Service = Oval [fill_color="red"];
+
+api: Service;
+db: Rectangle;
+
+api -> db: "Query";

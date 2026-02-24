@@ -1,0 +1,132 @@
+// Embedded Diagrams
+//
+// Demonstrates:
+//   - Embedding a sequence diagram inside a component diagram node
+//   - Embedding a component diagram inside a component diagram node
+//   - Embedding a component diagram inside a sequence diagram participant
+//   - Embedding a sequence diagram inside a sequence diagram participant
+//   - Layout engine attributes on embedded diagrams
+//   - Styled content within embedded diagrams
+
+diagram component;
+
+// --- Type Definitions ---
+
+type Service = Rectangle[fill_color="#e6f3ff", stroke=[color="#336699"], rounded=5];
+type Store = Rectangle[fill_color="#e0f0e0", stroke=[color="#339966"], rounded=8];
+
+// --- Component Node with Embedded Sequence Diagram ---
+
+auth_service as "Auth Service": Service embed diagram sequence {
+    client: Rectangle[fill_color="#fff0e0"];
+    validator: Rectangle[fill_color="#e6f3ff"];
+    token_store: Rectangle[fill_color="#e0f0e0"];
+
+    client -> [stroke=[color="steelblue"]] validator: "Credentials";
+
+    activate validator {
+        validator -> [stroke=[color="steelblue"]] token_store: "Lookup user";
+        token_store -> [stroke=[color="seagreen", style="dashed"]] validator: "User record";
+        validator -> validator: "Verify hash";
+    };
+
+    alt [border_stroke=[color="green"]] "valid" {
+        validator -> [stroke=[color="green"]] token_store: "Create session";
+        token_store -> [stroke=[color="seagreen", style="dashed"]] validator: "Session ID";
+        validator -> [stroke=[color="green"]] client: "JWT token";
+    } else "invalid" {
+        validator -> [stroke=[color="#cc3333"]] client: "401 Unauthorized";
+    };
+};
+
+// --- Component Node with Embedded Component Diagram (Basic) ---
+
+order_service as "Order Service": Service embed diagram component [layout_engine="basic", background_color="#fafafa"] {
+    api as "API Layer": Rectangle[fill_color="#e6f3ff", rounded=3];
+    validation as "Validation": Rectangle[fill_color="#fff3cd", rounded=3];
+    persistence as "Persistence": Rectangle[fill_color="#e0f0e0", rounded=3];
+    cache as "Cache": Rectangle[fill_color="#f0e6ff", rounded=3];
+
+    api -> validation: "Validate";
+    validation -> persistence: "Store";
+    persistence -> cache: "Invalidate";
+    api -> cache: "Read-through";
+};
+
+// --- Component Node with Embedded Component Diagram (Sugiyama) ---
+
+analytics as "Analytics Pipeline": Service embed diagram component [layout_engine="sugiyama", background_color="#fafafa"] {
+    ingress as "Ingress": Rectangle[fill_color="#fff0e0"];
+    parser as "Parser": Rectangle[fill_color="#e6f3ff"];
+    enricher as "Enricher": Rectangle[fill_color="#e6f3ff"];
+    aggregator as "Aggregator": Rectangle[fill_color="#e0f0e0"];
+    sink as "Sink": Rectangle[fill_color="#f0e6ff"];
+
+    ingress -> parser;
+    ingress -> enricher;
+    parser -> aggregator;
+    enricher -> aggregator;
+    aggregator -> sink;
+};
+
+// --- Top-Level Component Relations ---
+
+gateway as "API Gateway": Service;
+db as "Primary DB": Store;
+
+gateway -> auth_service: "Authenticate";
+gateway -> order_service: "Place order";
+gateway -> analytics: "Stream events";
+auth_service -> db: "Sessions";
+order_service -> db: "Orders";
+order_service -> analytics: "Order events";
+
+// =====================================================================
+// Sequence diagram whose participants contain embedded diagrams
+// =====================================================================
+
+outer as "Outer System": Service embed diagram sequence {
+
+    // Participant with an embedded component diagram inside
+    api_node as "API Server": Rectangle embed diagram component [layout_engine="basic", background_color="#f8f8ff"] {
+        router as "Router": Rectangle[fill_color="#e6f3ff", rounded=3];
+        middleware as "Middleware": Rectangle[fill_color="#fff3cd", rounded=3];
+        handler as "Handler": Rectangle[fill_color="#e0f0e0", rounded=3];
+
+        router -> middleware: "Pre-process";
+        middleware -> handler: "Dispatch";
+    };
+
+    // Participant with an embedded sequence diagram inside
+    payment_node as "Payment Gateway": Rectangle embed diagram sequence {
+        charge_svc: Rectangle[fill_color="#fff0e0"];
+        fraud_check: Rectangle[fill_color="#fce4ec"];
+        ledger: Rectangle[fill_color="#e0f0e0"];
+
+        charge_svc -> [stroke=[color="steelblue"]] fraud_check: "Evaluate risk";
+        fraud_check -> [stroke=[color="seagreen", style="dashed"]] charge_svc: "Score";
+
+        activate charge_svc {
+            charge_svc -> [stroke=[color="steelblue"]] ledger: "Debit";
+            ledger -> [stroke=[color="seagreen", style="dashed"]] charge_svc: "Confirmation";
+        };
+    };
+
+    // Plain participant (no embed)
+    user: Rectangle[fill_color="#fff0e0"];
+
+    // Interactions between participants (some of which have embeds)
+    user -> [stroke=[color="steelblue"]] api_node: "POST /checkout";
+
+    activate api_node {
+        api_node -> [stroke=[color="steelblue"]] payment_node: "Charge $42.00";
+
+        activate payment_node {
+            payment_node -> [stroke=[color="seagreen", style="dashed"]] api_node: "tx_id=abc123";
+        };
+
+        api_node -> [stroke=[color="seagreen", style="dashed"]] user: "201 Created";
+    };
+};
+
+gateway -> outer: "Delegate";

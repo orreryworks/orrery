@@ -1,0 +1,18 @@
+// Error [E303]: unknown attribute on shape type
+// Phase: Elaboration
+//
+// The type definition specifies `bogus`, which is not a recognized
+// attribute for Rectangle shapes.
+// Expected: elaboration error reporting unknown attribute
+
+diagram component;
+
+type Database = Rectangle [fill_color="lightblue", rounded=10];
+
+// ❌ `bogus` is not a recognized shape attribute
+type Service = Rectangle [fill_color="#e6f3ff", bogus="value"];
+
+api: Service;
+db: Database;
+
+api -> db: "Query";

@@ -1,0 +1,18 @@
+// Error [E302]: invalid attribute value
+// Phase: Elaboration
+//
+// The `rounded` attribute expects a numeric value but receives a string.
+// Expected: elaboration error reporting invalid attribute value
+
+diagram component;
+
+type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
+
+api: Service;
+db: Rectangle;
+
+// ❌ `rounded` expects a number, not a string
+cache: Rectangle [rounded="not-a-number"];
+
+api -> cache: "Lookup";
+cache -> db: "Query";

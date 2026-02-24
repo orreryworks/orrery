@@ -1,0 +1,16 @@
+// Error [E100]: missing semicolon after component definition
+// Phase: Parse
+//
+// The component `api` is missing its terminating `;`.
+// Expected: parse error pointing to the missing semicolon
+
+diagram component;
+
+type Service = Rectangle [fill_color="#e6f3ff"];
+
+gateway: Service;
+
+// ❌ Missing semicolon
+api: Service
+
+backend: Service;

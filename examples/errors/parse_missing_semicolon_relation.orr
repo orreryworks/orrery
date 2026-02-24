@@ -1,0 +1,21 @@
+// Error [E100]: missing semicolon after relation
+// Phase: Parse
+//
+// The relation `api -> db` is missing its terminating `;`.
+// Expected: parse error pointing to the missing semicolon
+
+diagram component;
+
+type Service = Rectangle[fill_color="#e6f3ff", rounded=5];
+type Database = Rectangle[fill_color="#e0f0e0", rounded=10];
+
+api: Service;
+db: Database;
+cache: Service;
+
+api -> cache;
+
+// ❌ Missing semicolon
+api -> db
+
+cache -> db;

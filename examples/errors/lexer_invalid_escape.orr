@@ -1,0 +1,18 @@
+// Error [E003]: invalid escape sequence
+// Phase: Lexer
+//
+// The relation label contains `\x`, which is not a valid escape sequence.
+// Valid escapes: \n, \r, \t, \b, \f, \\, \/, \', \", \0, \u{...}
+// Expected: lexer error reporting invalid escape sequence
+
+diagram component;
+
+type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
+
+api: Service;
+db: Rectangle;
+
+api -> db: "Query";
+
+// ❌ `\x` is not a recognized escape sequence
+db -> api: "Result: \x00 rows";
