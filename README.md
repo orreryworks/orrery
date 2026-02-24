@@ -10,6 +10,10 @@ Orrery is a domain-specific language for describing software architecture diagra
 - Component diagrams
 - Sequence diagrams
 
+## Why "Orrery"?
+
+An [orrery](https://en.wikipedia.org/wiki/Orrery) is a mechanical model of the solar system — a clockwork device that makes the invisible relationships and movements of celestial bodies visible and tangible. In the same spirit, Orrery the language makes the structure and interactions within software systems visible through diagrams.
+
 ## Workspace Structure
 
 This project is organized as a Cargo workspace with two crates:
@@ -28,14 +32,13 @@ use orrery::DiagramBuilder;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
-        diagram component;
+        diagram sequence;
         
-        app: Rectangle [fill_color="blue"];
-        db: Cylinder [fill_color="green"];
-        cache: Cylinder;
+        client: Actor;
+        app: Component;
         
-        app -> db [label="query"];
-        app -> cache [label="read/write"];
+        client -> app: "Get Request";
+        client <- app: "Response";
     "#;
     
     let svg = DiagramBuilder::new(source)
