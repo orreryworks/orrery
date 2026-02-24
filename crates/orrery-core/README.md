@@ -1,6 +1,6 @@
 # Orrery Core
 
-Foundational types and definitions for the [Orrery](https://github.com/foadnh/orrery) diagram language.
+Foundational types and definitions for the [Orrery](https://github.com/orreryworks/orrery) diagram language.
 
 This crate provides the shared core types used across the Orrery ecosystem.
 

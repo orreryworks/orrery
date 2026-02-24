@@ -1,6 +1,6 @@
 # Orrery Parser
 
-Parser for the [Orrery](https://github.com/foadnh/orrery) diagram language. This crate provides the complete parsing pipeline from source text to semantic diagram representation.
+Parser for the [Orrery](https://github.com/orreryworks/orrery) diagram language. This crate provides the complete parsing pipeline from source text to semantic diagram representation.
 
 ## Overview
 

@@ -20,4 +20,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration** — Layered configuration via CLI flags, project-local files, and platform-specific config directories.
 - **Dual licensing** — MIT OR Apache-2.0.
 
-[Unreleased]: https://github.com/foadnh/orrery/compare/4b825dc642cb6eb9a060e54bf8d69288fbee49040...HEAD
+[Unreleased]: https://github.com/orreryworks/orrery/compare/4b825dc642cb6eb9a060e54bf8d69288fbee49040...HEAD

@@ -79,7 +79,7 @@ orrery input.orr -o output.svg --log-level debug
 
 ```bash
 # Clone the repository
-git clone https://github.com/foadnh/orrery.git
+git clone https://github.com/orreryworks/orrery.git
 cd orrery
 
 # Build the workspace

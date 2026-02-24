@@ -14,8 +14,8 @@ edition = "2024"
 rust-version = "1.86"
 authors = ["Foad Nosrati Habibi"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/foadnh/orrery"
-homepage = "https://github.com/foadnh/orrery"
+repository = "https://github.com/orreryworks/orrery"
+homepage = "https://github.com/orreryworks/orrery"
 documentation = "https://docs.rs/orrery"
 
 [workspace.dependencies]
