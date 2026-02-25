@@ -18,6 +18,10 @@ repository = "https://github.com/orreryworks/orrery"
 homepage = "https://github.com/orreryworks/orrery"
 documentation = "https://docs.rs/orrery"
 
+[workspace.metadata.release]
+shared-version = true
+tag-name = "v{{version}}"
+
 [workspace.dependencies]
 orrery = { version = "0.1.0", path = "crates/orrery" }
 orrery-core = { version = "0.1.0", path = "crates/orrery-core" }
