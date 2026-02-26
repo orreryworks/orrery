@@ -78,7 +78,7 @@ style = "solid"
 
 ## Example Diagrams
 
-See the [examples directory](../../../examples/) for sample `.orr` files.
+See the [examples directory](../../examples/) for sample `.orr` files.
 
 Process an example:
 
