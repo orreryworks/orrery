@@ -19,9 +19,9 @@ path = "src/lib.rs"
 
 [dependencies]
 orrery-core.workspace = true
-winnow = "0.7.14"
+winnow = "0.7.15"
 log = { version = "0.4.29", features = ["kv", "kv_std"] }
-thiserror = "2.0.17"
+thiserror = "2.0.18"
 
 [dev-dependencies]
-proptest = "1.9"
+proptest = "1.10"
