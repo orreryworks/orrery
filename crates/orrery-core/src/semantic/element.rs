@@ -8,7 +8,6 @@ use crate::{draw, identifier::Id, semantic::diagram::Block};
 #[derive(Debug, Clone)]
 pub struct Node {
     id: Id,
-    name: String,
     display_name: Option<String>,
     block: Block,
     shape_definition: Rc<Box<dyn draw::ShapeDefinition>>,
@@ -18,14 +17,12 @@ impl Node {
     /// Create a new Node.
     pub fn new(
         id: Id,
-        name: String,
         display_name: Option<String>,
         block: Block,
         shape_definition: Rc<Box<dyn draw::ShapeDefinition>>,
     ) -> Self {
         Self {
             id,
-            name,
             display_name,
             block,
             shape_definition,
@@ -47,10 +44,13 @@ impl Node {
         &self.shape_definition
     }
 
-    /// Returns the display text for this node
-    /// Uses display_name if present, otherwise falls back to the identifier name
+    /// Returns the display text for this node.
+    ///
+    /// Uses `display_name` if present, otherwise falls back to the identifier name.
     pub fn display_text(&self) -> &str {
-        self.display_name.as_deref().unwrap_or(&self.name)
+        self.display_name
+            .as_deref()
+            .unwrap_or_else(|| self.id.name())
     }
 }
 
