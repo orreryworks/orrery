@@ -539,7 +539,6 @@ impl<'a> Builder<'a> {
 
         let node = semantic::Node::new(
             *name.inner(),
-            name.to_string(),
             display_name.as_ref().map(|n| n.to_string()),
             block,
             Rc::clone(shape_def),
@@ -712,7 +711,7 @@ impl<'a> Builder<'a> {
         }
 
         // Otherwise, create a new anonymous type based on the base type
-        let id = Id::from_anonymous(self.type_definitions.len());
+        let id = Id::from_anonymous();
         let new_type = self.build_type_from_base(id, base, attributes)?;
         self.insert_type_definition(new_type, type_name.span())
     }

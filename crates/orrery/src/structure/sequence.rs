@@ -270,7 +270,7 @@ mod tests {
         let shape_def =
             Rc::new(Box::new(draw::RectangleDefinition::new()) as Box<dyn draw::ShapeDefinition>);
 
-        Node::new(id, id_str.to_string(), None, Block::None, shape_def)
+        Node::new(id, None, Block::None, shape_def)
     }
 
     #[test]

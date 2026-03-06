@@ -1,156 +1,259 @@
-//! Identifier management using string interning for efficient string storage and comparison
+//! Identifier management using string interning for efficient string storage and comparison.
 //!
-//! This module provides the [`Id`] type with an efficient string-interner based approach.
+//! This module provides the [`Id`] type for efficient, namespace-aware identifier storage.
+//! Each identifier is split into a name (final path segment) and an optional namespace
+//! (everything before the last `::`), stored as separate interned symbols.
 
 use std::{
     fmt,
     sync::{Mutex, OnceLock},
 };
 
-use string_interner::{DefaultStringInterner, DefaultSymbol};
+use string_interner::{DefaultSymbol, StringInterner, backend::BucketBackend};
+
+// BucketBackend keeps resolved &str stable across new insertions, enabling safe &'static str returns.
+type Interner = StringInterner<BucketBackend>;
 
 /// Global string interner for efficient identifier storage.
 ///
 /// # Thread Safety
 ///
-/// This uses `Mutex` for thread-safe access to the string interner.
-static INTERNER: OnceLock<Mutex<DefaultStringInterner>> = OnceLock::new();
+/// Uses [`Mutex`] for thread-safe access to the string interner.
+static INTERNER: OnceLock<Mutex<Interner>> = OnceLock::new();
 
-/// Efficient identifier type using string interning
+/// Efficient identifier using string interning.
 ///
-/// This type provides efficient storage and comparison of string identifiers through
-/// string interning.
+/// Supports `::`-separated paths where the final segment is the name and everything
+/// before it is the namespace. The unqualified name can be retrieved independently
+/// from the full path.
 ///
 /// # Examples
 ///
 /// ```
-/// use orrery_core::identifier::Id;
-///
-/// // Create identifiers from names
-/// let rect_id = Id::new("Rectangle");
+/// # use orrery_core::identifier::Id;
 /// let user_id = Id::new("user_service");
 ///
 /// // Create anonymous identifiers
-/// let anon_id = Id::from_anonymous(0);
+/// let anon_id = Id::from_anonymous();
 ///
 /// // Create nested identifiers
-/// let nested_id = user_id.create_nested(Id::new("database"));
-/// assert_eq!(nested_id, "user_service::database");
+/// let nested = user_id.create_nested(Id::new("database"));
+/// assert_eq!(nested, "user_service::database");
+///
+/// // Access name and namespace separately
+/// assert_eq!(nested.name(), "database");
+/// assert_eq!(nested.namespace(), Some("user_service"));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Id(DefaultSymbol);
+pub struct Id {
+    // Final path segment (e.g., `"backend"` in `"system::backend"`).
+    name: DefaultSymbol,
+    // Path prefix before the last `::`, if any (e.g., `"system"` in `"system::backend"`).
+    namespace: Option<DefaultSymbol>,
+}
 
 impl Id {
-    /// Creates an `Id` from &str.
+    /// Creates an [`Id`] from &str.
+    ///
+    /// If `input` contains `::`, the last segment becomes the name and everything
+    /// before it becomes the namespace. Otherwise the entire string is the name
+    /// with no namespace.
     ///
     /// # Arguments
     ///
-    /// * `name` - The string representation of the identifier
+    /// * `input` - The string representation of the identifier.
     ///
     /// # Examples
     ///
     /// ```
-    /// use orrery_core::identifier::Id;
+    /// # use orrery_core::identifier::Id;
+    /// let simple = Id::new("Rectangle");
+    /// assert_eq!(simple.name(), "Rectangle");
+    /// assert_eq!(simple.namespace(), None);
     ///
-    /// let component_id = Id::new("user_service");
-    /// let type_id = Id::new("Rectangle");
+    /// let namespaced = Id::new("system::frontend::app");
+    /// assert_eq!(namespaced.name(), "app");
+    /// assert_eq!(namespaced.namespace(), Some("system::frontend"));
     /// ```
-    pub fn new(name: &str) -> Self {
-        let mut interner = INTERNER
-            .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
-            .lock()
-            .expect("Failed to acquire interner lock");
-        let symbol = interner.get_or_intern(name);
-        Self(symbol)
+    pub fn new(input: &str) -> Self {
+        let mut interner = interner();
+
+        if let Some((ns_part, name_part)) = input.rsplit_once("::") {
+            let ns = interner.get_or_intern(ns_part);
+            let name = interner.get_or_intern(name_part);
+            Self {
+                name,
+                namespace: Some(ns),
+            }
+        } else {
+            let name = interner.get_or_intern(input);
+            Self {
+                name,
+                namespace: None,
+            }
+        }
     }
 
-    /// Creates an internal `Id` identifier without string representation.
+    /// Creates an anonymous [`Id`] without string representation.
     ///
-    /// # Arguments
-    ///
-    /// * `idx` - A unique index used to generate the anonymous identifier.
+    /// Anonymous identifiers have no namespace.
     ///
     /// # Examples
     ///
     /// ```
-    /// use orrery_core::identifier::Id;
-    ///
-    /// let anon_id = Id::from_anonymous(42);
+    /// # use orrery_core::identifier::Id;
+    /// let anon_id = Id::from_anonymous();
     /// ```
-    pub fn from_anonymous(idx: usize) -> Self {
-        let name = format!("__{idx}");
-        Self::new(&name)
+    pub fn from_anonymous() -> Self {
+        let mut interner = interner();
+        let idx = interner.len();
+        let anon_name = format!("__{idx}");
+        let name_sym = interner.get_or_intern(&anon_name);
+        Self {
+            name: name_sym,
+            namespace: None,
+        }
     }
 
-    /// Creates a nested ID by combining parent ID and child ID with '::' separator.
+    /// Creates a nested [`Id`] by combining this identifier with a child.
+    ///
+    /// The parent's full path becomes the new namespace, and the child's name
+    /// becomes the new name. If the child already has a namespace, it is
+    /// incorporated into the resulting namespace.
     ///
     /// # Arguments
     ///
-    /// * `child_id` - The child identifier to append.
+    /// * `child_id` - The child identifier to nest under this one.
+    ///
+    /// # Returns
+    ///
+    /// A new [`Id`] where `namespace` is the parent's full path and `name` is the child's name.
     ///
     /// # Examples
     ///
     /// ```
-    /// use orrery_core::identifier::Id;
-    ///
+    /// # use orrery_core::identifier::Id;
     /// let parent = Id::new("user");
     /// let child = Id::new("profile");
     /// let nested = parent.create_nested(child);
     /// assert_eq!(nested, "user::profile");
+    /// assert_eq!(nested.name(), "profile");
+    /// assert_eq!(nested.namespace(), Some("user"));
     /// ```
     pub fn create_nested(&self, child_id: Id) -> Self {
-        let mut interner = INTERNER
-            .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
-            .lock()
-            .expect("Failed to acquire interner lock");
-        let parent_str = interner
-            .resolve(self.0)
-            .expect("Parent ID should exist in interner");
-        let child_str = interner
-            .resolve(child_id.0)
-            .expect("Child ID should exist in interner");
-        let nested_name = format!("{}::{}", parent_str, child_str);
-        let symbol = interner.get_or_intern(&nested_name);
-        Self(symbol)
+        // Optimization: when parent has no namespace and child has no namespace,
+        // the new namespace is simply the parent's name symbol — no allocation needed.
+        if self.namespace.is_none() && child_id.namespace.is_none() {
+            return Self {
+                name: child_id.name,
+                namespace: Some(self.name),
+            };
+        }
+
+        let parent_full = self.full_path();
+
+        let mut interner = interner();
+
+        // Append child's namespace (if any) to the parent's full path
+        let new_namespace_str = match child_id.namespace {
+            Some(child_ns) => {
+                let child_ns_str = interner
+                    .resolve(child_ns)
+                    .expect("Child namespace symbol should exist in interner");
+                format!("{parent_full}::{child_ns_str}")
+            }
+            None => parent_full,
+        };
+
+        let new_namespace = interner.get_or_intern(&new_namespace_str);
+
+        Self {
+            name: child_id.name,
+            namespace: Some(new_namespace),
+        }
     }
-}
 
-impl fmt::Display for Id {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let interner = INTERNER
-            .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
-            .lock()
-            .expect("Failed to acquire interner lock");
-        let str_value = interner
-            .resolve(self.0)
-            .expect("Symbol should exist in interner");
-        write!(f, "{}", str_value)
-    }
-}
-
-impl std::str::FromStr for Id {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut interner = INTERNER
-            .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
-            .lock()
-            .expect("Failed to acquire interner lock");
-        let symbol = interner.get_or_intern(s);
-        Ok(Self(symbol))
-    }
-}
-
-impl From<&str> for Id {
-    /// Creates an `Id` from a string slice
-    ///
-    /// This is a convenience implementation that calls `Id::new`.
+    /// Returns the name (final path segment) of this identifier.
     ///
     /// # Examples
     ///
     /// ```
-    /// use orrery_core::identifier::Id;
+    /// # use orrery_core::identifier::Id;
+    /// let simple = Id::new("Rectangle");
+    /// assert_eq!(simple.name(), "Rectangle");
     ///
+    /// let nested = Id::new("system::backend");
+    /// assert_eq!(nested.name(), "backend");
+    /// ```
+    pub fn name(&self) -> &str {
+        resolve_symbol(self.name)
+    }
+
+    /// Returns the namespace (everything before the final segment) of this identifier.
+    ///
+    /// # Returns
+    ///
+    /// `None` if this identifier has no namespace.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use orrery_core::identifier::Id;
+    /// let simple = Id::new("Rectangle");
+    /// assert_eq!(simple.namespace(), None);
+    ///
+    /// let nested = Id::new("system::backend");
+    /// assert_eq!(nested.namespace(), Some("system"));
+    /// ```
+    pub fn namespace(&self) -> Option<&str> {
+        self.namespace.map(resolve_symbol)
+    }
+
+    /// Resolves the full path (`{namespace}::{name}` or just `{name}`).
+    fn full_path(&self) -> String {
+        let interner = interner();
+        let name_str = interner
+            .resolve(self.name)
+            .expect("Name symbol should exist in interner");
+        match self.namespace {
+            Some(ns) => {
+                let ns_str = interner
+                    .resolve(ns)
+                    .expect("Namespace symbol should exist in interner");
+                format!("{ns_str}::{name_str}")
+            }
+            None => name_str.to_string(),
+        }
+    }
+}
+
+/// Formats the full path as `"{namespace}::{name}"`, or just `"{name}"` if no namespace.
+impl fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.full_path())
+    }
+}
+
+/// Parses a string into an [`Id`].
+///
+/// Delegates to [`Id::new`].
+impl std::str::FromStr for Id {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::new(s))
+    }
+}
+
+impl From<&str> for Id {
+    /// Creates an [`Id`] from a string slice.
+    ///
+    /// Delegates to [`Id::new`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use orrery_core::identifier::Id;
     /// let id: Id = "example".into();
     /// assert_eq!(id, "example");
     /// ```
@@ -160,36 +263,45 @@ impl From<&str> for Id {
 }
 
 impl PartialEq<str> for Id {
-    /// Allows direct comparison with string slices: `id == "string"`
+    /// Compares the full path (`{namespace}::{name}`) against a string slice.
     ///
     /// # Examples
     ///
     /// ```
-    /// use orrery_core::identifier::Id;
-    ///
+    /// # use orrery_core::identifier::Id;
     /// let id = Id::new("Rectangle");
     /// assert!(id == "Rectangle");
+    ///
+    /// let nested = Id::new("system").create_nested(Id::new("backend"));
+    /// assert!(nested == "system::backend");
     /// ```
     fn eq(&self, other: &str) -> bool {
-        let interner = INTERNER
-            .get_or_init(|| Mutex::new(DefaultStringInterner::new()))
-            .lock()
-            .expect("Failed to acquire interner lock");
-        let self_str = interner
-            .resolve(self.0)
-            .expect("Symbol should exist in interner");
-        self_str == other
+        // Uses allocation-free slice comparison against the resolved symbols.
+        let name = resolve_symbol(self.name);
+
+        match self.namespace {
+            Some(ns) => {
+                let ns_str = resolve_symbol(ns);
+                let expected_len = ns_str.len() + 2 + name.len();
+                other.len() == expected_len
+                    && other.starts_with(ns_str)
+                    && other[ns_str.len()..].starts_with("::")
+                    && other[ns_str.len() + 2..] == *name
+            }
+            None => other == name,
+        }
     }
 }
 
 impl PartialEq<&str> for Id {
-    /// Allows direct comparison with string references: `id == &string`
+    /// Compares the full path against a `&str` reference.
+    ///
+    /// Delegates to [`PartialEq<str>`](Id#impl-PartialEq<str>-for-Id).
     ///
     /// # Examples
     ///
     /// ```
-    /// use orrery_core::identifier::Id;
-    ///
+    /// # use orrery_core::identifier::Id;
     /// let id = Id::new("Rectangle");
     /// let name = "Rectangle";
     /// assert!(id == name);
@@ -197,6 +309,36 @@ impl PartialEq<&str> for Id {
     fn eq(&self, other: &&str) -> bool {
         self == *other
     }
+}
+
+/// Acquires a lock on the global string interner.
+fn interner() -> std::sync::MutexGuard<'static, Interner> {
+    INTERNER
+        .get_or_init(|| Mutex::new(Interner::new()))
+        .lock()
+        .expect("Failed to acquire interner lock")
+}
+
+/// Resolves a [`DefaultSymbol`] to a `&'static str`.
+///
+/// # Safety
+///
+/// The `unsafe` lifetime extension is sound because:
+/// 1. The interner is stored in a `static` ([`OnceLock`]) that lives for the program's entire
+///    lifetime.
+/// 2. [`BucketBackend`] allocates strings in fixed buckets that are never moved or deallocated.
+/// 3. Strings are never removed from the interner once interned.
+///
+/// # Panics
+///
+/// Panics if the interner lock is poisoned or the symbol does not exist in the interner.
+fn resolve_symbol(symbol: DefaultSymbol) -> &'static str {
+    let interner = interner();
+    let s = interner
+        .resolve(symbol)
+        .expect("Symbol should exist in interner");
+    // SAFETY: See function-level safety documentation.
+    unsafe { &*(s as *const str) }
 }
 
 #[cfg(test)]
@@ -208,20 +350,29 @@ mod tests {
         let id1 = Id::new("Rectangle");
         let id2 = Id::new("Rectangle");
         let id3 = Id::new("Oval");
-
         assert_eq!(id1, id2);
         assert_ne!(id1, id3);
         assert_eq!(id1, "Rectangle");
+
+        let namespaced = Id::new("system::backend");
+        assert_eq!(namespaced.name(), "backend");
+        assert_eq!(namespaced.namespace(), Some("system"));
+        assert_eq!(namespaced, "system::backend");
+
+        let deep = Id::new("a::b::c::d");
+        assert_eq!(deep.name(), "d");
+        assert_eq!(deep.namespace(), Some("a::b::c"));
+        assert_eq!(deep, "a::b::c::d");
     }
 
     #[test]
     fn test_from_anonymous() {
-        let id1 = Id::from_anonymous(0);
-        let id2 = Id::from_anonymous(1);
-        let id3 = Id::from_anonymous(0);
+        let id1 = Id::from_anonymous();
+        let id2 = Id::from_anonymous();
 
         assert_ne!(id1, id2);
-        assert_eq!(id1, id3);
+        assert_eq!(id1.namespace(), None);
+        assert_eq!(id2.namespace(), None);
     }
 
     #[test]
@@ -232,122 +383,108 @@ mod tests {
 
         let nested1 = parent.create_nested(child1);
         let nested2 = parent.create_nested(child2);
-
         assert_ne!(nested1, nested2);
         assert_eq!(nested1, "system::backend");
         assert_eq!(nested2, "system::frontend");
-    }
 
-    #[test]
-    fn test_deep_nesting() {
-        let root = Id::new("system");
-        let frontend = Id::new("frontend");
-        let app = Id::new("app");
-        let component = Id::new("component");
-
-        let level1 = root.create_nested(frontend);
-        let level2 = level1.create_nested(app);
-        let level3 = level2.create_nested(component);
-
+        let level1 = parent.create_nested(Id::new("frontend"));
+        let level2 = level1.create_nested(Id::new("app"));
+        let level3 = level2.create_nested(Id::new("component"));
         assert_eq!(level3, "system::frontend::app::component");
+
+        let namespaced_child = parent.create_nested(Id::new("sub::component"));
+        assert_eq!(namespaced_child, "system::sub::component");
+        assert_eq!(namespaced_child.name(), "component");
+        assert_eq!(namespaced_child.namespace(), Some("system::sub"));
     }
 
     #[test]
-    fn test_to_string() {
-        let id = Id::new("test_component");
-        assert_eq!(id, "test_component");
+    fn test_name_and_namespace() {
+        let simple = Id::new("Rectangle");
+        assert_eq!(simple.name(), "Rectangle");
+        assert_eq!(simple.namespace(), None);
+
+        let nested = Id::new("system").create_nested(Id::new("backend"));
+        assert_eq!(nested.name(), "backend");
+        assert_eq!(nested.namespace(), Some("system"));
+
+        let deep = Id::new("system")
+            .create_nested(Id::new("frontend"))
+            .create_nested(Id::new("app"))
+            .create_nested(Id::new("component"));
+        assert_eq!(deep.name(), "component");
+        assert_eq!(deep.namespace(), Some("system::frontend::app"));
     }
 
     #[test]
-    fn test_display_trait() {
-        let id = Id::new("display_test");
-        assert_eq!(format!("{}", id), "display_test");
+    fn test_equivalence_nested_and_new() {
+        let via_nested = Id::new("system").create_nested(Id::new("backend"));
+        let via_new = Id::new("system::backend");
+        assert_eq!(via_nested, via_new);
+        assert_eq!(via_nested.name(), via_new.name());
+        assert_eq!(via_nested.namespace(), via_new.namespace());
+
+        let deep_nested = Id::new("a")
+            .create_nested(Id::new("b"))
+            .create_nested(Id::new("c"));
+        let deep_new = Id::new("a::b::c");
+        assert_eq!(deep_nested, deep_new);
+        assert_eq!(deep_nested.name(), deep_new.name());
+        assert_eq!(deep_nested.namespace(), deep_new.namespace());
     }
 
     #[test]
-    fn test_from_trait() {
-        let id1: Id = "test_string".into();
-        let id2 = Id::new("test_string");
+    fn test_display() {
+        assert_eq!(format!("{}", Id::new("Rectangle")), "Rectangle");
 
-        assert_eq!(id1, id2);
-        assert_eq!(id1, "test_string");
+        let nested = Id::new("parent").create_nested(Id::new("child"));
+        assert_eq!(format!("{}", nested), "parent::child");
+
+        let deep = Id::new("system")
+            .create_nested(Id::new("frontend"))
+            .create_nested(Id::new("app"));
+        assert_eq!(format!("{}", deep), "system::frontend::app");
     }
 
     #[test]
-    fn test_hash_and_eq() {
-        use std::collections::HashMap;
+    fn test_from_str() {
+        let from_into: Id = "test_string".into();
+        assert_eq!(from_into, Id::new("test_string"));
 
-        let id1 = Id::new("key1");
-        let id2 = Id::new("key1");
-        let id3 = Id::new("key2");
-
-        let mut map = HashMap::new();
-        map.insert(id1, "value1");
-        map.insert(id3, "value2");
-
-        assert_eq!(map.get(&id2), Some(&"value1"));
-        assert_eq!(map.len(), 2);
-    }
-
-    #[test]
-    fn test_copy_trait() {
-        let id1 = Id::new("copy_test");
-        let id2 = id1; // This should work because Id implements Copy
-        let id3 = id1; // id1 should still be usable after id2 assignment
-
-        // All three should be equal and id1 should still be usable
-        assert_eq!(id1, id2);
-        assert_eq!(id1, id3);
-        assert_eq!(id2, id3);
-        assert_eq!(id1, "copy_test");
-        assert_eq!(id2, "copy_test");
-        assert_eq!(id3, "copy_test");
+        let parsed: Id = "parent::child".parse().unwrap();
+        assert_eq!(parsed.name(), "child");
+        assert_eq!(parsed.namespace(), Some("parent"));
+        assert_eq!(parsed, "parent::child");
     }
 
     #[test]
     fn test_partial_eq_str() {
-        // Test PartialEq<str> implementation
         let id = Id::new("Rectangle");
-
-        // Test equality with str literal
         assert!(id == "Rectangle");
-
-        // Test inequality with str literal
         assert!(id != "Oval");
 
-        // Test with nested identifiers
         let nested = Id::new("parent::child");
         assert!(nested == "parent::child");
         assert!(nested != "parent");
         assert!(nested != "child");
 
-        // Test with empty string
         let empty = Id::new("");
         assert!(empty == "");
         assert!(empty != "non-empty");
+
+        // PartialEq<&str>
+        let name = String::from("Rectangle");
+        assert!(id == name.as_str());
     }
 
     #[test]
-    fn test_partial_eq_str_ref() {
-        // Test PartialEq<&str> implementation
-        let id = Id::new("Component");
+    fn test_copy() {
+        let id1 = Id::new("copy_test");
+        let id2 = id1;
+        let id3 = id1; // id1 should still be usable after id2 assignment
 
-        let name1 = String::from("Component");
-        let name2 = String::from("Element");
-
-        // Test equality with &str reference
-        assert!(id == name1.as_str());
-
-        // Test inequality with &str reference
-        assert!(id != name2.as_str());
-
-        // Test with borrowed string slices
-        let slice: &str = "Component";
-        assert!(id == slice);
-
-        // Test with nested identifiers
-        let nested = Id::new("frontend::app");
-        let nested_str = String::from("frontend::app");
-        assert!(nested == nested_str.as_str());
+        assert_eq!(id1, id2);
+        assert_eq!(id1, id3);
+        assert_eq!(id1, "copy_test");
     }
 }

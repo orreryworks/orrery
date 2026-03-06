@@ -32,7 +32,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create nodes (components in the diagram)
     let client_node = Node::new(
         client_id,
-        "client".to_string(),
         Some("Web Client".to_string()), // display name
         Block::None,
         Rc::clone(&rectangle_def),
@@ -40,7 +39,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let server_node = Node::new(
         server_id,
-        "server".to_string(),
         Some("API Server".to_string()),
         Block::None,
         Rc::clone(&rectangle_def),
@@ -48,7 +46,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let database_node = Node::new(
         database_id,
-        "database".to_string(),
         Some("Database".to_string()),
         Block::None,
         Rc::clone(&rectangle_def),
