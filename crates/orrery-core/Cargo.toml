@@ -21,11 +21,11 @@ path = "src/lib.rs"
 string-interner = "0.19.0"
 color = "0.3.2"
 svg = "0.18.0"
-thiserror = "2.0.17"
-cosmic-text = "0.15.0"
+thiserror = "2.0.18"
+cosmic-text = "0.17.0"
 log = { version = "0.4.29", features = ["kv", "kv_std"] }
 serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 float-cmp = "0.10"
-proptest = "1.9"
+proptest = "1.10"
