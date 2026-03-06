@@ -2,6 +2,8 @@
 
 A diagram language for creating component and sequence diagrams with a simple text-based DSL.
 
+**Website:** [orreryworks.github.io](https://orreryworks.github.io/)
+
 ## Overview
 
 Orrery is a domain-specific language for describing software architecture diagrams. Write diagrams in a simple text format and render them to SVG.
@@ -16,10 +18,12 @@ An [orrery](https://en.wikipedia.org/wiki/Orrery) is a mechanical model of the s
 
 ## Workspace Structure
 
-This project is organized as a Cargo workspace with two crates:
+This project is organized as a Cargo workspace with four crates:
 
-- **`orrery`** - Core library for parsing, layout, and rendering
-- **`orrery-cli`** - Command-line tool built on the library
+- **`orrery`** - Main library for layout and rendering
+- **`orrery-core`** - Core types and definitions for Orrery diagrams
+- **`orrery-parser`** - Parser for the Orrery diagram language
+- **`orrery-cli`** - Command-line interface built on the library
 
 ## Library Usage
 
@@ -72,9 +76,9 @@ orrery input.orr -o output.svg --log-level debug
 
 ## Documentation
 
-- [Language Specification](docs/specifications/specification.md) - Complete language reference
+- [Docs](https://orreryworks.github.io/docs/) - Getting started, language reference, and CLI manual
 - [API Documentation](https://docs.rs/orrery) - Library API docs
-- [Examples](examples/) - Sample diagrams
+- [Examples](https://orreryworks.github.io/docs/examples/component-diagrams.html) - Component, sequence, and cross-cutting diagrams
 
 ## Development
 
