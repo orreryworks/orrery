@@ -76,8 +76,8 @@ primary_db -> @ResponseArrow[stroke=[color="green"]] api: "Result set";
 
 // --- Custom Activation Type ---
 
-activate @CriticalActivation api {
-    api -> @UrgentRequest primary_db: "UPDATE session.last_active";
+api -> @UrgentRequest primary_db: "UPDATE session.last_active";
+activate @CriticalActivation primary_db {
     primary_db -> @ResponseArrow api: "Ack";
 };
 

@@ -245,14 +245,14 @@ impl Engine {
     ///
     /// # Algorithm
     /// 1. Iterate through ordered events sequentially
-    /// 2. For `SequenceEvent::Relation`: Create Message at current Y position, update fragment bounds if inside a fragment, then advance Y
-    /// 3. For `SequenceEvent::Activate`: Create ActivationTiming with current Y position, push to participant's stack
-    /// 4. For `SequenceEvent::Deactivate`: Pop activation, convert to ActivationBox with precise bounds
+    /// 2. For `SequenceEvent::Relation`: Create Message at current Y position, update fragment bounds if inside a fragment, record last relation Y, then advance Y
+    /// 3. For `SequenceEvent::Activate`: Create ActivationTiming at last relation Y position (aligning with the triggering message), push to participant's stack
+    /// 4. For `SequenceEvent::Deactivate`: Pop activation, convert to ActivationBox ending at last relation Y position
     /// 5. For `SequenceEvent::FragmentStart`: Create FragmentTiming and push to fragment stack
     /// 6. For `SequenceEvent::FragmentSectionStart`: Start new section in current fragment
     /// 7. For `SequenceEvent::FragmentSectionEnd`: End current section in current fragment
     /// 8. For `SequenceEvent::FragmentEnd`: Pop fragment, convert to Fragment with final bounds
-    /// 9. For `SequenceEvent::Note`: Create positioned Note at current Y, update fragment bounds if inside a fragment, then advance Y by note height
+    /// 9. For `SequenceEvent::Note`: Create positioned Note at current Y, then advance Y by note height
     ///
     /// # Parameters
     /// * `graph` - The sequence diagram graph containing ordered events
@@ -282,6 +282,8 @@ impl Engine {
 
         // Calculate initial Y position using same calculation as messages
         let mut current_y = self.top_margin + participants_height + self.message_spacing;
+        // Track the Y position of the last placed relation (before spacing advance).
+        let mut last_relation_y = current_y;
 
         for event in graph.events() {
             match event {
@@ -305,6 +307,7 @@ impl Engine {
                         fragment_timing.update_x(source_x, target_x);
                     }
 
+                    last_relation_y = current_y;
                     current_y += self.message_spacing;
                 }
                 SequenceEvent::Activate(activate) => {
@@ -315,10 +318,9 @@ impl Engine {
                         .map(|stack| stack.len() as u32)
                         .unwrap_or(0);
 
-                    // Create new ActivationTiming with current Y position
                     let new_timing = ActivationTiming::new(
                         node_id,
-                        current_y,
+                        last_relation_y,
                         nesting_level,
                         Rc::clone(activate.definition()),
                     );
@@ -333,11 +335,8 @@ impl Engine {
                     // Pop the most recent activation for this node
                     if let Some(node_stack) = activation_stack.get_mut(node_id) {
                         if let Some(completed_timing) = node_stack.pop() {
-                            // Convert to ActivationBox using last message position as end
-                            // Subtract message_spacing because current_y is at deactivate event position,
-                            // but we want activation box to end at the last message position
-                            let activation_box = completed_timing
-                                .to_activation_box(current_y - self.message_spacing);
+                            let activation_box =
+                                completed_timing.to_activation_box(last_relation_y);
                             activation_boxes.push(activation_box);
                         }
 

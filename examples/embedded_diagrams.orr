@@ -104,10 +104,12 @@ outer as "Outer System": Service embed diagram sequence {
         ledger: Rectangle[fill_color="#e0f0e0"];
 
         charge_svc -> [stroke=[color="steelblue"]] fraud_check: "Evaluate risk";
-        fraud_check -> [stroke=[color="seagreen", style="dashed"]] charge_svc: "Score";
+        activate fraud_check {
+            fraud_check -> [stroke=[color="seagreen", style="dashed"]] charge_svc: "Score";
+        };
 
-        activate charge_svc {
-            charge_svc -> [stroke=[color="steelblue"]] ledger: "Debit";
+        charge_svc -> [stroke=[color="steelblue"]] ledger: "Debit";
+        activate ledger {
             ledger -> [stroke=[color="seagreen", style="dashed"]] charge_svc: "Confirmation";
         };
     };
