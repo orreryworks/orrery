@@ -78,8 +78,8 @@ note @Note[on=[server], background_color="rgba(255, 255, 200, 0.8)", stroke=[col
 
 // --- Styled Activation ---
 
-activate @Activate[fill_color="rgba(70, 130, 180, 0.15)", stroke=[color="steelblue", width=2.0]] server {
-    server -> [stroke=RoundCapStroke, text=HighlightText] store: "Round cap + join, highlighted text";
+server -> [stroke=RoundCapStroke, text=HighlightText] store: "Round cap + join, highlighted text";
+activate @Activate[fill_color="rgba(70, 130, 180, 0.15)", stroke=[color="steelblue", width=2.0]] store {
     store -> @DashedArrow server: "Response";
 };
 

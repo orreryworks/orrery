@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Component default label displays full qualified path instead of component name ([#4](https://github.com/orreryworks/orrery/issues/4)). Refactored `Id` to split into `name` and `namespace`, so components without an explicit `as "..."` label now show only the final path segment.
+- Activation box starts at next relation instead of preceding relation ([#11](https://github.com/orreryworks/orrery/issues/11)). Activation boxes now anchor to the last relation position rather than the current Y cursor, so they visually start at the triggering message and end at the last message within the block.
 
 ### Changed
 
