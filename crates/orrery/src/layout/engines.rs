@@ -133,7 +133,7 @@ pub struct EngineBuilder {
     min_spacing: f32,
     horizontal_spacing: f32,
     vertical_spacing: f32,
-    message_spacing: f32,
+    event_padding: f32,
 }
 
 impl EngineBuilder {
@@ -166,9 +166,9 @@ impl EngineBuilder {
         self
     }
 
-    /// Set the spacing between sequence diagram messages
-    pub fn with_message_spacing(mut self, spacing: f32) -> Self {
-        self.message_spacing = spacing;
+    /// Sets the vertical padding between sequence diagram events.
+    pub fn with_event_padding(mut self, padding: f32) -> Self {
+        self.event_padding = padding;
         self
     }
 
@@ -208,7 +208,7 @@ impl EngineBuilder {
             let mut engine = basic::Sequence::new();
             // Configure the engine with our settings
             engine.set_text_padding(self.padding);
-            engine.set_message_spacing(self.message_spacing);
+            engine.set_event_padding(self.event_padding);
             engine.set_min_spacing(self.min_spacing);
             Box::new(engine)
         });

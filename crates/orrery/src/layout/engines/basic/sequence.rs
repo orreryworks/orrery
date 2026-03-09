@@ -35,7 +35,7 @@ type ProcessEventsResult<'a> = (
 /// Basic sequence layout engine implementation that implements the SequenceLayoutEngine trait
 pub struct Engine {
     min_spacing: f32, // Minimum space between participants
-    message_spacing: f32,
+    event_padding: f32,
     top_margin: f32,
     padding: Insets,
     label_padding: f32, // Padding to add for message labels
@@ -46,7 +46,7 @@ impl Engine {
     pub fn new() -> Self {
         Self {
             min_spacing: 40.0, // Minimum spacing between participants
-            message_spacing: 50.0,
+            event_padding: 15.0,
             top_margin: 60.0,
             padding: Insets::uniform(15.0),
             label_padding: 20.0, // Extra padding for labels
@@ -59,9 +59,9 @@ impl Engine {
         self
     }
 
-    /// Set the vertical spacing between messages
-    pub fn set_message_spacing(&mut self, spacing: f32) -> &mut Self {
-        self.message_spacing = spacing;
+    /// Sets the vertical padding between sequence events.
+    pub fn set_event_padding(&mut self, padding: f32) -> &mut Self {
+        self.event_padding = padding;
         self
     }
 
@@ -245,14 +245,14 @@ impl Engine {
     ///
     /// # Algorithm
     /// 1. Iterate through ordered events sequentially
-    /// 2. For `SequenceEvent::Relation`: Create Message at current Y position, update fragment bounds if inside a fragment, record last relation Y, then advance Y
+    /// 2. For `SequenceEvent::Relation`: Create [`Message`] centered at `current_y + height/2`, update fragment bounds if inside a fragment, record last relation Y, then advance Y by message size + `event_padding`
     /// 3. For `SequenceEvent::Activate`: Create ActivationTiming at last relation Y position (aligning with the triggering message), push to participant's stack
     /// 4. For `SequenceEvent::Deactivate`: Pop activation, convert to ActivationBox ending at last relation Y position
     /// 5. For `SequenceEvent::FragmentStart`: Create FragmentTiming and push to fragment stack
     /// 6. For `SequenceEvent::FragmentSectionStart`: Start new section in current fragment
     /// 7. For `SequenceEvent::FragmentSectionEnd`: End current section in current fragment
     /// 8. For `SequenceEvent::FragmentEnd`: Pop fragment, convert to Fragment with final bounds
-    /// 9. For `SequenceEvent::Note`: Create positioned Note at current Y, then advance Y by note height
+    /// 9. For `SequenceEvent::Note`: Create positioned [`Note`](draw::Note) at `current_y`, then advance Y by note size + `event_padding`
     ///
     /// # Parameters
     /// * `graph` - The sequence diagram graph containing ordered events
@@ -280,21 +280,21 @@ impl Engine {
         let mut activation_stack: HashMap<Id, Vec<ActivationTiming>> = HashMap::new();
         let mut fragment_stack: Vec<FragmentTiming> = Vec::new();
 
-        // Calculate initial Y position using same calculation as messages
-        let mut current_y = self.top_margin + participants_height + self.message_spacing;
+        // Initial Y is the top edge of the first event area.
+        let mut current_y = self.top_margin + participants_height + self.event_padding;
         // Track the Y position of the last placed relation (before spacing advance).
         let mut last_relation_y = current_y;
 
         for event in graph.events() {
             match event {
                 SequenceEvent::Relation(relation) => {
-                    let message = Message::from_ast(
-                        relation,
-                        relation.source(),
-                        relation.target(),
-                        current_y,
-                    );
+                    let mut message =
+                        Message::from_ast(relation, relation.source(), relation.target());
+                    let message_height = message.min_size().height();
 
+                    // Center the arrow line within the message's vertical extent.
+                    let center_y = current_y + message_height / 2.0;
+                    message.set_y_position(center_y);
                     messages.push(message);
 
                     // Update fragment bounds if we're inside a fragment
@@ -307,8 +307,8 @@ impl Engine {
                         fragment_timing.update_x(source_x, target_x);
                     }
 
-                    last_relation_y = current_y;
-                    current_y += self.message_spacing;
+                    last_relation_y = center_y;
+                    current_y += message_height + self.event_padding;
                 }
                 SequenceEvent::Activate(activate) => {
                     let node_id = activate.component();
@@ -375,7 +375,7 @@ impl Engine {
                     let note_height = positioned_note.size().height();
 
                     notes.push(positioned_note);
-                    current_y += note_height + self.message_spacing;
+                    current_y += note_height + self.event_padding;
                 }
             }
         }

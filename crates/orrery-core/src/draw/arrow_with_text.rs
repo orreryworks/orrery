@@ -5,7 +5,7 @@
 
 use crate::{
     draw::{Arrow, ArrowDrawer, Drawable, LayeredOutput, RenderLayer, Text},
-    geometry::Point,
+    geometry::{Point, Size},
 };
 
 /// A drawable that combines an arrow with optional text positioned at the midpoint.
@@ -34,6 +34,14 @@ impl<'a> ArrowWithText<'a> {
 
         // Position text at the midpoint of the arrow
         source.midpoint(destination)
+    }
+
+    /// Returns the minimum [`Size`] needed to render this arrow with its text.
+    ///
+    /// Combines the arrow's minimum size with the text label size.
+    pub fn min_size(&self) -> Size {
+        let text_size = self.text.as_ref().map(|t| t.size()).unwrap_or_default();
+        self.arrow.min_size().max(text_size)
     }
 
     /// Renders the arrow with optional text to layered output.
@@ -124,6 +132,28 @@ mod tests {
         let arrow = create_test_arrow(ArrowDirection::Forward);
         let arrow_with_text = ArrowWithText::new(arrow, None);
         assert!(arrow_with_text.text.is_none());
+    }
+
+    #[test]
+    fn test_arrow_with_text_size() {
+        // Without text, size should reflect the arrow's minimum
+        let arrow = create_test_arrow(ArrowDirection::Forward);
+        let min_arrow_size = arrow.min_size();
+        let arrow_with_text = ArrowWithText::new(arrow, None);
+        assert_eq!(arrow_with_text.min_size(), min_arrow_size);
+        assert!(arrow_with_text.min_size().height() > 0.0);
+        assert!(arrow_with_text.min_size().width() > 0.0);
+
+        // With text, size should be at least the text's size
+        let arrow = create_test_arrow(ArrowDirection::Forward);
+        let text_def = TextDefinition::default();
+        let text = Text::new(&text_def, "Label");
+        let text_size = text.size();
+        let arrow_with_text = ArrowWithText::new(arrow, Some(text));
+        assert!(arrow_with_text.min_size().height() >= text_size.height());
+        assert!(arrow_with_text.min_size().width() >= text_size.width());
+        assert!(arrow_with_text.min_size().height() > 0.0);
+        assert!(arrow_with_text.min_size().width() > 0.0);
     }
 
     #[test]

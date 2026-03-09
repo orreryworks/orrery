@@ -157,7 +157,7 @@ impl DiagramBuilder {
             .with_min_spacing(50.0)
             .with_horizontal_spacing(50.0)
             .with_vertical_spacing(50.0)
-            .with_message_spacing(60.0);
+            .with_event_padding(15.0);
 
         // Calculate layout
         info!("Processing diagrams in hierarchy");
