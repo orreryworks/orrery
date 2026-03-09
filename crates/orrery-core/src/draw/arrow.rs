@@ -10,7 +10,7 @@ use svg::{self, node::element as svg_element};
 use crate::{
     color::Color,
     draw::{StrokeDefinition, TextDefinition},
-    geometry::Point,
+    geometry::{Point, Size},
 };
 
 /// Defines the visual style of arrow paths.
@@ -207,13 +207,29 @@ impl ArrowDrawer {
     }
 }
 
+/// Size of the SVG arrow markers (matches `markerWidth`/`markerHeight` attributes).
+///
+/// Markers are square, so this applies to both dimensions.
+const MARKER_SIZE: f32 = 6.0;
+
 impl Arrow {
-    /// Creates a new Arrow
+    /// Creates a new [`Arrow`] with the given definition and direction.
     pub fn new(definition: Rc<ArrowDefinition>, direction: ArrowDirection) -> Self {
         Self {
             definition,
             direction,
         }
+    }
+
+    /// Returns the minimum [`Size`] needed to render this arrow.
+    pub fn min_size(&self) -> Size {
+        let (marker_width, marker_height) = match self.direction {
+            ArrowDirection::Forward | ArrowDirection::Backward => (MARKER_SIZE, MARKER_SIZE),
+            ArrowDirection::Bidirectional => (2.0 * MARKER_SIZE, MARKER_SIZE),
+            ArrowDirection::Plain => (0.0, 0.0),
+        };
+        let stroke_width = self.definition.stroke().width();
+        Size::new(marker_width, marker_height.max(stroke_width))
     }
 
     fn render_to_svg(&self, source: Point, destination: Point) -> Box<dyn svg::Node> {
@@ -352,8 +368,8 @@ impl Arrow {
             .set("viewBox", "0 0 10 10")
             .set("refX", 9)
             .set("refY", 5)
-            .set("markerWidth", 6)
-            .set("markerHeight", 6)
+            .set("markerWidth", MARKER_SIZE)
+            .set("markerHeight", MARKER_SIZE)
             .set("orient", "auto")
             .add(
                 svg_element::Path::new()
@@ -369,8 +385,8 @@ impl Arrow {
             .set("viewBox", "0 0 10 10")
             .set("refX", 1)
             .set("refY", 5)
-            .set("markerWidth", 6)
-            .set("markerHeight", 6)
+            .set("markerWidth", MARKER_SIZE)
+            .set("markerHeight", MARKER_SIZE)
             .set("orient", "auto")
             .add(
                 svg_element::Path::new()
@@ -438,6 +454,35 @@ mod tests {
 
         let plain: ArrowDirection = "-".parse().unwrap();
         assert_eq!(plain, ArrowDirection::Plain);
+    }
+
+    #[test]
+    fn test_arrow_min_size() {
+        let default_def =
+            Rc::new(ArrowDefinition::new(Rc::new(StrokeDefinition::default())));
+
+        // Forward: one marker width, marker height dominates default stroke (1.0)
+        let arrow = Arrow::new(Rc::clone(&default_def), ArrowDirection::Forward);
+        assert_eq!(arrow.min_size(), Size::new(MARKER_SIZE, MARKER_SIZE));
+
+        // Backward: same as forward
+        let arrow = Arrow::new(Rc::clone(&default_def), ArrowDirection::Backward);
+        assert_eq!(arrow.min_size(), Size::new(MARKER_SIZE, MARKER_SIZE));
+
+        // Bidirectional: double marker width
+        let arrow = Arrow::new(Rc::clone(&default_def), ArrowDirection::Bidirectional);
+        assert_eq!(arrow.min_size(), Size::new(2.0 * MARKER_SIZE, MARKER_SIZE));
+
+        // Plain: no markers, height is just stroke width
+        let arrow = Arrow::new(Rc::clone(&default_def), ArrowDirection::Plain);
+        assert_eq!(arrow.min_size(), Size::new(0.0, 1.0));
+
+        // Thick stroke: stroke (10.0) dominates marker height
+        let mut thick_stroke = StrokeDefinition::default();
+        thick_stroke.set_width(10.0);
+        let thick_def = Rc::new(ArrowDefinition::new(Rc::new(thick_stroke)));
+        let arrow = Arrow::new(thick_def, ArrowDirection::Forward);
+        assert_eq!(arrow.min_size(), Size::new(MARKER_SIZE, 10.0));
     }
 
     #[test]

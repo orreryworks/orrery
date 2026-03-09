@@ -56,35 +56,35 @@ pub struct Message<'a> {
 }
 
 impl<'a> Message<'a> {
-    /// Creates a new Message from an AST relation and participant IDs.
-    ///
-    /// This method extracts the arrow definition and text from the AST relation
-    /// and creates a self-contained Message that doesn't depend on the
-    /// original AST lifetime.
+    /// Creates a new [`Message`] from a [`semantic::Relation`] and participant IDs.
     ///
     /// # Arguments
-    /// * `relation` - Reference to the AST relation being laid out
-    /// * `source` - ID of the source participant in the layout
-    /// * `target` - ID of the target participant in the layout
-    /// * `y_position` - The y-coordinate where this message appears
     ///
-    /// # Returns
-    /// A new Message containing all necessary rendering information
-    pub fn from_ast(
-        relation: &'a semantic::Relation,
-        source: Id,
-        target: Id,
-        y_position: f32,
-    ) -> Self {
+    /// * `relation` - The relation to extract arrow definition and text from.
+    /// * `source` - ID of the source participant.
+    /// * `target` - ID of the target participant.
+    pub fn from_ast(relation: &'a semantic::Relation, source: Id, target: Id) -> Self {
         let arrow_def = Rc::clone(relation.arrow_definition());
         let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
         let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
         Self {
             source,
             target,
-            y_position,
+            y_position: 0.0,
             arrow_with_text,
         }
+    }
+
+    /// Returns the minimum [`Size`] needed to render this message.
+    ///
+    /// Delegates to [`ArrowWithText::min_size`](draw::ArrowWithText::min_size).
+    pub fn min_size(&self) -> Size {
+        self.arrow_with_text.min_size()
+    }
+
+    /// Sets the y-coordinate where this message appears.
+    pub fn set_y_position(&mut self, y_position: f32) {
+        self.y_position = y_position;
     }
 
     /// Returns a reference to the arrow with text for this message.
@@ -92,17 +92,17 @@ impl<'a> Message<'a> {
         &self.arrow_with_text
     }
 
-    /// Id of the source participant in the layout
+    /// Returns the ID of the source participant.
     pub fn source(&self) -> Id {
         self.source
     }
 
-    /// Id of the target participant in the layout
+    /// Returns the ID of the target participant.
     pub fn target(&self) -> Id {
         self.target
     }
 
-    /// The y-coordinate where this message appears
+    /// Returns the y-coordinate where this message appears.
     pub fn y_position(&self) -> f32 {
         self.y_position
     }
