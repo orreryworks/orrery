@@ -458,8 +458,7 @@ mod tests {
 
     #[test]
     fn test_arrow_min_size() {
-        let default_def =
-            Rc::new(ArrowDefinition::new(Rc::new(StrokeDefinition::default())));
+        let default_def = Rc::new(ArrowDefinition::new(Rc::new(StrokeDefinition::default())));
 
         // Forward: one marker width, marker height dominates default stroke (1.0)
         let arrow = Arrow::new(Rc::clone(&default_def), ArrowDirection::Forward);
