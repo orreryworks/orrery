@@ -334,6 +334,32 @@ impl<'a> FragmentTiming<'a> {
         self.max_x = self.max_x.max(source_x.max(target_x));
     }
 
+    /// Returns the height needed for a section's header.
+    ///
+    /// For the first section, returns the max of the fragment header height and the
+    /// section header height, since they render side-by-side. For subsequent sections,
+    /// returns just the section header height.
+    ///
+    /// # Arguments
+    ///
+    /// * `section` - The semantic fragment section to measure.
+    pub fn section_header_height(&self, section: &semantic::FragmentSection) -> f32 {
+        let definition = self.fragment.definition();
+        let section_header_height = definition.section_header_size(section.title()).height();
+
+        if self.sections.is_empty() {
+            let fragment_header_height = definition.header_size(self.fragment.operation()).height();
+            section_header_height.max(fragment_header_height)
+        } else {
+            section_header_height
+        }
+    }
+
+    /// Returns the bottom bounds padding of the fragment.
+    pub fn bottom_padding(&self) -> f32 {
+        self.fragment.definition().bottom_padding()
+    }
+
     /// Converts this timing information into a final positioned Fragment.
     ///
     /// This consumes the `FragmentTiming` and creates a `Fragment` with complete bounds
@@ -827,5 +853,95 @@ mod tests {
         fragment_timing.update_x(40.0, 180.0);
         assert_eq!(fragment_timing.min_x, 30.0);
         assert_eq!(fragment_timing.max_x, 200.0);
+    }
+
+    #[test]
+    fn test_section_header_height_first_section_header_dominates() {
+        // Use a short section title so the fragment header (pentagon) is taller.
+        let fragment_def = Rc::new(draw::FragmentDefinition::default());
+        let section = semantic::FragmentSection::new(Some("x".to_string()), vec![]);
+        let fragment =
+            semantic::Fragment::new("alt".to_string(), vec![section], fragment_def.clone());
+
+        let fragment_timing = FragmentTiming::new(&fragment, 0.0);
+
+        let height = fragment_timing.section_header_height(&fragment.sections()[0]);
+        let header_height = fragment_def.header_size("alt").height();
+
+        assert_eq!(height, header_height);
+    }
+
+    #[test]
+    fn test_section_header_height_first_section_title_dominates() {
+        // Use a multi-line section title so the title is taller than the header.
+        let fragment_def = Rc::new(draw::FragmentDefinition::default());
+        let tall_title = "line1\nline2\nline3\nline4\nline5";
+        let section = semantic::FragmentSection::new(Some(tall_title.to_string()), vec![]);
+        let fragment =
+            semantic::Fragment::new("alt".to_string(), vec![section], fragment_def.clone());
+
+        let fragment_timing = FragmentTiming::new(&fragment, 0.0);
+
+        let height = fragment_timing.section_header_height(&fragment.sections()[0]);
+        let title_height = fragment_def.section_header_size(Some(tall_title)).height();
+
+        assert_eq!(height, title_height);
+    }
+
+    #[test]
+    fn test_section_header_height_subsequent_section() {
+        let fragment_def = Rc::new(draw::FragmentDefinition::default());
+        let section1 = semantic::FragmentSection::new(Some("guard1".to_string()), vec![]);
+        let section2 = semantic::FragmentSection::new(Some("guard2".to_string()), vec![]);
+        let fragment = semantic::Fragment::new(
+            "alt".to_string(),
+            vec![section1, section2],
+            fragment_def.clone(),
+        );
+
+        let mut fragment_timing = FragmentTiming::new(&fragment, 0.0);
+
+        // Complete the first section so sections is no longer empty.
+        fragment_timing.start_section(&fragment.sections()[0], 0.0);
+        fragment_timing.end_section(50.0).unwrap();
+
+        // Second section: should be just the title height.
+        let height = fragment_timing.section_header_height(&fragment.sections()[1]);
+        let title_height = fragment_def.section_header_size(Some("guard2")).height();
+
+        assert_eq!(height, title_height);
+    }
+
+    #[test]
+    fn test_section_header_height_no_title() {
+        let fragment_def = Rc::new(draw::FragmentDefinition::default());
+        let section = semantic::FragmentSection::new(None, vec![]);
+        let fragment =
+            semantic::Fragment::new("opt".to_string(), vec![section], fragment_def.clone());
+
+        let mut fragment_timing = FragmentTiming::new(&fragment, 0.0);
+
+        // Complete first section.
+        fragment_timing.start_section(&fragment.sections()[0], 0.0);
+        fragment_timing.end_section(50.0).unwrap();
+
+        // Subsequent section with no title: height should be 0.
+        let no_title_section = semantic::FragmentSection::new(None, vec![]);
+        let height = fragment_timing.section_header_height(&no_title_section);
+
+        assert_eq!(height, 0.0);
+    }
+
+    #[test]
+    fn test_bottom_padding_delegates_to_definition() {
+        let mut fragment_def = draw::FragmentDefinition::default();
+        fragment_def.set_bounds_padding(orrery_core::geometry::Insets::new(5.0, 10.0, 15.0, 20.0));
+        let fragment_def = Rc::new(fragment_def);
+
+        let fragment = semantic::Fragment::new("loop".to_string(), vec![], fragment_def);
+
+        let fragment_timing = FragmentTiming::new(&fragment, 0.0);
+
+        assert_eq!(fragment_timing.bottom_padding(), 15.0);
     }
 }
