@@ -248,10 +248,10 @@ impl Engine {
     /// 2. For `SequenceEvent::Relation`: Create [`Message`] centered at `current_y + height/2`, update fragment bounds if inside a fragment, record last relation Y, then advance Y by message size + `event_padding`
     /// 3. For `SequenceEvent::Activate`: Create ActivationTiming at last relation Y position (aligning with the triggering message), push to participant's stack
     /// 4. For `SequenceEvent::Deactivate`: Pop activation, convert to ActivationBox ending at last relation Y position
-    /// 5. For `SequenceEvent::FragmentStart`: Create FragmentTiming and push to fragment stack
-    /// 6. For `SequenceEvent::FragmentSectionStart`: Start new section in current fragment
-    /// 7. For `SequenceEvent::FragmentSectionEnd`: End current section in current fragment
-    /// 8. For `SequenceEvent::FragmentEnd`: Pop fragment, convert to Fragment with final bounds
+    /// 5. For `SequenceEvent::FragmentStart`: Create FragmentTiming at `current_y` and push to fragment stack
+    /// 6. For `SequenceEvent::FragmentSectionStart`: Start new section in current fragment, then advance Y by header height + `event_padding`
+    /// 7. For `SequenceEvent::FragmentSectionEnd`: End current section
+    /// 8. For `SequenceEvent::FragmentEnd`: Pop fragment, convert to Fragment with final bounds, then advance Y by bottom padding + `event_padding`
     /// 9. For `SequenceEvent::Note`: Create positioned [`Note`](draw::Note) at `current_y`, then advance Y by note size + `event_padding`
     ///
     /// # Parameters
@@ -349,12 +349,15 @@ impl Engine {
                 SequenceEvent::FragmentStart(fragment) => {
                     let fragment_timing = FragmentTiming::new(fragment, current_y);
                     fragment_stack.push(fragment_timing);
+                    // No current_y advance here; handled in FragmentSectionStart
                 }
                 SequenceEvent::FragmentSectionStart(fragment_section) => {
                     let fragment_timing = fragment_stack
                         .last_mut()
                         .expect("fragment_timing stack is empty");
                     fragment_timing.start_section(fragment_section, current_y);
+                    current_y += fragment_timing.section_header_height(fragment_section)
+                        + self.event_padding;
                 }
                 SequenceEvent::FragmentSectionEnd => {
                     let fragment_timing = fragment_stack
@@ -366,8 +369,10 @@ impl Engine {
                     let fragment_timing = fragment_stack
                         .pop()
                         .expect("fragment_timing stack is empty");
+                    let fragment_bottom_padding = fragment_timing.bottom_padding();
                     let fragment = fragment_timing.into_fragment(current_y);
                     fragments.push(fragment);
+                    current_y += fragment_bottom_padding + self.event_padding;
                 }
                 SequenceEvent::Note(note) => {
                     let positioned_note =

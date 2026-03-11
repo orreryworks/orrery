@@ -62,89 +62,131 @@ pub struct FragmentDefinition {
 }
 
 impl FragmentDefinition {
-    /// Creates a new FragmentDefinition with default values
+    /// Creates a new FragmentDefinition with default values.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Sets the background color
+    /// Sets the background color.
     pub fn set_background_color(&mut self, color: Option<Color>) {
         self.background_color = color;
     }
 
-    /// Gets the operation label text definition
-    pub fn operation_label_text(&self) -> &Rc<TextDefinition> {
-        &self.operation_label_text_definition
-    }
-
-    /// Gets the section title text definition
-    pub fn section_title_text(&self) -> &Rc<TextDefinition> {
-        &self.section_title_text_definition
-    }
-
-    /// Set operation label text definition using Rc.
+    /// Sets the operation label text definition.
     pub fn set_operation_label_text(&mut self, text: Rc<TextDefinition>) {
         self.operation_label_text_definition = text;
     }
 
-    /// Set section title text definition using Rc.
+    /// Sets the section title text definition.
     pub fn set_section_title_text(&mut self, text: Rc<TextDefinition>) {
         self.section_title_text_definition = text;
     }
 
-    /// Set border stroke definition using Rc.
+    /// Sets the border stroke definition.
     pub fn set_border_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
         self.border_stroke = stroke;
     }
 
-    /// Set separator stroke definition using Rc.
+    /// Sets the separator stroke definition.
     pub fn set_separator_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
         self.separator_stroke = stroke;
     }
 
-    /// Sets the content padding
+    /// Sets the content padding.
     pub fn set_content_padding(&mut self, padding: Insets) {
         self.content_padding = padding;
     }
 
-    /// Sets the bounds padding
+    /// Sets the bounds padding.
     pub fn set_bounds_padding(&mut self, padding: Insets) {
         self.bounds_padding = padding;
     }
 
-    /// Gets the border stroke definition
-    pub fn border_stroke(&self) -> &Rc<StrokeDefinition> {
-        &self.border_stroke
-    }
-
-    /// Gets the background color
-    fn background_color(&self) -> Option<&Color> {
-        self.background_color.as_ref()
-    }
-
-    /// Gets the separator stroke definition
-    pub fn separator_stroke(&self) -> &Rc<StrokeDefinition> {
-        &self.separator_stroke
-    }
-
-    /// Gets the content padding
-    fn content_padding(&self) -> Insets {
-        self.content_padding
-    }
-
-    /// Gets the bounds padding
-    fn bounds_padding(&self) -> Insets {
-        self.bounds_padding
-    }
-
-    /// Sets the pentagon fill color
+    /// Sets the pentagon fill color.
     pub fn set_pentagon_fill_color(&mut self, color: Color) {
         self.pentagon_fill_color = color;
     }
 
-    /// Gets the pentagon fill color
+    /// Gets the border stroke definition.
+    pub fn border_stroke(&self) -> &Rc<StrokeDefinition> {
+        &self.border_stroke
+    }
+
+    /// Gets the background color.
+    fn background_color(&self) -> Option<&Color> {
+        self.background_color.as_ref()
+    }
+
+    /// Gets the separator stroke definition.
+    pub fn separator_stroke(&self) -> &Rc<StrokeDefinition> {
+        &self.separator_stroke
+    }
+
+    /// Gets the operation label text definition.
+    pub fn operation_label_text(&self) -> &Rc<TextDefinition> {
+        &self.operation_label_text_definition
+    }
+
+    /// Gets the section title text definition.
+    pub fn section_title_text(&self) -> &Rc<TextDefinition> {
+        &self.section_title_text_definition
+    }
+
+    /// Gets the content padding.
+    fn content_padding(&self) -> Insets {
+        self.content_padding
+    }
+
+    /// Gets the bounds padding.
+    fn bounds_padding(&self) -> Insets {
+        self.bounds_padding
+    }
+
+    /// Gets the pentagon fill color.
     pub fn pentagon_fill_color(&self) -> &Color {
         &self.pentagon_fill_color
+    }
+
+    /// Returns the size of the fragment's header.
+    ///
+    /// # Arguments
+    ///
+    /// * `operation` - The operation type string (e.g., "alt", "loop").
+    pub fn header_size(&self, operation: &str) -> Size {
+        let text = Text::new(&self.operation_label_text_definition, operation);
+        let text_size = text.calculate_size();
+        let triangle_width = Self::triangle_width(text_size);
+        Size::new(text_size.width() + triangle_width, text_size.height())
+    }
+
+    /// Returns the size of a section's header.
+    ///
+    /// # Arguments
+    ///
+    /// * `title` - The section title, if present.
+    pub fn section_header_size(&self, title: Option<&str>) -> Size {
+        match title {
+            Some(title) => {
+                let formatted = format!("[{}]", title);
+                let text = Text::new(&self.section_title_text_definition, &formatted);
+                text.calculate_size().add_padding(self.content_padding)
+            }
+            None => Size::default(),
+        }
+    }
+
+    /// Returns the bottom bounds padding.
+    pub fn bottom_padding(&self) -> f32 {
+        self.bounds_padding.bottom()
+    }
+
+    /// Calculates the triangle width for the pentagon tab.
+    ///
+    /// The width is clamped between 1/4 and 1/2 of the content height,
+    /// with a maximum of 10px.
+    fn triangle_width(content_size: Size) -> f32 {
+        let height = content_size.height();
+        10.0f32.min(height / 2.0).max(height / 4.0)
     }
 
     /// Creates an SVG path element for a pentagonal tab (rectangle with triangular point on right).
@@ -161,10 +203,7 @@ impl FragmentDefinition {
     fn create_pentagon_path(&self, content_bounds: Bounds) -> (svg_element::Path, Bounds) {
         let top_left = content_bounds.min_point();
 
-        // Calculate triangle width as half the height for proper proportions
-        let triangle_width = 10.0f32
-            .min(content_bounds.height() / 2.0)
-            .max(content_bounds.height() / 4.0);
+        let triangle_width = Self::triangle_width(content_bounds.to_size());
 
         // Create path: rectangle + triangle point
         // L x+w+t,y - start top-right with triangle
@@ -226,8 +265,8 @@ impl Default for FragmentDefinition {
 
             pentagon_fill_color: Color::new("white").expect("Invalid color"),
 
-            content_padding: Insets::new(8.0, 8.0, 8.0, 8.0),
-            bounds_padding: Insets::new(20.0, 20.0, 20.0, 20.0),
+            content_padding: Insets::new(0.0, 0.0, 0.0, 8.0),
+            bounds_padding: Insets::new(0.0, 20.0, 0.0, 20.0),
         }
     }
 }
@@ -379,16 +418,16 @@ impl Drawable for Fragment {
         output.merge(op_text_output);
 
         // 4. Render section separators and titles
-        let mut current_y = pentagon_bounds.max_y();
+        let mut current_y = top_left.y();
 
         for (i, section) in self.sections().iter().enumerate() {
             // Skip separator for the first section
             if i > 0 {
                 // Draw separator line
                 let separator = svg_element::Line::new()
-                    .set("x1", top_left.x() + padding.left())
+                    .set("x1", top_left.x())
                     .set("y1", current_y)
-                    .set("x2", top_left.x() + self.size().width() - padding.right())
+                    .set("x2", top_left.x() + expanded_size.width())
                     .set("y2", current_y);
 
                 let separator = crate::apply_stroke!(separator, self.definition.separator_stroke());
@@ -407,14 +446,17 @@ impl Drawable for Fragment {
                 let title_position = if i == 0 {
                     // First section: position to the right of the pentagon
                     Point::new(
-                        pentagon_bounds.max_x() + padding.left() + title_size.width() / 2.0,
+                        pentagon_bounds.max_x() + title_size.width() / 2.0 + padding.left(),
                         pentagon_bounds.center().y(),
                     )
                 } else {
                     // Other sections: position below the separator
                     Point::new(
-                        top_left.x() + padding.left() + title_size.width() / 2.0 + 10.0,
-                        current_y + title_size.height() / 2.0 + 5.0,
+                        top_left.x()
+                            + title_size.width() / 2.0
+                            + bounds_padding.left()
+                            + padding.left(),
+                        current_y + title_size.height() / 2.0,
                     )
                 };
 
@@ -469,6 +511,61 @@ mod tests {
         assert_eq!(definition.separator_stroke().color().to_string(), "black");
         assert_eq!(definition.separator_stroke().width(), 1.0);
         assert_eq!(*definition.separator_stroke().style(), StrokeStyle::Dashed);
+    }
+
+    #[test]
+    fn test_header_size_includes_triangle() {
+        let definition = FragmentDefinition::default();
+        let header = definition.header_size("alt");
+
+        // Header should have positive dimensions.
+        assert!(header.width() > 0.0);
+        assert!(header.height() > 0.0);
+
+        // Header width should be wider than just the text (triangle adds width).
+        let text = Text::new(definition.operation_label_text(), "alt");
+        let text_size = text.calculate_size();
+        assert!(header.width() > text_size.width());
+        assert_eq!(header.height(), text_size.height());
+    }
+
+    #[test]
+    fn test_section_header_size() {
+        let definition = FragmentDefinition::default();
+
+        let with_title = definition.section_header_size(Some("condition"));
+        assert!(with_title.width() > 0.0);
+        assert!(with_title.height() > 0.0);
+
+        let without_title = definition.section_header_size(None);
+        assert_eq!(without_title.width(), 0.0);
+        assert_eq!(without_title.height(), 0.0);
+    }
+
+    #[test]
+    fn test_bottom_padding() {
+        let mut definition = FragmentDefinition::default();
+
+        // Default bounds_padding has bottom = 0.0.
+        assert_eq!(definition.bottom_padding(), 0.0);
+
+        definition.set_bounds_padding(Insets::new(5.0, 10.0, 15.0, 20.0));
+        assert_eq!(definition.bottom_padding(), 15.0);
+    }
+
+    #[test]
+    fn test_triangle_width_clamping() {
+        // Small content
+        let small = FragmentDefinition::triangle_width(Size::new(50.0, 8.0));
+        assert_eq!(small, 4.0); // 8/2 = 4, min(10, 4) = 4, max(8/4=2, 4) = 4
+
+        // Medium content
+        let large = FragmentDefinition::triangle_width(Size::new(50.0, 30.0));
+        assert_eq!(large, 10.0); // 30/2 = 15, min(10, 15) = 10, max(30/4=7.5, 10) = 10
+
+        // Large content
+        let large = FragmentDefinition::triangle_width(Size::new(50.0, 60.0));
+        assert_eq!(large, 15.0); // 60/2 = 30, min(10, 30) = 10, max(60/4=15, 10) = 15
     }
 
     #[test]

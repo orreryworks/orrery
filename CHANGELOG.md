@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Fragment layout now accounts for vertical space consumed by the operation label header, section title guards, and bottom padding, preventing overlaps with subsequent elements. ([#36](https://github.com/orreryworks/orrery/issues/36))
+
 ### Fixed
 
 - Component default label displays full qualified path instead of component name ([#4](https://github.com/orreryworks/orrery/issues/4)). Refactored `Id` to split into `name` and `namespace`, so components without an explicit `as "..."` label now show only the final path segment.
