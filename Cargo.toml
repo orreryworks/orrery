@@ -15,7 +15,7 @@ rust-version = "1.88"
 authors = ["Foad Nosrati Habibi"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/orreryworks/orrery"
-homepage = "https://github.com/orreryworks/orrery"
+homepage = "https://orreryworks.github.io/"
 documentation = "https://docs.rs/orrery"
 
 [workspace.metadata.release]
