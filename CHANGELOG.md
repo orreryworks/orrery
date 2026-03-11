@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-03-11
+
 ### Added
 
 - Fragment layout now accounts for vertical space consumed by the operation label header, section title guards, and bottom padding, preventing overlaps with subsequent elements. ([#36](https://github.com/orreryworks/orrery/issues/36))
@@ -36,5 +38,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration** — Layered configuration via CLI flags, project-local files, and platform-specific config directories.
 - **Dual licensing** — MIT OR Apache-2.0.
 
-[Unreleased]: https://github.com/orreryworks/orrery/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/orreryworks/orrery/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/orreryworks/orrery/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/orreryworks/orrery/releases/tag/v0.1.0
