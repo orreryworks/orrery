@@ -171,7 +171,7 @@ impl FragmentDefinition {
                 let text = Text::new(&self.section_title_text_definition, &formatted);
                 text.calculate_size().add_padding(self.content_padding)
             }
-            None => Size::default(),
+            None => Size::zero(),
         }
     }
 

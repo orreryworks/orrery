@@ -123,7 +123,7 @@ impl Engine {
                 let content_size = if let Some(layout) = embedded_layouts.get(&node.id()) {
                     layout.calculate_size()
                 } else {
-                    Size::default()
+                    Size::zero()
                 };
 
                 shape_with_text

@@ -268,7 +268,7 @@ impl Note {
     /// Calculates the size of the text content without padding.
     fn text_size(&self) -> Size {
         if self.content.is_empty() {
-            return Size::default();
+            return Size::zero();
         }
         let text = Text::new(&self.definition.text, &self.content);
         text.size()

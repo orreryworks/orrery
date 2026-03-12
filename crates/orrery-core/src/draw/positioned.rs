@@ -19,7 +19,7 @@ impl<D: Drawable> PositionedDrawable<D> {
     pub fn new(drawable: D) -> Self {
         Self {
             drawable,
-            position: Point::default(),
+            position: Point::zero(),
         }
     }
 

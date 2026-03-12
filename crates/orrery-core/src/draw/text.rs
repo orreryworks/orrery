@@ -380,7 +380,7 @@ impl TextManager {
     /// The calculated size in pixels, or default size if measurement fails
     fn calculate_text_size(&self, text: &str, text_def: &TextDefinition) -> Size {
         if text.is_empty() {
-            return Size::default();
+            return Size::zero();
         }
 
         // Lock the FontSystem for use
