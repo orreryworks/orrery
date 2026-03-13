@@ -107,7 +107,7 @@ pub trait ShapeDefinition: std::fmt::Debug {
         if self.supports_content() {
             Size::new(10.0, 10.0)
         } else {
-            Size::default() // Content-free shapes don't need content space
+            Size::zero() // Content-free shapes don't need content space
         }
     }
 
@@ -217,7 +217,7 @@ impl Shape {
             shape_size.width() - total_padding_size.width(),
             shape_size.height() - total_padding_size.height(),
         )
-        .max(Size::default())
+        .max(Size::zero())
     }
 
     /// Returns a Point representing the (x, y) offset from the shape's top-left corner

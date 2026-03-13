@@ -125,7 +125,7 @@ impl<'a> ShapeWithText<'a> {
     /// Calculates the position where text should be rendered relative to the shape.
     fn calculate_text_position(&self, total_position: Point) -> Point {
         if self.text.is_none() {
-            return Point::default();
+            return Point::zero();
         }
 
         let shape_size = self.shape.inner_size();
@@ -254,7 +254,7 @@ mod tests {
 
         assert_eq!(
             rect_with_text.text_size(),
-            Size::default(),
+            Size::zero(),
             "text_size should be zero when no text (Rectangle)"
         );
         assert_eq!(
@@ -275,7 +275,7 @@ mod tests {
 
         assert_eq!(
             actor_with_text.text_size(),
-            Size::default(),
+            Size::zero(),
             "text_size should be zero when no text (Actor)"
         );
         assert_eq!(
@@ -309,7 +309,7 @@ mod tests {
         let shape_with_text = ShapeWithText::new(shape, None);
         assert_eq!(
             shape_with_text.text_size(),
-            Size::default(),
+            Size::zero(),
             "text_size should return zero when no text"
         );
     }

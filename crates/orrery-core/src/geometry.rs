@@ -52,16 +52,27 @@
 /// assert_eq!(mid.x(), 7.5);
 /// assert_eq!(mid.y(), 12.5);
 /// ```
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point {
     x: f32,
     y: f32,
+}
+
+impl Default for Point {
+    fn default() -> Self {
+        Self::zero()
+    }
 }
 
 impl Point {
     /// Creates a new point with the specified coordinates
     pub fn new(x: f32, y: f32) -> Self {
         Self { x, y }
+    }
+
+    /// Returns the origin point `(0, 0)`.
+    pub fn zero() -> Self {
+        Self { x: 0.0, y: 0.0 }
     }
 
     /// Returns the x-coordinate.
@@ -173,15 +184,29 @@ impl Point {
 }
 
 /// Width and height of a 2D element.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Size {
     width: f32,
     height: f32,
 }
 
+impl Default for Size {
+    fn default() -> Self {
+        Self::zero()
+    }
+}
+
 impl Size {
     pub fn new(width: f32, height: f32) -> Self {
         Self { width, height }
+    }
+
+    /// Returns a zero size `(0, 0)`.
+    pub fn zero() -> Self {
+        Self {
+            width: 0.0,
+            height: 0.0,
+        }
     }
 
     /// Returns the width.
@@ -493,11 +518,16 @@ mod tests {
     }
 
     #[test]
-    fn test_point_default() {
-        let point = Point::default();
+    fn test_point_zero() {
+        let point = Point::zero();
         assert_eq!(point.x(), 0.0);
         assert_eq!(point.y(), 0.0);
         assert!(point.is_zero());
+    }
+
+    #[test]
+    fn test_point_default() {
+        assert_eq!(Point::default(), Point::zero());
     }
 
     #[test]
@@ -649,10 +679,15 @@ mod tests {
     }
 
     #[test]
-    fn test_size_default() {
-        let size = Size::default();
+    fn test_size_zero() {
+        let size = Size::zero();
         assert_eq!(size.width(), 0.0);
         assert_eq!(size.height(), 0.0);
+    }
+
+    #[test]
+    fn test_size_default() {
+        assert_eq!(Size::default(), Size::zero());
     }
 
     #[test]
@@ -985,19 +1020,18 @@ mod tests {
 
     #[test]
     fn test_size_is_zero() {
-        // Test zero size
-        let zero_size = Size::new(0.0, 0.0);
+        let new_size = Size::new(0.0, 0.0);
+        assert!(new_size.is_zero());
+
+        let zero_size = Size::zero();
         assert!(zero_size.is_zero());
 
-        // Test default size (should be zero)
         let default_size = Size::default();
         assert!(default_size.is_zero());
 
-        // Test non-zero width
         let non_zero_width = Size::new(1.0, 0.0);
         assert!(!non_zero_width.is_zero());
 
-        // Test non-zero height
         let non_zero_height = Size::new(0.0, 1.0);
         assert!(!non_zero_height.is_zero());
 

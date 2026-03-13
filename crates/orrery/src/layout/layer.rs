@@ -48,7 +48,7 @@ impl<'a> Layer<'a> {
     fn new(z_index: usize, content: LayoutContent<'a>) -> Self {
         Self {
             z_index,
-            offset: Point::default(),
+            offset: Point::zero(),
             clip_bounds: None,
             content,
         }
@@ -285,7 +285,7 @@ where
     pub fn new(content: T) -> Self {
         Self {
             content,
-            offset: Point::default(),
+            offset: Point::zero(),
         }
     }
 

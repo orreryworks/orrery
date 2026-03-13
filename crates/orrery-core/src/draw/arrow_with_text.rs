@@ -29,7 +29,7 @@ impl<'a> ArrowWithText<'a> {
     /// The text is positioned at the midpoint of the arrow line.
     fn calculate_text_position(&self, source: Point, destination: Point) -> Point {
         if self.text.is_none() {
-            return Point::default();
+            return Point::zero();
         }
 
         // Position text at the midpoint of the arrow
@@ -164,7 +164,7 @@ mod tests {
         // Without text, should return default point
         let pos =
             arrow_with_text.calculate_text_position(Point::new(0.0, 0.0), Point::new(100.0, 100.0));
-        assert_eq!(pos, Point::default());
+        assert_eq!(pos, Point::zero());
 
         // With text, should return midpoint
         let arrow = create_test_arrow(ArrowDirection::Forward);
