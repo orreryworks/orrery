@@ -8,7 +8,7 @@ use std::{collections::HashMap, rc::Rc, str::FromStr};
 
 use log::{debug, info, trace};
 
-use orrery_core::{color::Color, draw, geometry::Insets, identifier::Id, semantic};
+use orrery_core::{color::Color, draw, identifier::Id, semantic};
 
 use crate::{
     builtin_types, elaborate_utils,
@@ -959,10 +959,6 @@ impl<'a> Builder<'a> {
                             )?;
                             fragment_def_mut.set_separator_stroke(stroke_rc);
                         }
-                        "content_padding" => {
-                            let val = Self::extract_positive_float(attr, "content_padding")?;
-                            fragment_def_mut.set_content_padding(Insets::uniform(val));
-                        }
                         "operation_label_text" => {
                             let type_spec = Self::extract_type_spec(attr, "operation_label_text")?;
                             let text_rc = self.resolve_text_type_reference(
@@ -985,7 +981,7 @@ impl<'a> Builder<'a> {
                             ))
                             .with_code(ErrorCode::E303)
                             .with_label(attr.span(), "unknown attribute")
-                            .with_help("Valid fragment attributes are: border_stroke=[...], separator_stroke=[...], background_color, content_padding, operation_label_text=[...], section_title_text=[...]"));
+                            .with_help("Valid fragment attributes are: border_stroke=[...], separator_stroke=[...], background_color, operation_label_text=[...], section_title_text=[...]"));
                         }
                     }
                 }

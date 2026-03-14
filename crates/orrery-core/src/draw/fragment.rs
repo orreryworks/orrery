@@ -16,7 +16,7 @@
 //! - An operation label in the upper-left corner (e.g., "alt", "loop", "opt")
 //! - Optional section titles for each section
 //! - Dashed horizontal separators between sections
-//! - Content area with padding for nested elements
+//! - Content area for nested elements
 
 use std::rc::Rc;
 
@@ -55,8 +55,6 @@ pub struct FragmentDefinition {
     /// Fill color for the pentagonal operation label tab
     pentagon_fill_color: Color,
 
-    /// Padding around the fragment content
-    content_padding: Insets,
     /// Padding added to fragment bounds for visual separation from lifelines and messages
     bounds_padding: Insets,
 }
@@ -90,11 +88,6 @@ impl FragmentDefinition {
     /// Sets the separator stroke definition.
     pub fn set_separator_stroke(&mut self, stroke: Rc<StrokeDefinition>) {
         self.separator_stroke = stroke;
-    }
-
-    /// Sets the content padding.
-    pub fn set_content_padding(&mut self, padding: Insets) {
-        self.content_padding = padding;
     }
 
     /// Sets the bounds padding.
@@ -132,11 +125,6 @@ impl FragmentDefinition {
         &self.section_title_text_definition
     }
 
-    /// Gets the content padding.
-    fn content_padding(&self) -> Insets {
-        self.content_padding
-    }
-
     /// Gets the bounds padding.
     fn bounds_padding(&self) -> Insets {
         self.bounds_padding
@@ -169,7 +157,7 @@ impl FragmentDefinition {
             Some(title) => {
                 let formatted = format!("[{}]", title);
                 let text = Text::new(&self.section_title_text_definition, &formatted);
-                text.calculate_size().add_padding(self.content_padding)
+                text.calculate_size()
             }
             None => Size::zero(),
         }
@@ -252,7 +240,7 @@ impl Default for FragmentDefinition {
         section_title_text_definition.set_font_size(11);
         section_title_text_definition
             .set_color(Some(Color::new("#666666").expect("Invalid color")));
-        section_title_text_definition.set_padding(Insets::new(2.0, 4.0, 2.0, 4.0));
+        section_title_text_definition.set_padding(Insets::new(2.0, 4.0, 2.0, 20.0));
 
         Self {
             border_stroke: Rc::new(StrokeDefinition::default()),
@@ -265,7 +253,6 @@ impl Default for FragmentDefinition {
 
             pentagon_fill_color: Color::new("white").expect("Invalid color"),
 
-            content_padding: Insets::new(0.0, 0.0, 0.0, 8.0),
             bounds_padding: Insets::new(0.0, 20.0, 0.0, 20.0),
         }
     }
@@ -368,7 +355,6 @@ impl Fragment {
 impl Drawable for Fragment {
     fn render_to_layers(&self, position: Point) -> LayeredOutput {
         let mut output = LayeredOutput::new();
-        let padding = self.definition.content_padding();
         let bounds_padding = self.definition.bounds_padding();
 
         // Apply bounds padding to expand the fragment beyond its content
@@ -446,16 +432,13 @@ impl Drawable for Fragment {
                 let title_position = if i == 0 {
                     // First section: position to the right of the pentagon
                     Point::new(
-                        pentagon_bounds.max_x() + title_size.width() / 2.0 + padding.left(),
+                        pentagon_bounds.max_x() + title_size.width() / 2.0,
                         pentagon_bounds.center().y(),
                     )
                 } else {
                     // Other sections: position below the separator
                     Point::new(
-                        top_left.x()
-                            + title_size.width() / 2.0
-                            + bounds_padding.left()
-                            + padding.left(),
+                        top_left.x() + title_size.width() / 2.0 + bounds_padding.left(),
                         current_y + title_size.height() / 2.0,
                     )
                 };
@@ -485,7 +468,6 @@ mod tests {
         let mut definition = FragmentDefinition::new();
 
         definition.set_background_color(Some(Color::new("#f0f0f0").unwrap()));
-        definition.set_content_padding(Insets::new(10.0, 12.0, 10.0, 12.0));
 
         // Verify background color
         assert!(definition.background_color().is_some());
@@ -494,13 +476,6 @@ mod tests {
             bg_color.contains("240"),
             "Background color should contain value 240"
         );
-
-        // Verify content padding
-        let padding = definition.content_padding();
-        assert_eq!(padding.top(), 10.0);
-        assert_eq!(padding.right(), 12.0);
-        assert_eq!(padding.bottom(), 10.0);
-        assert_eq!(padding.left(), 12.0);
 
         // Verify default border stroke properties (solid black, 1.0 width)
         assert_eq!(definition.border_stroke().color().to_string(), "black");
