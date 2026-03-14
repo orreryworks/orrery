@@ -393,7 +393,6 @@ Fragments support the following attributes to customize their appearance:
 - `border_stroke=[...]`: Border styling for the fragment box (stroke attributes)
 - `separator_stroke=[...]`: Styling for section separator lines (stroke attributes)
 - `background_color`: Background color for the entire fragment (string color value)
-- `content_padding`: Padding around fragment content (float value)
 - `operation_label_text=[...]`: Text styling for the operation label (e.g., "alt", "loop") (text attributes)
 - `section_title_text=[...]`: Text styling for section titles (text attributes)
 
