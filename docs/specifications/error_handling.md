@@ -50,6 +50,16 @@ Errors detected during elaboration when syntax is valid but semantics are incorr
 - **Explicit activation diagram type errors** - `activate`/`deactivate` statements used in component diagrams (only allowed in sequence diagrams)
 - **Activation pairing violations** - Unpaired `activate`/`deactivate` statements or out-of-order deactivation before activation
 
+### 3.3 Import Errors
+
+Errors detected during import resolution when processing `import` declarations (see [Import System Specification](import_system.md)):
+
+- **File not found** - Import path resolves to a non-existent file
+- **Circular dependency** - Import graph contains a cycle
+- **Undefined type in selective import** - Named type does not exist in the imported file
+- **Undefined namespace access** - Reference to a namespace that has not been imported
+- **Embedding a library file** - Attempting to embed a library file (only diagram files can be embedded)
+
 ## 4. Error Message Format
 
 ### 4.1 Standard Error Structure
@@ -90,6 +100,23 @@ Errors use visual indicators to show exact locations:
 - `╭─▶` and `├─▶` arrows point to error locations
 - `╰────` underlines highlight the problematic text
 - Line numbers provide context for navigation
+
+### 5.3 Cross-File Error Spans
+
+When an error involves definitions from imported files, the error system should reference the original definition location. Import errors should include resolved file paths relative to the importing file.
+
+```
+Semantic error: type mismatch
+   ╭─[main.orr:8:6]
+ 8 │ api: styles::Service {
+   │      ───────────────
+   ╰────
+   ╭─[shared/styles.orr:5:1]
+ 5 │ type Service = Actor[...];
+   │      ─────── defined as content-free type here
+   ╰────
+help: Actor is a content-free type and cannot contain nested elements
+```
 
 ## 6. Error Message Examples
 

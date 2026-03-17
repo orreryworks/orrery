@@ -8,15 +8,26 @@ Diagrams are defined in a text-based syntax, which is then parsed, processed, an
 
 ## 2. Basic Structure
 
-A Orrery document consists of a diagram declaration, optional type definitions, and diagram elements.
+An Orrery file begins with a file header, followed by optional import declarations, optional type definitions, and diagram elements.
 
+**Diagram file:**
 ```
 diagram <kind> [attributes...];
+[import declarations...]
 [type definitions...]
 [elements...]
 ```
 
+**Library file** (definitions only, not renderable):
+```
+library;
+[import declarations...]
+[type definitions...]
+```
+
 Whitespace is generally ignored, and comments can be added using Rust-style syntax (`// comment`).
+
+**For complete Import System documentation, see:** [Import System Specification](import_system.md)
 
 ## 3. Diagram Types
 
@@ -957,12 +968,23 @@ When a component contains an embedded diagram:
 - The parent component is sized appropriately to contain the embedded diagram
 - The embedded diagram can have its own attributes like `background_color` and `layout_engine`
 
+Diagrams can also be embedded by referencing an imported diagram file:
+
+```
+import "auth_flow";
+
+auth_box: Rectangle embed auth_flow;
+```
+
+**For complete import-based embedding documentation, see:** [Import System Specification](import_system.md#6-diagram-embedding-via-import)
+
 ## 9. Identifiers and Naming Conventions
 
 - Type identifiers must use CamelCase (e.g., `Database`, `UserService`)
 - Element identifiers typically use snake_case (e.g., `auth_service`, `user_db`)
 - Identifiers can include alphanumeric characters and underscores
 - Nested identifiers use `::` for qualification (e.g., `parent_system::child_service1`)
+- Import namespace identifiers use `::` for type access (e.g., `styles::Service`, `parent::child::TypeName`)
 - Identifiers must start with a letter
 - Identifiers are case-sensitive
 

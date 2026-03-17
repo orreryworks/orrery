@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Import system specification** — Formal specification for the file-based import system covering `import` syntax, `library;` file header, path resolution, namespaces, diagram embedding via import, scope and visibility, and conflict resolution. Updated main specification and error handling specification with cross-references. ([#44](https://github.com/orreryworks/orrery/issues/44))
+
 ## [0.1.1] - 2026-03-11
 
 ### Added

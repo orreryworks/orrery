@@ -185,10 +185,6 @@ component: Rectangle [
 source -> [stroke=[width=2]] target;  // Relation stroke width (whole number)
 ```
 
-
-
-
-
 ## 4. Text Attribute Usage and Examples
 
 Text attributes control text appearance. Use nested syntax: `text=[attribute=value, ...]`
