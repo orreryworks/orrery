@@ -232,6 +232,8 @@ fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
             literal("sequence"),
             literal("type"),
             literal("embed"),
+            literal("import"),
+            literal("library"),
             literal("as"),
             literal("deactivate"),
             literal("activate"),
@@ -255,6 +257,8 @@ fn keyword<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
         "sequence" => Token::Sequence,
         "type" => Token::Type,
         "embed" => Token::Embed,
+        "import" => Token::Import,
+        "library" => Token::Library,
         "as" => Token::As,
         "deactivate" => Token::Deactivate,
         "activate" => Token::Activate,
@@ -474,6 +478,8 @@ mod tests {
         test_single_token("sequence", Token::Sequence);
         test_single_token("type", Token::Type);
         test_single_token("embed", Token::Embed);
+        test_single_token("import", Token::Import);
+        test_single_token("library", Token::Library);
         test_single_token("as", Token::As);
         test_single_token("deactivate", Token::Deactivate);
         test_single_token("activate", Token::Activate);
