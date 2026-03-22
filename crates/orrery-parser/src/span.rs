@@ -144,6 +144,7 @@ impl<T> Spanned<T> {
     }
 
     /// Consume the Spanned wrapper and return just the inner value
+    #[allow(dead_code)]
     pub fn into_inner(self) -> T {
         self.value
     }

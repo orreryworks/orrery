@@ -15,7 +15,8 @@ type Database = Rectangle [fill_color="#e0f0e0", rounded=10];
 
 // --- Embedded: Basic Engine ---
 
-basic_system as "Basic Engine": Rectangle embed diagram component [layout_engine="basic", background_color="#ffffff"] {
+basic_system as "Basic Engine": Rectangle embed {
+    diagram component [layout_engine="basic", background_color="#ffffff"];
     gateway as "API Gateway": Service;
     auth as "Auth Service": Service;
     users as "User Service": Service;
@@ -34,7 +35,8 @@ basic_system as "Basic Engine": Rectangle embed diagram component [layout_engine
 
 // --- Embedded: Sugiyama Engine ---
 
-sugiyama_system as "Sugiyama Engine": Rectangle embed diagram component [layout_engine="sugiyama", background_color="#ffffff"] {
+sugiyama_system as "Sugiyama Engine": Rectangle embed {
+    diagram component [layout_engine="sugiyama", background_color="#ffffff"];
     gateway as "API Gateway": Service;
     auth as "Auth Service": Service;
     users as "User Service": Service;

@@ -236,28 +236,118 @@ impl TypeDefinition<'_> {
     }
 }
 
+/// File header — the first declaration in an Orrery file.
+///
+/// Every Orrery file begins with exactly one header that determines how the
+/// file participates in the system. This distinction drives downstream
+/// processing: diagram files produce rendered output, while library files
+/// only export reusable [`TypeDefinition`]s.
+///
+/// - `diagram <kind> [attrs];` — a renderable diagram of a specific [`DiagramKind`].
+/// - `library;` — a file that only exports type definitions for import.
 #[derive(Debug)]
-pub struct Diagram<'a> {
-    pub kind: Spanned<DiagramKind>,
-    pub attributes: Vec<Attribute<'a>>,
-    pub type_definitions: Vec<TypeDefinition<'a>>,
-    pub elements: Vec<Element<'a>>,
+pub enum FileHeader<'a> {
+    /// A diagram file declared with `diagram <kind> [attributes...];`.
+    ///
+    /// Diagram files are the primary renderable unit. The [`DiagramKind`]
+    /// selects the rendering backend (e.g., sequence, block), while optional
+    /// [`Attribute`]s configure diagram-level settings such as engine or layout.
+    Diagram {
+        /// The diagram kind keyword, wrapped in a [`Spanned`].
+        kind: Spanned<DiagramKind>,
+        /// Zero or more diagram-level attributes.
+        attributes: Vec<Attribute<'a>>,
+    },
+    /// A library file declared with `library;`.
+    ///
+    /// Library files have no renderable elements. They exist solely
+    /// to be imported by diagram files.
+    Library {
+        /// The source span of the `library` keyword.
+        span: Span,
+    },
 }
 
-impl Diagram<'_> {
+impl FileHeader<'_> {
+    /// Returns the [`Span`] covering the entire file header declaration.
     pub fn span(&self) -> Span {
-        let kind_span = self.kind.span();
+        match self {
+            FileHeader::Diagram { kind, attributes } => attributes
+                .iter()
+                .map(|attr| attr.span())
+                .fold(kind.span(), |acc, span| acc.union(span)),
+            FileHeader::Library { span } => *span,
+        }
+    }
+}
 
-        let attr_spans = self.attributes.iter().map(|attr| attr.span());
+/// Import declaration — a syntactic `import "path";` statement.
+///
+/// Captures the raw import path exactly as written in source. The path is a
+/// string literal without the `.orr` extension, resolved relative to the
+/// importing file.
+#[derive(Debug)]
+pub struct ImportDecl {
+    /// The import path string (e.g., `"shared/styles"`), wrapped in
+    /// [`Spanned`].
+    pub _path: Spanned<String>,
+}
 
+/// Resolved import — populated by the resolver after parsing.
+///
+/// The parser produces an empty `imports` vec in [`FileAst`]; the resolver
+/// later processes each [`ImportDecl`], loads the referenced file, parses it,
+/// and stores the result here.
+#[derive(Debug)]
+pub struct Import<'a> {
+    /// Namespace qualifier derived from the last segment of the import path.
+    ///
+    /// Used to scope imported symbols (e.g., `styles::Card`). `None` when the
+    /// import is not namespaced.
+    pub namespace: Option<Id>,
+    /// The fully parsed AST of the imported file.
+    pub file_ast: Box<FileAst<'a>>,
+}
+
+/// Top-level parsed file — the root AST node produced by the parser.
+///
+/// Represents a complete Orrery file: its [`FileHeader`], syntactic imports,
+/// [`TypeDefinition`]s, and (for diagram files) renderable [`Element`]s.
+/// Library files always have an empty `elements` vec because they exist only
+/// to export type definitions.
+///
+/// The `imports` field is initially empty; the resolver populates it by
+/// walking `import_decls` and attaching parsed [`Import`]s.
+#[derive(Debug)]
+pub struct FileAst<'a> {
+    /// The file header that identifies this file as a diagram or library.
+    pub header: FileHeader<'a>,
+    /// Syntactic `import "…";` declarations in source order.
+    /// These are unresolved; the resolver converts them into [`Import`]s.
+    pub import_decls: Vec<Spanned<ImportDecl>>,
+    /// Named type aliases declared with `type Name = TypeSpec;`.
+    pub type_definitions: Vec<TypeDefinition<'a>>,
+    /// Diagram body elements (components, relations, fragments, etc.).
+    /// Always empty for library files because they have no renderable body.
+    pub elements: Vec<Element<'a>>,
+    /// Resolved imports populated by the resolver after parsing.
+    /// Empty immediately after parsing; filled during the resolve pass.
+    pub imports: Vec<Import<'a>>,
+}
+
+impl FileAst<'_> {
+    /// Returns the [`Span`] covering the entire file, from the header through
+    /// the last element.
+    pub fn span(&self) -> Span {
+        let header_span = self.header.span();
+        let import_spans = self.import_decls.iter().map(Spanned::span);
         let type_def_spans = self.type_definitions.iter().map(|td| td.span());
-
         let element_spans = self.elements.iter().map(|elem| elem.span());
 
-        attr_spans
+        import_spans
             .chain(type_def_spans)
             .chain(element_spans)
-            .fold(kind_span, |acc, span| acc.union(span))
+            .fold(header_span, |acc, span| acc.union(span))
     }
 }
 
@@ -339,7 +429,7 @@ pub enum Element<'a> {
         type_spec: TypeSpec<'a>,
         label: Option<Spanned<String>>,
     },
-    Diagram(Diagram<'a>),
+    Diagram(FileAst<'a>),
     Fragment(Fragment<'a>),
     ActivateBlock {
         component: Spanned<Id>,
@@ -435,7 +525,7 @@ impl Element<'_> {
 
                 span
             }
-            Element::Diagram(diagram) => diagram.span(),
+            Element::Diagram(file_ast) => file_ast.span(),
             Element::Fragment(fragment) => fragment.span(),
             Element::ActivateBlock {
                 component,

@@ -218,7 +218,9 @@ Orrery supports two approaches to embedding diagrams:
 
 **Inline embedding** (defined in [Embedded Diagrams](specification.md#81-embedded-diagrams)):
 ```
-user_service: Rectangle embed diagram sequence {
+user_service: Rectangle embed {
+    diagram sequence;
+
     client: Rectangle;
     server: Rectangle;
     client -> server: "Request";

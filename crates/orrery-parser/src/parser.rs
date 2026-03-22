@@ -2,7 +2,7 @@
 //!
 //! This module transforms a token stream from the [`lexer`](super::lexer) into
 //! a parsed AST defined in [`parser_types`](super::parser_types). The public
-//! entry point is [`build_diagram`].
+//! entry point is [`build_file`].
 
 use winnow::{
     Parser as _,
@@ -1140,10 +1140,11 @@ fn diagram_type<'src>(input: &mut Input<'src>) -> IResult<Spanned<DiagramKind>> 
     .parse_next(input)
 }
 
-/// Parse diagram header with unwrapped attributes
-fn diagram_header<'src>(
-    input: &mut Input<'src>,
-) -> IResult<(Spanned<DiagramKind>, Vec<types::Attribute<'src>>)> {
+/// Parses a diagram header: `diagram <kind> [attrs]`.
+///
+/// Consumes the `diagram` keyword, a required [`DiagramKind`], and optional
+/// wrapped attributes.
+fn diagram_header<'src>(input: &mut Input<'src>) -> IResult<types::FileHeader<'src>> {
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Diagram))
         .parse_next(input)?;
     ws_comments1.parse_next(input)?;
@@ -1152,72 +1153,94 @@ fn diagram_header<'src>(
     let attributes = opt(wrapped_attributes)
         .map(|attrs| attrs.unwrap_or_default())
         .parse_next(input)?;
-    Ok((kind, attributes))
+    Ok(types::FileHeader::Diagram { kind, attributes })
 }
 
-/// Parse diagram header with semicolon
-pub fn diagram_header_with_semicolon<'src>(
-    input: &mut Input<'src>,
-) -> IResult<(Spanned<DiagramKind>, Vec<types::Attribute<'src>>)> {
-    let (kind, attributes) = diagram_header.parse_next(input)?;
-    semicolon.parse_next(input)?;
-    Ok((kind, attributes))
+/// Parses a library header: the `library` keyword.
+///
+/// Consumes only the `library` token itself.
+fn library_header<'src>(input: &mut Input<'src>) -> IResult<types::FileHeader<'src>> {
+    let token = any
+        .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Library))
+        .parse_next(input)?;
+    Ok(types::FileHeader::Library { span: token.span })
 }
 
-/// Parse complete diagram
-fn diagram<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
+/// Parses the file header that begins every `.orr` file.
+///
+/// Dispatches to [`library_header`] or [`diagram_header`] based on the
+/// leading token, then consumes the required trailing semicolon.
+fn file_header<'src>(input: &mut Input<'src>) -> IResult<types::FileHeader<'src>> {
+    let header = alt((library_header, diagram_header))
+        .context(Context::Label("file header"))
+        .parse_next(input)?;
+    cut_err(input, |input| {
+        semicolon.parse_next(input)?;
+        Ok(header)
+    })
+}
+
+/// Parses a single import declaration: `import "path";`.
+fn import_decl<'src>(input: &mut Input<'src>) -> IResult<Spanned<types::ImportDecl>> {
+    let import_token = any
+        .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Import))
+        .parse_next(input)?;
+    cut_err(input, |input| {
+        ws_comments1.parse_next(input)?;
+        let path = string_literal
+            .context(Context::Label("import path"))
+            .parse_next(input)?;
+        semicolon.parse_next(input)?;
+        let span = import_token.span.union(path.span());
+        Ok(make_spanned(types::ImportDecl { _path: path }, span))
+    })
+}
+
+/// Parses zero or more consecutive [`import_decl`] statements.
+fn import_decls<'src>(input: &mut Input<'src>) -> IResult<Vec<Spanned<types::ImportDecl>>> {
+    repeat(0.., preceded(ws_comments0, import_decl)).parse_next(input)
+}
+
+/// Parses the body of a complete `.orr` file (without EOF checking).
+///
+/// Expects the sequence: file header → import declarations → type definitions
+/// → elements.
+fn file<'src>(input: &mut Input<'src>) -> IResult<types::FileAst<'src>> {
     ws_comments0.parse_next(input)?;
-    let (kind, attributes) = diagram_header_with_semicolon.parse_next(input)?;
+    let header = file_header.parse_next(input)?;
+    let import_decls = import_decls.parse_next(input)?;
     let type_definitions = type_definitions.parse_next(input)?;
     let elements = elements.parse_next(input)?;
     ws_comments0.parse_next(input)?;
 
-    // Check if we've consumed all tokens (equivalent to `end()` in chumsky)
-    if !input.is_empty() {
-        return Err(cut_error_with_offset(input));
-    }
-
-    Ok(types::Element::Diagram(types::Diagram {
-        kind,
-        attributes,
+    Ok(types::FileAst {
+        header,
+        import_decls,
         type_definitions,
         elements,
-    }))
+        imports: vec![],
+    })
 }
 
-/// Parse an embedded diagram within a component
+/// Parses an embedded diagram block: `embed .*`.
 ///
-/// Syntax: `embed diagram [diagram_type] [[attributes]]? { type_definitions? elements }`
+/// Embedded diagrams allow nesting a full file structure inside a pair of braces.
 fn embedded_diagram<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
     // Parse: embed
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Embed))
         .parse_next(input)?;
 
     cut_err(input, |input| {
-        ws_comments1.parse_next(input)?;
-
-        // Parse: diagram [type] [attributes]?
-        let (kind, attributes) = diagram_header.parse_next(input)?;
         ws_comments0.parse_next(input)?;
 
-        // Parse: { type_definitions? elements }
-        any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace))
-            .parse_next(input)?;
-        ws_comments0.parse_next(input)?;
+        let file_ast = delimited(
+            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace)),
+            file,
+            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace)),
+        )
+        .parse_next(input)?;
 
-        let type_definitions = type_definitions.parse_next(input)?;
-        let elements = elements.parse_next(input)?;
-
-        ws_comments0.parse_next(input)?;
-        any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace))
-            .parse_next(input)?;
-
-        Ok(types::Element::Diagram(types::Diagram {
-            kind,
-            attributes,
-            type_definitions,
-            elements,
-        }))
+        Ok(types::Element::Diagram(file_ast))
     })
 }
 
@@ -1325,20 +1348,41 @@ fn convert_error(
     }
 }
 
-/// Build a diagram from tokens
-pub fn build_diagram<'src>(
+/// Parses a token stream into a [`FileAst`](types::FileAst).
+///
+/// This is the public entry point for parsing a complete source file.
+/// After the inner [`file()`] combinator succeeds, this
+/// function verifies that all tokens have been consumed; leftover tokens
+/// indicate a syntax error.
+///
+/// # Arguments
+///
+/// * `tokens` — The token slice
+///   [`PositionedToken`](super::PositionedToken). Must represent a single complete source file.
+///
+/// # Returns
+///
+/// A [`FileAst`](types::FileAst) on success.
+///
+/// # Errors
+///
+/// Returns a [`Diagnostic`] when:
+/// - The token stream does not match the expected Orrery grammar.
+/// - Tokens remain after parsing (unconsumed trailing input).
+pub fn build_file<'src>(
     tokens: &'src [PositionedToken<'src>],
-) -> Result<Spanned<types::Element<'src>>, Diagnostic> {
+) -> Result<types::FileAst<'src>, Diagnostic> {
     let mut token_slice = TokenSlice::new(tokens);
 
-    match diagram.parse_next(&mut token_slice) {
-        Ok(diagram) => {
-            let total_span = tokens
-                .first()
-                .and_then(|f| tokens.last().map(|l| l.span.union(f.span)))
-                .unwrap_or_default();
-
-            Ok(make_spanned(diagram, total_span))
+    match file.parse_next(&mut token_slice) {
+        Ok(file_ast) => {
+            // Check if we've consumed all tokens (EOF)
+            if !token_slice.is_empty() {
+                let current_remaining = token_slice.eof_offset();
+                let e = cut_error_with_offset(&token_slice);
+                return Err(convert_error(e, tokens, current_remaining));
+            }
+            Ok(file_ast)
         }
         Err(e) => {
             let current_remaining = token_slice.eof_offset();
@@ -1382,7 +1426,7 @@ mod tests {
         first.union(last)
     }
 
-    /// Helper to create a token at a specific position
+    // Helper to create a token at a specific position
     fn make_token<'a>(token: Token<'a>, offset: usize, length: usize) -> PositionedToken<'a> {
         PositionedToken {
             token,
@@ -1444,7 +1488,7 @@ mod tests {
         let input = r#"diagram component;
         app: Rectangle;"#;
         let tokens = parse_tokens(input);
-        let result = build_diagram(&tokens);
+        let result = build_file(&tokens);
         assert!(result.is_ok());
     }
 
@@ -1453,7 +1497,7 @@ mod tests {
         let input = r#"diagram component;
         frontend -> backend;"#;
         let tokens = parse_tokens(input);
-        let result = build_diagram(&tokens);
+        let result = build_file(&tokens);
         assert!(result.is_ok());
     }
 
@@ -1820,7 +1864,7 @@ mod tests {
 
         frontend -> backend: "API calls";"#;
         let tokens = parse_tokens(input);
-        let result = build_diagram(&tokens);
+        let result = build_file(&tokens);
         assert!(result.is_ok());
     }
 
@@ -3360,59 +3404,55 @@ mod tests {
         let tokens = parse_tokens(input);
         let mut token_slice = TokenSlice::new(&tokens);
 
-        let result = diagram(&mut token_slice);
+        let result = file(&mut token_slice);
         assert!(result.is_ok(), "Failed to parse diagram with notes");
 
-        let element = result.unwrap();
+        let file_ast = result.unwrap();
 
-        if let types::Element::Diagram(diagram) = element {
-            // Count note elements
-            let note_count = diagram
-                .elements
-                .iter()
-                .filter(|e| matches!(e, types::Element::Note(_)))
-                .count();
-            assert_eq!(note_count, 4, "Expected 4 notes in diagram");
+        // Count note elements
+        let note_count = file_ast
+            .elements
+            .iter()
+            .filter(|e| matches!(e, types::Element::Note(_)))
+            .count();
+        assert_eq!(note_count, 4, "Expected 4 notes in diagram");
 
-            // Verify first note is a margin note with no attributes
-            if let Some(types::Element::Note(note)) = diagram
-                .elements
-                .iter()
-                .find(|e| matches!(e, types::Element::Note(_)))
-            {
-                assert_eq!(note.content.inner(), "This is a margin note");
-                assert_eq!(
-                    note.type_spec.attributes.len(),
-                    0,
-                    "Margin note should have no attributes"
-                );
-            } else {
-                panic!("Expected to find note element");
-            }
-
-            // Verify we have notes with 'on' attribute
-            let notes_with_on: Vec<_> = diagram
-                .elements
-                .iter()
-                .filter_map(|e| match e {
-                    types::Element::Note(note) => Some(note),
-                    _ => None,
-                })
-                .filter(|note| {
-                    note.type_spec
-                        .attributes
-                        .iter()
-                        .any(|attr| *attr.name.inner() == "on")
-                })
-                .collect();
+        // Verify first note is a margin note with no attributes
+        if let Some(types::Element::Note(note)) = file_ast
+            .elements
+            .iter()
+            .find(|e| matches!(e, types::Element::Note(_)))
+        {
+            assert_eq!(note.content.inner(), "This is a margin note");
             assert_eq!(
-                notes_with_on.len(),
-                3,
-                "Expected 3 notes with 'on' attribute"
+                note.type_spec.attributes.len(),
+                0,
+                "Margin note should have no attributes"
             );
         } else {
-            panic!("Expected Diagram element");
+            panic!("Expected to find note element");
         }
+
+        // Verify we have notes with 'on' attribute
+        let notes_with_on: Vec<_> = file_ast
+            .elements
+            .iter()
+            .filter_map(|e| match e {
+                types::Element::Note(note) => Some(note),
+                _ => None,
+            })
+            .filter(|note| {
+                note.type_spec
+                    .attributes
+                    .iter()
+                    .any(|attr| *attr.name.inner() == "on")
+            })
+            .collect();
+        assert_eq!(
+            notes_with_on.len(),
+            3,
+            "Expected 3 notes with 'on' attribute"
+        );
     }
 
     #[test]
@@ -3496,12 +3536,214 @@ mod tests {
     }
 
     #[test]
+    fn test_diagram_header() {
+        for (input, expected_kind) in [
+            ("diagram component;", DiagramKind::Component),
+            ("diagram sequence;", DiagramKind::Sequence),
+        ] {
+            let tokens = parse_tokens(input);
+            let result = build_file(&tokens);
+            assert!(result.is_ok(), "Failed for {input}: {:?}", result.err());
+            let file_ast = result.unwrap();
+            match &file_ast.header {
+                types::FileHeader::Diagram { kind, .. } => {
+                    assert_eq!(*kind.inner(), expected_kind, "Wrong kind for {input}");
+                }
+                types::FileHeader::Library { .. } => {
+                    panic!("Expected Diagram header for {input}")
+                }
+            }
+            assert!(file_ast.import_decls.is_empty());
+            assert!(file_ast.type_definitions.is_empty());
+            assert!(file_ast.elements.is_empty());
+            assert!(file_ast.imports.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_diagram_header_with_attributes() {
+        let input = r#"diagram component [layout_engine="sugiyama"];"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        match &file_ast.header {
+            types::FileHeader::Diagram { kind, attributes } => {
+                assert_eq!(*kind.inner(), DiagramKind::Component);
+                assert_eq!(attributes.len(), 1);
+                assert_eq!(*attributes[0].name.inner(), "layout_engine");
+            }
+            types::FileHeader::Library { .. } => panic!("Expected Diagram header"),
+        }
+    }
+
+    #[test]
+    fn test_library_header() {
+        let input = "library;";
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert!(matches!(file_ast.header, types::FileHeader::Library { .. }));
+        assert!(file_ast.import_decls.is_empty());
+        assert!(file_ast.type_definitions.is_empty());
+        assert!(file_ast.elements.is_empty());
+        assert!(file_ast.imports.is_empty());
+    }
+
+    #[test]
+    fn test_library_with_type_definitions() {
+        let input = r#"library;
+type Service = Rectangle;
+type Database = Rectangle;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert!(matches!(file_ast.header, types::FileHeader::Library { .. }));
+        assert_eq!(file_ast.type_definitions.len(), 2);
+        assert!(file_ast.elements.is_empty());
+    }
+
+    #[test]
+    fn test_library_with_imports_and_type_definitions() {
+        let input = r#"library;
+import "shared/styles";
+import "common/types";
+type Service = Rectangle;
+type Database = Rectangle;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert!(matches!(file_ast.header, types::FileHeader::Library { .. }));
+        assert_eq!(file_ast.import_decls.len(), 2);
+        assert_eq!(
+            *file_ast.import_decls[0].inner()._path.inner(),
+            "shared/styles"
+        );
+        assert_eq!(
+            *file_ast.import_decls[1].inner()._path.inner(),
+            "common/types"
+        );
+        assert_eq!(file_ast.type_definitions.len(), 2);
+        assert!(file_ast.elements.is_empty());
+    }
+
+    #[test]
+    fn test_single_import() {
+        let input = r#"diagram component;
+import "shared/styles";"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert_eq!(file_ast.import_decls.len(), 1);
+        assert_eq!(
+            *file_ast.import_decls[0].inner()._path.inner(),
+            "shared/styles"
+        );
+    }
+
+    #[test]
+    fn test_multiple_imports() {
+        let input = r#"diagram component;
+import "shared/styles";
+import "common/types";
+import "utils/helpers";"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert_eq!(file_ast.import_decls.len(), 3);
+        assert_eq!(
+            *file_ast.import_decls[0].inner()._path.inner(),
+            "shared/styles"
+        );
+        assert_eq!(
+            *file_ast.import_decls[1].inner()._path.inner(),
+            "common/types"
+        );
+        assert_eq!(
+            *file_ast.import_decls[2].inner()._path.inner(),
+            "utils/helpers"
+        );
+    }
+
+    #[test]
+    fn test_imports_with_elements() {
+        let input = r#"diagram component;
+import "shared/styles";
+type Service = Rectangle;
+a: Service;
+b: Service;
+a -> b;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert_eq!(file_ast.import_decls.len(), 1);
+        assert_eq!(file_ast.type_definitions.len(), 1);
+        assert!(!file_ast.elements.is_empty());
+    }
+
+    #[test]
+    fn test_imports_with_comments() {
+        let input = r#"diagram component;
+// Import styles
+import "shared/styles";
+// Import types
+import "common/types";"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert_eq!(file_ast.import_decls.len(), 2);
+    }
+
+    #[test]
+    fn test_no_imports() {
+        let input = r#"diagram component;
+type Service = Rectangle;
+a: Service;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert!(file_ast.import_decls.is_empty());
+        assert_eq!(file_ast.type_definitions.len(), 1);
+    }
+
+    #[test]
+    fn test_import_decl_span() {
+        let input = r#"diagram component;
+import "path/to/file";"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert_eq!(file_ast.import_decls.len(), 1);
+        let import = &file_ast.import_decls[0];
+        let span = import.span();
+        assert_eq!(
+            span.start(),
+            19,
+            "Import span should start at 'import' keyword"
+        );
+        assert_eq!(
+            span.end(),
+            40,
+            "Import span should end after the path string literal"
+        );
+    }
+
+    #[test]
     fn test_embedded_diagram_empty() {
         let input = r#"diagram component;
 type Service = Rectangle;
-auth_service: Service embed diagram sequence {};"#;
+auth_service: Service embed { diagram sequence; };"#;
         let tokens = parse_tokens(input);
-        let result = build_diagram(&tokens);
+        let result = build_file(&tokens);
         assert!(
             result.is_ok(),
             "Failed to parse embedded diagram: {:?}",
@@ -3512,17 +3754,168 @@ auth_service: Service embed diagram sequence {};"#;
     #[test]
     fn test_embedded_diagram_with_elements() {
         let input = r#"diagram component;
-auth_service: Rectangle embed diagram sequence {
+auth_service: Rectangle embed {
+    diagram sequence;
     client: Rectangle;
     server: Rectangle;
     client -> server;
 };"#;
         let tokens = parse_tokens(input);
-        let result = build_diagram(&tokens);
+        let result = build_file(&tokens);
         assert!(
             result.is_ok(),
             "Failed to parse embedded diagram: {:?}",
             result.err()
         );
+    }
+
+    #[test]
+    fn test_embedded_diagram_with_imports() {
+        let input = r#"diagram component;
+a: Rectangle embed {
+    diagram sequence;
+    import "shared/styles";
+    client: Rectangle;
+    server: Rectangle;
+    client -> server;
+};"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        let outer_elements = &file_ast.elements;
+        assert_eq!(outer_elements.len(), 1);
+        match &outer_elements[0] {
+            types::Element::Component {
+                nested_elements, ..
+            } => {
+                assert_eq!(nested_elements.len(), 1);
+                match &nested_elements[0] {
+                    types::Element::Diagram(inner_file) => {
+                        assert_eq!(inner_file.import_decls.len(), 1);
+                        assert_eq!(
+                            *inner_file.import_decls[0].inner()._path.inner(),
+                            "shared/styles"
+                        );
+                    }
+                    other => panic!("Expected Diagram element, got: {:?}", other),
+                }
+            }
+            other => panic!("Expected Component element, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_library_missing_semicolon() {
+        let input = "library";
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(
+            result.is_err(),
+            "Should fail: missing semicolon after library"
+        );
+    }
+
+    #[test]
+    fn test_import_missing_path() {
+        let input = r#"diagram component;
+import ;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_err(), "Should fail: missing path in import");
+    }
+
+    #[test]
+    fn test_import_missing_semicolon() {
+        let input = r#"diagram component;
+import "shared/styles""#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(
+            result.is_err(),
+            "Should fail: missing semicolon after import"
+        );
+    }
+
+    #[test]
+    fn test_import_non_string_path() {
+        let input = r#"diagram component;
+import shared;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(
+            result.is_err(),
+            "Should fail: import path must be a string literal"
+        );
+    }
+
+    #[test]
+    fn test_no_header() {
+        let input = r#"type Service = Rectangle;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_err(), "Should fail: missing file header");
+    }
+
+    #[test]
+    fn test_import_before_header() {
+        let input = r#"import "styles";
+diagram component;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_err(), "Should fail: import before header");
+    }
+
+    #[test]
+    fn test_trailing_tokens() {
+        let input = r#"diagram component;
+a: Rectangle;
+diagram sequence;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(
+            result.is_err(),
+            "Should fail: trailing tokens after file content"
+        );
+    }
+
+    #[test]
+    fn test_full_diagram_file() {
+        let input = r#"diagram component;
+import "shared/styles";
+import "common/types";
+type Service = Rectangle;
+type Database = Rectangle;
+api: Service;
+db: Database;
+api -> db;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert!(matches!(
+            file_ast.header,
+            types::FileHeader::Diagram { ref kind, .. } if *kind.inner() == DiagramKind::Component
+        ));
+        assert_eq!(file_ast.import_decls.len(), 2);
+        assert_eq!(file_ast.type_definitions.len(), 2);
+        assert!(!file_ast.elements.is_empty());
+    }
+
+    #[test]
+    fn test_full_library_file() {
+        let input = r#"library;
+import "base/primitives";
+type Service = Rectangle;
+type Database = Rectangle;
+type Cache = Rectangle;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert!(matches!(file_ast.header, types::FileHeader::Library { .. }));
+        assert_eq!(file_ast.import_decls.len(), 1);
+        assert_eq!(file_ast.type_definitions.len(), 3);
+        assert!(file_ast.elements.is_empty());
     }
 }

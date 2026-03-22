@@ -7,10 +7,10 @@
 //! ## Validations Performed
 //!
 //! - **Component Identifier References**: Validates that all component identifiers referenced
-//!   in relations, notes, and activation statements are defined in the diagram
+//!   in relations, notes, and activation statements are defined in the diagram.
 //! - **Activate/Deactivate Pairing**: Ensures activate statements have corresponding deactivate
-//!   statements in sequence diagrams
-//! - **Note Alignment**: Validates that note alignment values are appropriate for the diagram type
+//!   statements in sequence diagrams.
+//! - **Note Alignment**: Validates that note alignment values are appropriate for the diagram type.
 
 use std::collections::HashMap;
 
@@ -19,8 +19,8 @@ use orrery_core::{identifier::Id, semantic::DiagramKind};
 use crate::{
     error::{Diagnostic, DiagnosticCollector, ErrorCode, ParseError},
     parser_types::{
-        Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
-        TypeDefinition, TypeSpec,
+        Attribute, AttributeValue, Element, FileAst, FileHeader, Fragment, FragmentSection, Import,
+        Note, TypeDefinition, TypeSpec,
     },
     span::{Span, Spanned},
 };
@@ -31,12 +31,30 @@ use crate::{
 /// Default implementations perform recursive traversal so implementors can override
 /// only the methods they care about.
 trait Visitor<'a> {
-    /// Visit a complete diagram
-    fn visit_diagram(&mut self, diagram: &Diagram<'a>) {
-        self.visit_diagram_kind(&diagram.kind);
-        self.visit_attributes(&diagram.attributes);
-        self.visit_type_definitions(&diagram.type_definitions);
-        self.visit_elements(&diagram.elements);
+    /// Walks a complete [`FileAst`].
+    fn visit_file_ast(&mut self, file_ast: &FileAst<'a>) {
+        self.visit_header(&file_ast.header);
+        self.visit_imports(&file_ast.imports);
+        self.visit_type_definitions(&file_ast.type_definitions);
+        self.visit_elements(&file_ast.elements);
+    }
+
+    /// Visits the file header.
+    fn visit_header(&mut self, header: &FileHeader<'a>) {
+        match header {
+            FileHeader::Diagram { kind, attributes } => {
+                self.visit_diagram_kind(kind);
+                self.visit_attributes(attributes);
+            }
+            FileHeader::Library { .. } => {}
+        }
+    }
+
+    /// Iterates over resolved imports and recursively visits each import's inner [`FileAst`].
+    fn visit_imports(&mut self, imports: &[Import<'a>]) {
+        for import in imports {
+            self.visit_file_ast(&import.file_ast);
+        }
     }
 
     /// Visit the diagram kind (component, sequence, etc.)
@@ -135,7 +153,7 @@ trait Visitor<'a> {
                 ref type_spec,
                 ref label,
             } => self.visit_relation(source, target, relation_type, type_spec, label),
-            Element::Diagram(ref diagram) => self.visit_diagram(diagram),
+            Element::Diagram(ref diagram) => self.visit_file_ast(diagram),
             Element::ActivateBlock {
                 ref component,
                 ref type_spec,
@@ -313,17 +331,17 @@ trait Visitor<'a> {
     fn visit_note_content(&mut self, _content: &Spanned<String>) {}
 }
 
-/// Entry point for running a visitor on a diagram
-fn visit_diagram<'a, V: Visitor<'a>>(visitor: &mut V, diagram: &Diagram<'a>) {
-    visitor.visit_diagram(diagram)
+/// Entry point for running a visitor on a file AST.
+fn visit_file_ast<'a, V: Visitor<'a>>(visitor: &mut V, file_ast: &FileAst<'a>) {
+    visitor.visit_file_ast(file_ast)
 }
 
-/// Validator that checks all diagram semantic constraints
+/// Validator that checks all file AST semantic constraints.
 ///
 /// Uses a visitor-based traversal to validate:
-/// - Component identifier references (relations, notes, activate/deactivate)
-/// - Activate/deactivate pairing in sequence diagrams
-/// - Note attribute values (align)
+/// - Component identifier references (relations, notes, activate/deactivate).
+/// - Activate/deactivate pairing in sequence diagrams.
+/// - Note attribute values (align).
 ///
 /// The validator collects all errors during traversal for reporting after traversal.
 ///
@@ -410,15 +428,15 @@ impl Validator {
 }
 
 impl<'a> Visitor<'a> for Validator {
-    fn visit_diagram(&mut self, diagram: &Diagram<'a>) {
+    fn visit_file_ast(&mut self, file_ast: &FileAst<'a>) {
         // Begin component registry for this diagram
         self.component_registry.push(HashMap::new());
 
         // Call default traversal
-        self.visit_diagram_kind(&diagram.kind);
-        self.visit_attributes(&diagram.attributes);
-        self.visit_type_definitions(&diagram.type_definitions);
-        self.visit_elements(&diagram.elements);
+        self.visit_header(&file_ast.header);
+        self.visit_imports(&file_ast.imports);
+        self.visit_type_definitions(&file_ast.type_definitions);
+        self.visit_elements(&file_ast.elements);
 
         // End component registry scope
         self.component_registry.pop();
@@ -538,14 +556,26 @@ impl<'a> Visitor<'a> for Validator {
     }
 }
 
-/// Convenience function to run all diagram validations
+/// Convenience function to run all file AST validations.
 ///
-/// Returns:
-/// - Ok(()) when no validation issues are found
-/// - Err(ParseError) with all collected errors otherwise
-pub fn validate_diagram(diagram: &Diagram<'_>) -> Result<(), ParseError> {
+/// Creates a [`Validator`], traverses the given [`FileAst`] with the visitor pattern,
+/// and collects any semantic errors found during traversal.
+///
+/// # Arguments
+///
+/// * `ast` - The parsed and desugared [`FileAst`] to validate.
+///
+/// # Returns
+///
+/// - `Ok(())` when no validation issues are found.
+/// - `Err(`[`ParseError`]`)` with all collected diagnostics otherwise.
+///
+/// # Errors
+///
+/// Returns [`ParseError`] if one or more semantic validation checks fail.
+pub fn validate(ast: &FileAst<'_>) -> Result<(), ParseError> {
     let mut validator = Validator::new();
-    visit_diagram(&mut validator, diagram);
+    visit_file_ast(&mut validator, ast);
     validator.diagnostics.finish()
 }
 
@@ -624,9 +654,12 @@ mod tests {
     #[test]
     fn test_visitor_traversal() {
         // Create a simple test diagram
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -653,10 +686,11 @@ mod tests {
                     component: Spanned::new(Id::new("user"), Span::new(60..64)),
                 },
             ],
+            imports: vec![],
         };
 
         let mut visitor = CountingVisitor::new();
-        visit_diagram(&mut visitor, &diagram);
+        visit_file_ast(&mut visitor, &diagram);
 
         assert_eq!(visitor.component_count, 1);
         assert_eq!(visitor.relation_count, 1);
@@ -666,9 +700,12 @@ mod tests {
 
     #[test]
     fn test_validate_ok_pair() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -688,48 +725,60 @@ mod tests {
                     component: Spanned::new(Id::new("user"), Span::new(23..27)),
                 },
             ],
+            imports: vec![],
         };
 
-        let result = super::validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_validate_unpaired_deactivate() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![Element::Deactivate {
                 component: Spanned::new(Id::new("user"), Span::new(0..4)),
             }],
+            imports: vec![],
         };
 
-        let result = super::validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_validate_unpaired_activate_end_of_scope() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![Element::Activate {
                 component: Spanned::new(Id::new("user"), Span::new(0..4)),
                 type_spec: TypeSpec::default(),
             }],
+            imports: vec![],
         };
 
-        let result = super::validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_validate_nested_activations_ok() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -756,17 +805,21 @@ mod tests {
                     component: Spanned::new(Id::new("user"), Span::new(35..39)),
                 },
             ],
+            imports: vec![],
         };
 
-        let result = super::validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_validate_interleaved_components_ok() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -802,17 +855,21 @@ mod tests {
                     component: Spanned::new(Id::new("server"), Span::new(56..62)),
                 },
             ],
+            imports: vec![],
         };
 
-        let result = super::validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_validate_out_of_order_deactivate_first() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Deactivate {
@@ -823,9 +880,10 @@ mod tests {
                     type_spec: TypeSpec::default(),
                 },
             ],
+            imports: vec![],
         };
 
-        let result = super::validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_err());
     }
 }
@@ -833,7 +891,7 @@ mod tests {
 #[cfg(test)]
 mod note_validation_tests {
     use super::*;
-    use crate::{lexer::tokenize, parser::build_diagram};
+    use crate::{lexer::tokenize, parser::build_file};
 
     #[test]
     fn test_valid_note_sequence_diagram() {
@@ -848,13 +906,9 @@ mod note_validation_tests {
         "#;
 
         let tokens = tokenize(input).expect("Failed to tokenize");
-        let element = build_diagram(&tokens).expect("Failed to parse");
-        if let Element::Diagram(diagram) = element.inner() {
-            let result = validate_diagram(diagram);
-            assert!(result.is_ok(), "Valid notes should pass validation");
-        } else {
-            panic!("Expected Diagram element");
-        }
+        let ast = build_file(&tokens).expect("Failed to parse");
+        let result = validate(&ast);
+        assert!(result.is_ok(), "Valid notes should pass validation");
     }
 
     #[test]
@@ -870,13 +924,9 @@ mod note_validation_tests {
         "#;
 
         let tokens = tokenize(input).expect("Failed to tokenize");
-        let element = build_diagram(&tokens).expect("Failed to parse");
-        if let Element::Diagram(diagram) = element.inner() {
-            let result = validate_diagram(diagram);
-            assert!(result.is_ok(), "Valid notes should pass validation");
-        } else {
-            panic!("Expected Diagram element");
-        }
+        let ast = build_file(&tokens).expect("Failed to parse");
+        let result = validate(&ast);
+        assert!(result.is_ok(), "Valid notes should pass validation");
     }
 
     #[test]
@@ -889,16 +939,12 @@ mod note_validation_tests {
         "#;
 
         let tokens = tokenize(input).expect("Failed to tokenize");
-        let element = build_diagram(&tokens).expect("Failed to parse");
-        if let Element::Diagram(diagram) = element.inner() {
-            let result = validate_diagram(diagram);
-            assert!(result.is_err(), "Invalid align should fail validation");
+        let ast = build_file(&tokens).expect("Failed to parse");
+        let result = validate(&ast);
+        assert!(result.is_err(), "Invalid align should fail validation");
 
-            let err = result.unwrap_err();
-            assert!(format!("{}", err).contains("invalid align value `top` for sequence diagram"));
-        } else {
-            panic!("Expected Diagram element");
-        }
+        let err = result.unwrap_err();
+        assert!(format!("{err}").contains("invalid align value `top` for sequence diagram"));
     }
 
     #[test]
@@ -911,18 +957,12 @@ mod note_validation_tests {
         "#;
 
         let tokens = tokenize(input).expect("Failed to tokenize");
-        let element = build_diagram(&tokens).expect("Failed to parse");
-        if let Element::Diagram(diagram) = element.inner() {
-            let result = validate_diagram(diagram);
-            assert!(result.is_err(), "Invalid align should fail validation");
+        let ast = build_file(&tokens).expect("Failed to parse");
+        let result = validate(&ast);
+        assert!(result.is_err(), "Invalid align should fail validation");
 
-            let err = result.unwrap_err();
-            assert!(
-                format!("{}", err).contains("invalid align value `over` for component diagram")
-            );
-        } else {
-            panic!("Expected Diagram element");
-        }
+        let err = result.unwrap_err();
+        assert!(format!("{err}").contains("invalid align value `over` for component diagram"));
     }
 
     #[test]
@@ -936,13 +976,9 @@ mod note_validation_tests {
         "#;
 
         let tokens = tokenize(input).expect("Failed to tokenize");
-        let element = build_diagram(&tokens).expect("Failed to parse");
-        if let Element::Diagram(diagram) = element.inner() {
-            let result = validate_diagram(diagram);
-            assert!(result.is_ok(), "Valid spanning note should pass validation");
-        } else {
-            panic!("Expected Diagram element");
-        }
+        let ast = build_file(&tokens).expect("Failed to parse");
+        let result = validate(&ast);
+        assert!(result.is_ok(), "Valid spanning note should pass validation");
     }
 
     #[test]
@@ -955,16 +991,12 @@ mod note_validation_tests {
         "#;
 
         let tokens = tokenize(input).expect("Failed to tokenize");
-        let element = build_diagram(&tokens).expect("Failed to parse");
-        if let Element::Diagram(diagram) = element.inner() {
-            let result = validate_diagram(diagram);
-            assert!(
-                result.is_ok(),
-                "Empty on attribute should be valid (margin note)"
-            );
-        } else {
-            panic!("Expected Diagram element");
-        }
+        let ast = build_file(&tokens).expect("Failed to parse");
+        let result = validate(&ast);
+        assert!(
+            result.is_ok(),
+            "Empty on attribute should be valid (margin note)"
+        );
     }
 }
 
@@ -976,9 +1008,12 @@ mod identifier_validation_tests {
     fn test_component_registry_fully_qualified_access() {
         // Test that fully qualified identifiers from nested components
         // are all accessible in a single diagram-level registry
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -1036,10 +1071,11 @@ mod identifier_validation_tests {
                     }],
                 },
             ],
+            imports: vec![],
         };
 
         let mut validator = Validator::new();
-        visit_diagram(&mut validator, &diagram);
+        visit_file_ast(&mut validator, &diagram);
 
         // All components should be registered at diagram level with fully qualified names
         // This includes: frontend, frontend::app, frontend::ui, backend, backend::api
@@ -1119,9 +1155,12 @@ mod identifier_validation_tests {
 
     #[test]
     fn test_relation_with_valid_components() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -1150,17 +1189,21 @@ mod identifier_validation_tests {
                     label: None,
                 },
             ],
+            imports: vec![],
         };
 
-        let result = validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_ok(), "Valid relation should pass validation");
     }
 
     #[test]
     fn test_relation_with_invalid_source() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -1180,9 +1223,10 @@ mod identifier_validation_tests {
                     label: None,
                 },
             ],
+            imports: vec![],
         };
 
-        let result = validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_err(), "Invalid source should fail validation");
         let err = result.unwrap_err();
         assert!(err.to_string().contains("component `unknown` not found"));
@@ -1190,9 +1234,12 @@ mod identifier_validation_tests {
 
     #[test]
     fn test_relation_with_invalid_target() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -1212,9 +1259,10 @@ mod identifier_validation_tests {
                     label: None,
                 },
             ],
+            imports: vec![],
         };
 
-        let result = validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_err(), "Invalid target should fail validation");
         let err = result.unwrap_err();
         assert!(err.to_string().contains("component `missing` not found"));
@@ -1222,9 +1270,12 @@ mod identifier_validation_tests {
 
     #[test]
     fn test_activate_with_valid_component() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -1244,17 +1295,21 @@ mod identifier_validation_tests {
                     component: Spanned::new(Id::new("server"), Span::new(30..36)),
                 },
             ],
+            imports: vec![],
         };
 
-        let result = validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_ok(), "Valid activate should pass validation");
     }
 
     #[test]
     fn test_activate_with_invalid_component() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -1271,9 +1326,10 @@ mod identifier_validation_tests {
                     type_spec: TypeSpec::default(),
                 },
             ],
+            imports: vec![],
         };
 
-        let result = validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_err(), "Invalid activate should fail validation");
         let err = result.unwrap_err();
         assert!(err.to_string().contains("component `unknown` not found"));
@@ -1281,9 +1337,12 @@ mod identifier_validation_tests {
 
     #[test]
     fn test_deactivate_with_invalid_component() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -1299,9 +1358,10 @@ mod identifier_validation_tests {
                     component: Spanned::new(Id::new("missing"), Span::new(20..27)),
                 },
             ],
+            imports: vec![],
         };
 
-        let result = validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_err(), "Invalid deactivate should fail validation");
         let err = result.unwrap_err();
         assert!(err.to_string().contains("component `missing` not found"));
@@ -1309,9 +1369,12 @@ mod identifier_validation_tests {
 
     #[test]
     fn test_note_with_invalid_component() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -1337,9 +1400,10 @@ mod identifier_validation_tests {
                     content: Spanned::new("Invalid note".to_string(), Span::new(33..47)),
                 }),
             ],
+            imports: vec![],
         };
 
-        let result = validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_err(), "Note with invalid component should fail");
         let err = result.unwrap_err();
         assert!(err.to_string().contains("component `unknown` not found"));
@@ -1347,9 +1411,12 @@ mod identifier_validation_tests {
 
     #[test]
     fn test_note_with_multiple_components() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -1384,9 +1451,10 @@ mod identifier_validation_tests {
                     content: Spanned::new("Multi-component note".to_string(), Span::new(58..78)),
                 }),
             ],
+            imports: vec![],
         };
 
-        let result = validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(
             result.is_ok(),
             "Note with multiple valid components should pass"
@@ -1395,9 +1463,12 @@ mod identifier_validation_tests {
 
     #[test]
     fn test_note_with_empty_on_attribute() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![
                 Element::Component {
@@ -1420,17 +1491,21 @@ mod identifier_validation_tests {
                     content: Spanned::new("Margin note".to_string(), Span::new(26..39)),
                 }),
             ],
+            imports: vec![],
         };
 
-        let result = validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(result.is_ok(), "Note with empty on attribute should pass");
     }
 
     #[test]
     fn test_validation_with_typespec() {
-        let diagram = Diagram {
-            kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![TypeDefinition {
                 name: Spanned::new(Id::new("CustomArrow"), Span::new(10..21)),
                 type_spec: TypeSpec {
@@ -1521,9 +1596,10 @@ mod identifier_validation_tests {
                     component: Spanned::new(Id::new("server"), Span::new(265..271)),
                 },
             ],
+            imports: vec![],
         };
 
-        let result = validate_diagram(&diagram);
+        let result = validate(&diagram);
         assert!(
             result.is_ok(),
             "Diagram with comprehensive TypeSpec usage should pass validation"
