@@ -17,7 +17,8 @@ type Store = Rectangle[fill_color="#e0f0e0", stroke=[color="#339966"], rounded=8
 
 // --- Component Node with Embedded Sequence Diagram ---
 
-auth_service as "Auth Service": Service embed diagram sequence {
+auth_service as "Auth Service": Service embed {
+    diagram sequence;
     client: Rectangle[fill_color="#fff0e0"];
     validator: Rectangle[fill_color="#e6f3ff"];
     token_store: Rectangle[fill_color="#e0f0e0"];
@@ -41,7 +42,8 @@ auth_service as "Auth Service": Service embed diagram sequence {
 
 // --- Component Node with Embedded Component Diagram (Basic) ---
 
-order_service as "Order Service": Service embed diagram component [layout_engine="basic", background_color="#fafafa"] {
+order_service as "Order Service": Service embed {
+    diagram component [layout_engine="basic", background_color="#fafafa"];
     api as "API Layer": Rectangle[fill_color="#e6f3ff", rounded=3];
     validation as "Validation": Rectangle[fill_color="#fff3cd", rounded=3];
     persistence as "Persistence": Rectangle[fill_color="#e0f0e0", rounded=3];
@@ -55,7 +57,8 @@ order_service as "Order Service": Service embed diagram component [layout_engine
 
 // --- Component Node with Embedded Component Diagram (Sugiyama) ---
 
-analytics as "Analytics Pipeline": Service embed diagram component [layout_engine="sugiyama", background_color="#fafafa"] {
+analytics as "Analytics Pipeline": Service embed {
+    diagram component [layout_engine="sugiyama", background_color="#fafafa"];
     ingress as "Ingress": Rectangle[fill_color="#fff0e0"];
     parser as "Parser": Rectangle[fill_color="#e6f3ff"];
     enricher as "Enricher": Rectangle[fill_color="#e6f3ff"];
@@ -85,10 +88,12 @@ order_service -> analytics: "Order events";
 // Sequence diagram whose participants contain embedded diagrams
 // =====================================================================
 
-outer as "Outer System": Service embed diagram sequence {
+outer as "Outer System": Service embed {
+    diagram sequence;
 
     // Participant with an embedded component diagram inside
-    api_node as "API Server": Rectangle embed diagram component [layout_engine="basic", background_color="#f8f8ff"] {
+    api_node as "API Server": Rectangle embed {
+        diagram component [layout_engine="basic", background_color="#f8f8ff"];
         router as "Router": Rectangle[fill_color="#e6f3ff", rounded=3];
         middleware as "Middleware": Rectangle[fill_color="#fff3cd", rounded=3];
         handler as "Handler": Rectangle[fill_color="#e0f0e0", rounded=3];
@@ -98,7 +103,8 @@ outer as "Outer System": Service embed diagram sequence {
     };
 
     // Participant with an embedded sequence diagram inside
-    payment_node as "Payment Gateway": Rectangle embed diagram sequence {
+    payment_node as "Payment Gateway": Rectangle embed {
+        diagram sequence;
         charge_svc: Rectangle[fill_color="#fff0e0"];
         fraud_check: Rectangle[fill_color="#fce4ec"];
         ledger: Rectangle[fill_color="#e0f0e0"];

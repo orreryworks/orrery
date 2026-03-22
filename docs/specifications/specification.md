@@ -941,7 +941,9 @@ Nested components are positioned within their parent container and maintain thei
 Orrery supports embedding different diagram types within components, allowing for richer multi-level visualizations. For example, you can embed a sequence diagram inside a component diagram to show the dynamic behavior of a component:
 
 ```
-user_service: Rectangle embed diagram sequence {
+user_service: Rectangle embed {
+    diagram sequence;
+
     client: Rectangle;
     server: Rectangle;
     database: Rectangle;
@@ -956,7 +958,9 @@ user_service: Rectangle embed diagram sequence {
 Embedded diagrams use the following syntax:
 
 ```
-<element_name> [as "Display Label"]: <type> [element_attributes...] embed diagram <diagram_kind> [diagram_attributes...] {
+<element_name> [as "Display Label"]: <type> [element_attributes...] embed {
+    diagram <diagram_kind> [diagram_attributes...];
+
     // Full diagram definition for the embedded diagram
     // Elements and relations following the standard syntax for the specified diagram_kind
 };
@@ -1206,7 +1210,9 @@ type Database = Rectangle [fill_color="lightblue", rounded=10];
 type SecureArrow = Arrow [stroke=[color="orange", width=2.0]];
 
 user_interface: Oval [fill_color="#ffe6e6"];
-auth_service: Service embed diagram sequence {
+auth_service: Service embed {
+    diagram sequence;
+
     client: Rectangle;
     auth: Rectangle;
     database: Rectangle;

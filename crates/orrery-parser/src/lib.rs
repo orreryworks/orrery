@@ -43,7 +43,6 @@ use orrery_core::semantic::Diagram;
 
 use elaborate::Builder;
 use error::ParseError;
-use parser_types::Element;
 
 /// Parse source text into a semantic diagram.
 ///
@@ -82,15 +81,13 @@ pub fn parse(source: &str, config: ElaborateConfig) -> Result<Diagram, ParseErro
     let tokens = lexer::tokenize(source)?;
 
     // Step 2: Parse
-    let ast = parser::build_diagram(&tokens).map_err(ParseError::from)?;
+    let ast = parser::build_file(&tokens).map_err(ParseError::from)?;
 
     // Step 3: Desugar
     let desugared = desugar::desugar(ast);
 
     // Step 4: Validate
-    if let Element::Diagram(diagram) = desugared.inner() {
-        validate::validate_diagram(diagram)?;
-    }
+    validate::validate(&desugared)?;
 
     // Step 5: Elaborate
     let builder = Builder::new(config, source);

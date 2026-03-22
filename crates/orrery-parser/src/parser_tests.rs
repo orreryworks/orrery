@@ -8,7 +8,7 @@ use crate::{lexer, parser};
 /// Helper function to parse a source string and return success/failure
 fn parse_source(source: &str) -> Result<(), String> {
     let tokens = lexer::tokenize(source).map_err(|err| format!("Lexer error: {}", err))?;
-    let _ast = parser::build_diagram(&tokens).map_err(|err| format!("Parser error: {}", err))?;
+    let _ast = parser::build_file(&tokens).map_err(|err| format!("Parser error: {}", err))?;
     Ok(())
 }
 
@@ -29,7 +29,7 @@ fn assert_parse_fails(source: &str) {
 /// Helper to validate error span accuracy
 fn assert_error_at_position(source: &str, _expected_error_line: usize, _expected_error_col: usize) {
     let tokens = lexer::tokenize(source).expect("Lexer should succeed for span testing");
-    let result = parser::build_diagram(&tokens);
+    let result = parser::build_file(&tokens);
 
     assert!(
         result.is_err(),
@@ -58,7 +58,7 @@ fn assert_error_at_position(source: &str, _expected_error_line: usize, _expected
 /// Helper to validate error span boundaries
 fn assert_error_span_boundaries(source: &str, _expected_start: usize, _expected_end: usize) {
     let tokens = lexer::tokenize(source).expect("Lexer should succeed for boundary testing");
-    let result = parser::build_diagram(&tokens);
+    let result = parser::build_file(&tokens);
 
     assert!(
         result.is_err(),
@@ -84,7 +84,7 @@ fn assert_error_span_boundaries(source: &str, _expected_start: usize, _expected_
 /// Helper to validate multi-line error span handling
 fn assert_multiline_error_span(source: &str) {
     let tokens = lexer::tokenize(source).expect("Lexer should succeed for multiline testing");
-    let result = parser::build_diagram(&tokens);
+    let result = parser::build_file(&tokens);
 
     assert!(
         result.is_err(),
@@ -607,7 +607,7 @@ mod error_handling_tests {
 
         // Deep validation of error case with span information
         let tokens = lexer::tokenize(source).expect("Lexer should succeed");
-        let result = parser::build_diagram(&tokens);
+        let result = parser::build_file(&tokens);
 
         // Validate that parsing fails
         assert!(

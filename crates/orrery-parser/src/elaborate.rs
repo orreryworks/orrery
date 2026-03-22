@@ -98,7 +98,7 @@ impl<'a> Builder<'a> {
     ///
     /// # Arguments
     ///
-    /// * `diag` - A spanned parser element that must be a diagram.
+    /// * `ast` - A parser diagram AST.
     ///
     /// # Returns
     ///
@@ -109,61 +109,63 @@ impl<'a> Builder<'a> {
     /// Returns an error if elaboration fails. This includes all semantic
     /// errors in the `E3xx` range, such as undefined types, invalid
     /// attributes, nested diagrams, or structural validation failures.
-    pub fn build(mut self, diag: &Spanned<parser_types::Element<'a>>) -> Result<semantic::Diagram> {
+    pub fn build(mut self, ast: &parser_types::FileAst<'a>) -> Result<semantic::Diagram> {
         debug!("Building elaborated diagram");
-        match diag.inner() {
-            parser_types::Element::Diagram(diag) => {
-                info!("Processing diagram of kind: {}", diag.kind);
-                trace!("Type definitions: {:?}", diag.type_definitions);
-                trace!("Elements count: {}", diag.elements.len());
-
-                // Update type definitions
-                debug!("Updating type definitions");
-                self.update_type_direct_definitions(&diag.type_definitions)?;
-
-                let kind = *diag.kind;
-
-                // Build block from elements
-                debug!("Building block from elements");
-                let block = self.build_block_from_elements(&diag.elements, kind)?;
-
-                // Convert block to scope
-                let scope = match block {
-                    semantic::Block::None => {
-                        debug!("Empty block, using default scope");
-                        semantic::Scope::default()
-                    }
-                    semantic::Block::Scope(scope) => {
-                        debug!(
-                            elements_len = scope.elements().len();
-                            "Using scope from block",
-                        );
-                        scope
-                    }
-                    semantic::Block::Diagram(_) => {
-                        return Err(Diagnostic::error("nested diagram not allowed")
-                            .with_code(ErrorCode::E305)
-                            .with_label(diag.kind.span(), "nested diagram")
-                            .with_help("diagrams cannot be nested inside other diagrams"));
-                    }
-                };
-
-                let (layout_engine, background_color, lifeline_definition) =
-                    self.extract_diagram_attributes(kind, &diag.attributes)?;
-
-                info!(kind:?; "Diagram elaboration completed successfully");
-                Ok(semantic::Diagram::new(
-                    kind,
-                    scope,
-                    layout_engine,
-                    background_color,
-                    lifeline_definition,
-                ))
+        let (kind_spanned, attributes) = match &ast.header {
+            parser_types::FileHeader::Diagram { kind, attributes } => (kind, attributes),
+            parser_types::FileHeader::Library { span } => {
+                return Err(Diagnostic::error("expected diagram, found library")
+                    .with_code(ErrorCode::E306)
+                    .with_label(*span, "expected diagram"));
             }
-            _ => Err(Diagnostic::error("invalid element, expected diagram")
-                .with_code(ErrorCode::E306)
-                .with_label(diag.span(), "expected diagram")),
-        }
+        };
+
+        info!("Processing diagram of kind: {kind_spanned}");
+        trace!("Type definitions: {:?}", ast.type_definitions);
+        trace!("Elements count: {}", ast.elements.len());
+
+        // Update type definitions
+        debug!("Updating type definitions");
+        self.update_type_direct_definitions(&ast.type_definitions)?;
+
+        let kind = **kind_spanned;
+
+        // Build block from elements
+        debug!("Building block from elements");
+        let block = self.build_block_from_elements(&ast.elements, kind)?;
+
+        // Convert block to scope
+        let scope = match block {
+            semantic::Block::None => {
+                debug!("Empty block, using default scope");
+                semantic::Scope::default()
+            }
+            semantic::Block::Scope(scope) => {
+                debug!(
+                    elements_len = scope.elements().len();
+                    "Using scope from block",
+                );
+                scope
+            }
+            semantic::Block::Diagram(_) => {
+                return Err(Diagnostic::error("nested diagram not allowed")
+                    .with_code(ErrorCode::E305)
+                    .with_label(kind_spanned.span(), "nested diagram")
+                    .with_help("diagrams cannot be nested inside other diagrams"));
+            }
+        };
+
+        let (layout_engine, background_color, lifeline_definition) =
+            self.extract_diagram_attributes(kind, attributes)?;
+
+        info!(kind:?; "Diagram elaboration completed successfully");
+        Ok(semantic::Diagram::new(
+            kind,
+            scope,
+            layout_engine,
+            background_color,
+            lifeline_definition,
+        ))
     }
 
     // ============================================================================
@@ -320,23 +322,32 @@ impl<'a> Builder<'a> {
         diag: &parser_types::Element<'a>,
     ) -> Result<semantic::Diagram> {
         match diag {
-            parser_types::Element::Diagram(diag) => {
-                let kind = *diag.kind;
+            parser_types::Element::Diagram(file_ast) => {
+                let (kind_spanned, attributes) = match &file_ast.header {
+                    parser_types::FileHeader::Diagram { kind, attributes } => (kind, attributes),
+                    parser_types::FileHeader::Library { span } => {
+                        return Err(Diagnostic::error("expected diagram, found library")
+                            .with_code(ErrorCode::E306)
+                            .with_label(*span, "expected diagram"));
+                    }
+                };
+
+                let kind = **kind_spanned;
                 // Create a block from the diagram elements
-                let block = self.build_block_from_elements(&diag.elements, kind)?;
+                let block = self.build_block_from_elements(&file_ast.elements, kind)?;
                 let scope = match block {
                     semantic::Block::None => semantic::Scope::default(),
                     semantic::Block::Scope(scope) => scope,
                     semantic::Block::Diagram(_) => {
                         return Err(Diagnostic::error("nested diagram not allowed")
                             .with_code(ErrorCode::E305)
-                            .with_label(diag.kind.span(), "nested diagram")
+                            .with_label(kind_spanned.span(), "nested diagram")
                             .with_help("diagrams cannot be nested inside other diagrams"));
                     }
                 };
 
                 let (layout_engine, background_color, lifeline_definition) =
-                    self.extract_diagram_attributes(kind, &diag.attributes)?;
+                    self.extract_diagram_attributes(kind, attributes)?;
 
                 Ok(semantic::Diagram::new(
                     kind,
@@ -356,23 +367,32 @@ impl<'a> Builder<'a> {
         &mut self,
         element: &parser_types::Element<'a>,
     ) -> Result<semantic::Diagram> {
-        if let parser_types::Element::Diagram(diag) = element {
-            let kind = *diag.kind;
+        if let parser_types::Element::Diagram(file_ast) = element {
+            let (kind_spanned, attributes) = match &file_ast.header {
+                parser_types::FileHeader::Diagram { kind, attributes } => (kind, attributes),
+                parser_types::FileHeader::Library { span } => {
+                    return Err(Diagnostic::error("expected diagram, found library")
+                        .with_code(ErrorCode::E306)
+                        .with_label(*span, "expected diagram"));
+                }
+            };
+
+            let kind = **kind_spanned;
             // Create a block from the diagram elements
-            let block = self.build_block_from_elements(&diag.elements, kind)?;
+            let block = self.build_block_from_elements(&file_ast.elements, kind)?;
             let scope = match block {
                 semantic::Block::None => semantic::Scope::default(),
                 semantic::Block::Scope(scope) => scope,
                 semantic::Block::Diagram(_) => {
                     return Err(Diagnostic::error("nested diagram not allowed")
                         .with_code(ErrorCode::E305)
-                        .with_label(diag.kind.span(), "nested diagram")
+                        .with_label(kind_spanned.span(), "nested diagram")
                         .with_help("diagrams cannot be nested inside other diagrams"));
                 }
             };
 
             let (layout_engine, background_color, lifeline_definition) =
-                self.extract_diagram_attributes(kind, &diag.attributes)?;
+                self.extract_diagram_attributes(kind, attributes)?;
 
             Ok(semantic::Diagram::new(
                 kind,
@@ -403,13 +423,13 @@ impl<'a> Builder<'a> {
         } else {
             // Check to make sure no diagrams are mixed with other elements
             for parser_elm in parser_elements {
-                if let parser_types::Element::Diagram(diag) = parser_elm {
+                if let parser_types::Element::Diagram(file_ast) = parser_elm {
                     // If we found a diagram mixed with other elements, provide a rich error
                     return Err(Diagnostic::error(
                         "diagram cannot share scope with other elements",
                     )
                     .with_code(ErrorCode::E309)
-                    .with_label(diag.kind.span(), "must be sole element")
+                    .with_label(file_ast.header.span(), "must be sole element")
                     .with_help("a diagram declaration must be the only element in its scope"));
                 }
             }
@@ -1330,20 +1350,21 @@ mod tests {
             elements: vec![],
         }];
 
-        let diagram = parser_types::Diagram {
-            kind: Spanned::new(semantic::DiagramKind::Component, Span::new(0..9)),
-            attributes: vec![],
+        let diagram = parser_types::FileAst {
+            header: parser_types::FileHeader::Diagram {
+                kind: Spanned::new(semantic::DiagramKind::Component, Span::new(0..9)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements,
+            imports: vec![],
         };
-
-        let spanned_element =
-            Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
 
         let config = ElaborateConfig::default();
         let builder = Builder::new(config, "test");
         // This should panic due to unreachable!() on ActivateBlock during elaboration
-        let _ = builder.build(&spanned_element);
+        let _ = builder.build(&diagram);
     }
 
     #[test]
@@ -1382,19 +1403,20 @@ mod tests {
             },
         ];
 
-        let diagram = parser_types::Diagram {
-            kind: Spanned::new(semantic::DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = parser_types::FileAst {
+            header: parser_types::FileHeader::Diagram {
+                kind: Spanned::new(semantic::DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements,
+            imports: vec![],
         };
-
-        let spanned_element =
-            Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
 
         let config = ElaborateConfig::default();
         let builder = Builder::new(config, "test");
-        let result = builder.build(&spanned_element);
+        let result = builder.build(&diagram);
 
         assert!(
             result.is_ok(),
@@ -1491,19 +1513,20 @@ mod tests {
             },
         ];
 
-        let diagram = parser_types::Diagram {
-            kind: Spanned::new(semantic::DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = parser_types::FileAst {
+            header: parser_types::FileHeader::Diagram {
+                kind: Spanned::new(semantic::DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements,
+            imports: vec![],
         };
-
-        let spanned_element =
-            Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
 
         let config = ElaborateConfig::default();
         let builder = Builder::new(config, "test");
-        let result = builder.build(&spanned_element);
+        let result = builder.build(&diagram);
 
         assert!(
             result.is_ok(),
@@ -1603,17 +1626,18 @@ mod tests {
             },
         ];
 
-        let diagram = parser_types::Diagram {
-            kind: Spanned::new(semantic::DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = parser_types::FileAst {
+            header: parser_types::FileHeader::Diagram {
+                kind: Spanned::new(semantic::DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements,
+            imports: vec![],
         };
 
-        let spanned_element =
-            Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
-
-        let result = builder.build(&spanned_element);
+        let result = builder.build(&diagram);
         assert!(
             result.is_ok(),
             "Should successfully build sequence diagram with explicit activate/deactivate"
@@ -1676,17 +1700,18 @@ mod tests {
             },
         ];
 
-        let diagram = parser_types::Diagram {
-            kind: Spanned::new(semantic::DiagramKind::Component, Span::new(0..9)),
-            attributes: vec![],
+        let diagram = parser_types::FileAst {
+            header: parser_types::FileHeader::Diagram {
+                kind: Spanned::new(semantic::DiagramKind::Component, Span::new(0..9)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements,
+            imports: vec![],
         };
 
-        let spanned_element =
-            Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
-
-        let result = builder.build(&spanned_element);
+        let result = builder.build(&diagram);
         assert!(
             result.is_err(),
             "Should fail to build component diagram with explicit activate"
@@ -1821,19 +1846,20 @@ mod tests {
             },
         ];
 
-        let diagram = parser_types::Diagram {
-            kind: Spanned::new(semantic::DiagramKind::Sequence, Span::new(0..8)),
-            attributes: vec![],
+        let diagram = parser_types::FileAst {
+            header: parser_types::FileHeader::Diagram {
+                kind: Spanned::new(semantic::DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements,
+            imports: vec![],
         };
-
-        let spanned_element =
-            Spanned::new(parser_types::Element::Diagram(diagram), Span::new(0..100));
 
         let config = ElaborateConfig::default();
         let builder = Builder::new(config, "test");
-        let result = builder.build(&spanned_element);
+        let result = builder.build(&diagram);
 
         assert!(
             result.is_ok(),

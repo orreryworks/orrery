@@ -15,13 +15,13 @@
 //! For example, a reference to "child1" inside "parent" becomes "parent::child1".
 //! This enables the validation phase to perform comprehensive cross-reference checks.
 
-use orrery_core::{identifier::Id, semantic::DiagramKind};
+use orrery_core::identifier::Id;
 
 use crate::{
     builtin_types,
     parser_types::{
-        Attribute, AttributeValue, Diagram, Element, Fragment, FragmentSection, Note,
-        TypeDefinition, TypeSpec,
+        Attribute, AttributeValue, Element, FileAst, FileHeader, Fragment, FragmentSection, Import,
+        Note, TypeDefinition, TypeSpec,
     },
     span::Spanned,
 };
@@ -71,19 +71,37 @@ impl PathStack {
 /// Each method takes ownership of its input and returns a transformed version.
 /// The default implementations preserve the structure unchanged (identity transformation).
 trait Folder<'a> {
-    /// Fold a complete diagram
-    fn fold_diagram(&mut self, diagram: Diagram<'a>) -> Diagram<'a> {
-        Diagram {
-            kind: self.fold_diagram_kind(diagram.kind),
-            attributes: self.fold_attributes(diagram.attributes),
-            type_definitions: self.fold_type_definitions(diagram.type_definitions),
-            elements: self.fold_elements(diagram.elements),
+    /// Fold a complete [`FileAst`].
+    fn fold_file_ast(&mut self, file_ast: FileAst<'a>) -> FileAst<'a> {
+        FileAst {
+            header: self.fold_header(file_ast.header),
+            import_decls: file_ast.import_decls,
+            imports: self.fold_imports(file_ast.imports),
+            type_definitions: self.fold_type_definitions(file_ast.type_definitions),
+            elements: self.fold_elements(file_ast.elements),
         }
     }
 
-    /// Fold the diagram kind (component, sequence, etc.)
-    fn fold_diagram_kind(&mut self, kind: Spanned<DiagramKind>) -> Spanned<DiagramKind> {
-        kind
+    /// Fold a [`FileHeader`] by dispatching.
+    fn fold_header(&mut self, header: FileHeader<'a>) -> FileHeader<'a> {
+        match header {
+            FileHeader::Diagram { kind, attributes } => FileHeader::Diagram {
+                kind,
+                attributes: self.fold_attributes(attributes),
+            },
+            library @ FileHeader::Library { .. } => library,
+        }
+    }
+
+    /// Fold resolved [`Import`]s.
+    fn fold_imports(&mut self, imports: Vec<Import<'a>>) -> Vec<Import<'a>> {
+        imports
+            .into_iter()
+            .map(|import| Import {
+                namespace: import.namespace,
+                file_ast: Box::new(self.fold_file_ast(*import.file_ast)),
+            })
+            .collect()
     }
 
     /// Fold a list of attributes
@@ -231,7 +249,7 @@ trait Folder<'a> {
                 type_spec,
                 label,
             } => self.fold_relation(source, target, relation_type, type_spec, label),
-            Element::Diagram(diagram) => Element::Diagram(self.fold_diagram(diagram)),
+            Element::Diagram(file_ast) => Element::Diagram(self.fold_file_ast(file_ast)),
             Element::ActivateBlock {
                 component,
                 elements,
@@ -581,7 +599,7 @@ impl<'a> Folder<'a> for Desugar {
                 type_spec,
                 label,
             } => self.fold_relation(source, target, relation_type, type_spec, label),
-            Element::Diagram(diagram) => Element::Diagram(self.fold_diagram(diagram)),
+            Element::Diagram(file_ast) => Element::Diagram(self.fold_file_ast(file_ast)),
             Element::ActivateBlock {
                 component,
                 elements,
@@ -697,19 +715,27 @@ impl<'a> Folder<'a> for Desugar {
 /// This function applies desugaring transformations to the parsed AST
 /// before it's passed to the elaboration phase.
 ///
-/// All desugaring happens in a single pass using the `Desugar` folder:
+/// All desugaring happens in a single pass using the [`Desugar`] folder:
 /// 1. `ActivateBlock` elements → explicit `activate`/`deactivate` statements
 /// 2. Fragment keyword sugar syntax → base `Fragment` elements
 /// 3. Component identifiers → fully qualified paths (e.g., "child" → "parent::child")
-pub fn desugar<'a>(diagram: Spanned<Element<'a>>) -> Spanned<Element<'a>> {
-    let span = diagram.span();
+///
+/// # Arguments
+///
+/// * `ast` - The root [`FileAst`] of the parsed file.
+///
+/// # Returns
+///
+/// A desugared [`FileAst`] tree.
+pub fn desugar<'a>(ast: FileAst<'a>) -> FileAst<'a> {
     let mut folder = Desugar::new();
-    let desugared = folder.fold_element(diagram.into_inner());
-    Spanned::new(desugared, span)
+    folder.fold_file_ast(ast)
 }
 
 #[cfg(test)]
 mod tests {
+    use orrery_core::semantic::DiagramKind;
+
     use super::*;
     use crate::span::Span;
 
@@ -751,11 +777,15 @@ mod tests {
     #[test]
     fn test_identity_folder_preserves_simple_diagram() {
         // Create a simple diagram wrapped in Element
-        let diagram = Element::Diagram(Diagram {
-            kind: spanned(DiagramKind::Component),
-            attributes: vec![],
+        let diagram = Element::Diagram(FileAst {
+            header: FileHeader::Diagram {
+                kind: spanned(DiagramKind::Component),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![],
+            imports: vec![],
         });
         let wrapped = spanned(diagram);
 
@@ -766,8 +796,13 @@ mod tests {
         // Verify the structure is unchanged
         match result_elem {
             Element::Diagram(d) => {
-                assert_eq!(*d.kind, DiagramKind::Component);
-                assert!(d.attributes.is_empty());
+                match &d.header {
+                    FileHeader::Diagram { kind, attributes } => {
+                        assert_eq!(**kind, DiagramKind::Component);
+                        assert!(attributes.is_empty());
+                    }
+                    _ => panic!("Expected diagram header"),
+                }
                 assert!(d.type_definitions.is_empty());
                 assert!(d.elements.is_empty());
             }
@@ -778,20 +813,24 @@ mod tests {
     #[test]
     fn test_identity_folder_preserves_attributes() {
         // Create a diagram with attributes
-        let diagram = Element::Diagram(Diagram {
-            kind: spanned(DiagramKind::Component),
-            attributes: vec![
-                Attribute {
-                    name: spanned("background_color"),
-                    value: AttributeValue::String(spanned("#ffffff".to_string())),
-                },
-                Attribute {
-                    name: spanned("layout_engine"),
-                    value: AttributeValue::String(spanned("basic".to_string())),
-                },
-            ],
+        let diagram = Element::Diagram(FileAst {
+            header: FileHeader::Diagram {
+                kind: spanned(DiagramKind::Component),
+                attributes: vec![
+                    Attribute {
+                        name: spanned("background_color"),
+                        value: AttributeValue::String(spanned("#ffffff".to_string())),
+                    },
+                    Attribute {
+                        name: spanned("layout_engine"),
+                        value: AttributeValue::String(spanned("basic".to_string())),
+                    },
+                ],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![],
+            imports: vec![],
         });
         let wrapped = spanned(diagram);
 
@@ -801,14 +840,17 @@ mod tests {
 
         // Verify attributes are preserved
         match result_elem {
-            Element::Diagram(d) => {
-                assert_eq!(d.attributes.len(), 2);
-                assert_eq!(*d.attributes[0].name.inner(), "background_color");
-                match &d.attributes[0].value {
-                    AttributeValue::String(s) => assert_eq!(s.inner(), "#ffffff"),
-                    _ => panic!("Expected string attribute"),
+            Element::Diagram(d) => match &d.header {
+                FileHeader::Diagram { attributes, .. } => {
+                    assert_eq!(attributes.len(), 2);
+                    assert_eq!(*attributes[0].name.inner(), "background_color");
+                    match &attributes[0].value {
+                        AttributeValue::String(s) => assert_eq!(s.inner(), "#ffffff"),
+                        _ => panic!("Expected string attribute"),
+                    }
                 }
-            }
+                _ => panic!("Expected Diagram header"),
+            },
             _ => panic!("Expected diagram element"),
         }
     }
@@ -816,9 +858,12 @@ mod tests {
     #[test]
     fn test_identity_folder_preserves_type_definitions() {
         // Create a diagram with type definitions
-        let diagram = Element::Diagram(Diagram {
-            kind: spanned(DiagramKind::Component),
-            attributes: vec![],
+        let diagram = Element::Diagram(FileAst {
+            header: FileHeader::Diagram {
+                kind: spanned(DiagramKind::Component),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![TypeDefinition {
                 name: spanned(Id::new("Database")),
                 type_spec: TypeSpec {
@@ -830,6 +875,7 @@ mod tests {
                 },
             }],
             elements: vec![],
+            imports: vec![],
         });
         let wrapped = spanned(diagram);
 
@@ -860,9 +906,12 @@ mod tests {
     #[test]
     fn test_identity_folder_preserves_components() {
         // Create a diagram with a component element
-        let diagram = Element::Diagram(Diagram {
-            kind: spanned(DiagramKind::Component),
-            attributes: vec![],
+        let diagram = Element::Diagram(FileAst {
+            header: FileHeader::Diagram {
+                kind: spanned(DiagramKind::Component),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![Element::Component {
                 name: spanned(Id::new("frontend")),
@@ -876,6 +925,7 @@ mod tests {
                 },
                 nested_elements: vec![],
             }],
+            imports: vec![],
         });
         let wrapped = spanned(diagram);
 
@@ -910,9 +960,12 @@ mod tests {
     #[test]
     fn test_identity_folder_preserves_activate_block() {
         // Create a diagram with an activate block
-        let diagram = Element::Diagram(Diagram {
-            kind: spanned(DiagramKind::Sequence),
-            attributes: vec![],
+        let diagram = Element::Diagram(FileAst {
+            header: FileHeader::Diagram {
+                kind: spanned(DiagramKind::Sequence),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![Element::ActivateBlock {
                 component: spanned(Id::new("user")),
@@ -925,6 +978,7 @@ mod tests {
                     label: Some(spanned("Request".to_string())),
                 }],
             }],
+            imports: vec![],
         });
         let wrapped = spanned(diagram);
 
@@ -961,9 +1015,12 @@ mod tests {
     #[test]
     fn test_desugar_rewrites_activate_blocks() {
         // Create a diagram with an activate block
-        let diagram = Element::Diagram(Diagram {
-            kind: spanned(DiagramKind::Sequence),
-            attributes: vec![],
+        let diagram = Element::Diagram(FileAst {
+            header: FileHeader::Diagram {
+                kind: spanned(DiagramKind::Sequence),
+                attributes: vec![],
+            },
+            import_decls: vec![],
             type_definitions: vec![],
             elements: vec![Element::ActivateBlock {
                 component: spanned(Id::new("user")),
@@ -976,6 +1033,7 @@ mod tests {
                     label: Some(spanned("Request".to_string())),
                 }],
             }],
+            imports: vec![],
         });
         let wrapped = spanned(diagram);
 
