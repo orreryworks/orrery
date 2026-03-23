@@ -32,6 +32,8 @@ mod parser;
 #[cfg(test)]
 mod parser_tests;
 mod parser_types;
+#[allow(dead_code)]
+mod source_map;
 mod span;
 mod tokens;
 mod validate;
@@ -78,7 +80,7 @@ use error::ParseError;
 /// ```
 pub fn parse(source: &str, config: ElaborateConfig) -> Result<Diagram, ParseError> {
     // Step 1: Tokenize
-    let tokens = lexer::tokenize(source)?;
+    let tokens = lexer::tokenize(source, 0)?;
 
     // Step 2: Parse
     let ast = parser::build_file(&tokens).map_err(ParseError::from)?;

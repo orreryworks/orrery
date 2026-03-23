@@ -1398,7 +1398,7 @@ mod tests {
 
     // Test helpers
     fn parse_tokens(input: &str) -> Vec<PositionedToken<'_>> {
-        tokenize(input).expect("Failed to tokenize input")
+        tokenize(input, 0).expect("Failed to tokenize input")
     }
 
     // Helpers for span assertions in tests
@@ -1911,21 +1911,21 @@ mod tests {
     #[test]
     fn test_ws_comment_function() {
         // Test whitespace parsing
-        let tokens = tokenize(" ").expect("Failed to tokenize");
+        let tokens = parse_tokens(" ");
         let mut input = OrreryTokenSlice::new(&tokens);
         assert!(ws_comment(&mut input).is_ok());
 
-        let tokens = tokenize("\t").expect("Failed to tokenize");
+        let tokens = parse_tokens("\t");
         let mut input = OrreryTokenSlice::new(&tokens);
         assert!(ws_comment(&mut input).is_ok());
 
         // Test comment parsing
-        let tokens = tokenize("// this is a comment").expect("Failed to tokenize");
+        let tokens = parse_tokens("// this is a comment");
         let mut input = OrreryTokenSlice::new(&tokens);
         assert!(ws_comment(&mut input).is_ok());
 
         // Test failure cases
-        let tokens = tokenize("identifier").expect("Failed to tokenize");
+        let tokens = parse_tokens("identifier");
         let mut input = OrreryTokenSlice::new(&tokens);
         assert!(ws_comment(&mut input).is_err());
     }
@@ -1933,17 +1933,17 @@ mod tests {
     #[test]
     fn test_semicolon_function() {
         // Test basic semicolon
-        let tokens = tokenize(";").expect("Failed to tokenize");
+        let tokens = parse_tokens(";");
         let mut input = OrreryTokenSlice::new(&tokens);
         assert!(semicolon(&mut input).is_ok());
 
         // Test semicolon with leading whitespace
-        let tokens = tokenize("  ;").expect("Failed to tokenize");
+        let tokens = parse_tokens("  ;");
         let mut input = OrreryTokenSlice::new(&tokens);
         assert!(semicolon(&mut input).is_ok());
 
         // Test failure cases
-        let tokens = tokenize(":").expect("Failed to tokenize");
+        let tokens = parse_tokens(":");
         let mut input = OrreryTokenSlice::new(&tokens);
         assert!(semicolon(&mut input).is_err());
     }
@@ -1951,7 +1951,7 @@ mod tests {
     #[test]
     fn test_identifier_function() {
         // Test basic identifiers with span validation
-        let tokens = tokenize("hello").expect("Failed to tokenize");
+        let tokens = parse_tokens("hello");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = identifier(&mut input);
         assert!(result.is_ok());
@@ -1960,7 +1960,7 @@ mod tests {
         assert!(!spanned_id.span().is_empty());
 
         // Test keywords as identifiers
-        let tokens = tokenize("Component").expect("Failed to tokenize");
+        let tokens = parse_tokens("Component");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = identifier(&mut input);
         assert!(result.is_ok());
@@ -1968,7 +1968,7 @@ mod tests {
         assert_eq!(*spanned_id.inner(), "Component");
 
         // Test failure cases
-        let tokens = tokenize("->").expect("Failed to tokenize");
+        let tokens = parse_tokens("->");
         let mut input = OrreryTokenSlice::new(&tokens);
         assert!(identifier(&mut input).is_err());
     }
@@ -1976,7 +1976,7 @@ mod tests {
     #[test]
     fn test_nested_identifier_function() {
         // Test simple identifier
-        let tokens = tokenize("simple").expect("Failed to tokenize");
+        let tokens = parse_tokens("simple");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = nested_identifier(&mut input);
         assert!(result.is_ok());
@@ -1985,7 +1985,7 @@ mod tests {
         assert!(!spanned_id.span().is_empty());
 
         // Test nested identifiers
-        let tokens = tokenize("parent::child").expect("Failed to tokenize");
+        let tokens = parse_tokens("parent::child");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = nested_identifier(&mut input);
         assert!(result.is_ok());
@@ -1996,21 +1996,21 @@ mod tests {
     #[test]
     fn test_string_literal_function() {
         // Test basic string literals
-        let tokens = tokenize("\"hello\"").expect("Failed to tokenize");
+        let tokens = parse_tokens("\"hello\"");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = string_literal(&mut input);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().inner(), "hello");
 
         // Test strings with escape sequences
-        let tokens = tokenize("\"hello\\nworld\"").expect("Failed to tokenize");
+        let tokens = parse_tokens("\"hello\\nworld\"");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = string_literal(&mut input);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().inner(), "hello\nworld");
 
         // Test failure cases
-        let tokens = tokenize("identifier").expect("Failed to tokenize");
+        let tokens = parse_tokens("identifier");
         let mut input = OrreryTokenSlice::new(&tokens);
         assert!(string_literal(&mut input).is_err());
     }
@@ -2018,7 +2018,7 @@ mod tests {
     #[test]
     fn test_attribute_function() {
         // Test basic attribute parsing
-        let tokens = tokenize("color=\"red\"").expect("Failed to tokenize");
+        let tokens = parse_tokens("color=\"red\"");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2027,7 +2027,7 @@ mod tests {
         assert!(matches!(&attr.value, types::AttributeValue::String(s) if s.inner() == "red"));
 
         // Test that unquoted identifiers are now valid as TypeSpec names
-        let tokens = tokenize("stroke=RedStroke").expect("Failed to tokenize");
+        let tokens = parse_tokens("stroke=RedStroke");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2041,7 +2041,7 @@ mod tests {
         }
 
         // Test float attribute parsing
-        let tokens = tokenize("width=2.5").expect("Failed to tokenize");
+        let tokens = parse_tokens("width=2.5");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2053,7 +2053,7 @@ mod tests {
     #[test]
     fn test_nested_attribute_parsing() {
         // Test basic nested attribute parsing
-        let tokens = tokenize("text=[font_size=12, padding=6.5]").expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[font_size=12, padding=6.5]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2076,7 +2076,7 @@ mod tests {
         }
 
         // Test empty nested attributes
-        let tokens = tokenize("text=[]").expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2091,7 +2091,7 @@ mod tests {
         }
 
         // Test single nested attribute
-        let tokens = tokenize("text=[font_size=16]").expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[font_size=16]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2108,8 +2108,7 @@ mod tests {
         }
 
         // Test nested attributes with mixed types
-        let tokens =
-            tokenize("text=[font_family=\"Arial\", font_size=14]").expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[font_family=\"Arial\", font_size=14]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2133,8 +2132,7 @@ mod tests {
     #[test]
     fn test_nested_attribute_whitespace() {
         // Test nested attributes with various whitespace
-        let tokens =
-            tokenize("text=[ font_size = 12 , padding = 6.5 ]").expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[ font_size = 12 , padding = 6.5 ]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2158,37 +2156,37 @@ mod tests {
     #[test]
     fn test_nested_attribute_error_handling() {
         // Test unclosed bracket
-        let tokens = tokenize("text=[font_size=12").expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[font_size=12");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_err());
 
         // Test missing equals in nested attribute
-        let tokens = tokenize("text=[font_size 12]").expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[font_size 12]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_err());
 
         // Test missing value in nested attribute
-        let tokens = tokenize("text=[font_size=]").expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[font_size=]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_err());
 
         // Test invalid comma usage in nested attributes
-        let tokens = tokenize("text=[,font_size=12]").expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[,font_size=12]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_err());
 
         // Test trailing comma in nested attributes (should fail)
-        let tokens = tokenize("text=[font_size=12,]").expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[font_size=12,]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_err());
 
         // Test nested brackets - now supported as nested TypeSpec
-        let tokens = tokenize("text=[style=[curved=true]]").expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[style=[curved=true]]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2197,10 +2195,9 @@ mod tests {
     #[test]
     fn test_text_attribute_parsing() {
         // Test complete text attribute group
-        let tokens = tokenize(
+        let tokens = parse_tokens(
             "text=[font_size=16, font_family=\"Arial\", background_color=\"white\", padding=8.0]",
-        )
-        .expect("Failed to tokenize");
+        );
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2243,7 +2240,7 @@ mod tests {
     fn test_text_attribute_minimal_cases() {
         // Test empty text attributes
         // Empty text attributes: text=[]
-        let tokens = tokenize("text=[]").expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2258,7 +2255,7 @@ mod tests {
         }
 
         // Test single text attribute
-        let tokens = tokenize("text=[font_size=20]").expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[font_size=20]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2275,8 +2272,7 @@ mod tests {
         }
 
         // Test text attribute with whitespace variations
-        let tokens = tokenize("text=[ font_size = 14 , font_family = \"Helvetica\" ]")
-            .expect("Failed to tokenize");
+        let tokens = parse_tokens("text=[ font_size = 14 , font_family = \"Helvetica\" ]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2294,7 +2290,9 @@ mod tests {
     #[test]
     fn test_text_attribute_type_combinations() {
         // Test all supported text attribute types
-        let tokens = tokenize("text=[font_size=12, font_family=\"Courier\", background_color=\"#ff0000\", padding=5.5]").expect("Failed to tokenize");
+        let tokens = parse_tokens(
+            "text=[font_size=12, font_family=\"Courier\", background_color=\"#ff0000\", padding=5.5]",
+        );
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2343,14 +2341,14 @@ mod tests {
     #[test]
     fn test_wrapped_attributes_function() {
         // Test empty brackets
-        let tokens = tokenize("[]").expect("Failed to tokenize");
+        let tokens = parse_tokens("[]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = wrapped_attributes(&mut input);
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
 
         // Test single attribute in brackets
-        let tokens = tokenize("[color=\"red\"]").expect("Failed to tokenize");
+        let tokens = parse_tokens("[color=\"red\"]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = wrapped_attributes(&mut input);
         assert!(result.is_ok());
@@ -2362,7 +2360,7 @@ mod tests {
     #[test]
     fn test_type_definition_function() {
         // Test basic type definition
-        let tokens = tokenize("type MyType = Rectangle;").expect("Failed to tokenize");
+        let tokens = parse_tokens("type MyType = Rectangle;");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = type_definition(&mut input);
         assert!(result.is_ok());
@@ -2374,7 +2372,7 @@ mod tests {
         );
 
         // Test failure cases
-        let tokens = tokenize("MyType = Rectangle;").expect("Failed to tokenize");
+        let tokens = parse_tokens("MyType = Rectangle;");
         let mut input = OrreryTokenSlice::new(&tokens);
         assert!(type_definition(&mut input).is_err());
     }
@@ -2382,7 +2380,7 @@ mod tests {
     #[test]
     fn test_type_spec_function() {
         // Test: TypeName only
-        let tokens = tokenize("Rectangle").expect("Failed to tokenize");
+        let tokens = parse_tokens("Rectangle");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = type_spec(&mut input);
         assert!(result.is_ok(), "TypeName should parse");
@@ -2392,7 +2390,7 @@ mod tests {
         assert!(spec.attributes.is_empty());
 
         // Test: TypeName[single attribute]
-        let tokens = tokenize("Rectangle[fill_color=\"blue\"]").expect("Failed to tokenize");
+        let tokens = parse_tokens("Rectangle[fill_color=\"blue\"]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = type_spec(&mut input);
         assert!(result.is_ok(), "TypeName[single attribute] should parse");
@@ -2403,8 +2401,7 @@ mod tests {
         assert_eq!(*spec.attributes[0].name.inner(), "fill_color");
 
         // Test: TypeName[multiple attributes]
-        let tokens =
-            tokenize("Service[fill=\"blue\", size=100, active=1]").expect("Failed to tokenize");
+        let tokens = parse_tokens("Service[fill=\"blue\", size=100, active=1]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = type_spec(&mut input);
         assert!(result.is_ok(), "TypeName[multiple attributes] should parse");
@@ -2417,8 +2414,7 @@ mod tests {
         assert_eq!(*spec.attributes[2].name.inner(), "active");
 
         // Test: TypeName[nested attributes]
-        let tokens =
-            tokenize("Rectangle[text=[font=\"Arial\", size=12]]").expect("Failed to tokenize");
+        let tokens = parse_tokens("Rectangle[text=[font=\"Arial\", size=12]]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = type_spec(&mut input);
         assert!(result.is_ok(), "TypeName[nested attributes] should parse");
@@ -2438,7 +2434,7 @@ mod tests {
         }
 
         // Test: TypeName[] (empty attributes)
-        let tokens = tokenize("Rectangle[]").expect("Failed to tokenize");
+        let tokens = parse_tokens("Rectangle[]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = type_spec(&mut input);
         assert!(result.is_ok(), "TypeName[] should parse");
@@ -2448,7 +2444,7 @@ mod tests {
         assert!(spec.attributes.is_empty());
 
         // Test: Missing TypeName should FAIL (TypeName is required)
-        let tokens = tokenize("[fill_color=\"blue\"]").expect("Failed to tokenize");
+        let tokens = parse_tokens("[fill_color=\"blue\"]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = type_spec(&mut input);
         assert!(
@@ -2460,7 +2456,7 @@ mod tests {
     #[test]
     fn test_invocation_type_spec_function() {
         // Test: @TypeName
-        let tokens = tokenize("@Arrow").expect("Failed to tokenize");
+        let tokens = parse_tokens("@Arrow");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = invocation_type_spec(&mut input);
         assert!(result.is_ok(), "@TypeName should parse");
@@ -2470,7 +2466,7 @@ mod tests {
         assert!(spec.attributes.is_empty());
 
         // Test: @TypeName[single attribute]
-        let tokens = tokenize("@Arrow[color=\"red\"]").expect("Failed to tokenize");
+        let tokens = parse_tokens("@Arrow[color=\"red\"]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = invocation_type_spec(&mut input);
         assert!(result.is_ok(), "@TypeName[single attribute] should parse");
@@ -2481,8 +2477,7 @@ mod tests {
         assert_eq!(*spec.attributes[0].name.inner(), "color");
 
         // Test: @TypeName[multiple attributes]
-        let tokens = tokenize("@Arrow[color=\"red\", width=2, style=\"dashed\"]")
-            .expect("Failed to tokenize");
+        let tokens = parse_tokens("@Arrow[color=\"red\", width=2, style=\"dashed\"]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = invocation_type_spec(&mut input);
         assert!(
@@ -2498,8 +2493,7 @@ mod tests {
         assert_eq!(*spec.attributes[2].name.inner(), "style");
 
         // Test: @TypeName[nested attributes]
-        let tokens =
-            tokenize("@Arrow[stroke=[color=\"blue\", width=3]]").expect("Failed to tokenize");
+        let tokens = parse_tokens("@Arrow[stroke=[color=\"blue\", width=3]]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = invocation_type_spec(&mut input);
         assert!(result.is_ok(), "@TypeName[nested attributes] should parse");
@@ -2519,7 +2513,7 @@ mod tests {
         }
 
         // Test: [single attribute] without @ (anonymous)
-        let tokens = tokenize("[color=\"red\"]").expect("Failed to tokenize");
+        let tokens = parse_tokens("[color=\"red\"]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = invocation_type_spec(&mut input);
         assert!(
@@ -2532,8 +2526,7 @@ mod tests {
         assert_eq!(*spec.attributes[0].name.inner(), "color");
 
         // Test: [multiple attributes] without @ (anonymous)
-        let tokens =
-            tokenize("[style=\"dashed\", width=2, color=\"blue\"]").expect("Failed to tokenize");
+        let tokens = parse_tokens("[style=\"dashed\", width=2, color=\"blue\"]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = invocation_type_spec(&mut input);
         assert!(
@@ -2548,7 +2541,7 @@ mod tests {
         assert_eq!(*spec.attributes[2].name.inner(), "color");
 
         // Test: [nested attributes] without @ (anonymous)
-        let tokens = tokenize("[stroke=[color=\"green\", width=1.5]]").expect("Failed to tokenize");
+        let tokens = parse_tokens("[stroke=[color=\"green\", width=1.5]]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = invocation_type_spec(&mut input);
         assert!(result.is_ok(), "[nested attributes] should parse");
@@ -2564,7 +2557,7 @@ mod tests {
         }
 
         // Test: [] empty brackets (anonymous with no attributes)
-        let tokens = tokenize("[]").expect("Failed to tokenize");
+        let tokens = parse_tokens("[]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = invocation_type_spec(&mut input);
         assert!(result.is_ok(), "[] should parse as empty anonymous type");
@@ -2573,7 +2566,7 @@ mod tests {
         assert!(spec.attributes.is_empty());
 
         // Test: Nothing (sugar syntax) - returns empty TypeSpec
-        let tokens = tokenize("server").expect("Failed to tokenize");
+        let tokens = parse_tokens("server");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = invocation_type_spec(&mut input);
         assert!(result.is_ok(), "Nothing should return empty TypeSpec");
@@ -2582,7 +2575,7 @@ mod tests {
         assert!(spec.attributes.is_empty());
 
         // Test: @[attributes] SHOULD FAIL - TypeName required after @
-        let tokens = tokenize("@[color=\"red\"]").expect("Failed to tokenize");
+        let tokens = parse_tokens("@[color=\"red\"]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = invocation_type_spec(&mut input);
         assert!(
@@ -2594,20 +2587,20 @@ mod tests {
     #[test]
     fn test_relation_type_function() {
         // Test all relation types
-        let tokens = tokenize("->").expect("Failed to tokenize");
+        let tokens = parse_tokens("->");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = relation_type(&mut input);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "->");
 
-        let tokens = tokenize("<-").expect("Failed to tokenize");
+        let tokens = parse_tokens("<-");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = relation_type(&mut input);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "<-");
 
         // Test failure cases
-        let tokens = tokenize("=").expect("Failed to tokenize");
+        let tokens = parse_tokens("=");
         let mut input = OrreryTokenSlice::new(&tokens);
         assert!(relation_type(&mut input).is_err());
     }
