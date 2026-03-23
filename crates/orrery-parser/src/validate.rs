@@ -905,7 +905,7 @@ mod note_validation_tests {
         note [align="over"]: "Margin note";
         "#;
 
-        let tokens = tokenize(input).expect("Failed to tokenize");
+        let tokens = tokenize(input, 0).expect("Failed to tokenize");
         let ast = build_file(&tokens).expect("Failed to parse");
         let result = validate(&ast);
         assert!(result.is_ok(), "Valid notes should pass validation");
@@ -923,7 +923,7 @@ mod note_validation_tests {
         note [align="left"]: "Margin note";
         "#;
 
-        let tokens = tokenize(input).expect("Failed to tokenize");
+        let tokens = tokenize(input, 0).expect("Failed to tokenize");
         let ast = build_file(&tokens).expect("Failed to parse");
         let result = validate(&ast);
         assert!(result.is_ok(), "Valid notes should pass validation");
@@ -938,7 +938,7 @@ mod note_validation_tests {
         note [on=[client], align="top"]: "Invalid align for sequence";
         "#;
 
-        let tokens = tokenize(input).expect("Failed to tokenize");
+        let tokens = tokenize(input, 0).expect("Failed to tokenize");
         let ast = build_file(&tokens).expect("Failed to parse");
         let result = validate(&ast);
         assert!(result.is_err(), "Invalid align should fail validation");
@@ -956,7 +956,7 @@ mod note_validation_tests {
         note [on=[api], align="over"]: "Invalid align for component";
         "#;
 
-        let tokens = tokenize(input).expect("Failed to tokenize");
+        let tokens = tokenize(input, 0).expect("Failed to tokenize");
         let ast = build_file(&tokens).expect("Failed to parse");
         let result = validate(&ast);
         assert!(result.is_err(), "Invalid align should fail validation");
@@ -975,7 +975,7 @@ mod note_validation_tests {
         note [on=[client, server]]: "Valid spanning note";
         "#;
 
-        let tokens = tokenize(input).expect("Failed to tokenize");
+        let tokens = tokenize(input, 0).expect("Failed to tokenize");
         let ast = build_file(&tokens).expect("Failed to parse");
         let result = validate(&ast);
         assert!(result.is_ok(), "Valid spanning note should pass validation");
@@ -990,7 +990,7 @@ mod note_validation_tests {
         note [on=[]]: "Margin note with empty on";
         "#;
 
-        let tokens = tokenize(input).expect("Failed to tokenize");
+        let tokens = tokenize(input, 0).expect("Failed to tokenize");
         let ast = build_file(&tokens).expect("Failed to parse");
         let result = validate(&ast);
         assert!(

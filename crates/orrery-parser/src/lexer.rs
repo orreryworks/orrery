@@ -359,29 +359,35 @@ fn positioned_token<'a>(input: &mut Input<'a>) -> IResult<'a, PositionedToken<'a
 struct Lexer<'a> {
     tokens: Vec<PositionedToken<'a>>,
     diagnostics: DiagnosticCollector,
+    /// Starting position of this file in the virtual address space.
+    base_offset: usize,
 }
 
 impl<'a> Lexer<'a> {
-    /// Create a new lexer.
-    fn new() -> Self {
+    /// Creates a new lexer whose spans start at `base_offset`.
+    fn new(base_offset: usize) -> Self {
         Self {
             tokens: Vec::new(),
             diagnostics: DiagnosticCollector::new(),
+            base_offset,
         }
     }
 
-    /// Tokenize the input, collecting tokens and errors.
+    /// Tokenizes the input, collecting tokens and errors.
+    ///
+    /// Token and error spans are positioned relative to `base_offset`.
     fn tokenize(&mut self, mut input: Input<'a>) {
         while !input.is_empty() {
             match positioned_token(&mut input) {
-                Ok(token) => {
+                Ok(mut token) => {
+                    token.span = token.span.shift(self.base_offset);
                     self.tokens.push(token);
                 }
                 Err(e) => {
                     // Get position before recovery
                     let error_pos = input.current_token_start();
 
-                    let diagnostic = Self::convert_err_mode(e, error_pos);
+                    let diagnostic = self.convert_err_mode(e, error_pos);
                     self.diagnostics.emit(diagnostic);
 
                     // FIXME: Simple single-character skip causes cascading errors for
@@ -396,17 +402,18 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// Finish lexing and return tokens or collected errors.
+    /// Finishes lexing and returns tokens or collected errors.
     fn finish(self) -> Result<Vec<PositionedToken<'a>>, ParseError> {
         self.diagnostics.finish().map(|()| self.tokens)
     }
 
-    /// Convert an ErrMode and error position to a Diagnostic.
+    /// Converts a winnow `ErrMode` and file-local error position to a [`Diagnostic`].
     ///
-    /// Extracts `LexerDiagnostic` from the error context for rich error info
-    /// with code, message, and help. Falls back to E002 (unexpected character)
-    /// if no diagnostic context is found.
+    /// Extracts [`LexerDiagnostic`] from the error context for rich error info
+    /// with code, message, and help. Falls back to `E002` (unexpected character)
+    /// if no diagnostic context is found. All spans are shifted by `base_offset`.
     fn convert_err_mode(
+        &self,
         err: ErrMode<ContextError<LexerDiagnostic>>,
         error_pos: usize,
     ) -> Diagnostic {
@@ -423,7 +430,7 @@ impl<'a> Lexer<'a> {
             start,
         }) = context_error.context().next()
         {
-            let span = Span::new(*start..error_pos);
+            let span = Span::new(*start..error_pos).shift(self.base_offset);
 
             let mut diag = Diagnostic::error(*message)
                 .with_code(*code)
@@ -435,26 +442,32 @@ impl<'a> Lexer<'a> {
         }
 
         // Fallback when no context is present
-        let span = Span::new(error_pos..error_pos.saturating_add(1));
+        let span = Span::new(error_pos..error_pos.saturating_add(1)).shift(self.base_offset);
         Diagnostic::error("unexpected character")
             .with_code(ErrorCode::E002)
             .with_label(span, ErrorCode::E002.description())
     }
 }
 
-/// Parse tokens from a string input, collecting multiple errors.
+/// Tokenizes source text into positioned tokens, collecting multiple errors.
 ///
 /// Attempts to recover from errors and continue tokenizing, collecting
 /// all errors encountered. This provides better user experience by
 /// reporting multiple issues in a single pass.
 ///
+/// # Arguments
+///
+/// * `input` - The source text to tokenize.
+/// * `base_offset` - Starting byte position of this file in the virtual
+///   address space.
+///
 /// # Returns
 ///
-/// - `Ok(tokens)` - All tokens successfully parsed
-/// - `Err(ParseError)` - One or more errors occurred; contains all diagnostics
-pub fn tokenize(input: &str) -> Result<Vec<PositionedToken<'_>>, ParseError> {
+/// The token sequence on success, or a [`ParseError`] containing all
+/// accumulated diagnostics on failure.
+pub fn tokenize(input: &str, base_offset: usize) -> Result<Vec<PositionedToken<'_>>, ParseError> {
     let located_input = LocatingSlice::new(input);
-    let mut lexer = Lexer::new();
+    let mut lexer = Lexer::new(base_offset);
     lexer.tokenize(located_input);
     lexer.finish()
 }
@@ -518,7 +531,7 @@ mod tests {
 
         // Test that "activate" followed by space and identifier tokenizes correctly
         let input = "activate user";
-        let tokens = tokenize(input).unwrap();
+        let tokens = tokenize(input, 0).expect("Should tokenize");
         assert_eq!(tokens.len(), 3); // activate, space, user
         assert_eq!(tokens[0].token, Token::Activate);
         assert_eq!(tokens[1].token, Token::Whitespace);
@@ -606,13 +619,13 @@ mod tests {
         test_single_token("infinity_pool", Token::Identifier("infinity_pool"));
 
         // Test in context with other tokens
-        let tokens = tokenize("inf;").expect("Should tokenize");
+        let tokens = tokenize("inf;", 0).expect("Should tokenize");
         assert_eq!(tokens.len(), 2);
         assert!(matches!(tokens[0].token, Token::FloatLiteral(_)));
         assert!(matches!(tokens[1].token, Token::Semicolon));
 
         // Test identifier starting with inf in context
-        let tokens = tokenize("InfoNote;").expect("Should tokenize");
+        let tokens = tokenize("InfoNote;", 0).expect("Should tokenize");
         assert_eq!(tokens.len(), 2);
         assert!(matches!(tokens[0].token, Token::Identifier("InfoNote")));
         assert!(matches!(tokens[1].token, Token::Semicolon));
@@ -782,7 +795,7 @@ mod tests {
     #[test]
     fn test_full_lexing() {
         let input = r#"diagram component "My System" -> target;"#;
-        let result = tokenize(input);
+        let result = tokenize(input, 0);
 
         assert!(result.is_ok(), "Lexing failed: {:?}", result);
         let tokens = result.unwrap();
@@ -806,7 +819,7 @@ mod tests {
     #[test]
     fn test_span_tracking() {
         let input = "hello world";
-        let result = tokenize(input);
+        let result = tokenize(input, 0);
 
         assert!(result.is_ok());
         let tokens = result.unwrap();
@@ -824,7 +837,7 @@ mod tests {
 
     // Helper function to test lexer errors with span information
     fn test_lexer_error_at_position(input: &str, expected_error_pos: usize) {
-        let result = tokenize(input);
+        let result = tokenize(input, 0);
         assert!(
             result.is_err(),
             "Expected lexer to fail on input: '{}'",
@@ -843,7 +856,7 @@ mod tests {
 
         // Test that we can lex up to the error position
         loop {
-            let partial_result = tokenize(partial_input);
+            let partial_result = tokenize(partial_input, 0);
             if partial_result.is_ok() || partial_input.is_empty() {
                 break;
             }
@@ -948,7 +961,7 @@ mod tests {
         #[test]
         fn test_missing_quote_handling_errors() {
             // String content without quotes
-            let result = tokenize("hello world");
+            let result = tokenize("hello world", 0);
             assert!(result.is_ok()); // This should parse as identifier + whitespace + identifier
 
             // Mixed quote types (though " is standard)
@@ -998,7 +1011,7 @@ mod tests {
         "#;
 
             // The lexer should fail because '>' is not a valid token
-            let result = tokenize(source);
+            let result = tokenize(source, 0);
             assert!(
                 result.is_err(),
                 "Expected lexer to fail on invalid token '>'"
@@ -1007,7 +1020,7 @@ mod tests {
 
         /// Helper to verify error codes in diagnostics match exactly in order.
         fn assert_error_codes(input: &str, expected_codes: &[ErrorCode]) {
-            let result = tokenize(input);
+            let result = tokenize(input, 0);
             assert!(
                 result.is_err(),
                 "Expected lexer to fail on input: '{input}'"
@@ -1073,7 +1086,7 @@ mod tests {
             //           |   |           |
             //           |   string start|
             //           identifier      error position (at newline)
-            let result = tokenize(input);
+            let result = tokenize(input, 0);
             assert!(result.is_err());
 
             let parse_error = result.unwrap_err();
@@ -1127,6 +1140,40 @@ mod tests {
                 &[ErrorCode::E002, ErrorCode::E002],
             );
         }
+    }
+
+    #[test]
+    fn tokenize_with_base_offset_shifts_all_spans() {
+        let input = "a -> b";
+        let tokens = tokenize(input, 100).unwrap();
+
+        for token in &tokens {
+            assert!(
+                token.span.start() >= 100,
+                "span start {} should be >= 100",
+                token.span.start()
+            );
+        }
+
+        // First non-whitespace token 'a' starts at offset 100.
+        let first = tokens.first().unwrap();
+        assert_eq!(first.token, Token::Identifier("a"));
+        assert_eq!(first.span.start(), 100);
+        assert_eq!(first.span.end(), 101);
+    }
+
+    #[test]
+    fn tokenize_with_base_offset_shifts_error_spans() {
+        // '$' is an unexpected character that produces E002.
+        let err = tokenize("$", 200).unwrap_err();
+        let diag = &err.diagnostics()[0];
+        let label = &diag.labels()[0];
+
+        assert!(
+            label.span().start() >= 200,
+            "error span start {} should be >= 200",
+            label.span().start()
+        );
     }
 }
 
@@ -1186,7 +1233,7 @@ mod proptest_tests {
     /// Valid identifiers should always tokenize successfully.
     fn check_valid_identifiers_tokenize(id: &str) -> Result<(), TestCaseError> {
         let source = format!("diagram component; {id}: Rectangle;");
-        let result = tokenize(&source);
+        let result = tokenize(&source, 0);
 
         let err = result.err();
         prop_assert!(
@@ -1199,7 +1246,7 @@ mod proptest_tests {
     /// Float literals with various integer and fractional parts should parse.
     fn check_float_literals_parse(float_literal: &str) -> Result<(), TestCaseError> {
         let source = format!("diagram component; x: Rectangle [width={float_literal}];");
-        let result = tokenize(&source);
+        let result = tokenize(&source, 0);
 
         let err = result.err();
         prop_assert!(

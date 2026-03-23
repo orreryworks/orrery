@@ -86,6 +86,21 @@ impl Span {
             end: self.end.max(other.end),
         }
     }
+
+    /// Returns a new span with both offsets translated by `base` byte.
+    ///
+    /// This shifts the span's position in the virtual address space
+    /// without changing its length.
+    ///
+    /// # Arguments
+    ///
+    /// * `base` - Number of bytes to add to both `start` and `end`.
+    pub fn shift(self, base: usize) -> Span {
+        Self {
+            start: self.start + base,
+            end: self.end + base,
+        }
+    }
 }
 
 impl Default for Span {
@@ -200,6 +215,21 @@ mod tests {
         let union = span1.union(span2);
         assert_eq!(union.start(), 5);
         assert_eq!(union.end(), 20);
+    }
+
+    #[test]
+    fn test_span_shift() {
+        let span = Span::new(5..10);
+        let shifted = span.shift(100);
+        assert_eq!(shifted.start(), 105);
+        assert_eq!(shifted.end(), 110);
+        assert_eq!(shifted.len(), 5);
+    }
+
+    #[test]
+    fn test_span_shift_zero_is_identity() {
+        let span = Span::new(5..10);
+        assert_eq!(span.shift(0), span);
     }
 
     #[test]
