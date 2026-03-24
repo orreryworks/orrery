@@ -22,6 +22,7 @@
 //! ```
 
 pub mod error;
+pub mod source_provider;
 
 mod builtin_types;
 mod desugar;

@@ -6,6 +6,8 @@ pub mod error_adapter;
 
 mod args;
 mod config;
+#[allow(dead_code)]
+mod source_provider;
 
 pub use args::Args;
 
