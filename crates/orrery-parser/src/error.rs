@@ -35,6 +35,7 @@ mod error_code;
 mod label;
 mod parse_error;
 mod severity;
+mod source_error;
 
 pub(crate) use collector::DiagnosticCollector;
 pub(crate) use parse_error::Result;
@@ -44,3 +45,4 @@ pub use error_code::ErrorCode;
 pub use label::Label;
 pub use parse_error::ParseError;
 pub use severity::Severity;
+pub use source_error::SourceError;

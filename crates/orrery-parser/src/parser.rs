@@ -1358,7 +1358,7 @@ fn convert_error(
 /// # Arguments
 ///
 /// * `tokens` — The token slice
-///   [`PositionedToken`](super::PositionedToken). Must represent a single complete source file.
+///   [`PositionedToken`]. Must represent a single complete source file.
 ///
 /// # Returns
 ///
