@@ -101,6 +101,7 @@ Error codes are organized by phase:
 | E1xx | Parser | E100: unexpected token |
 | E2xx | Validation | E200: undefined component |
 | E3xx | Elaboration | E300: undefined type |
+| E4xx | Resolver | E400: file not found |
 
 ## Examples
 

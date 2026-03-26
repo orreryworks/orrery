@@ -8,7 +8,7 @@
 //! Leaf values are wrapped in [`Spanned<T>`] to preserve source location information
 //! for error reporting. Composite types derive their spans from their contents.
 
-use std::fmt;
+use std::{cell::RefCell, fmt, rc::Rc};
 
 use orrery_core::{identifier::Id, semantic::DiagramKind};
 
@@ -224,7 +224,7 @@ impl<'a> fmt::Display for Attribute<'a> {
 }
 
 /// Type Definition - declares a new type name as an alias with attributes
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeDefinition<'a> {
     pub name: Spanned<Id>,
     pub type_spec: TypeSpec<'a>,
@@ -245,7 +245,7 @@ impl TypeDefinition<'_> {
 ///
 /// - `diagram <kind> [attrs];` — a renderable diagram of a specific [`DiagramKind`].
 /// - `library;` — a file that only exports type definitions for import.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum FileHeader<'a> {
     /// A diagram file declared with `diagram <kind> [attributes...];`.
     ///
@@ -286,11 +286,11 @@ impl FileHeader<'_> {
 /// Captures the raw import path exactly as written in source. The path is a
 /// string literal without the `.orr` extension, resolved relative to the
 /// importing file.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ImportDecl {
     /// The import path string (e.g., `"shared/styles"`), wrapped in
     /// [`Spanned`].
-    pub _path: Spanned<String>,
+    pub path: Spanned<String>,
 }
 
 /// Resolved import — populated by the resolver after parsing.
@@ -298,7 +298,7 @@ pub struct ImportDecl {
 /// The parser produces an empty `imports` vec in [`FileAst`]; the resolver
 /// later processes each [`ImportDecl`], loads the referenced file, parses it,
 /// and stores the result here.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Import<'a> {
     /// Namespace qualifier derived from the last segment of the import path.
     ///
@@ -306,7 +306,10 @@ pub struct Import<'a> {
     /// import is not namespaced.
     pub namespace: Option<Id>,
     /// The fully parsed AST of the imported file.
-    pub file_ast: Box<FileAst<'a>>,
+    ///
+    /// Stored as `Rc<RefCell<…>>` so that diamond dependencies (the same file
+    /// imported by multiple parents) share a single AST instance.
+    pub file_ast: Rc<RefCell<FileAst<'a>>>,
 }
 
 /// Top-level parsed file — the root AST node produced by the parser.
@@ -318,7 +321,7 @@ pub struct Import<'a> {
 ///
 /// The `imports` field is initially empty; the resolver populates it by
 /// walking `import_decls` and attaching parsed [`Import`]s.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileAst<'a> {
     /// The file header that identifies this file as a diagram or library.
     pub header: FileHeader<'a>,
@@ -351,7 +354,7 @@ impl FileAst<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FragmentSection<'a> {
     pub title: Option<Spanned<String>>,
     pub elements: Vec<Element<'a>>,
@@ -380,7 +383,7 @@ impl FragmentSection<'_> {
 /// - `operation` - The fragment operation/title as a string literal
 /// - `type_spec` - Optional type specification with attributes
 /// - `sections` - One or more fragment sections containing elements
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Fragment<'a> {
     pub operation: Spanned<String>,
     pub type_spec: TypeSpec<'a>,
@@ -402,7 +405,7 @@ impl Fragment<'_> {
 /// **Fields:**
 /// - `type_spec` - Optional type specification with attributes for positioning, styling, and attachment
 /// - `content` - The note text as a string literal (supports escape sequences)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Note<'a> {
     pub type_spec: TypeSpec<'a>,
     pub content: Spanned<String>,
@@ -414,7 +417,7 @@ impl Note<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Element<'a> {
     Component {
         name: Spanned<Id>,

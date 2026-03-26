@@ -1,0 +1,542 @@
+//! File resolver: loading, dependency graph & cycle detection.
+//!
+//! The [`Resolver`] recursively loads `.orr` files via a
+//! [`SourceProvider`], registers them in a [`SourceMap`], deduplicates by
+//! canonical path, and detects circular dependencies.
+//!
+//! Source text is allocated in a [`bumpalo::Bump`] arena so that all
+//! [`FileAst`] nodes can borrow from it with a single `'arena` lifetime.
+//!
+//! # Overview
+//!
+//! - [`Resolver`] — entry point that drives recursive file loading.
+//! - [`ResolvedFile`] — the output: a root [`FileAst`] with its
+//!   [`imports`](FileAst::imports) populated recursively, plus a
+//!   [`SourceMap`] covering every loaded file.
+//!
+//! # Data Flow
+//!
+//! ```text
+//! root path
+//!     ↓ Resolver::resolve
+//! recursive resolve_file
+//!     ├─ SourceProvider::read_source  → source text
+//!     ├─ Bump::alloc_str             → arena-allocated &str
+//!     ├─ SourceMap::add_file         → virtual byte offset
+//!     ├─ lexer::tokenize             → tokens
+//!     ├─ parser::build_file          → FileAst
+//!     └─ recurse for each import     → populate FileAst.imports
+//!     ↓
+//! ResolvedFile { source_map, file_ast }
+//! ```
+
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
+
+use bumpalo::Bump;
+
+use crate::{
+    error::{Diagnostic, ErrorCode, ParseError, SourceError},
+    lexer, parser,
+    parser_types::{FileAst, Import},
+    source_map::SourceMap,
+    source_provider::SourceProvider,
+    span::Span,
+};
+
+/// The output of resolving a root Orrery file and all of its transitive
+/// imports.
+///
+/// The [`file_ast`](ResolvedFile::file_ast) has its
+/// [`imports`](FileAst::imports) field populated recursively — each imported
+/// file in turn has *its* imports populated, forming a tree that mirrors the
+/// import graph.
+///
+/// The [`source_map`](ResolvedFile::source_map) covers every file that was
+/// loaded during resolution, enabling span lookups across the entire tree.
+#[derive(Debug)]
+pub struct ResolvedFile<'arena> {
+    source_map: SourceMap<'arena>,
+    file_ast: FileAst<'arena>,
+}
+
+impl<'arena> ResolvedFile<'arena> {
+    /// Returns the source map covering all files loaded during resolution.
+    pub fn source_map(&self) -> &SourceMap<'arena> {
+        &self.source_map
+    }
+
+    /// Returns the root [`FileAst`] with imports populated recursively.
+    pub fn file_ast(&self) -> &FileAst<'arena> {
+        &self.file_ast
+    }
+}
+
+/// Recursively resolves Orrery files, builds import trees, and detects
+/// cycles.
+///
+/// The resolver is consumed by [`Resolver::resolve`], which returns a
+/// [`ResolvedFile`] on success.
+///
+/// # Type parameters
+///
+/// * `'arena` — lifetime of the [`Bump`] arena that holds source text.
+/// * `P` — the [`SourceProvider`] implementation used for file resolution
+///   and reading.
+///
+/// # Examples
+///
+/// ```ignore
+/// let arena = Bump::new();
+/// let provider = MySourceProvider::new();
+/// let resolver = Resolver::new(&arena, provider);
+/// let resolved = resolver.resolve(Path::new("main.orr"))?;
+/// ```
+pub struct Resolver<'arena, P> {
+    arena: &'arena Bump,
+    provider: P,
+    source_map: SourceMap<'arena>,
+    /// Caches resolved [`FileAst`]s by canonical path so each file is read
+    /// and parsed at most once. Diamond dependencies share the same
+    /// `Rc<RefCell<FileAst>>` instance.
+    cache: HashMap<PathBuf, Rc<RefCell<FileAst<'arena>>>>,
+    /// Paths currently being resolved, used for cycle detection.
+    resolution_stack: Vec<PathBuf>,
+}
+
+impl<'arena, P: SourceProvider> Resolver<'arena, P> {
+    /// Creates a new resolver backed by the given arena and source provider.
+    ///
+    /// # Arguments
+    ///
+    /// * `arena` — [`Bump`] arena used to store source text for the `'arena`
+    ///   lifetime.
+    /// * `provider` — source provider for resolving and reading Orrery files.
+    pub fn new(arena: &'arena Bump, provider: P) -> Self {
+        Self {
+            arena,
+            provider,
+            source_map: SourceMap::new(),
+            cache: HashMap::new(),
+            resolution_stack: Vec::new(),
+        }
+    }
+
+    /// Resolves the root file at `root_path` and all of its transitive
+    /// imports.
+    ///
+    /// The returned [`ResolvedFile`] contains the root [`FileAst`] with its
+    /// [`imports`](FileAst::imports) field populated recursively, plus a
+    /// [`SourceMap`] covering every loaded file.
+    ///
+    /// # Arguments
+    ///
+    /// * `root_path` — path to the root/entry Orrery file.
+    ///
+    /// # Returns
+    ///
+    /// A [`ResolvedFile`] containing the source map and the fully resolved
+    /// root AST.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError`] if any file cannot be found (E400), a circular
+    /// dependency is detected (E401), an import path is invalid (E402), or
+    /// lexing/parsing fails.
+    pub fn resolve(mut self, root_path: &Path) -> Result<ResolvedFile<'arena>, ParseError> {
+        let root_rc = self.resolve_file(root_path.to_path_buf(), None)?;
+
+        // Drop the cache so the root Rc's refcount drops to 1.
+        // (Imported files inside the tree keep their own Rc clones alive.)
+        self.cache.clear();
+
+        let file_ast = Rc::try_unwrap(root_rc)
+            .expect("cache cleared; root refcount should be 1")
+            .into_inner();
+
+        Ok(ResolvedFile {
+            source_map: self.source_map,
+            file_ast,
+        })
+    }
+
+    /// Recursively resolves a single file and all of its imports.
+    ///
+    /// Returns an `Rc<RefCell<FileAst>>` with its
+    /// [`imports`](FileAst::imports) field populated. If the file was already
+    /// parsed (diamond dependency), the cached `Rc` is cloned (cheap).
+    fn resolve_file(
+        &mut self,
+        path: PathBuf,
+        import_span: Option<Span>,
+    ) -> Result<Rc<RefCell<FileAst<'arena>>>, ParseError> {
+        // 1. Deduplication — return cached Rc if already fully resolved.
+        if let Some(rc) = self.cache.get(&path) {
+            return Ok(Rc::clone(rc));
+        }
+
+        // 2. Cycle detection.
+        if self.resolution_stack.contains(&path) {
+            return Err(self.cycle_error(&path, import_span));
+        }
+
+        // 3. Push onto resolution stack.
+        self.resolution_stack.push(path.clone());
+
+        // 4. Read source text from the provider.
+        let source_string = self
+            .provider
+            .read_source(&path)
+            .map_err(|e| Self::file_not_found_error(&e, import_span))?;
+
+        // 5. Copy source text into the arena (long-lived allocation).
+        let source: &'arena str = self.arena.alloc_str(&source_string);
+        drop(source_string);
+
+        // 6. Register in the source map.
+        let base_offset = self
+            .source_map
+            .add_file(path.display().to_string(), source, import_span);
+
+        // 7. Tokenize.
+        let tokens = lexer::tokenize(source, base_offset)?;
+
+        // 8. Parse.
+        let mut file_ast = parser::build_file(&tokens).map_err(ParseError::from)?;
+
+        // 9. Resolve each import declaration and populate `file_ast.imports`.
+        for import_decl in &file_ast.import_decls {
+            let import_path = &import_decl.path;
+            let decl_span = import_decl.span();
+
+            Self::validate_import_path(import_path, decl_span)?;
+
+            let resolved_path = self
+                .provider
+                .resolve_path(&path, import_path)
+                .map_err(|e| Self::file_not_found_error(&e, Some(decl_span)))?;
+
+            let imported_rc = self.resolve_file(resolved_path, Some(decl_span))?;
+
+            file_ast.imports.push(Import {
+                namespace: None,
+                file_ast: imported_rc,
+            });
+        }
+
+        // 10. Pop from the resolution stack and cache the result.
+        self.resolution_stack.pop();
+        let rc = Rc::new(RefCell::new(file_ast));
+        self.cache.insert(path, Rc::clone(&rc));
+
+        Ok(rc)
+    }
+
+    /// Rejects empty import paths, which would silently mis-resolve to the
+    /// parent directory with an `.orr` extension.
+    fn validate_import_path(import_path: &str, span: Span) -> Result<(), ParseError> {
+        if import_path.is_empty() {
+            return Err(ParseError::from(
+                Diagnostic::error("import path is empty")
+                    .with_code(ErrorCode::E402)
+                    .with_label(span, "empty path"),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Converts a [`SourceError`] into a [`ParseError`] with error code E400.
+    fn file_not_found_error(source_error: &SourceError, span: Option<Span>) -> ParseError {
+        let mut diag = Diagnostic::error(format!(
+            "cannot find file: {}",
+            source_error.path().display()
+        ))
+        .with_code(ErrorCode::E400);
+
+        if let Some(span) = span {
+            diag = diag.with_label(span, "imported here");
+        }
+
+        ParseError::from(diag)
+    }
+
+    /// Builds a circular-dependency error (E401) showing the full import chain.
+    fn cycle_error(&self, path: &Path, import_span: Option<Span>) -> ParseError {
+        let cycle_start = self
+            .resolution_stack
+            .iter()
+            .position(|p| p == path)
+            .expect("cycle target must be on the resolution stack");
+
+        let chain: Vec<String> = self.resolution_stack[cycle_start..]
+            .iter()
+            .map(|p| p.display().to_string())
+            .chain(std::iter::once(path.display().to_string()))
+            .collect();
+        let chain_str = chain.join(" → ");
+
+        let mut diag = Diagnostic::error("circular dependency detected")
+            .with_code(ErrorCode::E401)
+            .with_help(format!("import chain: {chain_str}"));
+
+        if let Some(span) = import_span {
+            diag = diag.with_label(span, "cyclic import");
+        }
+
+        ParseError::from(diag)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{parser_types::FileHeader, source_provider::InMemorySourceProvider};
+
+    /// Helper: create a provider with the given files and resolve from `root`.
+    fn resolve_with<'a>(
+        arena: &'a Bump,
+        files: &[(&str, &str)],
+        root: &str,
+    ) -> Result<ResolvedFile<'a>, ParseError> {
+        let mut provider = InMemorySourceProvider::new();
+        for &(path, source) in files {
+            provider.add_file(path, source);
+        }
+        let resolver = Resolver::new(arena, provider);
+        resolver.resolve(Path::new(root))
+    }
+
+    #[test]
+    fn single_file_no_imports() {
+        let arena = Bump::new();
+        let resolved = resolve_with(
+            &arena,
+            &[("main.orr", "diagram component;\na: Rectangle;")],
+            "main.orr",
+        )
+        .expect("should resolve");
+
+        assert!(resolved.file_ast().imports.is_empty());
+        assert_eq!(resolved.source_map().file_count(), 1);
+    }
+
+    #[test]
+    fn library_file_resolves() {
+        let arena = Bump::new();
+        let resolved = resolve_with(&arena, &[("lib.orr", "library;")], "lib.orr")
+            .expect("should resolve library");
+
+        let ast = resolved.file_ast();
+        assert!(ast.imports.is_empty());
+        assert!(matches!(ast.header, FileHeader::Library { .. }));
+    }
+
+    #[test]
+    fn single_import_loads_both() {
+        let arena = Bump::new();
+        let resolved = resolve_with(
+            &arena,
+            &[
+                (
+                    "main.orr",
+                    "diagram component;\nimport \"styles\";\na: Rectangle;",
+                ),
+                ("styles.orr", "library;"),
+            ],
+            "main.orr",
+        )
+        .expect("should resolve");
+
+        assert_eq!(resolved.file_ast().imports.len(), 1);
+        assert_eq!(resolved.source_map().file_count(), 2);
+
+        // The imported file should be a library.
+        let imported = &resolved.file_ast().imports[0];
+        let imported_ast = imported.file_ast.borrow();
+        assert!(matches!(imported_ast.header, FileHeader::Library { .. }));
+    }
+
+    #[test]
+    fn multiple_imports_from_same_file() {
+        // A imports B, C, and D; no shared deps.
+        let arena = Bump::new();
+        let resolved = resolve_with(
+                &arena,
+                &[
+                    (
+                        "a.orr",
+                        "diagram component;\nimport \"b\";\nimport \"c\";\nimport \"d\";\na: Rectangle;",
+                    ),
+                    ("b.orr", "library;"),
+                    ("c.orr", "library;"),
+                    ("d.orr", "library;"),
+                ],
+                "a.orr",
+            )
+            .expect("should resolve");
+
+        assert_eq!(resolved.file_ast().imports.len(), 3);
+        assert_eq!(resolved.source_map().file_count(), 4);
+    }
+
+    #[test]
+    fn nested_imports_resolve_transitively() {
+        // A → B → C
+        let arena = Bump::new();
+        let resolved = resolve_with(
+            &arena,
+            &[
+                ("a.orr", "diagram component;\nimport \"b\";\na: Rectangle;"),
+                ("b.orr", "library;\nimport \"c\";"),
+                ("c.orr", "library;"),
+            ],
+            "a.orr",
+        )
+        .expect("should resolve nested imports");
+
+        assert_eq!(resolved.source_map().file_count(), 3);
+
+        // A → B → C chain.
+        let b_ast = resolved.file_ast().imports[0].file_ast.borrow();
+        let c_ast = b_ast.imports[0].file_ast.borrow();
+        assert!(matches!(c_ast.header, FileHeader::Library { .. }));
+        assert!(c_ast.imports.is_empty());
+    }
+
+    #[test]
+    fn duplicate_import_in_same_file_deduplicates() {
+        // A imports B twice — B should be parsed only once.
+        let arena = Bump::new();
+        let resolved = resolve_with(
+            &arena,
+            &[
+                (
+                    "a.orr",
+                    "diagram component;\nimport \"b\";\nimport \"b\";\na: Rectangle;",
+                ),
+                ("b.orr", "library;"),
+            ],
+            "a.orr",
+        )
+        .expect("should resolve");
+
+        // Two import entries in the AST (one per import decl).
+        assert_eq!(resolved.file_ast().imports.len(), 2);
+
+        // But only 2 files in the source map (not 3).
+        assert_eq!(resolved.source_map().file_count(), 2);
+    }
+
+    #[test]
+    fn diamond_dependency_deduplicates() {
+        // A imports B and C; both B and C import D.
+        let arena = Bump::new();
+        let resolved = resolve_with(
+            &arena,
+            &[
+                (
+                    "a.orr",
+                    "diagram component;\nimport \"b\";\nimport \"c\";\na: Rectangle;",
+                ),
+                ("b.orr", "library;\nimport \"d\";"),
+                ("c.orr", "library;\nimport \"d\";"),
+                ("d.orr", "library;"),
+            ],
+            "a.orr",
+        )
+        .expect("should resolve diamond");
+
+        // D is loaded only once (source map has 4 entries, not 5).
+        assert_eq!(resolved.source_map().file_count(), 4);
+
+        // A has two imports (B and C).
+        assert_eq!(resolved.file_ast().imports.len(), 2);
+
+        // Both B and C each have one import (D).
+        let b_ast = resolved.file_ast().imports[0].file_ast.borrow();
+        let c_ast = resolved.file_ast().imports[1].file_ast.borrow();
+        assert_eq!(b_ast.imports.len(), 1);
+        assert_eq!(c_ast.imports.len(), 1);
+    }
+
+    #[test]
+    fn missing_root_file_emits_e400() {
+        let arena = Bump::new();
+        let result = resolve_with(&arena, &[], "missing.orr");
+
+        let err = result.expect_err("should fail on missing root");
+        let diag = &err.diagnostics()[0];
+        assert_eq!(
+            diag.code().expect("should have error code"),
+            ErrorCode::E400
+        );
+    }
+
+    #[test]
+    fn missing_file_emits_e400() {
+        let arena = Bump::new();
+        let result = resolve_with(
+            &arena,
+            &[("main.orr", "diagram component;\nimport \"nonexistent\";")],
+            "main.orr",
+        );
+
+        let err = result.expect_err("should fail on missing file");
+        let diag = &err.diagnostics()[0];
+        assert_eq!(
+            diag.code().expect("should have error code"),
+            ErrorCode::E400
+        );
+    }
+
+    #[test]
+    fn self_import_cycle_emits_e401() {
+        // A imports itself.
+        let arena = Bump::new();
+        let result = resolve_with(
+            &arena,
+            &[("a.orr", "diagram component;\nimport \"a\";")],
+            "a.orr",
+        );
+
+        let err = result.expect_err("should detect self-cycle");
+        let diag = &err.diagnostics()[0];
+        assert_eq!(
+            diag.code().expect("should have error code"),
+            ErrorCode::E401
+        );
+    }
+
+    #[test]
+    fn circular_dependency_emits_e401() {
+        // A → B → C → A
+        let arena = Bump::new();
+        let result = resolve_with(
+            &arena,
+            &[
+                ("a.orr", "diagram component;\nimport \"b\";"),
+                ("b.orr", "library;\nimport \"c\";"),
+                ("c.orr", "library;\nimport \"a\";"),
+            ],
+            "a.orr",
+        );
+
+        let err = result.expect_err("should detect 3-level cycle");
+        let diag = &err.diagnostics()[0];
+        assert_eq!(
+            diag.code().expect("should have error code"),
+            ErrorCode::E401
+        );
+
+        // The help message should show the full import chain.
+        let help = diag.help().expect("should have help text");
+        assert!(help.contains("a.orr"), "chain should mention a.orr: {help}");
+        assert!(help.contains("b.orr"), "chain should mention b.orr: {help}");
+        assert!(help.contains("c.orr"), "chain should mention c.orr: {help}");
+    }
+}

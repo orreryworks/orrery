@@ -15,6 +15,8 @@
 //! For example, a reference to "child1" inside "parent" becomes "parent::child1".
 //! This enables the validation phase to perform comprehensive cross-reference checks.
 
+use std::{cell::RefCell, rc::Rc};
+
 use orrery_core::identifier::Id;
 
 use crate::{
@@ -93,13 +95,25 @@ trait Folder<'a> {
         }
     }
 
+    /// Fold a [`FileAst`] behind an `Rc<RefCell<…>>`.
+    ///
+    /// When the `Rc` is uniquely owned the inner value is unwrapped without
+    /// cloning; shared instances fall back to `clone()`.
+    fn fold_rc_file_ast(&mut self, rc: Rc<RefCell<FileAst<'a>>>) -> Rc<RefCell<FileAst<'a>>> {
+        let inner = match Rc::try_unwrap(rc) {
+            Ok(cell) => cell.into_inner(),
+            Err(rc) => rc.borrow().clone(),
+        };
+        Rc::new(RefCell::new(self.fold_file_ast(inner)))
+    }
+
     /// Fold resolved [`Import`]s.
     fn fold_imports(&mut self, imports: Vec<Import<'a>>) -> Vec<Import<'a>> {
         imports
             .into_iter()
             .map(|import| Import {
                 namespace: import.namespace,
-                file_ast: Box::new(self.fold_file_ast(*import.file_ast)),
+                file_ast: self.fold_rc_file_ast(import.file_ast),
             })
             .collect()
     }

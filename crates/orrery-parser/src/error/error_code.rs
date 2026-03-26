@@ -5,6 +5,7 @@
 //! - `E1xx` - Parser errors
 //! - `E2xx` - Validation errors
 //! - `E3xx` - Elaboration errors
+//! - `E4xx` - Resolver errors
 
 use std::fmt;
 
@@ -138,6 +139,25 @@ pub enum ErrorCode {
     /// A diagram was placed alongside other elements where it must be
     /// the only element in its scope.
     E309,
+
+    // =========================================================================
+    // Resolver Errors (E4xx)
+    // =========================================================================
+    /// File not found.
+    ///
+    /// A source file referenced by an import declaration or passed as the
+    /// root entry point could not be resolved or read.
+    E400,
+
+    /// Circular dependency.
+    ///
+    /// A file appears in its own import chain, forming a cycle.
+    E401,
+
+    /// Invalid import path.
+    ///
+    /// An import path is malformed (e.g., empty).
+    E402,
 }
 
 impl ErrorCode {
@@ -170,6 +190,10 @@ impl ErrorCode {
             ErrorCode::E307 => "E307",
             ErrorCode::E308 => "E308",
             ErrorCode::E309 => "E309",
+            // Resolver errors
+            ErrorCode::E400 => "E400",
+            ErrorCode::E401 => "E401",
+            ErrorCode::E402 => "E402",
         }
     }
 
@@ -202,6 +226,10 @@ impl ErrorCode {
             ErrorCode::E307 => "type mismatch",
             ErrorCode::E308 => "shape does not support nested content",
             ErrorCode::E309 => "diagram cannot share scope",
+            // Resolver errors
+            ErrorCode::E400 => "file not found",
+            ErrorCode::E401 => "circular dependency",
+            ErrorCode::E402 => "invalid import path",
         }
     }
 }
@@ -222,6 +250,7 @@ mod tests {
         assert_eq!(ErrorCode::E100.to_string(), "E100");
         assert_eq!(ErrorCode::E200.to_string(), "E200");
         assert_eq!(ErrorCode::E300.to_string(), "E300");
+        assert_eq!(ErrorCode::E400.to_string(), "E400");
     }
 
     #[test]
@@ -235,5 +264,6 @@ mod tests {
         assert_eq!(ErrorCode::E001.description(), "unterminated string literal");
         assert_eq!(ErrorCode::E200.description(), "undefined component");
         assert_eq!(ErrorCode::E301.description(), "duplicate type definition");
+        assert_eq!(ErrorCode::E400.description(), "file not found");
     }
 }
