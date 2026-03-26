@@ -24,10 +24,10 @@
 //!
 //! let mut map = SourceMap::new();
 //!
-//! let offset_a = map.add_file("a.orr", "hello".into(), None);
+//! let offset_a = map.add_file("a.orr", "hello", None);
 //! assert_eq!(offset_a, 0);
 //!
-//! let offset_b = map.add_file("b.orr", "world".into(), None);
+//! let offset_b = map.add_file("b.orr", "world", None);
 //! assert_eq!(offset_b, 6); // 5 bytes + 1-byte gap
 //! ```
 
@@ -39,11 +39,11 @@ use crate::span::Span;
 /// virtual address space. The `end_offset` is exclusive — valid byte positions
 /// within this file are `start_offset..end_offset`.
 #[derive(Debug, Clone)]
-pub struct SourceFile {
+pub struct SourceFile<'a> {
     /// Human-readable name, typically a file path.
     name: String,
     /// The full source text of the file.
-    source: String,
+    source: &'a str,
     /// Byte offset where this file starts in the virtual address space.
     start_offset: usize,
     /// Byte offset where this file ends (exclusive) in the virtual address space.
@@ -53,7 +53,7 @@ pub struct SourceFile {
     first_imported_at: Option<Span>,
 }
 
-impl SourceFile {
+impl SourceFile<'_> {
     /// Returns the human-readable name of this file.
     pub fn name(&self) -> &str {
         &self.name
@@ -61,7 +61,7 @@ impl SourceFile {
 
     /// Returns the source text of this file.
     pub fn source(&self) -> &str {
-        &self.source
+        self.source
     }
 
     /// Returns the start offset in the virtual address space.
@@ -106,19 +106,19 @@ impl SourceFile {
 ///
 /// let mut map = SourceMap::new();
 ///
-/// let base = map.add_file("main.orr", "diagram component;\nbox: Rectangle;".into(), None);
+/// let base = map.add_file("main.orr", "diagram component;\nbox: Rectangle;", None);
 ///
 /// let file = map.lookup_file(base).unwrap();
 /// assert_eq!(file.name(), "main.orr");
 /// ```
 #[derive(Debug, Default)]
-pub struct SourceMap {
-    files: Vec<SourceFile>,
+pub struct SourceMap<'a> {
+    files: Vec<SourceFile<'a>>,
     /// Byte offset where the next added file will start.
     next_offset: usize,
 }
 
-impl SourceMap {
+impl<'a> SourceMap<'a> {
     /// Create a new, empty source map.
     pub fn new() -> Self {
         Self::default()
@@ -142,7 +142,7 @@ impl SourceMap {
     pub fn add_file(
         &mut self,
         name: impl Into<String>,
-        source: String,
+        source: &'a str,
         imported_at: Option<Span>,
     ) -> usize {
         let start_offset = self.next_offset;
@@ -174,7 +174,7 @@ impl SourceMap {
     ///
     /// The [`SourceFile`] containing `offset`, or `None` if the offset falls
     /// in a gap between files or is out of range.
-    pub fn lookup_file(&self, offset: usize) -> Option<&SourceFile> {
+    pub fn lookup_file(&self, offset: usize) -> Option<&SourceFile<'a>> {
         // `partition_point` returns the count of files whose `start_offset <= offset`.
         let idx = self.files.partition_point(|f| f.start_offset <= offset);
         if idx == 0 {
@@ -215,7 +215,7 @@ impl SourceMap {
     }
 
     /// Returns all registered source files.
-    pub fn files(&self) -> &[SourceFile] {
+    pub fn files(&self) -> &[SourceFile<'a>] {
         &self.files
     }
 }
@@ -227,7 +227,7 @@ mod tests {
     #[test]
     fn add_single_file_returns_zero_offset() {
         let mut map = SourceMap::new();
-        let offset = map.add_file("a.orr", "hello".into(), None);
+        let offset = map.add_file("a.orr", "hello", None);
         assert_eq!(offset, 0);
         assert_eq!(map.file_count(), 1);
     }
@@ -237,15 +237,15 @@ mod tests {
         let mut map = SourceMap::new();
 
         // File A: 5 bytes at 0..5
-        let a = map.add_file("a.orr", "hello".into(), None);
+        let a = map.add_file("a.orr", "hello", None);
         assert_eq!(a, 0);
 
         // File B: 5 bytes at 6..11 (1-byte gap at offset 5)
-        let b = map.add_file("b.orr", "world".into(), None);
+        let b = map.add_file("b.orr", "world", None);
         assert_eq!(b, 6);
 
         // File C: 3 bytes at 12..15 (1-byte gap at offset 11)
-        let c = map.add_file("c.orr", "foo".into(), None);
+        let c = map.add_file("c.orr", "foo", None);
         assert_eq!(c, 12);
 
         assert_eq!(map.file_count(), 3);
@@ -255,11 +255,11 @@ mod tests {
     fn add_empty_file() {
         let mut map = SourceMap::new();
 
-        let a = map.add_file("empty.orr", String::new(), None);
+        let a = map.add_file("empty.orr", "", None);
         assert_eq!(a, 0);
 
         // Next file starts at offset 1 (0-byte file + 1-byte gap).
-        let b = map.add_file("b.orr", "x".into(), None);
+        let b = map.add_file("b.orr", "x", None);
         assert_eq!(b, 1);
     }
 
@@ -268,8 +268,8 @@ mod tests {
         let mut map = SourceMap::new();
         let import_span = Span::new(10..25);
 
-        map.add_file("root.orr", "root".into(), None);
-        map.add_file("lib.orr", "lib".into(), Some(import_span));
+        map.add_file("root.orr", "root", None);
+        map.add_file("lib.orr", "lib", Some(import_span));
 
         assert!(map.files()[0].first_imported_at().is_none());
         assert_eq!(map.files()[1].first_imported_at(), Some(import_span));
@@ -278,7 +278,7 @@ mod tests {
     #[test]
     fn source_file_accessors() {
         let mut map = SourceMap::new();
-        map.add_file("test.orr", "abc".into(), None);
+        map.add_file("test.orr", "abc", None);
 
         let file = &map.files()[0];
         assert_eq!(file.name(), "test.orr");
@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn empty_source_file() {
         let mut map = SourceMap::new();
-        map.add_file("empty.orr", String::new(), None);
+        map.add_file("empty.orr", "", None);
 
         let file = &map.files()[0];
         assert_eq!(file.len(), 0);
@@ -303,7 +303,7 @@ mod tests {
     #[test]
     fn lookup_file_single() {
         let mut map = SourceMap::new();
-        map.add_file("a.orr", "hello".into(), None);
+        map.add_file("a.orr", "hello", None);
 
         // Every byte position within the file resolves.
         for i in 0..5 {
@@ -320,9 +320,9 @@ mod tests {
     #[test]
     fn lookup_file_multiple() {
         let mut map = SourceMap::new();
-        map.add_file("a.orr", "hello".into(), None); // 0..5
-        map.add_file("b.orr", "world".into(), None); // 6..11
-        map.add_file("c.orr", "foo".into(), None); // 12..15
+        map.add_file("a.orr", "hello", None); // 0..5
+        map.add_file("b.orr", "world", None); // 6..11
+        map.add_file("c.orr", "foo", None); // 12..15
 
         assert_eq!(map.lookup_file(0).unwrap().name(), "a.orr");
         assert_eq!(map.lookup_file(4).unwrap().name(), "a.orr");
@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn lookup_file_empty_file_returns_none() {
         let mut map = SourceMap::new();
-        map.add_file("empty.orr", String::new(), None); // 0..0
+        map.add_file("empty.orr", "", None); // 0..0
 
         // Empty file has no valid byte positions.
         assert!(map.lookup_file(0).is_none());
@@ -353,7 +353,7 @@ mod tests {
     #[test]
     fn source_slice_within_file() {
         let mut map = SourceMap::new();
-        map.add_file("a.orr", "hello world".into(), None);
+        map.add_file("a.orr", "hello world", None);
 
         let slice = map.source_slice(Span::new(0..5)).unwrap();
         assert_eq!(slice, "hello");
@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn source_slice_entire_file() {
         let mut map = SourceMap::new();
-        map.add_file("a.orr", "hello".into(), None);
+        map.add_file("a.orr", "hello", None);
 
         let slice = map.source_slice(Span::new(0..5)).unwrap();
         assert_eq!(slice, "hello");
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn source_slice_empty_span() {
         let mut map = SourceMap::new();
-        map.add_file("a.orr", "hello".into(), None);
+        map.add_file("a.orr", "hello", None);
 
         let slice = map.source_slice(Span::new(2..2)).unwrap();
         assert_eq!(slice, "");
@@ -383,8 +383,8 @@ mod tests {
     #[test]
     fn source_slice_second_file() {
         let mut map = SourceMap::new();
-        map.add_file("a.orr", "hello".into(), None); // 0..5
-        map.add_file("b.orr", "world".into(), None); // 6..11
+        map.add_file("a.orr", "hello", None); // 0..5
+        map.add_file("b.orr", "world", None); // 6..11
 
         let slice = map.source_slice(Span::new(6..11)).unwrap();
         assert_eq!(slice, "world");
@@ -396,8 +396,8 @@ mod tests {
     #[test]
     fn source_slice_crossing_files_returns_none() {
         let mut map = SourceMap::new();
-        map.add_file("a.orr", "hello".into(), None); // 0..5
-        map.add_file("b.orr", "world".into(), None); // 6..11
+        map.add_file("a.orr", "hello", None); // 0..5
+        map.add_file("b.orr", "world", None); // 6..11
 
         // Span from file A into the gap.
         assert!(map.source_slice(Span::new(3..6)).is_none());
@@ -409,8 +409,8 @@ mod tests {
     #[test]
     fn source_slice_in_gap_returns_none() {
         let mut map = SourceMap::new();
-        map.add_file("a.orr", "hello".into(), None); // 0..5
-        map.add_file("b.orr", "world".into(), None); // 6..11
+        map.add_file("a.orr", "hello", None); // 0..5
+        map.add_file("b.orr", "world", None); // 6..11
 
         // Span starting in the gap.
         assert!(map.source_slice(Span::new(5..6)).is_none());
@@ -419,29 +419,32 @@ mod tests {
     #[test]
     fn source_slice_out_of_range_returns_none() {
         let mut map = SourceMap::new();
-        map.add_file("a.orr", "hello".into(), None);
+        map.add_file("a.orr", "hello", None);
 
         assert!(map.source_slice(Span::new(100..105)).is_none());
     }
 
     #[test]
     fn virtual_address_space_layout() {
+        let source_a = "x".repeat(100);
+        let source_b = "y".repeat(80);
+        let source_c = "z".repeat(50);
         let mut map = SourceMap::new();
 
         // File A: 100 bytes → offsets 0..100
-        let a = map.add_file("a.orr", "x".repeat(100), None);
+        let a = map.add_file("a.orr", &source_a, None);
         assert_eq!(a, 0);
         assert_eq!(map.files()[0].start_offset(), 0);
         assert_eq!(map.files()[0].end_offset(), 100);
 
         // File B: 80 bytes → offsets 101..181 (gap at 100)
-        let b = map.add_file("b.orr", "y".repeat(80), None);
+        let b = map.add_file("b.orr", &source_b, None);
         assert_eq!(b, 101);
         assert_eq!(map.files()[1].start_offset(), 101);
         assert_eq!(map.files()[1].end_offset(), 181);
 
         // File C: 50 bytes → offsets 182..232 (gap at 181)
-        let c = map.add_file("c.orr", "z".repeat(50), None);
+        let c = map.add_file("c.orr", &source_c, None);
         assert_eq!(c, 182);
         assert_eq!(map.files()[2].start_offset(), 182);
         assert_eq!(map.files()[2].end_offset(), 232);

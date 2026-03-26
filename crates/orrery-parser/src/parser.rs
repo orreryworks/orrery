@@ -32,19 +32,19 @@ pub(crate) enum Context {
     StartOffset(usize),
 }
 
-type Input<'src> = OrreryTokenSlice<'src>;
+type Input<'tok, 'src> = OrreryTokenSlice<'tok, 'src>;
 type IResult<O> = std::result::Result<O, ErrMode<ContextError<Context>>>;
 /// Type alias for winnow TokenSlice with our positioned tokens
-type OrreryTokenSlice<'src> = TokenSlice<'src, PositionedToken<'src>>;
+type OrreryTokenSlice<'tok, 'src> = TokenSlice<'tok, PositionedToken<'src>>;
 
 /// Helper function to create a spanned value
 fn make_spanned<T>(value: T, span: Span) -> Spanned<T> {
     Spanned::new(value, span)
 }
 
-fn cut_err<'src, O, F>(input: &mut Input<'src>, f: F) -> IResult<O>
+fn cut_err<'tok, 'src, O, F>(input: &mut Input<'tok, 'src>, f: F) -> IResult<O>
 where
-    F: FnOnce(&mut Input<'src>) -> IResult<O>,
+    F: FnOnce(&mut Input<'tok, 'src>) -> IResult<O>,
 {
     let start_remaining = input.eof_offset();
 
@@ -59,7 +59,7 @@ where
 }
 
 /// Helper to create a Cut error with StartOffset context
-fn cut_error_with_offset<'src>(input: &Input<'src>) -> ErrMode<ContextError<Context>> {
+fn cut_error_with_offset<'tok, 'src>(input: &Input<'tok, 'src>) -> ErrMode<ContextError<Context>> {
     let mut e = ContextError::new();
     e.push(Context::StartOffset(input.eof_offset()));
     ErrMode::Cut(e)
@@ -80,7 +80,7 @@ fn backtrack_error_from_offset(start_offset: usize) -> ErrMode<ContextError<Cont
 }
 
 /// Parse whitespace and comments
-fn ws_comment<'src>(input: &mut Input<'src>) -> IResult<()> {
+fn ws_comment<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<()> {
     any.verify(|token: &PositionedToken<'_>| {
         matches!(
             token.token,
@@ -92,17 +92,17 @@ fn ws_comment<'src>(input: &mut Input<'src>) -> IResult<()> {
 }
 
 /// Parse zero or more whitespace/comments
-fn ws_comments0<'src>(input: &mut Input<'src>) -> IResult<()> {
+fn ws_comments0<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<()> {
     repeat(0.., ws_comment).parse_next(input)
 }
 
 /// Parse one or more whitespace/comments
-fn ws_comments1<'src>(input: &mut Input<'src>) -> IResult<()> {
+fn ws_comments1<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<()> {
     repeat(1.., ws_comment).parse_next(input)
 }
 
 /// Parse semicolon with optional whitespace
-fn semicolon<'src>(input: &mut Input<'src>) -> IResult<()> {
+fn semicolon<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<()> {
     preceded(
         ws_comments0,
         any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Semicolon))
@@ -115,7 +115,7 @@ fn semicolon<'src>(input: &mut Input<'src>) -> IResult<()> {
 /// Parse a raw identifier string with span preservation (low-level)
 ///
 /// Returns the identifier as &str.
-fn raw_identifier<'src>(input: &mut Input<'src>) -> IResult<Spanned<&'src str>> {
+fn raw_identifier<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<&'src str>> {
     any.verify_map(|token: &PositionedToken<'_>| match &token.token {
         Token::Identifier(name) => Some(Spanned::new(*name, token.span)),
         // Allow keywords to be used as identifiers in appropriate contexts
@@ -134,13 +134,13 @@ fn raw_identifier<'src>(input: &mut Input<'src>) -> IResult<Spanned<&'src str>> 
 /// Parse a standard identifier with span preservation (high-level)
 ///
 /// Returns the identifier as an interned Id.
-fn identifier<'src>(input: &mut Input<'src>) -> IResult<Spanned<Id>> {
+fn identifier<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<Id>> {
     let raw = raw_identifier.parse_next(input)?;
     Ok(raw.map(|name| Id::new(name)))
 }
 
 /// Parse nested identifier with :: separators
-fn nested_identifier<'src>(input: &mut Input<'src>) -> IResult<Spanned<Id>> {
+fn nested_identifier<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<Id>> {
     let first = identifier.parse_next(input)?;
     let mut current_id = *first.inner();
     let mut unified_span = first.span();
@@ -171,7 +171,7 @@ fn nested_identifier<'src>(input: &mut Input<'src>) -> IResult<Spanned<Id>> {
 }
 
 /// Parse string literal
-fn string_literal<'src>(input: &mut Input<'src>) -> IResult<Spanned<String>> {
+fn string_literal<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<String>> {
     any.verify_map(|token: &PositionedToken<'_>| match &token.token {
         Token::StringLiteral(s) => Some(Spanned::new(s.clone(), token.span)),
         _ => None,
@@ -191,7 +191,7 @@ fn string_literal<'src>(input: &mut Input<'src>) -> IResult<Spanned<String>> {
 /// - `[client, server::api, database]` - mixed simple and nested identifiers
 ///
 /// Note: Empty `[]` is handled by `empty_brackets` parser
-fn identifiers<'src>(input: &mut Input<'src>) -> IResult<Vec<Spanned<Id>>> {
+fn identifiers<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Spanned<Id>>> {
     delimited(
         // Opening bracket with optional whitespace
         (
@@ -202,7 +202,7 @@ fn identifiers<'src>(input: &mut Input<'src>) -> IResult<Vec<Spanned<Id>>> {
             // Closure to parse identifier list content with disambiguation logic
             // We need to check if the first identifier is followed by '=' to distinguish
             // from nested attributes [attr=val]
-            move |input: &mut Input<'src>| {
+            move |input: &mut Input<'tok, 'src>| {
                 // Parse the first identifier (required - empty case handled elsewhere)
                 let first_id = nested_identifier.parse_next(input)?;
                 ws_comments0.parse_next(input)?;
@@ -258,7 +258,7 @@ fn identifiers<'src>(input: &mut Input<'src>) -> IResult<Vec<Spanned<Id>>> {
 ///
 /// Returns an Empty attribute value that can be interpreted as either
 /// empty identifiers or empty nested attributes depending on context.
-fn empty_brackets<'src>(input: &mut Input<'src>) -> IResult<()> {
+fn empty_brackets<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<()> {
     delimited(
         any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBracket)),
         ws_comments0,
@@ -278,7 +278,9 @@ fn empty_brackets<'src>(input: &mut Input<'src>) -> IResult<()> {
 /// 3. **TypeSpec** - `TypeName[attr=val]`, `TypeName`, or `[attr=val]`
 /// 4. **String** - `"value"` - Text values (colors, names, alignment)
 /// 5. **Float** - `2.5` or `10` - Numeric values (widths, sizes, dimensions)
-fn attribute_value<'src>(input: &mut Input<'src>) -> IResult<types::AttributeValue<'src>> {
+fn attribute_value<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
+) -> IResult<types::AttributeValue<'src>> {
     alt((
         // Parse empty brackets [] first - can be interpreted as either empty identifiers or empty attributes
         empty_brackets.map(|_| types::AttributeValue::Empty),
@@ -304,7 +306,7 @@ fn attribute_value<'src>(input: &mut Input<'src>) -> IResult<types::AttributeVal
 }
 
 /// Parse a single attribute
-fn attribute<'src>(input: &mut Input<'src>) -> IResult<types::Attribute<'src>> {
+fn attribute<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Attribute<'src>> {
     let name = raw_identifier.parse_next(input)?;
 
     preceded(
@@ -321,7 +323,7 @@ fn attribute<'src>(input: &mut Input<'src>) -> IResult<types::Attribute<'src>> {
 }
 
 /// Parse comma-separated attributes
-fn attributes<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Attribute<'src>>> {
+fn attributes<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<types::Attribute<'src>>> {
     separated(
         0..,
         attribute,
@@ -336,7 +338,9 @@ fn attributes<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Attribute<'sr
 }
 
 /// Parse attributes wrapped in brackets
-fn wrapped_attributes<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Attribute<'src>>> {
+fn wrapped_attributes<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
+) -> IResult<Vec<types::Attribute<'src>>> {
     delimited(
         (
             any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBracket)),
@@ -364,12 +368,14 @@ fn wrapped_attributes<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Attri
 /// - `TypeName[attrs]` → TypeSpec { type_name: Some(TypeName), attributes: [...] }
 /// - `TypeName` → TypeSpec { type_name: Some(TypeName), attributes: [] }
 /// - `[attrs]` → TypeSpec { type_name: None, attributes: [...] }
-fn attribute_type_spec<'src>(input: &mut Input<'src>) -> IResult<types::TypeSpec<'src>> {
+fn attribute_type_spec<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
+) -> IResult<types::TypeSpec<'src>> {
     alt((
         // Try TypeName[attrs] or TypeName (reuse type_spec)
         type_spec,
         // Try [attrs] only (anonymous TypeSpec)
-        |input: &mut Input<'src>| {
+        |input: &mut Input<'tok, 'src>| {
             let attributes = wrapped_attributes.parse_next(input)?;
             Ok(types::TypeSpec {
                 type_name: None,
@@ -386,7 +392,7 @@ fn attribute_type_spec<'src>(input: &mut Input<'src>) -> IResult<types::TypeSpec
 /// Returns a TypeSpec with:
 /// - type_name: Always Some(id) - identifier is required
 /// - attributes: parsed attributes if present, empty vec otherwise
-fn type_spec<'src>(input: &mut Input<'src>) -> IResult<types::TypeSpec<'src>> {
+fn type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::TypeSpec<'src>> {
     // Parse REQUIRED identifier
     let type_name = identifier.parse_next(input)?;
 
@@ -412,11 +418,13 @@ fn type_spec<'src>(input: &mut Input<'src>) -> IResult<types::TypeSpec<'src>> {
 /// - `@TypeName` → TypeSpec { type_name: Some(TypeName), attributes: [] }
 /// - `[attrs]` → TypeSpec { type_name: None, attributes: [...] }
 /// - (nothing) → TypeSpec::default() (sugar syntax)
-fn invocation_type_spec<'src>(input: &mut Input<'src>) -> IResult<types::TypeSpec<'src>> {
+fn invocation_type_spec<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
+) -> IResult<types::TypeSpec<'src>> {
     // Parse optional @TypeName
     // If @ is present, identifier is REQUIRED (cut_err prevents backtracking)
     // If @ is absent, we can still parse [attributes] or nothing (sugar)
-    let type_name = opt(|input: &mut Input<'src>| {
+    let type_name = opt(|input: &mut Input<'tok, 'src>| {
         // Parse @ token
         any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::At))
             .parse_next(input)?;
@@ -450,7 +458,9 @@ fn invocation_type_spec<'src>(input: &mut Input<'src>) -> IResult<types::TypeSpe
 /// Examples:
 /// - `type Button = Rectangle;`
 /// - `type StyledBox = Rectangle[fill_color="blue", border_width="2"];`
-fn type_definition<'src>(input: &mut Input<'src>) -> IResult<types::TypeDefinition<'src>> {
+fn type_definition<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
+) -> IResult<types::TypeDefinition<'src>> {
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Type))
         .parse_next(input)?;
 
@@ -473,12 +483,14 @@ fn type_definition<'src>(input: &mut Input<'src>) -> IResult<types::TypeDefiniti
 }
 
 /// Parse type definitions section
-fn type_definitions<'src>(input: &mut Input<'src>) -> IResult<Vec<types::TypeDefinition<'src>>> {
+fn type_definitions<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
+) -> IResult<Vec<types::TypeDefinition<'src>>> {
     repeat(0.., preceded(ws_comments0, type_definition)).parse_next(input)
 }
 
 /// Parse relation type (arrow with optional type specification)
-fn relation_type<'src>(input: &mut Input<'src>) -> IResult<&'src str> {
+fn relation_type<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<&'src str> {
     let arrow = any
         .verify_map(|token: &PositionedToken<'_>| match &token.token {
             Token::Arrow_ => Some("->"),
@@ -500,7 +512,9 @@ fn relation_type<'src>(input: &mut Input<'src>) -> IResult<&'src str> {
 /// - `user: Person;`
 /// - `server as "API Server": Rectangle[fill_color="blue"];`
 /// - `container: Box { nested_component: Circle; };`
-fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
+fn component_with_elements<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
+) -> IResult<types::Element<'src>> {
     let name = identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -563,7 +577,7 @@ fn component_with_elements<'src>(input: &mut Input<'src>) -> IResult<types::Elem
 /// - `user -> @AsyncCall server: "Request";`
 /// - `user -> @AsyncCall[color="blue"] server: "Request";`
 /// - `user -> [color="red"] server;` (anonymous TypeSpec)
-fn relation<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
+fn relation<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
     let source = nested_identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -617,7 +631,7 @@ fn relation<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
 ///   (consistent with `Element::span()` semantics using the inner `component` span).
 /// - Whitespace and line comments are allowed between tokens as handled by
 ///   `ws_comments0/1`.
-fn activate_block<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
+fn activate_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
     // Parse "activate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Activate))
         .context(Context::Label("activate keyword"))
@@ -674,7 +688,9 @@ fn activate_block<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>
 }
 
 /// Parse a section block: `section "title" { elements };`
-fn section_block<'src>(input: &mut Input<'src>) -> IResult<types::FragmentSection<'src>> {
+fn section_block<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
+) -> IResult<types::FragmentSection<'src>> {
     // Parse "section" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Section))
         .context(Context::Label("section keyword"))
@@ -725,8 +741,8 @@ fn section_block<'src>(input: &mut Input<'src>) -> IResult<types::FragmentSectio
 
 /// Parse a section's content: "title"? { elements }
 /// This is the common structure shared by all fragment sugar syntax blocks
-fn parse_section_content<'src>(
-    input: &mut Input<'src>,
+fn parse_section_content<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
     title_context: &'static str,
 ) -> IResult<types::FragmentSection<'src>> {
     ws_comments0.parse_next(input)?;
@@ -758,7 +774,7 @@ fn parse_section_content<'src>(
 /// Macro for generating single-section fragment keyword parsers
 macro_rules! single_section_parser {
     ($fn_name:ident, $token:ident, $title_ctx:expr, $element_variant:ident) => {
-        fn $fn_name<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
+        fn $fn_name<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
             let keyword_token = any
                 .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::$token))
                 .context(Context::Label(concat!(stringify!($token), " keyword")))
@@ -796,7 +812,7 @@ macro_rules! single_section_parser {
 /// Macro for generating multi-section fragment keyword parsers
 macro_rules! multi_section_parser {
     ($fn_name:ident, $first_token:ident, $cont_token:ident, $first_ctx:expr, $cont_ctx:expr, $element_variant:ident) => {
-        fn $fn_name<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
+        fn $fn_name<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
             let keyword_token = any
                 .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::$first_token))
                 .context(Context::Label(concat!(
@@ -868,7 +884,7 @@ multi_section_parser!(
 multi_section_parser!(par_block, Par, Par, "par title", "par title", ParBlock);
 
 /// Parse a fragment block: `fragment @TypeSpec "operation" { section+ };`
-fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
+fn fragment_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
     // Parse "fragment" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Fragment))
         .context(Context::Label("fragment keyword"))
@@ -933,7 +949,7 @@ fn fragment_block<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>
 /// - `@TypeSpec` is optional invocation type spec: `@TypeName[attrs]`, `@TypeName`, or omitted (sugar)
 /// - `<nested_identifier>` supports `::`-qualified component names
 /// - Optional whitespace and line comments are permitted between tokens
-fn activate_statement<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
+fn activate_statement<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
     // Parse "activate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Activate))
         .context(Context::Label("activate keyword"))
@@ -966,7 +982,9 @@ fn activate_statement<'src>(input: &mut Input<'src>) -> IResult<types::Element<'
 }
 
 /// Parse an explicit deactivate statement: `deactivate <nested_identifier>;`
-fn deactivate_statement<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
+fn deactivate_statement<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
+) -> IResult<types::Element<'src>> {
     // Parse "deactivate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Deactivate))
         .context(Context::Label("deactivate keyword"))
@@ -994,7 +1012,7 @@ fn deactivate_statement<'src>(input: &mut Input<'src>) -> IResult<types::Element
 /// Behavior:
 /// - If an `activate {` block is present, parse the block
 /// - Otherwise, parse an explicit `activate <nested_identifier>;` statement
-fn activate_element<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
+fn activate_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
     // Try parsing an activate block first; if it fails, reset and parse explicit statement.
     let checkpoint = input.checkpoint();
     match activate_block.parse_next(input) {
@@ -1020,7 +1038,7 @@ fn activate_element<'src>(input: &mut Input<'src>) -> IResult<types::Element<'sr
 /// - `note @NoteType: "Typed note";`
 /// - `note @NoteType[on=[component]]: "Note attached to component";`
 /// - `note [on=[a, b], align="left"]: "Note with anonymous TypeSpec";`
-fn note_element<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
+fn note_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
     // Parse 'note' keyword
     let _ = any
         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Note))
@@ -1052,7 +1070,7 @@ fn note_element<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> 
     Ok(types::Element::Note(types::Note { type_spec, content }))
 }
 /// Parse any element (component or relation)
-fn elements<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Element<'src>>> {
+fn elements<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<types::Element<'src>>> {
     repeat(
         0..,
         preceded(
@@ -1085,8 +1103,8 @@ fn elements<'src>(input: &mut Input<'src>) -> IResult<Vec<types::Element<'src>>>
 ///
 /// Strategy: Consume tokens up to semicolon or until hitting a block delimiter.
 /// Returns Cut error if semicolon found or if meaningful tokens consumed before delimiter.
-fn invalid_statement_with_semicolon<'src>(
-    input: &mut Input<'src>,
+fn invalid_statement_with_semicolon<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
 ) -> IResult<types::Element<'src>> {
     let mut consumed_meaningful_tokens = false;
     let start_offset = input.eof_offset();
@@ -1130,7 +1148,7 @@ fn invalid_statement_with_semicolon<'src>(
 }
 
 /// Parse diagram type (component, sequence, etc.)
-fn diagram_type<'src>(input: &mut Input<'src>) -> IResult<Spanned<DiagramKind>> {
+fn diagram_type<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<DiagramKind>> {
     any.verify_map(|token: &PositionedToken<'_>| match &token.token {
         Token::Component => Some(make_spanned(DiagramKind::Component, token.span)),
         Token::Sequence => Some(make_spanned(DiagramKind::Sequence, token.span)),
@@ -1144,7 +1162,7 @@ fn diagram_type<'src>(input: &mut Input<'src>) -> IResult<Spanned<DiagramKind>> 
 ///
 /// Consumes the `diagram` keyword, a required [`DiagramKind`], and optional
 /// wrapped attributes.
-fn diagram_header<'src>(input: &mut Input<'src>) -> IResult<types::FileHeader<'src>> {
+fn diagram_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::FileHeader<'src>> {
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Diagram))
         .parse_next(input)?;
     ws_comments1.parse_next(input)?;
@@ -1159,7 +1177,7 @@ fn diagram_header<'src>(input: &mut Input<'src>) -> IResult<types::FileHeader<'s
 /// Parses a library header: the `library` keyword.
 ///
 /// Consumes only the `library` token itself.
-fn library_header<'src>(input: &mut Input<'src>) -> IResult<types::FileHeader<'src>> {
+fn library_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::FileHeader<'src>> {
     let token = any
         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Library))
         .parse_next(input)?;
@@ -1170,7 +1188,7 @@ fn library_header<'src>(input: &mut Input<'src>) -> IResult<types::FileHeader<'s
 ///
 /// Dispatches to [`library_header`] or [`diagram_header`] based on the
 /// leading token, then consumes the required trailing semicolon.
-fn file_header<'src>(input: &mut Input<'src>) -> IResult<types::FileHeader<'src>> {
+fn file_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::FileHeader<'src>> {
     let header = alt((library_header, diagram_header))
         .context(Context::Label("file header"))
         .parse_next(input)?;
@@ -1181,7 +1199,7 @@ fn file_header<'src>(input: &mut Input<'src>) -> IResult<types::FileHeader<'src>
 }
 
 /// Parses a single import declaration: `import "path";`.
-fn import_decl<'src>(input: &mut Input<'src>) -> IResult<Spanned<types::ImportDecl>> {
+fn import_decl<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<types::ImportDecl>> {
     let import_token = any
         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Import))
         .parse_next(input)?;
@@ -1192,12 +1210,14 @@ fn import_decl<'src>(input: &mut Input<'src>) -> IResult<Spanned<types::ImportDe
             .parse_next(input)?;
         semicolon.parse_next(input)?;
         let span = import_token.span.union(path.span());
-        Ok(make_spanned(types::ImportDecl { _path: path }, span))
+        Ok(make_spanned(types::ImportDecl { path }, span))
     })
 }
 
 /// Parses zero or more consecutive [`import_decl`] statements.
-fn import_decls<'src>(input: &mut Input<'src>) -> IResult<Vec<Spanned<types::ImportDecl>>> {
+fn import_decls<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
+) -> IResult<Vec<Spanned<types::ImportDecl>>> {
     repeat(0.., preceded(ws_comments0, import_decl)).parse_next(input)
 }
 
@@ -1205,7 +1225,7 @@ fn import_decls<'src>(input: &mut Input<'src>) -> IResult<Vec<Spanned<types::Imp
 ///
 /// Expects the sequence: file header → import declarations → type definitions
 /// → elements.
-fn file<'src>(input: &mut Input<'src>) -> IResult<types::FileAst<'src>> {
+fn file<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::FileAst<'src>> {
     ws_comments0.parse_next(input)?;
     let header = file_header.parse_next(input)?;
     let import_decls = import_decls.parse_next(input)?;
@@ -1225,7 +1245,7 @@ fn file<'src>(input: &mut Input<'src>) -> IResult<types::FileAst<'src>> {
 /// Parses an embedded diagram block: `embed .*`.
 ///
 /// Embedded diagrams allow nesting a full file structure inside a pair of braces.
-fn embedded_diagram<'src>(input: &mut Input<'src>) -> IResult<types::Element<'src>> {
+fn embedded_diagram<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
     // Parse: embed
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Embed))
         .parse_next(input)?;
@@ -1370,7 +1390,7 @@ fn convert_error(
 /// - The token stream does not match the expected Orrery grammar.
 /// - Tokens remain after parsing (unconsumed trailing input).
 pub fn build_file<'src>(
-    tokens: &'src [PositionedToken<'src>],
+    tokens: &[PositionedToken<'src>],
 ) -> Result<types::FileAst<'src>, Diagnostic> {
     let mut token_slice = TokenSlice::new(tokens);
 
@@ -3612,11 +3632,11 @@ type Database = Rectangle;"#;
         assert!(matches!(file_ast.header, types::FileHeader::Library { .. }));
         assert_eq!(file_ast.import_decls.len(), 2);
         assert_eq!(
-            *file_ast.import_decls[0].inner()._path.inner(),
+            *file_ast.import_decls[0].inner().path.inner(),
             "shared/styles"
         );
         assert_eq!(
-            *file_ast.import_decls[1].inner()._path.inner(),
+            *file_ast.import_decls[1].inner().path.inner(),
             "common/types"
         );
         assert_eq!(file_ast.type_definitions.len(), 2);
@@ -3633,7 +3653,7 @@ import "shared/styles";"#;
         let file_ast = result.unwrap();
         assert_eq!(file_ast.import_decls.len(), 1);
         assert_eq!(
-            *file_ast.import_decls[0].inner()._path.inner(),
+            *file_ast.import_decls[0].inner().path.inner(),
             "shared/styles"
         );
     }
@@ -3650,15 +3670,15 @@ import "utils/helpers";"#;
         let file_ast = result.unwrap();
         assert_eq!(file_ast.import_decls.len(), 3);
         assert_eq!(
-            *file_ast.import_decls[0].inner()._path.inner(),
+            *file_ast.import_decls[0].inner().path.inner(),
             "shared/styles"
         );
         assert_eq!(
-            *file_ast.import_decls[1].inner()._path.inner(),
+            *file_ast.import_decls[1].inner().path.inner(),
             "common/types"
         );
         assert_eq!(
-            *file_ast.import_decls[2].inner()._path.inner(),
+            *file_ast.import_decls[2].inner().path.inner(),
             "utils/helpers"
         );
     }
@@ -3787,7 +3807,7 @@ a: Rectangle embed {
                     types::Element::Diagram(inner_file) => {
                         assert_eq!(inner_file.import_decls.len(), 1);
                         assert_eq!(
-                            *inner_file.import_decls[0].inner()._path.inner(),
+                            *inner_file.import_decls[0].inner().path.inner(),
                             "shared/styles"
                         );
                     }

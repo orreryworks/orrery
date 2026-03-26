@@ -53,7 +53,7 @@ trait Visitor<'a> {
     /// Iterates over resolved imports and recursively visits each import's inner [`FileAst`].
     fn visit_imports(&mut self, imports: &[Import<'a>]) {
         for import in imports {
-            self.visit_file_ast(&import.file_ast);
+            self.visit_file_ast(&import.file_ast.borrow());
         }
     }
 

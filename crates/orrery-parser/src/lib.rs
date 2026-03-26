@@ -34,6 +34,8 @@ mod parser;
 mod parser_tests;
 mod parser_types;
 #[allow(dead_code)]
+mod resolver;
+#[allow(dead_code)]
 mod source_map;
 mod span;
 mod tokens;
