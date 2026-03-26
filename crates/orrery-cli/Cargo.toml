@@ -24,12 +24,12 @@ path = "src/main.rs"
 [dependencies]
 orrery.workspace = true
 orrery-parser.workspace = true
-clap = { version = "4.5.60", features = ["derive"] }
-env_logger = { version = "0.11.9", features = ["kv"] }
+clap = { version = "4.6.0", features = ["derive"] }
+env_logger = { version = "0.11.10", features = ["kv"] }
 log = { version = "0.4.29", features = ["kv", "kv_std"] }
 miette = { version = "7.6.0", features = ["fancy"] }
 thiserror = "2.0.18"
-toml = "1.0.6"
+toml = "1.1.0"
 serde = { version = "1.0", features = ["derive"] }
 directories = "6.0.0"
 
