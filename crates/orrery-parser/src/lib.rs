@@ -28,6 +28,7 @@ mod builtin_types;
 mod desugar;
 mod elaborate;
 mod elaborate_utils;
+mod file_id;
 mod lexer;
 mod parser;
 #[cfg(test)]

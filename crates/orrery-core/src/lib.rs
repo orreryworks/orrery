@@ -3,6 +3,7 @@
 //! This crate provides the foundational types and definitions for the Orrery
 //! diagram language. It includes:
 //!
+//! - **Interner**: Shared global string interner ([`interner`] module)
 //! - **Identifiers**: Efficient string-interned identifiers ([`identifier::Id`])
 //! - **Colors**: Color handling with CSS color support ([`color::Color`])
 //! - **Geometry**: Basic geometric types ([`geometry`] module)
@@ -13,4 +14,5 @@ pub mod color;
 pub mod draw;
 pub mod geometry;
 pub mod identifier;
+pub mod interner;
 pub mod semantic;

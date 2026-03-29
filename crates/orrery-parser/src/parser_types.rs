@@ -12,14 +12,17 @@ use std::{cell::RefCell, fmt, rc::Rc};
 
 use orrery_core::{identifier::Id, semantic::DiagramKind};
 
-use crate::span::{Span, Spanned};
+use crate::{
+    file_id::FileId,
+    span::{Span, Spanned},
+};
 
-/// Type Specifier - used in both declarations and invocations.
+/// Type specifier used in both declarations and invocations.
 ///
-/// Represents a type with optional attributes:
-/// - `TypeName[attrs]` - Named with attributes
-/// - `TypeName` - Named without attributes
-/// - `[attrs]` - Anonymous (no type name, just attributes)
+/// Represents a type with optional [`Attribute`]s:
+/// - `TypeName[attrs]` — named with attributes.
+/// - `TypeName` — named without attributes.
+/// - `[attrs]` — anonymous (no type name, just attributes).
 #[derive(Debug, Clone, Default)]
 pub struct TypeSpec<'a> {
     pub type_name: Option<Spanned<Id>>,
@@ -27,6 +30,7 @@ pub struct TypeSpec<'a> {
 }
 
 impl<'a> TypeSpec<'a> {
+    /// Returns the [`Span`] covering the entire type specifier.
     pub fn span(&self) -> Span {
         match &self.type_name {
             Some(name) => self
@@ -211,6 +215,7 @@ impl<'a> AttributeValue<'a> {
     }
 }
 
+/// Key-value attribute pair on a type specifier or element.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute<'a> {
     pub name: Spanned<&'a str>,
@@ -305,6 +310,8 @@ pub struct Import<'a> {
     /// Used to scope imported symbols (e.g., `styles::Card`). `None` when the
     /// import is not namespaced.
     pub namespace: Option<Id>,
+    /// Identifies which file this import resolved to.
+    pub file_id: FileId,
     /// The fully parsed AST of the imported file.
     ///
     /// Stored as `Rc<RefCell<…>>` so that diamond dependencies (the same file
@@ -354,6 +361,10 @@ impl FileAst<'_> {
     }
 }
 
+/// A section within a [`Fragment`] or fragment sugar block.
+///
+/// Each section has an optional title (used as a guard condition label) and
+/// a list of child [`Element`]s.
 #[derive(Debug, Clone)]
 pub struct FragmentSection<'a> {
     pub title: Option<Spanned<String>>,
@@ -377,16 +388,15 @@ impl FragmentSection<'_> {
     }
 }
 
-/// Fragment block
+/// Fragment block.
 ///
-/// **Fields:**
-/// - `operation` - The fragment operation/title as a string literal
-/// - `type_spec` - Optional type specification with attributes
-/// - `sections` - One or more fragment sections containing elements
 #[derive(Debug, Clone)]
 pub struct Fragment<'a> {
+    /// The fragment operation/title as a string literal.
     pub operation: Spanned<String>,
+    /// type specification.
     pub type_spec: TypeSpec<'a>,
+    /// One or more [`FragmentSection`]s containing elements.
     pub sections: Vec<FragmentSection<'a>>,
 }
 
@@ -400,11 +410,7 @@ impl Fragment<'_> {
     }
 }
 
-/// AST node representing a note element
-///
-/// **Fields:**
-/// - `type_spec` - Optional type specification with attributes for positioning, styling, and attachment
-/// - `content` - The note text as a string literal (supports escape sequences)
+/// AST node representing a note element.
 #[derive(Debug, Clone)]
 pub struct Note<'a> {
     pub type_spec: TypeSpec<'a>,
@@ -417,14 +423,17 @@ impl Note<'_> {
     }
 }
 
+/// AST node representing a diagram body element.
 #[derive(Debug, Clone)]
 pub enum Element<'a> {
+    /// Named component declaration with optional display name and nested children.
     Component {
         name: Spanned<Id>,
         display_name: Option<Spanned<String>>,
         type_spec: TypeSpec<'a>,
         nested_elements: Vec<Element<'a>>,
     },
+    /// Directed relation between two components with an optional label.
     Relation {
         source: Spanned<Id>,
         target: Spanned<Id>,
@@ -432,58 +441,61 @@ pub enum Element<'a> {
         type_spec: TypeSpec<'a>,
         label: Option<Spanned<String>>,
     },
+    /// Embedded sub-diagram.
     Diagram(FileAst<'a>),
+    /// Explicit fragment block declared.
     Fragment(Fragment<'a>),
+    /// Activation scope that wraps a list of elements. Desugared into explicit
+    /// [`Activate`](Element::Activate)/[`Deactivate`](Element::Deactivate) pairs.
     ActivateBlock {
         component: Spanned<Id>,
         type_spec: TypeSpec<'a>,
         elements: Vec<Element<'a>>,
     },
+    /// Explicit component activation statement.
     Activate {
         component: Spanned<Id>,
         type_spec: TypeSpec<'a>,
     },
-    /// Explicit deactivation of a component
-    Deactivate {
-        component: Spanned<Id>,
-    },
-    /// Alt/else block (sugar syntax for fragment with "alt" operation)
+    /// Explicit deactivation of a component.
+    Deactivate { component: Spanned<Id> },
+    /// Alt/else block (sugar syntax for fragment with "alt" operation).
     AltElseBlock {
         keyword_span: Span,
         type_spec: TypeSpec<'a>,
         sections: Vec<FragmentSection<'a>>,
     },
-    /// Opt block (sugar syntax for fragment with "opt" operation)
+    /// Opt block (sugar syntax for fragment with "opt" operation).
     OptBlock {
         keyword_span: Span,
         type_spec: TypeSpec<'a>,
         section: FragmentSection<'a>,
     },
-    /// Loop block (sugar syntax for fragment with "loop" operation)
+    /// Loop block (sugar syntax for fragment with "loop" operation).
     LoopBlock {
         keyword_span: Span,
         type_spec: TypeSpec<'a>,
         section: FragmentSection<'a>,
     },
-    /// Par block (sugar syntax for fragment with "par" operation)
+    /// Par block (sugar syntax for fragment with "par" operation).
     ParBlock {
         keyword_span: Span,
         type_spec: TypeSpec<'a>,
         sections: Vec<FragmentSection<'a>>,
     },
-    /// Break block (sugar syntax for fragment with "break" operation)
+    /// Break block (sugar syntax for fragment with "break" operation).
     BreakBlock {
         keyword_span: Span,
         type_spec: TypeSpec<'a>,
         section: FragmentSection<'a>,
     },
-    /// Critical block (sugar syntax for fragment with "critical" operation)
+    /// Critical block (sugar syntax for fragment with "critical" operation).
     CriticalBlock {
         keyword_span: Span,
         type_spec: TypeSpec<'a>,
         section: FragmentSection<'a>,
     },
-    /// Note element with optional attributes and text content
+    /// Note element with optional attributes and text content.
     Note(Note<'a>),
 }
 
