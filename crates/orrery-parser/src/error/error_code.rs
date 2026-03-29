@@ -158,6 +158,12 @@ pub enum ErrorCode {
     ///
     /// An import path is malformed (e.g., empty).
     E402,
+
+    /// Invalid namespace derivation.
+    ///
+    /// A namespace identifier could not be derived from the import path
+    /// (e.g., the path has no file stem or contains non-UTF-8 components).
+    E403,
 }
 
 impl ErrorCode {
@@ -194,6 +200,7 @@ impl ErrorCode {
             ErrorCode::E400 => "E400",
             ErrorCode::E401 => "E401",
             ErrorCode::E402 => "E402",
+            ErrorCode::E403 => "E403",
         }
     }
 
@@ -230,6 +237,7 @@ impl ErrorCode {
             ErrorCode::E400 => "file not found",
             ErrorCode::E401 => "circular dependency",
             ErrorCode::E402 => "invalid import path",
+            ErrorCode::E403 => "invalid namespace",
         }
     }
 }

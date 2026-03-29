@@ -113,6 +113,7 @@ trait Folder<'a> {
             .into_iter()
             .map(|import| Import {
                 namespace: import.namespace,
+                file_id: import.file_id,
                 file_ast: self.fold_rc_file_ast(import.file_ast),
             })
             .collect()

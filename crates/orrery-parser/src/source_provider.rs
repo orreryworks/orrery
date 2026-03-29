@@ -6,12 +6,14 @@
 //!
 //! # Overview
 //!
-//! - [`SourceProvider`] — trait with two methods: [`resolve_path`](SourceProvider::resolve_path)
-//!   and [`read_source`](SourceProvider::read_source).
+//! - [`SourceProvider`] — trait with three methods: [`resolve_path`](SourceProvider::resolve_path),
+//!   [`read_source`](SourceProvider::read_source), and [`derive_namespace`](SourceProvider::derive_namespace).
 //! - [`SourceError`] — lightweight, `Clone`-able error returned by providers
 //!   (defined in the [`error`](crate::error) module).
 
 use std::path::{Path, PathBuf};
+
+use orrery_core::identifier::Id;
 
 use crate::error::SourceError;
 
@@ -47,6 +49,33 @@ pub trait SourceProvider {
     ///
     /// Returns [`SourceError`] if the file cannot be read.
     fn read_source(&self, path: &Path) -> Result<String, SourceError>;
+
+    /// Derives a namespace [`Id`] from an import path.
+    ///
+    /// The default implementation extracts the final component's file stem
+    /// (e.g. `shared/styles` → `styles`, `../common/base.orr` → `base`).
+    ///
+    /// # Arguments
+    ///
+    /// * `import_path` — The import path as a [`Path`] reference.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SourceError`] if a valid namespace name cannot be derived
+    /// from the import path (e.g. the path has no file stem or contains
+    /// non-UTF-8 characters).
+    fn derive_namespace(&self, import_path: &Path) -> Result<Id, SourceError> {
+        let name = import_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| {
+                SourceError::new(
+                    import_path,
+                    "cannot derive namespace: path has no valid file stem",
+                )
+            })?;
+        Ok(Id::new(name))
+    }
 }
 
 /// An in-memory [`SourceProvider`] is a test-only provider backed by a `HashMap`.
@@ -231,6 +260,39 @@ mod tests {
             .resolve_path(Path::new("main.orr"), "")
             .unwrap_err();
         assert!(err.message().contains("file not found"));
+    }
+
+    #[test]
+    fn derive_namespace() {
+        let provider = InMemorySourceProvider::new();
+        let id = provider.derive_namespace(Path::new("simple")).unwrap();
+        assert!(id == "simple");
+        
+        let id = provider
+            .derive_namespace(Path::new("shared/nested"))
+            .unwrap();
+        assert!(id == "nested");
+        
+        let id = provider
+            .derive_namespace(Path::new("../relative/path"))
+            .unwrap();
+        assert!(id == "path");
+        
+        let id = provider
+            .derive_namespace(Path::new("shared/extension.orr"))
+            .unwrap();
+        assert!(id == "extension");
+    }
+
+    #[test]
+    fn derive_namespace_empty_path_is_error() {
+        let provider = InMemorySourceProvider::new();
+        let err = provider.derive_namespace(Path::new("")).unwrap_err();
+        assert!(
+            err.message().contains("cannot derive namespace"),
+            "expected namespace error, got: {}",
+            err.message()
+        );
     }
 
     #[test]

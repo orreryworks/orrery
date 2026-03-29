@@ -3,23 +3,12 @@
 //! This module provides the [`Id`] type for efficient, namespace-aware identifier storage.
 //! Each identifier is split into a name (final path segment) and an optional namespace
 //! (everything before the last `::`), stored as separate interned symbols.
+//!
+//! Depends on the [`crate::interner`] module for global string storage and [`Symbol`] handles.
 
-use std::{
-    fmt,
-    sync::{Mutex, OnceLock},
-};
+use std::fmt;
 
-use string_interner::{DefaultSymbol, StringInterner, backend::BucketBackend};
-
-// BucketBackend keeps resolved &str stable across new insertions, enabling safe &'static str returns.
-type Interner = StringInterner<BucketBackend>;
-
-/// Global string interner for efficient identifier storage.
-///
-/// # Thread Safety
-///
-/// Uses [`Mutex`] for thread-safe access to the string interner.
-static INTERNER: OnceLock<Mutex<Interner>> = OnceLock::new();
+use crate::interner::{self, Symbol};
 
 /// Efficient identifier using string interning.
 ///
@@ -46,10 +35,10 @@ static INTERNER: OnceLock<Mutex<Interner>> = OnceLock::new();
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Id {
-    // Final path segment (e.g., `"backend"` in `"system::backend"`).
-    name: DefaultSymbol,
-    // Path prefix before the last `::`, if any (e.g., `"system"` in `"system::backend"`).
-    namespace: Option<DefaultSymbol>,
+    /// Final path segment (e.g., `"backend"` in `"system::backend"`).
+    name: Symbol,
+    /// Path prefix before the last `::`, if any (e.g., `"system"` in `"system::backend"`).
+    namespace: Option<Symbol>,
 }
 
 impl Id {
@@ -76,7 +65,7 @@ impl Id {
     /// assert_eq!(namespaced.namespace(), Some("system::frontend"));
     /// ```
     pub fn new(input: &str) -> Self {
-        let mut interner = interner();
+        let mut interner = interner::interner();
 
         if let Some((ns_part, name_part)) = input.rsplit_once("::") {
             let ns = interner.get_or_intern(ns_part);
@@ -105,7 +94,7 @@ impl Id {
     /// let anon_id = Id::from_anonymous();
     /// ```
     pub fn from_anonymous() -> Self {
-        let mut interner = interner();
+        let mut interner = interner::interner();
         let idx = interner.len();
         let anon_name = format!("__{idx}");
         let name_sym = interner.get_or_intern(&anon_name);
@@ -150,16 +139,14 @@ impl Id {
             };
         }
 
-        let parent_full = self.full_path();
+        let mut interner = interner::interner();
 
-        let mut interner = interner();
+        let parent_full = self.full_path_with(&interner);
 
         // Append child's namespace (if any) to the parent's full path
         let new_namespace_str = match child_id.namespace {
             Some(child_ns) => {
-                let child_ns_str = interner
-                    .resolve(child_ns)
-                    .expect("Child namespace symbol should exist in interner");
+                let child_ns_str = interner.resolve(child_ns);
                 format!("{parent_full}::{child_ns_str}")
             }
             None => parent_full,
@@ -186,7 +173,7 @@ impl Id {
     /// assert_eq!(nested.name(), "backend");
     /// ```
     pub fn name(&self) -> &str {
-        resolve_symbol(self.name)
+        interner::resolve(self.name)
     }
 
     /// Returns the namespace (everything before the final segment) of this identifier.
@@ -206,20 +193,20 @@ impl Id {
     /// assert_eq!(nested.namespace(), Some("system"));
     /// ```
     pub fn namespace(&self) -> Option<&str> {
-        self.namespace.map(resolve_symbol)
+        self.namespace.map(interner::resolve)
     }
 
     /// Resolves the full path (`{namespace}::{name}` or just `{name}`).
     fn full_path(&self) -> String {
-        let interner = interner();
-        let name_str = interner
-            .resolve(self.name)
-            .expect("Name symbol should exist in interner");
+        self.full_path_with(&interner::interner())
+    }
+
+    /// Resolves the full path using an already-acquired [`interner::Interner`] guard.
+    fn full_path_with(&self, interner: &interner::Interner) -> String {
+        let name_str = interner.resolve(self.name);
         match self.namespace {
             Some(ns) => {
-                let ns_str = interner
-                    .resolve(ns)
-                    .expect("Namespace symbol should exist in interner");
+                let ns_str = interner.resolve(ns);
                 format!("{ns_str}::{name_str}")
             }
             None => name_str.to_string(),
@@ -277,16 +264,21 @@ impl PartialEq<str> for Id {
     /// ```
     fn eq(&self, other: &str) -> bool {
         // Uses allocation-free slice comparison against the resolved symbols.
-        let name = resolve_symbol(self.name);
+        let name;
+        let ns;
+        {
+            let interner = interner::interner();
+            name = interner.resolve(self.name);
+            ns = self.namespace.map(|ns| interner.resolve(ns));
+        }
 
-        match self.namespace {
+        match ns {
             Some(ns) => {
-                let ns_str = resolve_symbol(ns);
-                let expected_len = ns_str.len() + 2 + name.len();
+                let expected_len = ns.len() + 2 + name.len();
                 other.len() == expected_len
-                    && other.starts_with(ns_str)
-                    && other[ns_str.len()..].starts_with("::")
-                    && other[ns_str.len() + 2..] == *name
+                    && other.starts_with(ns)
+                    && other[ns.len()..].starts_with("::")
+                    && other[ns.len() + 2..] == *name
             }
             None => other == name,
         }
@@ -309,36 +301,6 @@ impl PartialEq<&str> for Id {
     fn eq(&self, other: &&str) -> bool {
         self == *other
     }
-}
-
-/// Acquires a lock on the global string interner.
-fn interner() -> std::sync::MutexGuard<'static, Interner> {
-    INTERNER
-        .get_or_init(|| Mutex::new(Interner::new()))
-        .lock()
-        .expect("Failed to acquire interner lock")
-}
-
-/// Resolves a [`DefaultSymbol`] to a `&'static str`.
-///
-/// # Safety
-///
-/// The `unsafe` lifetime extension is sound because:
-/// 1. The interner is stored in a `static` ([`OnceLock`]) that lives for the program's entire
-///    lifetime.
-/// 2. [`BucketBackend`] allocates strings in fixed buckets that are never moved or deallocated.
-/// 3. Strings are never removed from the interner once interned.
-///
-/// # Panics
-///
-/// Panics if the interner lock is poisoned or the symbol does not exist in the interner.
-fn resolve_symbol(symbol: DefaultSymbol) -> &'static str {
-    let interner = interner();
-    let s = interner
-        .resolve(symbol)
-        .expect("Symbol should exist in interner");
-    // SAFETY: See function-level safety documentation.
-    unsafe { &*(s as *const str) }
 }
 
 #[cfg(test)]

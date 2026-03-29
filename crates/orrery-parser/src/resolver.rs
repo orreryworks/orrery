@@ -30,17 +30,13 @@
 //! ResolvedFile { source_map, file_ast }
 //! ```
 
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    path::{Path, PathBuf},
-    rc::Rc,
-};
+use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc};
 
 use bumpalo::Bump;
 
 use crate::{
     error::{Diagnostic, ErrorCode, ParseError, SourceError},
+    file_id::FileId,
     lexer, parser,
     parser_types::{FileAst, Import},
     source_map::SourceMap,
@@ -100,12 +96,12 @@ pub struct Resolver<'arena, P> {
     arena: &'arena Bump,
     provider: P,
     source_map: SourceMap<'arena>,
-    /// Caches resolved [`FileAst`]s by canonical path so each file is read
+    /// Caches resolved [`FileAst`]s by [`FileId`] so each file is read
     /// and parsed at most once. Diamond dependencies share the same
     /// `Rc<RefCell<FileAst>>` instance.
-    cache: HashMap<PathBuf, Rc<RefCell<FileAst<'arena>>>>,
-    /// Paths currently being resolved, used for cycle detection.
-    resolution_stack: Vec<PathBuf>,
+    cache: HashMap<FileId, Rc<RefCell<FileAst<'arena>>>>,
+    /// [`FileId`]s currently being resolved, used for cycle detection.
+    resolution_stack: Vec<FileId>,
 }
 
 impl<'arena, P: SourceProvider> Resolver<'arena, P> {
@@ -148,7 +144,7 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
     /// dependency is detected (E401), an import path is invalid (E402), or
     /// lexing/parsing fails.
     pub fn resolve(mut self, root_path: &Path) -> Result<ResolvedFile<'arena>, ParseError> {
-        let root_rc = self.resolve_file(root_path.to_path_buf(), None)?;
+        let (_root_file_id, root_rc) = self.resolve_file(root_path, None)?;
 
         // Drop the cache so the root Rc's refcount drops to 1.
         // (Imported files inside the tree keep their own Rc clones alive.)
@@ -171,26 +167,28 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
     /// parsed (diamond dependency), the cached `Rc` is cloned (cheap).
     fn resolve_file(
         &mut self,
-        path: PathBuf,
+        path: &Path,
         import_span: Option<Span>,
-    ) -> Result<Rc<RefCell<FileAst<'arena>>>, ParseError> {
+    ) -> Result<(FileId, Rc<RefCell<FileAst<'arena>>>), ParseError> {
+        let file_id = FileId::new(path);
+
         // 1. Deduplication — return cached Rc if already fully resolved.
-        if let Some(rc) = self.cache.get(&path) {
-            return Ok(Rc::clone(rc));
+        if let Some(rc) = self.cache.get(&file_id) {
+            return Ok((file_id, Rc::clone(rc)));
         }
 
         // 2. Cycle detection.
-        if self.resolution_stack.contains(&path) {
-            return Err(self.cycle_error(&path, import_span));
+        if self.resolution_stack.contains(&file_id) {
+            return Err(self.cycle_error(file_id, import_span));
         }
 
         // 3. Push onto resolution stack.
-        self.resolution_stack.push(path.clone());
+        self.resolution_stack.push(file_id);
 
         // 4. Read source text from the provider.
         let source_string = self
             .provider
-            .read_source(&path)
+            .read_source(path)
             .map_err(|e| Self::file_not_found_error(&e, import_span))?;
 
         // 5. Copy source text into the arena (long-lived allocation).
@@ -217,13 +215,20 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
 
             let resolved_path = self
                 .provider
-                .resolve_path(&path, import_path)
+                .resolve_path(path, import_path)
                 .map_err(|e| Self::file_not_found_error(&e, Some(decl_span)))?;
 
-            let imported_rc = self.resolve_file(resolved_path, Some(decl_span))?;
+            let (imported_file_id, imported_rc) =
+                self.resolve_file(&resolved_path, Some(decl_span))?;
+
+            let namespace = self
+                .provider
+                .derive_namespace(&resolved_path)
+                .map_err(|e| Self::invalid_namespace_error(&e, decl_span))?;
 
             file_ast.imports.push(Import {
-                namespace: None,
+                namespace: Some(namespace),
+                file_id: imported_file_id,
                 file_ast: imported_rc,
             });
         }
@@ -231,9 +236,9 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
         // 10. Pop from the resolution stack and cache the result.
         self.resolution_stack.pop();
         let rc = Rc::new(RefCell::new(file_ast));
-        self.cache.insert(path, Rc::clone(&rc));
+        self.cache.insert(file_id, Rc::clone(&rc));
 
-        Ok(rc)
+        Ok((file_id, rc))
     }
 
     /// Rejects empty import paths, which would silently mis-resolve to the
@@ -248,6 +253,19 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
         }
 
         Ok(())
+    }
+
+    /// Converts a [`SourceError`] from namespace derivation into a
+    /// [`ParseError`] with error code E403.
+    fn invalid_namespace_error(source_error: &SourceError, span: Span) -> ParseError {
+        ParseError::from(
+            Diagnostic::error(format!(
+                "cannot derive namespace: {}",
+                source_error.message()
+            ))
+            .with_code(ErrorCode::E403)
+            .with_label(span, "imported here"),
+        )
     }
 
     /// Converts a [`SourceError`] into a [`ParseError`] with error code E400.
@@ -266,17 +284,17 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
     }
 
     /// Builds a circular-dependency error (E401) showing the full import chain.
-    fn cycle_error(&self, path: &Path, import_span: Option<Span>) -> ParseError {
+    fn cycle_error(&self, file_id: FileId, import_span: Option<Span>) -> ParseError {
         let cycle_start = self
             .resolution_stack
             .iter()
-            .position(|p| p == path)
+            .position(|fid| *fid == file_id)
             .expect("cycle target must be on the resolution stack");
 
-        let chain: Vec<String> = self.resolution_stack[cycle_start..]
+        let chain: Vec<&str> = self.resolution_stack[cycle_start..]
             .iter()
-            .map(|p| p.display().to_string())
-            .chain(std::iter::once(path.display().to_string()))
+            .map(|fid| fid.as_str())
+            .chain(std::iter::once(file_id.as_str()))
             .collect();
         let chain_str = chain.join(" → ");
 
@@ -538,5 +556,118 @@ mod tests {
         assert!(help.contains("a.orr"), "chain should mention a.orr: {help}");
         assert!(help.contains("b.orr"), "chain should mention b.orr: {help}");
         assert!(help.contains("c.orr"), "chain should mention c.orr: {help}");
+    }
+
+    #[test]
+    fn namespace_derived_from_import_path() {
+        let arena = Bump::new();
+        let resolved = resolve_with(
+            &arena,
+            &[
+                (
+                    "dir/main.orr",
+                    "diagram component;\nimport \"../common/base\";\na: Rectangle;",
+                ),
+                ("dir/../common/base.orr", "library;"),
+            ],
+            "dir/main.orr",
+        )
+        .expect("should resolve relative import");
+
+        let import = &resolved.file_ast().imports[0];
+        let ns = import.namespace.as_ref().expect("should have namespace");
+        assert!(ns == "base", "expected namespace 'base', got '{ns:?}'");
+    }
+
+    #[test]
+    fn file_id_set_on_import() {
+        let arena = Bump::new();
+        let resolved = resolve_with(
+            &arena,
+            &[
+                (
+                    "main.orr",
+                    "diagram component;\nimport \"shared/styles\";\na: Rectangle;",
+                ),
+                ("shared/styles.orr", "library;"),
+            ],
+            "main.orr",
+        )
+        .expect("should resolve");
+
+        let import = &resolved.file_ast().imports[0];
+        assert_eq!(
+            import.file_id.as_str(),
+            "shared/styles.orr",
+            "file_id should reflect the resolved path"
+        );
+    }
+
+    #[test]
+    fn file_id_deduplication_in_diamond() {
+        // A → B, A → C, B → D, C → D
+        let arena = Bump::new();
+        let resolved = resolve_with(
+            &arena,
+            &[
+                (
+                    "a.orr",
+                    "diagram component;\nimport \"b\";\nimport \"c\";\na: Rectangle;",
+                ),
+                ("b.orr", "library;\nimport \"d\";"),
+                ("c.orr", "library;\nimport \"d\";"),
+                ("d.orr", "library;"),
+            ],
+            "a.orr",
+        )
+        .expect("should resolve diamond");
+
+        let b_ast = resolved.file_ast().imports[0].file_ast.borrow();
+        let c_ast = resolved.file_ast().imports[1].file_ast.borrow();
+
+        let d_from_b = &b_ast.imports[0];
+        let d_from_c = &c_ast.imports[0];
+
+        assert_eq!(
+            d_from_b.file_id, d_from_c.file_id,
+            "file_id for D should be identical whether reached via B or C"
+        );
+    }
+
+    #[test]
+    fn cycle_error_shows_readable_paths() {
+        // A → B → A (simple cycle)
+        let arena = Bump::new();
+        let result = resolve_with(
+            &arena,
+            &[
+                ("src/app.orr", "diagram component;\nimport \"lib\";"),
+                ("src/lib.orr", "library;\nimport \"app\";"),
+            ],
+            "src/app.orr",
+        );
+
+        let err = result.expect_err("should detect cycle");
+        let diag = &err.diagnostics()[0];
+        assert_eq!(
+            diag.code().expect("should have error code"),
+            ErrorCode::E401
+        );
+
+        let help = diag.help().expect("should have help text");
+        // The help message must contain actual file paths, not opaque identifiers.
+        assert!(
+            help.contains("src/app.orr"),
+            "help should show readable path 'src/app.orr': {help}"
+        );
+        assert!(
+            help.contains("src/lib.orr"),
+            "help should show readable path 'src/lib.orr': {help}"
+        );
+        // Paths should appear as a readable chain with arrow separators.
+        assert!(
+            help.contains(" → "),
+            "help should format the chain with arrow separators: {help}"
+        );
     }
 }
