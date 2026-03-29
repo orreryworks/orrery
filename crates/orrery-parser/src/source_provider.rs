@@ -267,17 +267,17 @@ mod tests {
         let provider = InMemorySourceProvider::new();
         let id = provider.derive_namespace(Path::new("simple")).unwrap();
         assert!(id == "simple");
-        
+
         let id = provider
             .derive_namespace(Path::new("shared/nested"))
             .unwrap();
         assert!(id == "nested");
-        
+
         let id = provider
             .derive_namespace(Path::new("../relative/path"))
             .unwrap();
         assert!(id == "path");
-        
+
         let id = provider
             .derive_namespace(Path::new("shared/extension.orr"))
             .unwrap();

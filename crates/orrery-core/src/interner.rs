@@ -67,6 +67,11 @@ impl Interner {
         self.0.len()
     }
 
+    /// Returns `true` if the interner contains no strings.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Resolves a [`Symbol`] to a `&'static str`.
     ///
     /// # Panics
@@ -117,8 +122,6 @@ pub fn resolve(symbol: Symbol) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
     use super::*;
 
     #[test]
