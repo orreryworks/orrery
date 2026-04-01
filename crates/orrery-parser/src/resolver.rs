@@ -62,13 +62,22 @@ pub struct ResolvedFile<'arena> {
 
 impl<'arena> ResolvedFile<'arena> {
     /// Returns the source map covering all files loaded during resolution.
+    #[allow(dead_code)]
     pub fn source_map(&self) -> &SourceMap<'arena> {
         &self.source_map
     }
 
     /// Returns the root [`FileAst`] with imports populated recursively.
+    #[allow(dead_code)]
     pub fn file_ast(&self) -> &FileAst<'arena> {
         &self.file_ast
+    }
+
+    /// Consumes the resolved file and returns the root [`FileAst`].
+    ///
+    /// The [`SourceMap`] is dropped.
+    pub fn into_file_ast(self) -> FileAst<'arena> {
+        self.file_ast
     }
 }
 
@@ -86,7 +95,7 @@ impl<'arena> ResolvedFile<'arena> {
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```text
 /// let arena = Bump::new();
 /// let provider = MySourceProvider::new();
 /// let resolver = Resolver::new(&arena, provider);

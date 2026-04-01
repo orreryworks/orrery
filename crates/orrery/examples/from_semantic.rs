@@ -6,7 +6,8 @@
 use std::rc::Rc;
 
 use orrery::{
-    DiagramBuilder,
+    DiagramBuilder, InMemorySourceProvider,
+    config::AppConfig,
     draw::{
         ArrowDefinition, ArrowDirection, RectangleDefinition, ShapeDefinition, StrokeDefinition,
     },
@@ -98,7 +99,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Render the diagram to SVG using DiagramBuilder
     println!("Rendering to SVG...");
-    let builder = DiagramBuilder::default();
+    let provider = InMemorySourceProvider::new();
+    let builder = DiagramBuilder::new(AppConfig::default(), &provider);
     let svg = builder.render_svg(&diagram)?;
 
     // Output SVG statistics

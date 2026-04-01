@@ -19,9 +19,8 @@
 //!
 //! # Example
 //!
-//! ```ignore
-//! use orrery_parser::source_map::SourceMap;
-//!
+//! ```text
+//! # use orrery_parser::source_map::SourceMap;
 //! let mut map = SourceMap::new();
 //!
 //! let offset_a = map.add_file("a.orr", "hello", None);
@@ -53,6 +52,7 @@ pub struct SourceFile<'a> {
     first_imported_at: Option<Span>,
 }
 
+#[allow(dead_code)]
 impl SourceFile<'_> {
     /// Returns the human-readable name of this file.
     pub fn name(&self) -> &str {
@@ -101,9 +101,8 @@ impl SourceFile<'_> {
 ///
 /// # Example
 ///
-/// ```ignore
-/// use orrery_parser::source_map::SourceMap;
-///
+/// ```text
+/// # use orrery_parser::source_map::SourceMap;
 /// let mut map = SourceMap::new();
 ///
 /// let base = map.add_file("main.orr", "diagram component;\nbox: Rectangle;", None);
@@ -174,6 +173,7 @@ impl<'a> SourceMap<'a> {
     ///
     /// The [`SourceFile`] containing `offset`, or `None` if the offset falls
     /// in a gap between files or is out of range.
+    #[allow(dead_code)]
     pub fn lookup_file(&self, offset: usize) -> Option<&SourceFile<'a>> {
         // `partition_point` returns the count of files whose `start_offset <= offset`.
         let idx = self.files.partition_point(|f| f.start_offset <= offset);
@@ -198,6 +198,7 @@ impl<'a> SourceMap<'a> {
     ///
     /// The source text slice, or `None` if the span crosses a file boundary,
     /// falls in a gap, or is out of range.
+    #[allow(dead_code)]
     pub fn source_slice(&self, span: Span) -> Option<&str> {
         let file = self.lookup_file(span.start())?;
         // Verify the entire span stays within this file.
@@ -210,11 +211,13 @@ impl<'a> SourceMap<'a> {
     }
 
     /// Returns the number of registered source files.
+    #[allow(dead_code)]
     pub fn file_count(&self) -> usize {
         self.files.len()
     }
 
     /// Returns all registered source files.
+    #[allow(dead_code)]
     pub fn files(&self) -> &[SourceFile<'a>] {
         &self.files
     }

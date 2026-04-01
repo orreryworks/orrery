@@ -1,17 +1,35 @@
+//! Integration tests for the `orrery-parser` public API.
+//!
+//! Each test exercises the full pipeline (resolve [tokenize → parse] →
+//! desugar → validate → elaborate) through the public
+//! [`orrery_parser::parse`] function, using
+//! [`InMemorySourceProvider`] to supply source text without touching the
+//! filesystem.
+
+use std::path::Path;
+
 use orrery_core::{
     identifier::Id,
-    semantic::{Block, DiagramKind, Element, LayoutEngine, NoteAlign},
+    semantic::{Block, Diagram, DiagramKind, Element, LayoutEngine, NoteAlign},
 };
-use orrery_parser::{ElaborateConfig, parse};
+use orrery_parser::{ElaborateConfig, InMemorySourceProvider, error::ParseError, parse};
+
+/// Helper: parse a single source string through the full pipeline.
+fn parse_source(source: &str) -> Result<Diagram, ParseError> {
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file("test.orr", source);
+    parse(Path::new("test.orr"), provider, ElaborateConfig::default())
+}
 
 #[test]
 fn test_simple_component_diagram() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram component;
         box: Rectangle;
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     assert_eq!(diagram.kind(), DiagramKind::Component);
 
@@ -30,14 +48,15 @@ fn test_simple_component_diagram() {
 
 #[test]
 fn test_simple_sequence_diagram() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram sequence;
         client: Rectangle;
         server: Rectangle;
         client -> server: "Request";
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     assert_eq!(diagram.kind(), DiagramKind::Sequence);
 
@@ -76,12 +95,13 @@ fn test_simple_sequence_diagram() {
 
 #[test]
 fn test_node_with_display_name() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram component;
         svc as "User Service": Rectangle;
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 1);
@@ -97,13 +117,14 @@ fn test_node_with_display_name() {
 
 #[test]
 fn test_with_type_definitions() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram component;
         type Button = Rectangle[fill_color="blue"];
         submit: Button;
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 1);
@@ -118,16 +139,17 @@ fn test_with_type_definitions() {
 
 #[test]
 fn test_with_relations() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram component;
         a: Rectangle;
         b: Rectangle;
         a -> b;
         b <- a;
         a <-> b;
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 5); // 2 nodes + 3 relations
@@ -164,12 +186,12 @@ fn test_with_relations() {
 
 #[test]
 fn test_syntax_error() {
-    let source = r#"
+    let result = parse_source(
+        r#"
         diagram component
         missing_semicolon: Rectangle;
-    "#;
-
-    let result = parse(source, ElaborateConfig::default());
+    "#,
+    );
     assert!(result.is_err(), "Should fail on syntax error");
 
     let err = result.unwrap_err();
@@ -181,25 +203,24 @@ fn test_syntax_error() {
 
 #[test]
 fn test_with_custom_config() {
-    let source = r#"
-        diagram component;
-        box: Rectangle;
-    "#;
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file("test.orr", "diagram component;\nbox: Rectangle;");
 
     let config = ElaborateConfig::new(LayoutEngine::Sugiyama, LayoutEngine::Basic);
-    let diagram = parse(source, config).expect("Failed to parse");
+    let diagram = parse(Path::new("test.orr"), provider, config).expect("Failed to parse");
 
     assert_eq!(diagram.layout_engine(), LayoutEngine::Sugiyama);
 }
 
 #[test]
 fn test_diagram_layout_attribute() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram component [layout_engine="sugiyama"];
         box: Rectangle;
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     // Diagram-level attribute overrides config
     assert_eq!(diagram.layout_engine(), LayoutEngine::Sugiyama);
@@ -207,13 +228,14 @@ fn test_diagram_layout_attribute() {
 
 #[test]
 fn test_with_notes() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram sequence;
         client: Rectangle;
         note [on=[client]]: "Important note";
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 2);
@@ -231,13 +253,14 @@ fn test_with_notes() {
 
 #[test]
 fn test_note_with_alignment() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram sequence;
         client: Rectangle;
         note [on=[client], align="left"]: "Left note";
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
     match &elements[1] {
@@ -250,7 +273,8 @@ fn test_note_with_alignment() {
 
 #[test]
 fn test_with_fragments() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram sequence;
         client: Rectangle;
         server: Rectangle;
@@ -258,9 +282,9 @@ fn test_with_fragments() {
         opt "Optional section" {
             client -> server: "Maybe";
         };
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 3); // 2 nodes + 1 fragment
@@ -288,7 +312,8 @@ fn test_with_fragments() {
 
 #[test]
 fn test_alt_fragment_with_sections() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram sequence;
         client: Rectangle;
         server: Rectangle;
@@ -298,9 +323,9 @@ fn test_alt_fragment_with_sections() {
         } else "Failure" {
             client -> server: "Error";
         };
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
 
@@ -318,15 +343,16 @@ fn test_alt_fragment_with_sections() {
 
 #[test]
 fn test_nested_components() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram component;
         container: Rectangle {
             child1: Rectangle;
             child2: Rectangle;
         };
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 1);
@@ -363,7 +389,8 @@ fn test_nested_components() {
 
 #[test]
 fn test_activation() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram sequence;
         client: Rectangle;
         server: Rectangle;
@@ -371,9 +398,9 @@ fn test_activation() {
         activate client {
             client -> server: "Request";
         };
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 5); // 2 nodes + activate + relation + deactivate
@@ -403,14 +430,15 @@ fn test_activation() {
 
 #[test]
 fn test_relation_with_label() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram component;
         a: Rectangle;
         b: Rectangle;
         a -> b: "connects to";
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
 
@@ -425,16 +453,17 @@ fn test_relation_with_label() {
 
 #[test]
 fn test_cross_level_relation() {
-    let source = r#"
+    let diagram = parse_source(
+        r#"
         diagram component;
         parent: Rectangle {
             child: Rectangle;
         };
         external: Rectangle;
         parent::child -> external;
-    "#;
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    "#,
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 3); // parent, external, relation
@@ -451,10 +480,203 @@ fn test_cross_level_relation() {
 
 #[test]
 fn test_empty_diagram() {
-    let source = "diagram component;";
-
-    let diagram = parse(source, ElaborateConfig::default()).expect("Failed to parse");
+    let diagram = parse_source("diagram component;").expect("Failed to parse");
 
     assert_eq!(diagram.kind(), DiagramKind::Component);
     assert!(diagram.scope().elements().is_empty());
+}
+
+#[test]
+fn test_import_library_types() {
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file(
+        "shared/styles.orr",
+        r#"
+        library;
+        type Service = Rectangle[fill_color="lightblue"];
+        type Database = Oval[fill_color="lightgreen"];
+    "#,
+    );
+    provider.add_file(
+        "main.orr",
+        r#"
+        diagram component;
+        import "shared/styles";
+
+        api: styles::Service;
+        db: styles::Database;
+    "#,
+    );
+
+    let diagram = parse(Path::new("main.orr"), provider, ElaborateConfig::default())
+        .expect("Failed to parse");
+
+    let elements = diagram.scope().elements();
+    assert_eq!(elements.len(), 2);
+
+    assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("api")));
+    assert!(matches!(&elements[1], Element::Node(n) if n.id() == Id::new("db")));
+}
+
+#[test]
+fn test_import_transitive_libraries() {
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file(
+        "base.orr",
+        r#"
+        library;
+        type Service = Rectangle[fill_color="lightblue"];
+    "#,
+    );
+    provider.add_file(
+        "extended.orr",
+        r#"
+        library;
+        import "base";
+
+        type SecureService = base::Service[stroke=[color="red"]];
+    "#,
+    );
+    provider.add_file(
+        "main.orr",
+        r#"
+        diagram component;
+        import "extended";
+
+        api: extended::SecureService;
+        svc: extended::base::Service;
+    "#,
+    );
+
+    let diagram = parse(Path::new("main.orr"), provider, ElaborateConfig::default())
+        .expect("Failed to parse");
+
+    let elements = diagram.scope().elements();
+    assert_eq!(elements.len(), 2);
+
+    assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("api")));
+    assert!(matches!(&elements[1], Element::Node(n) if n.id() == Id::new("svc")));
+}
+
+#[test]
+fn test_import_diamond_dependency() {
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file(
+        "base.orr",
+        r#"
+        library;
+        type Service = Rectangle[fill_color="lightblue"];
+    "#,
+    );
+    provider.add_file(
+        "ext_a.orr",
+        r#"
+        library;
+        import "base";
+
+        type ServiceA = base::Service[stroke=[color="red"]];
+    "#,
+    );
+    provider.add_file(
+        "ext_b.orr",
+        r#"
+        library;
+        import "base";
+
+        type ServiceB = base::Service[stroke=[color="blue"]];
+    "#,
+    );
+    provider.add_file(
+        "main.orr",
+        r#"
+        diagram component;
+        import "ext_a";
+        import "ext_b";
+
+        a: ext_a::ServiceA;
+        b: ext_b::ServiceB;
+    "#,
+    );
+
+    let diagram = parse(Path::new("main.orr"), provider, ElaborateConfig::default())
+        .expect("Failed to parse");
+
+    let elements = diagram.scope().elements();
+    assert_eq!(elements.len(), 2);
+}
+
+#[test]
+fn test_error_file_not_found() {
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file(
+        "main.orr",
+        r#"
+        diagram component;
+        import "nonexistent";
+        box: Rectangle;
+    "#,
+    );
+
+    let result = parse(Path::new("main.orr"), provider, ElaborateConfig::default());
+    assert!(result.is_err(), "Should fail on missing import");
+
+    let err = result.unwrap_err();
+    let diag = &err.diagnostics()[0];
+    // E400 — file not found
+    assert!(
+        diag.message().contains("cannot find file"),
+        "Expected file-not-found error, got: {}",
+        diag.message()
+    );
+}
+
+#[test]
+fn test_error_circular_dependency() {
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file(
+        "a.orr",
+        r#"
+        library;
+        import "b";
+    "#,
+    );
+    provider.add_file(
+        "b.orr",
+        r#"
+        library;
+        import "a";
+    "#,
+    );
+
+    let result = parse(Path::new("a.orr"), provider, ElaborateConfig::default());
+    assert!(result.is_err(), "Should fail on circular dependency");
+
+    let err = result.unwrap_err();
+    let diag = &err.diagnostics()[0];
+    // E401 — circular dependency
+    assert!(
+        diag.message().contains("circular dependency"),
+        "Expected circular dependency error, got: {}",
+        diag.message()
+    );
+}
+
+#[test]
+fn test_error_missing_root_file() {
+    let provider = InMemorySourceProvider::new();
+
+    let result = parse(
+        Path::new("does_not_exist.orr"),
+        provider,
+        ElaborateConfig::default(),
+    );
+    assert!(result.is_err(), "Should fail on missing root file");
+
+    let err = result.unwrap_err();
+    let diag = &err.diagnostics()[0];
+    assert!(
+        diag.message().contains("cannot find file"),
+        "Expected file-not-found error, got: {}",
+        diag.message()
+    );
 }

@@ -14,7 +14,9 @@ orrery = "0.1.0"
 ## Quick Start
 
 ```rust
-use orrery::DiagramBuilder;
+use std::path::Path;
+
+use orrery::{DiagramBuilder, InMemorySourceProvider, config::AppConfig};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
@@ -28,11 +30,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         backend -> database: "SQL";
     "#;
 
-    // Create a builder with default configuration
-    let builder = DiagramBuilder::default();
+    // Set up a source provider with the diagram source
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file("diagram.orr", source);
+
+    // Create a builder with default configuration and provider
+    let builder = DiagramBuilder::new(AppConfig::default(), &provider);
 
     // Parse the source code into a semantic diagram
-    let diagram = builder.parse(source)?;
+    let diagram = builder.parse(Path::new("diagram.orr"))?;
 
     // Render the semantic diagram to SVG
     let svg = builder.render_svg(&diagram)?;
@@ -45,10 +51,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Custom Configuration
 
 ```rust
-use orrery::{DiagramBuilder, config::AppConfig};
+use orrery::{DiagramBuilder, InMemorySourceProvider, config::AppConfig};
 
+let provider = InMemorySourceProvider::new();
 let config = AppConfig::default();
-let builder = DiagramBuilder::new(config);
+let builder = DiagramBuilder::new(config, &provider);
 ```
 
 ## Examples

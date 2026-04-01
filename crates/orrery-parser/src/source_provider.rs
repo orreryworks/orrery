@@ -78,22 +78,38 @@ pub trait SourceProvider {
     }
 }
 
-/// An in-memory [`SourceProvider`] is a test-only provider backed by a `HashMap`.
+/// Blanket implementation that delegates all [`SourceProvider`] methods
+/// through a shared reference.
 ///
-/// This is a minimal test helper. Keys are stored and looked up **exactly**
-/// as provided — there is no path normalization. The test writer controls
-/// both the registered keys and the import paths, so they are responsible
-/// for making them match.
+/// This allows `&P` to satisfy a `P: SourceProvider` bound.
+impl<P: SourceProvider> SourceProvider for &P {
+    fn resolve_path(&self, from: &Path, import_path: &str) -> Result<PathBuf, SourceError> {
+        (**self).resolve_path(from, import_path)
+    }
+
+    fn read_source(&self, path: &Path) -> Result<String, SourceError> {
+        (**self).read_source(path)
+    }
+
+    fn derive_namespace(&self, import_path: &Path) -> Result<Id, SourceError> {
+        (**self).derive_namespace(import_path)
+    }
+}
+
+/// An in-memory [`SourceProvider`] backed by a `HashMap`.
+///
+/// Useful for testing and environments without filesystem access.
+/// Keys are stored and looked up **exactly** as provided — there is no
+/// path normalization. The caller controls both the registered keys and
+/// the import paths, so they are responsible for making them match.
 ///
 /// `resolve_path` joins the parent directory of `from` with `import_path`,
 /// appends `.orr`, and does a direct HashMap lookup on the result.
-#[cfg(test)]
 #[derive(Debug, Clone, Default)]
-pub(crate) struct InMemorySourceProvider {
+pub struct InMemorySourceProvider {
     files: std::collections::HashMap<PathBuf, String>,
 }
 
-#[cfg(test)]
 impl InMemorySourceProvider {
     /// Creates a new, empty in-memory source provider.
     pub fn new() -> Self {
@@ -106,7 +122,6 @@ impl InMemorySourceProvider {
     }
 }
 
-#[cfg(test)]
 impl SourceProvider for InMemorySourceProvider {
     fn resolve_path(&self, from: &Path, import_path: &str) -> Result<PathBuf, SourceError> {
         let dir = from.parent().unwrap_or_else(|| Path::new(""));

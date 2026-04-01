@@ -14,7 +14,9 @@ pub use orrery_core::{color, draw, identifier, semantic};
 
 pub use error::OrreryError;
 
-use std::fs;
+use std::{fs, path::Path};
+
+pub use orrery_parser::{InMemorySourceProvider, SourceProvider};
 
 use log::{debug, info, trace};
 
@@ -32,31 +34,29 @@ use export::Exporter;
 /// # Examples
 ///
 /// ```rust,no_run
-/// use orrery::{DiagramBuilder, config::AppConfig};
-///
-/// let source = "diagram component; app: Rectangle;";
+/// # use std::path::Path;
+/// # use orrery::{DiagramBuilder, SourceProvider, InMemorySourceProvider, config::AppConfig};
+/// let mut provider = InMemorySourceProvider::new();
+/// provider.add_file("app.orr", "diagram component; app: Rectangle;");
 ///
 /// // With custom config
 /// let config = AppConfig::default();
-/// let builder = DiagramBuilder::new(config);
+/// let builder = DiagramBuilder::new(config, &provider);
 ///
-/// // Parse source to semantic model
-/// let diagram = builder.parse(source)
+/// // Parse file to semantic model
+/// let diagram = builder.parse(Path::new("app.orr"))
 ///     .expect("Failed to parse");
 ///
 /// // Render semantic model to SVG
 /// let svg = builder.render_svg(&diagram)
 ///     .expect("Failed to render");
-///
-/// // Or use default config
-/// let builder = DiagramBuilder::default();
 /// ```
-#[derive(Default)]
-pub struct DiagramBuilder {
+pub struct DiagramBuilder<'a, P: SourceProvider> {
     config: AppConfig,
+    provider: &'a P,
 }
 
-impl DiagramBuilder {
+impl<'a, P: SourceProvider> DiagramBuilder<'a, P> {
     /// Create a new diagram builder with the given configuration.
     ///
     /// # Arguments
@@ -66,23 +66,24 @@ impl DiagramBuilder {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use orrery::{DiagramBuilder, config::AppConfig};
-    ///
+    /// # use orrery::{DiagramBuilder, InMemorySourceProvider, config::AppConfig};
+    /// let provider = InMemorySourceProvider::new();
     /// let config = AppConfig::default();
-    /// let builder = DiagramBuilder::new(config);
+    /// let builder = DiagramBuilder::new(config, &provider);
     /// ```
-    pub fn new(config: AppConfig) -> Self {
-        Self { config }
+    pub fn new(config: AppConfig, provider: &'a P) -> Self {
+        Self { config, provider }
     }
 
-    /// Parse source code into a semantic diagram.
+    /// Parse an Orrery file into a semantic diagram.
     ///
-    /// This performs lexing, parsing, desugaring, validation, and elaboration
-    /// to produce a fully resolved semantic diagram model.
+    /// Uses the [`SourceProvider`] held by this builder to resolve the root file
+    /// and all its imports, then runs the full pipeline: resolve (tokenize →
+    /// parse per file) → desugar → validate → elaborate.
     ///
     /// # Arguments
     ///
-    /// * `source` - Orrery source code as a string
+    /// * `root_path` — Path to the root/entry Orrery file
     ///
     /// # Errors
     ///
@@ -92,23 +93,26 @@ impl DiagramBuilder {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use orrery::{DiagramBuilder, config::AppConfig};
+    /// # use std::path::Path;
+    /// # use orrery::{DiagramBuilder, InMemorySourceProvider, config::AppConfig};
+    /// let mut provider = InMemorySourceProvider::new();
+    /// provider.add_file("app.orr", "diagram component; app: Rectangle;");
     ///
-    /// let source = "diagram component; app: Rectangle;";
-    /// let builder = DiagramBuilder::new(AppConfig::default());
-    /// let diagram = builder.parse(source)
+    /// let builder = DiagramBuilder::new(AppConfig::default(), &provider);
+    /// let diagram = builder.parse(Path::new("app.orr"))
     ///     .expect("Failed to parse diagram");
     /// ```
-    pub fn parse(&self, source: &str) -> Result<semantic::Diagram, OrreryError> {
+    pub fn parse(&self, root_path: &Path) -> Result<semantic::Diagram, OrreryError> {
         info!("Parsing diagram");
+        let root_source = self.provider.read_source(root_path).unwrap_or_default();
 
         let elaborate_config = ElaborateConfig::new(
             self.config.layout().component(),
             self.config.layout().sequence(),
         );
 
-        let diagram = orrery_parser::parse(source, elaborate_config)
-            .map_err(|err| OrreryError::new_parse_error(err, source))?;
+        let diagram = orrery_parser::parse(root_path, self.provider, elaborate_config)
+            .map_err(|err| OrreryError::new_parse_error(err, root_source))?;
 
         debug!("Diagram parsed successfully");
         trace!(diagram:?; "Parsed diagram");
@@ -132,12 +136,14 @@ impl DiagramBuilder {
     /// # Examples
     ///
     /// ```rust,no_run
-    /// use orrery::{DiagramBuilder, config::AppConfig};
+    /// # use std::path::Path;
+    /// # use orrery::{DiagramBuilder, InMemorySourceProvider, config::AppConfig};
+    /// let mut provider = InMemorySourceProvider::new();
+    /// provider.add_file("app.orr", "diagram component; app: Rectangle;");
     ///
-    /// let source = "diagram component; app: Rectangle;";
-    /// let builder = DiagramBuilder::new(AppConfig::default());
+    /// let builder = DiagramBuilder::new(AppConfig::default(), &provider);
     ///
-    /// let diagram = builder.parse(source)
+    /// let diagram = builder.parse(Path::new("app.orr"))
     ///     .expect("Failed to parse");
     ///
     /// let svg = builder.render_svg(&diagram)

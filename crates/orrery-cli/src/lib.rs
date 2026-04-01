@@ -1,39 +1,40 @@
 //! CLI logic for the Orrery diagram tool.
 //!
-//! This module contains the core CLI logic for the Orrery diagram tool.
+//! Wires together configuration loading, the [`DiagramBuilder`] pipeline,
+//! and file I/O to turn a `.orr` source file into an SVG on disk.
 
 pub mod error_adapter;
 
 mod args;
 mod config;
-#[allow(dead_code)]
 mod source_provider;
 
 pub use args::Args;
 
-use std::fs;
+use std::{fs, path::Path};
 
 use log::info;
 
 use orrery::{DiagramBuilder, OrreryError};
 
-/// Run the Orrery CLI application
+use source_provider::FsSourceProvider;
+
+/// Runs the Orrery CLI application.
 ///
-/// This function processes the input file through the Orrery pipeline
-/// and writes the resulting SVG to the output file.
+/// Loads configuration, parses the input `.orr` file, renders the
+/// resulting diagram to SVG, and writes it to the output path.
 ///
 /// # Arguments
 ///
-/// * `args` - Command-line arguments
+/// * `args` - Command-line arguments.
 ///
 /// # Errors
 ///
-/// Returns `OrreryError` for:
-/// - File I/O errors
-/// - Configuration loading errors
-/// - Parsing errors
-/// - Layout errors
-/// - Rendering errors
+/// Returns [`OrreryError`] if:
+/// - Configuration cannot be loaded
+/// - The input file cannot be found or parsed
+/// - Layout or rendering fails
+/// - The output file cannot be written
 pub fn run(args: &Args) -> Result<(), OrreryError> {
     info!(
         input_path = args.input,
@@ -44,12 +45,11 @@ pub fn run(args: &Args) -> Result<(), OrreryError> {
     // Load configuration
     let app_config = config::load_config(args.config.as_ref())?;
 
-    // Read input file
-    let source = fs::read_to_string(&args.input)?;
-
     // Process diagram using DiagramBuilder API
-    let builder = DiagramBuilder::new(app_config);
-    let diagram = builder.parse(&source)?;
+    let root_path = Path::new(&args.input);
+    let provider = FsSourceProvider::new();
+    let builder = DiagramBuilder::new(app_config, &provider);
+    let diagram = builder.parse(root_path)?;
     let svg = builder.render_svg(&diagram)?;
 
     // Write output file
