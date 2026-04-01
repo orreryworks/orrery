@@ -15,7 +15,7 @@ use orrery_core::interner::{self, Symbol};
 ///
 /// # Examples
 ///
-/// ```ignore
+/// ```text
 /// # use std::path::Path;
 /// # use orrery_parser::file_id::FileId;
 /// let id = FileId::new(Path::new("shared/styles.orr"));

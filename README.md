@@ -32,7 +32,9 @@ Add `orrery` to your `Cargo.toml`.
 ### Basic Example
 
 ```rust
-use orrery::DiagramBuilder;
+use std::path::Path;
+
+use orrery::{DiagramBuilder, InMemorySourceProvider, config::AppConfig};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let source = r#"
@@ -45,8 +47,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         client <- app: "Response";
     "#;
     
-    let svg = DiagramBuilder::new(source)
-        .render_svg()?;
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file("diagram.orr", source);
+    
+    let builder = DiagramBuilder::new(AppConfig::default(), &provider);
+    let diagram = builder.parse(Path::new("diagram.orr"))?;
+    let svg = builder.render_svg(&diagram)?;
     
     std::fs::write("diagram.svg", svg)?;
     Ok(())

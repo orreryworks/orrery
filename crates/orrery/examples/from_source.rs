@@ -5,7 +5,9 @@
 //! 2. Parsing Orrery source code into a semantic diagram
 //! 3. Rendering the semantic diagram to SVG
 
-use orrery::DiagramBuilder;
+use std::path::Path;
+
+use orrery::{DiagramBuilder, InMemorySourceProvider, config::AppConfig};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Define Orrery source code for a component diagram
@@ -26,12 +28,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         backend -> database: "SQL queries";
     "#;
 
+    // Set up an in-memory source provider with the source code
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file("example.orr", source);
+
     // Create a builder with default configuration
-    let builder = DiagramBuilder::default();
+    let builder = DiagramBuilder::new(AppConfig::default(), &provider);
 
     // Parse the source code into a semantic diagram
     println!("Parsing diagram from source...");
-    let diagram = builder.parse(source)?;
+    let diagram = builder.parse(Path::new("example.orr"))?;
 
     // Inspect the parsed diagram
     println!("Diagram kind: {:?}", diagram.kind());

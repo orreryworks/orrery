@@ -393,8 +393,7 @@ fn attribute_type_spec<'tok, 'src>(
 /// - type_name: Always Some(id) - identifier is required
 /// - attributes: parsed attributes if present, empty vec otherwise
 fn type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::TypeSpec<'src>> {
-    // Parse REQUIRED identifier
-    let type_name = identifier.parse_next(input)?;
+    let type_name = nested_identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
 
