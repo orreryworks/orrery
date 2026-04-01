@@ -92,9 +92,9 @@ pub enum ErrorCode {
     /// A type was referenced that has not been defined.
     E300,
 
-    /// Duplicate type definition.
+    /// Type override not supported.
     ///
-    /// A type with this name has already been defined.
+    /// Overriding is not supported for this type.
     E301,
 
     /// Invalid attribute value.
@@ -224,7 +224,7 @@ impl ErrorCode {
             ErrorCode::E203 => "invalid align value",
             // Elaboration errors
             ErrorCode::E300 => "undefined type",
-            ErrorCode::E301 => "duplicate type definition",
+            ErrorCode::E301 => "type override not supported",
             ErrorCode::E302 => "invalid attribute value",
             ErrorCode::E303 => "unknown attribute",
             ErrorCode::E304 => "unsupported attribute",
@@ -271,7 +271,7 @@ mod tests {
     fn test_error_code_description() {
         assert_eq!(ErrorCode::E001.description(), "unterminated string literal");
         assert_eq!(ErrorCode::E200.description(), "undefined component");
-        assert_eq!(ErrorCode::E301.description(), "duplicate type definition");
+        assert_eq!(ErrorCode::E301.description(), "type override not supported");
         assert_eq!(ErrorCode::E400.description(), "file not found");
     }
 }

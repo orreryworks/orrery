@@ -238,11 +238,15 @@ user_service: Rectangle embed user_service_flow;
 
 ### 7.1 Everything Is Public
 
-Orrery has **no visibility modifiers**. All types and definitions in a file are accessible to any file that imports it.
+Orrery has **no visibility modifiers**. All types and definitions in a **library** file are accessible to any file that imports it.
+
+Diagram files are self-contained renderable units. Their type definitions are **internal** to the diagram and are **not** exported to importers. Importing a diagram file creates an embed reference only (see [§6](#6-diagram-embedding-via-import)).
 
 ### 7.2 Transitive Re-Export
 
-Transitive re-export is the **default** behavior. A file's namespace exposes everything visible in that file's scope — its own type definitions plus everything it imported.
+Transitive re-export is the **default** behavior for **library** files. A library file's namespace exposes everything visible in that file's scope — its own type definitions plus everything it imported.
+
+Diagram file types are **not** re-exported. Importing a diagram file provides only an embed reference; the diagram's internal types remain invisible to the importer.
 
 **Example:**
 

@@ -20,16 +20,11 @@ use crate::span::Span;
 /// # Example
 ///
 /// ```text
-/// error[E301]: type `User` is defined multiple times
+/// error[E301]: cannot override built-in type `Rectangle`
 ///   --> src/main.orr:10:1
 ///    |
-/// 10 | type User = Rectangle;
-///    | ^^^^^^^^^^^^^^^^^^^^^^ duplicate definition
-///    |
-///   --> src/main.orr:5:1
-///    |
-///  5 | type User = Circle;
-///    | ------------------- first defined here
+/// 10 | type Rectangle = Oval[fill_color="red"];
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type override not supported
 /// ```
 #[derive(Debug, Clone)]
 pub struct Label {

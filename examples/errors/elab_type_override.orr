@@ -1,0 +1,15 @@
+// Error [E301]: type override not supported
+// Phase: Elaboration
+//
+// The type `Component` is a built-in type and cannot be overridden.
+// Expected: elaboration error reporting type override not supported
+
+diagram component;
+
+// ❌ `Component` is a built-in type
+type Component = Rectangle [fill_color="#e6f3ff", rounded=5];
+
+api: Component;
+db: Rectangle;
+
+api -> db: "Query";
