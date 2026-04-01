@@ -96,6 +96,6 @@ pub fn parse(source: &str, config: ElaborateConfig) -> Result<Diagram, ParseErro
     validate::validate(&desugared)?;
 
     // Step 5: Elaborate
-    let builder = Builder::new(config, source);
+    let builder = Builder::new(config);
     builder.build(&desugared).map_err(ParseError::from)
 }

@@ -55,13 +55,12 @@ impl ElaborateConfig {
 /// 2. Processes user-defined types from the AST
 /// 3. Resolves type references and validates structure
 /// 4. Constructs the semantic [`Diagram`](orrery_core::semantic::Diagram)
-pub struct Builder<'a> {
+pub struct Builder {
     cfg: ElaborateConfig,
     type_definitions: HashMap<Id, elaborate_utils::TypeDefinition>,
-    _phantom: std::marker::PhantomData<&'a str>,
 }
 
-impl<'a> Builder<'a> {
+impl Builder {
     /// Creates a new builder with the given configuration.
     ///
     /// Initializes the builder with built-in type definitions and prepares
@@ -71,8 +70,7 @@ impl<'a> Builder<'a> {
     ///
     /// * `cfg` - Configuration controlling elaboration behavior, including
     ///   default layout engines for different diagram types.
-    /// * `_source` - Source text reference that provides the lifetime `'a` for the builder.
-    pub fn new(cfg: ElaborateConfig, _source: &'a str) -> Self {
+    pub fn new(cfg: ElaborateConfig) -> Self {
         let type_definitions = builtin_types::defaults();
         let type_definition_map = type_definitions
             .into_iter()
@@ -82,7 +80,6 @@ impl<'a> Builder<'a> {
         Self {
             cfg,
             type_definitions: type_definition_map,
-            _phantom: std::marker::PhantomData,
         }
     }
 
@@ -109,7 +106,7 @@ impl<'a> Builder<'a> {
     /// Returns an error if elaboration fails. This includes all semantic
     /// errors in the `E3xx` range, such as undefined types, invalid
     /// attributes, nested diagrams, or structural validation failures.
-    pub fn build(mut self, ast: &parser_types::FileAst<'a>) -> Result<semantic::Diagram> {
+    pub fn build(mut self, ast: &parser_types::FileAst) -> Result<semantic::Diagram> {
         debug!("Building elaborated diagram");
         let (kind_spanned, attributes) = match &ast.header {
             parser_types::FileHeader::Diagram { kind, attributes } => (kind, attributes),
@@ -316,7 +313,7 @@ impl<'a> Builder<'a> {
 
     fn build_diagram_from_parser(
         &mut self,
-        diag: &parser_types::Element<'a>,
+        diag: &parser_types::Element,
     ) -> Result<semantic::Diagram> {
         match diag {
             parser_types::Element::Diagram(file_ast) => {
@@ -362,7 +359,7 @@ impl<'a> Builder<'a> {
 
     fn build_diagram_from_embedded_diagram(
         &mut self,
-        element: &parser_types::Element<'a>,
+        element: &parser_types::Element,
     ) -> Result<semantic::Diagram> {
         if let parser_types::Element::Diagram(file_ast) = element {
             let (kind_spanned, attributes) = match &file_ast.header {
@@ -407,7 +404,7 @@ impl<'a> Builder<'a> {
 
     fn build_block_from_elements(
         &mut self,
-        parser_elements: &[parser_types::Element<'a>],
+        parser_elements: &[parser_types::Element],
         diagram_kind: semantic::DiagramKind,
     ) -> Result<semantic::Block> {
         if parser_elements.is_empty() {
@@ -441,7 +438,7 @@ impl<'a> Builder<'a> {
 
     fn build_scope_from_elements(
         &mut self,
-        parser_elements: &[parser_types::Element<'a>],
+        parser_elements: &[parser_types::Element],
         diagram_kind: semantic::DiagramKind,
     ) -> Result<semantic::Scope> {
         let mut elements = Vec::new();
@@ -514,7 +511,7 @@ impl<'a> Builder<'a> {
         name: &Spanned<Id>,
         display_name: &Option<Spanned<String>>,
         type_spec: &parser_types::TypeSpec,
-        nested_elements: &[parser_types::Element<'a>],
+        nested_elements: &[parser_types::Element],
         parser_elm: &parser_types::Element,
         diagram_kind: semantic::DiagramKind,
     ) -> Result<semantic::Element> {
@@ -570,7 +567,7 @@ impl<'a> Builder<'a> {
         source: &Spanned<Id>,
         target: &Spanned<Id>,
         relation_type: &Spanned<&str>,
-        type_spec: &parser_types::TypeSpec<'a>,
+        type_spec: &parser_types::TypeSpec,
         label: &Option<Spanned<String>>,
     ) -> Result<semantic::Element> {
         // Extract relation type definition from type_spec
@@ -602,7 +599,7 @@ impl<'a> Builder<'a> {
     fn build_activate_element(
         &mut self,
         component: &Spanned<Id>,
-        type_spec: &parser_types::TypeSpec<'a>,
+        type_spec: &parser_types::TypeSpec,
         diagram_kind: semantic::DiagramKind,
     ) -> Result<semantic::Element> {
         // Only allow activate in sequence diagrams
@@ -655,7 +652,7 @@ impl<'a> Builder<'a> {
     /// Builds a fragment element from parser data
     fn build_fragment_element(
         &mut self,
-        fragment: &parser_types::Fragment<'a>,
+        fragment: &parser_types::Fragment,
         diagram_kind: semantic::DiagramKind,
     ) -> Result<semantic::Element> {
         // Only allow fragments in sequence diagrams
@@ -1359,7 +1356,7 @@ mod tests {
         };
 
         let config = ElaborateConfig::default();
-        let builder = Builder::new(config, "test");
+        let builder = Builder::new(config);
         // This should panic due to unreachable!() on ActivateBlock during elaboration
         let _ = builder.build(&diagram);
     }
@@ -1412,7 +1409,7 @@ mod tests {
         };
 
         let config = ElaborateConfig::default();
-        let builder = Builder::new(config, "test");
+        let builder = Builder::new(config);
         let result = builder.build(&diagram);
 
         assert!(
@@ -1522,7 +1519,7 @@ mod tests {
         };
 
         let config = ElaborateConfig::default();
-        let builder = Builder::new(config, "test");
+        let builder = Builder::new(config);
         let result = builder.build(&diagram);
 
         assert!(
@@ -1595,7 +1592,7 @@ mod tests {
     #[test]
     fn test_explicit_activate_in_sequence_diagram() {
         let config = ElaborateConfig::default();
-        let builder = Builder::new(config, "test");
+        let builder = Builder::new(config);
 
         // Create a simple sequence diagram with explicit activate
         let elements = vec![
@@ -1676,7 +1673,7 @@ mod tests {
     #[test]
     fn test_explicit_activate_not_allowed_in_component_diagram() {
         let config = ElaborateConfig::default();
-        let builder = Builder::new(config, "test");
+        let builder = Builder::new(config);
 
         // Create a component diagram with explicit activate (should fail)
         let elements = vec![
@@ -1855,7 +1852,7 @@ mod tests {
         };
 
         let config = ElaborateConfig::default();
-        let builder = Builder::new(config, "test");
+        let builder = Builder::new(config);
         let result = builder.build(&diagram);
 
         assert!(
@@ -1901,7 +1898,7 @@ mod tests {
     #[test]
     fn test_note_with_default_alignment_sequence() {
         let cfg = ElaborateConfig::default();
-        let mut builder = Builder::new(cfg, "");
+        let mut builder = Builder::new(cfg);
 
         let note = parser_types::Note {
             type_spec: parser_types::TypeSpec {
@@ -1928,7 +1925,7 @@ mod tests {
     #[test]
     fn test_note_with_default_alignment_component() {
         let cfg = ElaborateConfig::default();
-        let mut builder = Builder::new(cfg, "");
+        let mut builder = Builder::new(cfg);
 
         let note = parser_types::Note {
             type_spec: parser_types::TypeSpec {
@@ -1955,7 +1952,7 @@ mod tests {
     #[test]
     fn test_note_with_styling_attributes() {
         let cfg = ElaborateConfig::default();
-        let mut builder = Builder::new(cfg, "");
+        let mut builder = Builder::new(cfg);
 
         let attributes = vec![
             parser_types::Attribute {
@@ -2207,7 +2204,7 @@ mod tests {
         use crate::parser_types::{Attribute, AttributeValue, TypeSpec};
 
         let cfg = ElaborateConfig::default();
-        let mut builder = Builder::new(cfg, "");
+        let mut builder = Builder::new(cfg);
 
         // Create a fragment type with both operation_label_text and section_title_text attributes
         let type_spec = TypeSpec {
