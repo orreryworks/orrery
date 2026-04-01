@@ -274,13 +274,10 @@ impl<'a> Builder<'a> {
         if self.type_definitions.insert(id, type_def.clone()).is_none() {
             Ok(type_def)
         } else {
-            // We could use a span here if we tracked where the duplicate was defined
-            // For now, we use a simple error since we don't store that information
-            Err(
-                Diagnostic::error(format!("type definition `{id}` already exists"))
-                    .with_code(ErrorCode::E301)
-                    .with_label(span, "duplicate type definition"),
-            )
+            Err(Diagnostic::error(format!("cannot override type `{id}`"))
+                .with_code(ErrorCode::E301)
+                .with_label(span, "type override not supported")
+                .with_help("built-in types cannot be redefined"))
         }
     }
 

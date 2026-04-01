@@ -22,11 +22,10 @@
 //! let span = Span::new(100..120);
 //! let original_span = Span::new(50..70);
 //!
-//! let diag = Diagnostic::error("type `User` is defined multiple times")
+//! let diag = Diagnostic::error("cannot override built-in type `Component`")
 //!     .with_code(ErrorCode::E301)
-//!     .with_label(span, "duplicate definition")
-//!     .with_secondary_label(original_span, "first defined here")
-//!     .with_help("remove the duplicate or use a different name");
+//!     .with_label(span, "type override not supported")
+//!     .with_help("built-in types cannot be redefined");
 //! ```
 
 mod collector;

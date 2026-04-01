@@ -15,7 +15,7 @@
 //! For example, a reference to "child1" inside "parent" becomes "parent::child1".
 //! This enables the validation phase to perform comprehensive cross-reference checks.
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashSet, mem, rc::Rc};
 
 use orrery_core::identifier::Id;
 
@@ -113,7 +113,6 @@ trait Folder<'a> {
             .into_iter()
             .map(|import| Import {
                 namespace: import.namespace,
-                file_id: import.file_id,
                 file_ast: self.fold_rc_file_ast(import.file_ast),
             })
             .collect()
@@ -485,18 +484,133 @@ trait Folder<'a> {
 /// allowing nested identifiers to be qualified with their full path from the root.
 pub struct Desugar {
     path_stack: PathStack,
+    builtin_types: HashSet<Id>,
 }
 
 impl Desugar {
     /// Create a new Desugar folder instance
     fn new() -> Self {
+        let type_ids = builtin_types::defaults()
+            .into_iter()
+            .map(|type_def| type_def.id())
+            .collect();
         Self {
             path_stack: PathStack::new(),
+            builtin_types: type_ids,
         }
+    }
+
+    /// Qualifies type references in a [`TypeSpec`] with a namespace prefix.
+    ///
+    /// Rewrites `type_name` to `namespace::type_name` unless the type is a
+    /// built-in. Recurses into nested [`TypeSpec`]s found in attribute values.
+    fn qualify_type_spec(&self, type_spec: &mut TypeSpec, namespace: Id) {
+        // Skip built-ins (e.g., Rectangle, Stroke) — they are globally scoped
+        // and must never receive a namespace prefix.
+        if let Some(spanned_name) = type_spec.type_name.as_mut()
+            && !self.builtin_types.contains(spanned_name)
+        {
+            *spanned_name = spanned_name.map(|name| namespace.create_nested(*name));
+        }
+        // Attribute values can themselves be TypeSpecs (e.g., `stroke=DashedLine`),
+        // so we recurse into them to qualify nested type references.
+        type_spec
+            .attributes
+            .iter_mut()
+            .filter_map(|attr| attr.value.as_type_spec_mut().ok())
+            .for_each(|inner| self.qualify_type_spec(inner, namespace));
+    }
+
+    /// Qualifies a [`TypeDefinition`] with a namespace prefix.
+    ///
+    /// Prefixes the definition's own name and delegates to
+    /// [`qualify_type_spec`](Self::qualify_type_spec) for the body.
+    fn qualify_type_definition(&self, type_def: &mut TypeDefinition, namespace: Id) {
+        type_def.name = type_def.name.map(|name| namespace.create_nested(*name));
+        self.qualify_type_spec(&mut type_def.type_spec, namespace);
+    }
+
+    /// Extracts [`TypeDefinition`]s from resolved imports, qualifying each with
+    /// its namespace prefix when present.
+    ///
+    /// Consumes the `type_definitions` vec from each import's [`FileAst`] so
+    /// that library ASTs are left empty after extraction.
+    fn extract_type_definitions_from_imports<'a>(
+        &self,
+        imports: Vec<Import<'a>>,
+    ) -> impl DoubleEndedIterator<Item = TypeDefinition<'a>> {
+        imports.into_iter().flat_map(|import| {
+            // `mem::take` drains the library AST's type_definitions in place,
+            // so the shared Rc<RefCell<FileAst>> is left empty — safe because
+            // library imports are consumed.
+            let mut type_defs = mem::take(&mut import.file_ast.borrow_mut().type_definitions);
+            // Glob imports (namespace = None) keep their original names.
+            if let Some(ns) = import.namespace {
+                for type_def in &mut type_defs {
+                    self.qualify_type_definition(type_def, ns);
+                }
+            }
+            type_defs
+        })
+    }
+
+    /// Merges imported and local [`TypeDefinition`]s, deduplicating by name.
+    ///
+    /// Imported definitions come first; local definitions are chained after.
+    /// When names collide the last writer wins, so local definitions take
+    /// precedence over imported ones.
+    fn merge_with_import_type_definitions<'a>(
+        &self,
+        type_defs: Vec<TypeDefinition<'a>>,
+        imports: Vec<Import<'a>>,
+    ) -> Vec<TypeDefinition<'a>> {
+        let mut seen_type_names = HashSet::new();
+        // Chain order is imported → local so that local definitions appear last.
+        // Reversing before filtering keeps the *last* occurrence of each name
+        // (i.e., local wins over imported). A second reverse restores source order.
+        // Note: a lazy `.rev().filter().rev()` does NOT work — the two Rev
+        // adapters cancel out at the driving level, making filter see forward
+        // order and keep the *first* occurrence instead.
+        let mut dedup_types: Vec<_> = self
+            .extract_type_definitions_from_imports(imports)
+            .chain(type_defs)
+            .rev()
+            .filter(|type_def| seen_type_names.insert(*type_def.name.inner()))
+            .collect();
+        dedup_types.reverse();
+        dedup_types
     }
 }
 
 impl<'a> Folder<'a> for Desugar {
+    /// Desugars a complete [`FileAst`] by flattening library imports into the
+    /// root type-definition list and forwarding diagram imports unchanged.
+    fn fold_file_ast(&mut self, mut file_ast: FileAst<'a>) -> FileAst<'a> {
+        let imports = self.fold_imports(file_ast.imports);
+
+        // Library imports export type definitions — extract and merge them into
+        // the root scope. Diagram imports are internal to their own diagram and
+        // are kept as-is for downstream rendering.
+        let (lib_imports, diagram_imports): (Vec<_>, Vec<_>) = imports
+            .into_iter()
+            .partition(|import| import.file_ast.borrow().header.is_library());
+
+        // Merge must happen before fold_type_definitions so that imported types
+        // are visible during any subsequent elaboration.
+        let type_defs = self.merge_with_import_type_definitions(
+            mem::take(&mut file_ast.type_definitions),
+            lib_imports,
+        );
+
+        FileAst {
+            header: self.fold_header(file_ast.header),
+            import_decls: file_ast.import_decls,
+            imports: diagram_imports,
+            type_definitions: self.fold_type_definitions(type_defs),
+            elements: self.fold_elements(file_ast.elements),
+        }
+    }
+
     /// Override fold_component to add path tracking for identifier resolution
     fn fold_component(
         &mut self,
@@ -766,6 +880,58 @@ mod tests {
         Spanned::new(value, Span::new(0..1))
     }
 
+    /// Helper: create a library `FileAst` with the given type definitions.
+    fn make_library_ast<'a>(type_defs: Vec<TypeDefinition<'a>>) -> FileAst<'a> {
+        FileAst {
+            header: FileHeader::Library {
+                span: Span::new(0..1),
+            },
+            import_decls: vec![],
+            type_definitions: type_defs,
+            elements: vec![],
+            imports: vec![],
+        }
+    }
+
+    /// Helper: create a diagram `FileAst` with the given elements and type defs.
+    fn make_diagram_ast<'a>(
+        type_defs: Vec<TypeDefinition<'a>>,
+        elements: Vec<Element<'a>>,
+    ) -> FileAst<'a> {
+        FileAst {
+            header: FileHeader::Diagram {
+                kind: spanned(DiagramKind::Component),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: type_defs,
+            elements,
+            imports: vec![],
+        }
+    }
+
+    /// Helper: create a sequence diagram `FileAst` with the given elements.
+    fn make_sequence_ast<'a>(elements: Vec<Element<'a>>) -> FileAst<'a> {
+        FileAst {
+            header: FileHeader::Diagram {
+                kind: spanned(DiagramKind::Sequence),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: vec![],
+            elements,
+            imports: vec![],
+        }
+    }
+
+    /// Helper: create an `Import` from the given namespace and file AST.
+    fn make_import<'a>(namespace: Option<Id>, file_ast: FileAst<'a>) -> Import<'a> {
+        Import {
+            namespace,
+            file_ast: Rc::new(RefCell::new(file_ast)),
+        }
+    }
+
     #[test]
     fn test_path_stack_operations() {
         let mut stack = PathStack::new();
@@ -792,16 +958,7 @@ mod tests {
     #[test]
     fn test_identity_folder_preserves_simple_diagram() {
         // Create a simple diagram wrapped in Element
-        let diagram = Element::Diagram(FileAst {
-            header: FileHeader::Diagram {
-                kind: spanned(DiagramKind::Component),
-                attributes: vec![],
-            },
-            import_decls: vec![],
-            type_definitions: vec![],
-            elements: vec![],
-            imports: vec![],
-        });
+        let diagram = Element::Diagram(make_diagram_ast(vec![], vec![]));
         let wrapped = spanned(diagram);
 
         // Apply the identity folder
@@ -873,13 +1030,8 @@ mod tests {
     #[test]
     fn test_identity_folder_preserves_type_definitions() {
         // Create a diagram with type definitions
-        let diagram = Element::Diagram(FileAst {
-            header: FileHeader::Diagram {
-                kind: spanned(DiagramKind::Component),
-                attributes: vec![],
-            },
-            import_decls: vec![],
-            type_definitions: vec![TypeDefinition {
+        let diagram = Element::Diagram(make_diagram_ast(
+            vec![TypeDefinition {
                 name: spanned(Id::new("Database")),
                 type_spec: TypeSpec {
                     type_name: Some(spanned(Id::new("Rectangle"))),
@@ -889,9 +1041,8 @@ mod tests {
                     }],
                 },
             }],
-            elements: vec![],
-            imports: vec![],
-        });
+            vec![],
+        ));
         let wrapped = spanned(diagram);
 
         // Apply the identity folder
@@ -921,14 +1072,9 @@ mod tests {
     #[test]
     fn test_identity_folder_preserves_components() {
         // Create a diagram with a component element
-        let diagram = Element::Diagram(FileAst {
-            header: FileHeader::Diagram {
-                kind: spanned(DiagramKind::Component),
-                attributes: vec![],
-            },
-            import_decls: vec![],
-            type_definitions: vec![],
-            elements: vec![Element::Component {
+        let diagram = Element::Diagram(make_diagram_ast(
+            vec![],
+            vec![Element::Component {
                 name: spanned(Id::new("frontend")),
                 display_name: Some(spanned("Frontend App".to_string())),
                 type_spec: TypeSpec {
@@ -940,8 +1086,7 @@ mod tests {
                 },
                 nested_elements: vec![],
             }],
-            imports: vec![],
-        });
+        ));
         let wrapped = spanned(diagram);
 
         // Apply the identity folder
@@ -975,26 +1120,17 @@ mod tests {
     #[test]
     fn test_identity_folder_preserves_activate_block() {
         // Create a diagram with an activate block
-        let diagram = Element::Diagram(FileAst {
-            header: FileHeader::Diagram {
-                kind: spanned(DiagramKind::Sequence),
-                attributes: vec![],
-            },
-            import_decls: vec![],
-            type_definitions: vec![],
-            elements: vec![Element::ActivateBlock {
-                component: spanned(Id::new("user")),
+        let diagram = Element::Diagram(make_sequence_ast(vec![Element::ActivateBlock {
+            component: spanned(Id::new("user")),
+            type_spec: TypeSpec::default(),
+            elements: vec![Element::Relation {
+                source: spanned(Id::new("user")),
+                target: spanned(Id::new("server")),
+                relation_type: spanned("->"),
                 type_spec: TypeSpec::default(),
-                elements: vec![Element::Relation {
-                    source: spanned(Id::new("user")),
-                    target: spanned(Id::new("server")),
-                    relation_type: spanned("->"),
-                    type_spec: TypeSpec::default(),
-                    label: Some(spanned("Request".to_string())),
-                }],
+                label: Some(spanned("Request".to_string())),
             }],
-            imports: vec![],
-        });
+        }]));
         let wrapped = spanned(diagram);
 
         // Apply the identity folder
@@ -1030,26 +1166,17 @@ mod tests {
     #[test]
     fn test_desugar_rewrites_activate_blocks() {
         // Create a diagram with an activate block
-        let diagram = Element::Diagram(FileAst {
-            header: FileHeader::Diagram {
-                kind: spanned(DiagramKind::Sequence),
-                attributes: vec![],
-            },
-            import_decls: vec![],
-            type_definitions: vec![],
-            elements: vec![Element::ActivateBlock {
-                component: spanned(Id::new("user")),
+        let diagram = Element::Diagram(make_sequence_ast(vec![Element::ActivateBlock {
+            component: spanned(Id::new("user")),
+            type_spec: TypeSpec::default(),
+            elements: vec![Element::Relation {
+                source: spanned(Id::new("user")),
+                target: spanned(Id::new("server")),
+                relation_type: spanned("->"),
                 type_spec: TypeSpec::default(),
-                elements: vec![Element::Relation {
-                    source: spanned(Id::new("user")),
-                    target: spanned(Id::new("server")),
-                    relation_type: spanned("->"),
-                    type_spec: TypeSpec::default(),
-                    label: Some(spanned("Request".to_string())),
-                }],
+                label: Some(spanned("Request".to_string())),
             }],
-            imports: vec![],
-        });
+        }]));
         let wrapped = spanned(diagram);
 
         // Apply Desugar folder directly
@@ -1617,9 +1744,7 @@ mod tests {
             }],
         };
 
-        let mut folder = Desugar {
-            path_stack: PathStack::new(),
-        };
+        let mut folder = Desugar::new();
         let result = folder.fold_element(level1);
 
         // Navigate to the deeply nested relation
@@ -2203,5 +2328,397 @@ mod tests {
             }
             _ => panic!("Expected Activate"),
         }
+    }
+
+    #[test]
+    fn test_import_basic_namespace_qualification() {
+        let lib_ast = make_library_ast(vec![
+            TypeDefinition {
+                name: spanned(Id::new("Service")),
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Rectangle"))),
+                    attributes: vec![Attribute {
+                        name: spanned("fill_color"),
+                        value: AttributeValue::String(spanned("blue".to_string())),
+                    }],
+                },
+            },
+            TypeDefinition {
+                name: spanned(Id::new("Database")),
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Oval"))),
+                    attributes: vec![Attribute {
+                        name: spanned("fill_color"),
+                        value: AttributeValue::String(spanned("green".to_string())),
+                    }],
+                },
+            },
+        ]);
+
+        let mut main_ast = make_diagram_ast(vec![], vec![]);
+        main_ast.imports = vec![make_import(Some(Id::new("styles")), lib_ast)];
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        let names: Vec<String> = result
+            .type_definitions
+            .iter()
+            .map(|td| td.name.inner().to_string())
+            .collect();
+        assert_eq!(names, ["styles::Service", "styles::Database"]);
+    }
+
+    #[test]
+    fn test_import_base_type_qualification() {
+        // Verify non-built-in base types qualified.
+        let lib_ast = make_library_ast(vec![
+            TypeDefinition {
+                name: spanned(Id::new("DashedLine")),
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Stroke"))),
+                    attributes: vec![Attribute {
+                        name: spanned("style"),
+                        value: AttributeValue::String(spanned("dashed".to_string())),
+                    }],
+                },
+            },
+            TypeDefinition {
+                name: spanned(Id::new("Service")),
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("DashedLine"))),
+                    attributes: vec![Attribute {
+                        name: spanned("fill_color"),
+                        value: AttributeValue::String(spanned("blue".to_string())),
+                    }],
+                },
+            },
+        ]);
+
+        let mut main_ast = make_diagram_ast(vec![], vec![]);
+        main_ast.imports = vec![make_import(Some(Id::new("styles")), lib_ast)];
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        let service = result
+            .type_definitions
+            .iter()
+            .find(|td| *td.name.inner() == "styles::Service")
+            .expect("styles::Service should exist");
+
+        let type_name = service
+            .type_spec
+            .type_name
+            .as_ref()
+            .expect("type_name should be present");
+        assert_eq!(**type_name, "styles::DashedLine");
+    }
+
+    #[test]
+    fn test_import_builtin_type_preserved() {
+        // Verify built-in types are NOT qualified.
+        let lib_ast = make_library_ast(vec![TypeDefinition {
+            name: spanned(Id::new("Service")),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![Attribute {
+                    name: spanned("fill_color"),
+                    value: AttributeValue::String(spanned("blue".to_string())),
+                }],
+            },
+        }]);
+
+        let mut main_ast = make_diagram_ast(vec![], vec![]);
+        main_ast.imports = vec![make_import(Some(Id::new("styles")), lib_ast)];
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        let service = result
+            .type_definitions
+            .iter()
+            .find(|td| *td.name.inner() == "styles::Service")
+            .expect("styles::Service should exist");
+
+        let type_name = service
+            .type_spec
+            .type_name
+            .as_ref()
+            .expect("type_name should be present");
+        // Rectangle is built-in — it must NOT be qualified.
+        assert_eq!(**type_name, "Rectangle");
+    }
+
+    #[test]
+    fn test_import_nested_attribute_type_ref_qualification() {
+        let lib_ast = make_library_ast(vec![
+            TypeDefinition {
+                name: spanned(Id::new("DashedLine")),
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Stroke"))),
+                    attributes: vec![Attribute {
+                        name: spanned("style"),
+                        value: AttributeValue::String(spanned("dashed".to_string())),
+                    }],
+                },
+            },
+            TypeDefinition {
+                name: spanned(Id::new("Service")),
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Rectangle"))),
+                    attributes: vec![Attribute {
+                        name: spanned("stroke"),
+                        value: AttributeValue::TypeSpec(TypeSpec {
+                            type_name: Some(spanned(Id::new("DashedLine"))),
+                            attributes: vec![],
+                        }),
+                    }],
+                },
+            },
+        ]);
+
+        let mut main_ast = make_diagram_ast(vec![], vec![]);
+        main_ast.imports = vec![make_import(Some(Id::new("styles")), lib_ast)];
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        let service = result
+            .type_definitions
+            .iter()
+            .find(|td| *td.name.inner() == "styles::Service")
+            .expect("styles::Service should exist");
+
+        // Rectangle is built-in, must stay as-is.
+        assert_eq!(**service.type_spec.type_name.as_ref().unwrap(), "Rectangle");
+
+        // The nested stroke attribute's TypeSpec type_name should be qualified.
+        let stroke_attr = &service.type_spec.attributes[0];
+        assert_eq!(*stroke_attr.name, "stroke");
+        let inner = &stroke_attr
+            .value
+            .as_type_spec()
+            .expect("attribute should be TypeSpec");
+        let inner_name = inner
+            .type_name
+            .as_ref()
+            .expect("inner type_name should be present");
+        assert_eq!(**inner_name, "styles::DashedLine");
+    }
+
+    #[test]
+    fn test_import_type_def_dedup_last_import_wins() {
+        let lib_a = make_library_ast(vec![TypeDefinition {
+            name: spanned(Id::new("Service")),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![Attribute {
+                    name: spanned("fill_color"),
+                    value: AttributeValue::String(spanned("blue".to_string())),
+                }],
+            },
+        }]);
+
+        let lib_b = make_library_ast(vec![TypeDefinition {
+            name: spanned(Id::new("Service")),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![Attribute {
+                    name: spanned("fill_color"),
+                    value: AttributeValue::String(spanned("red".to_string())),
+                }],
+            },
+        }]);
+
+        let mut main_ast = make_diagram_ast(vec![], vec![]);
+        main_ast.imports = vec![make_import(None, lib_a), make_import(None, lib_b)];
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        // Only one type definition should remain (dedup).
+        assert_eq!(result.type_definitions.len(), 1);
+
+        // Last writer wins → fill_color = "red".
+        assert_eq!(
+            result.type_definitions[0].type_spec.attributes[0]
+                .value
+                .as_str()
+                .expect("attribute should be String"),
+            "red"
+        )
+    }
+
+    #[test]
+    fn test_import_local_type_def_overrides_imported() {
+        let lib_ast = make_library_ast(vec![TypeDefinition {
+            name: spanned(Id::new("Service")),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![Attribute {
+                    name: spanned("fill_color"),
+                    value: AttributeValue::String(spanned("blue".to_string())),
+                }],
+            },
+        }]);
+
+        let mut main_ast = make_diagram_ast(
+            vec![TypeDefinition {
+                name: spanned(Id::new("Service")),
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Rectangle"))),
+                    attributes: vec![Attribute {
+                        name: spanned("fill_color"),
+                        value: AttributeValue::String(spanned("custom".to_string())),
+                    }],
+                },
+            }],
+            vec![],
+        );
+        main_ast.imports = vec![make_import(None, lib_ast)];
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        assert_eq!(result.type_definitions.len(), 1);
+
+        // Local wins → fill_color = "custom".
+        assert_eq!(
+            result.type_definitions[0].type_spec.attributes[0]
+                .value
+                .as_str()
+                .expect("attribute should be String"),
+            "custom"
+        )
+    }
+
+    #[test]
+    fn test_import_transitive_chained_namespaces() {
+        // base library: type Color = Stroke[style="solid"]
+        let base_ast = make_library_ast(vec![TypeDefinition {
+            name: spanned(Id::new("Color")),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Stroke"))),
+                attributes: vec![Attribute {
+                    name: spanned("style"),
+                    value: AttributeValue::String(spanned("solid".to_string())),
+                }],
+            },
+        }]);
+
+        // ext library: imports base with namespace "base"
+        let mut ext_ast = make_library_ast(vec![]);
+        ext_ast.imports = vec![make_import(Some(Id::new("base")), base_ast)];
+
+        // main diagram: imports ext with namespace "ext"
+        let mut main_ast = make_diagram_ast(vec![], vec![]);
+        main_ast.imports = vec![make_import(Some(Id::new("ext")), ext_ast)];
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        // Should contain ext::base::Color
+        let color = result
+            .type_definitions
+            .iter()
+            .find(|td| *td.name.inner() == "ext::base::Color")
+            .expect("ext::base::Color should exist");
+
+        // Stroke is built-in, stays unqualified.
+        let type_name = color
+            .type_spec
+            .type_name
+            .as_ref()
+            .expect("type_name should be present");
+        assert_eq!(**type_name, "Stroke");
+    }
+
+    #[test]
+    fn test_import_diagram_preserved_library_consumed() {
+        // Verify library imports consumed, diagram imports preserved.
+        let lib_ast = make_library_ast(vec![TypeDefinition {
+            name: spanned(Id::new("Card")),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![],
+            },
+        }]);
+
+        let diag_ast = make_diagram_ast(
+            vec![TypeDefinition {
+                name: spanned(Id::new("FlowBox")),
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Rectangle"))),
+                    attributes: vec![],
+                },
+            }],
+            vec![],
+        );
+
+        let mut main_ast = make_diagram_ast(vec![], vec![]);
+        main_ast.imports = vec![
+            make_import(Some(Id::new("styles")), lib_ast),
+            make_import(Some(Id::new("flow")), diag_ast),
+        ];
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        // Library import is consumed – NOT in output imports.
+        // Diagram import is preserved in output imports.
+        assert_eq!(result.imports.len(), 1);
+        assert_eq!(result.imports[0].namespace, Some(Id::new("flow")));
+
+        // Library's types are merged into type_definitions.
+        let has_card = result
+            .type_definitions
+            .iter()
+            .any(|td| *td.name.inner() == "styles::Card");
+        assert!(has_card, "styles::Card should be in type_definitions");
+
+        // Diagram's types are NOT extracted into type_definitions.
+        let has_flowbox = result
+            .type_definitions
+            .iter()
+            .any(|td| *td.name.inner() == "FlowBox" || *td.name.inner() == "flow::FlowBox");
+        assert!(
+            !has_flowbox,
+            "Diagram types should NOT be in type_definitions"
+        );
+    }
+
+    #[test]
+    fn test_import_no_namespace_flat() {
+        // Verify glob import (no namespace) – types imported flat.
+        let lib_ast = make_library_ast(vec![TypeDefinition {
+            name: spanned(Id::new("Service")),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![Attribute {
+                    name: spanned("fill_color"),
+                    value: AttributeValue::String(spanned("blue".to_string())),
+                }],
+            },
+        }]);
+
+        let mut main_ast = make_diagram_ast(vec![], vec![]);
+        main_ast.imports = vec![make_import(None, lib_ast)];
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        assert_eq!(result.type_definitions.len(), 1);
+
+        // With namespace: None, the type name stays bare "Service" (no prefix).
+        assert_eq!(*result.type_definitions[0].name.inner(), "Service");
+
+        // Built-in type_name stays as-is.
+        let type_name = result.type_definitions[0]
+            .type_spec
+            .type_name
+            .as_ref()
+            .expect("type_name should be present");
+        assert_eq!(**type_name, "Rectangle");
     }
 }

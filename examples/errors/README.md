@@ -48,7 +48,7 @@ cargo run examples/errors/<file>.orr
 | File | Code | Error |
 |------|------|-------|
 | [`elab_undefined_type.orr`](elab_undefined_type.orr) | E300 | Reference to undefined base type (`rectangle` instead of `Rectangle`) |
-| [`elab_duplicate_type.orr`](elab_duplicate_type.orr) | E301 | Type defined more than once with the same name |
+| [`elab_type_override.orr`](elab_type_override.orr) | E301 | Overriding a built-in type is not supported |
 | [`elab_invalid_attribute_value.orr`](elab_invalid_attribute_value.orr) | E302 | Attribute value is not valid for the expected type (e.g., `rounded="not-a-number"`) |
 | [`elab_unknown_attribute.orr`](elab_unknown_attribute.orr) | E303 | Attribute name not recognized for the shape type (e.g., `bogus="value"`) |
 | [`elab_activation_in_component.orr`](elab_activation_in_component.orr) | E304 | Activation block used in a component diagram (sequence-only feature) |

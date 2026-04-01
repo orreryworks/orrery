@@ -144,7 +144,7 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
     /// dependency is detected (E401), an import path is invalid (E402), or
     /// lexing/parsing fails.
     pub fn resolve(mut self, root_path: &Path) -> Result<ResolvedFile<'arena>, ParseError> {
-        let (_root_file_id, root_rc) = self.resolve_file(root_path, None)?;
+        let root_rc = self.resolve_file(root_path, None)?;
 
         // Drop the cache so the root Rc's refcount drops to 1.
         // (Imported files inside the tree keep their own Rc clones alive.)
@@ -169,12 +169,12 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
         &mut self,
         path: &Path,
         import_span: Option<Span>,
-    ) -> Result<(FileId, Rc<RefCell<FileAst<'arena>>>), ParseError> {
+    ) -> Result<Rc<RefCell<FileAst<'arena>>>, ParseError> {
         let file_id = FileId::new(path);
 
         // 1. Deduplication — return cached Rc if already fully resolved.
         if let Some(rc) = self.cache.get(&file_id) {
-            return Ok((file_id, Rc::clone(rc)));
+            return Ok(Rc::clone(rc));
         }
 
         // 2. Cycle detection.
@@ -218,8 +218,7 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
                 .resolve_path(path, import_path)
                 .map_err(|e| Self::file_not_found_error(&e, Some(decl_span)))?;
 
-            let (imported_file_id, imported_rc) =
-                self.resolve_file(&resolved_path, Some(decl_span))?;
+            let imported_rc = self.resolve_file(&resolved_path, Some(decl_span))?;
 
             let namespace = self
                 .provider
@@ -228,7 +227,6 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
 
             file_ast.imports.push(Import {
                 namespace: Some(namespace),
-                file_id: imported_file_id,
                 file_ast: imported_rc,
             });
         }
@@ -238,7 +236,7 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
         let rc = Rc::new(RefCell::new(file_ast));
         self.cache.insert(file_id, Rc::clone(&rc));
 
-        Ok((file_id, rc))
+        Ok(rc)
     }
 
     /// Rejects empty import paths, which would silently mis-resolve to the
@@ -577,61 +575,6 @@ mod tests {
         let import = &resolved.file_ast().imports[0];
         let ns = import.namespace.as_ref().expect("should have namespace");
         assert!(ns == "base", "expected namespace 'base', got '{ns:?}'");
-    }
-
-    #[test]
-    fn file_id_set_on_import() {
-        let arena = Bump::new();
-        let resolved = resolve_with(
-            &arena,
-            &[
-                (
-                    "main.orr",
-                    "diagram component;\nimport \"shared/styles\";\na: Rectangle;",
-                ),
-                ("shared/styles.orr", "library;"),
-            ],
-            "main.orr",
-        )
-        .expect("should resolve");
-
-        let import = &resolved.file_ast().imports[0];
-        assert_eq!(
-            import.file_id.as_str(),
-            "shared/styles.orr",
-            "file_id should reflect the resolved path"
-        );
-    }
-
-    #[test]
-    fn file_id_deduplication_in_diamond() {
-        // A → B, A → C, B → D, C → D
-        let arena = Bump::new();
-        let resolved = resolve_with(
-            &arena,
-            &[
-                (
-                    "a.orr",
-                    "diagram component;\nimport \"b\";\nimport \"c\";\na: Rectangle;",
-                ),
-                ("b.orr", "library;\nimport \"d\";"),
-                ("c.orr", "library;\nimport \"d\";"),
-                ("d.orr", "library;"),
-            ],
-            "a.orr",
-        )
-        .expect("should resolve diamond");
-
-        let b_ast = resolved.file_ast().imports[0].file_ast.borrow();
-        let c_ast = resolved.file_ast().imports[1].file_ast.borrow();
-
-        let d_from_b = &b_ast.imports[0];
-        let d_from_c = &c_ast.imports[0];
-
-        assert_eq!(
-            d_from_b.file_id, d_from_c.file_id,
-            "file_id for D should be identical whether reached via B or C"
-        );
     }
 
     #[test]

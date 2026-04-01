@@ -23,18 +23,13 @@ use crate::{
 /// # Example
 ///
 /// ```text
-/// error[E301]: type `User` is defined multiple times
+/// error[E301]: cannot override type `Rectangle`
 ///   --> src/main.orr:10:1
 ///    |
-/// 10 | type User = Rectangle;
-///    | ^^^^^^^^^^^^^^^^^^^^^^ duplicate definition
+/// 10 | type Rectangle = Oval[fill_color="red"];
+///    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ type override not supported
 ///    |
-///   --> src/main.orr:5:1
-///    |
-///  5 | type User = Circle;
-///    | ------------------- first defined here
-///    |
-///    = help: remove the duplicate or use a different name
+///    = help: built-in types cannot be redefined
 /// ```
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
@@ -227,19 +222,15 @@ mod tests {
 
     #[test]
     fn test_diagnostic_builder_chain() {
-        let diag = Diagnostic::new(Severity::Error, "type `User` is defined multiple times")
+        let diag = Diagnostic::new(Severity::Error, "cannot override built-in type `Component`")
             .with_code(ErrorCode::E301)
-            .with_label(Span::new(100..120), "duplicate definition")
-            .with_secondary_label(Span::new(50..70), "first defined here")
-            .with_help("remove the duplicate or use a different name");
+            .with_label(Span::new(100..120), "type override not supported")
+            .with_help("built-in types cannot be redefined");
 
         assert!(diag.severity().is_error());
         assert_eq!(diag.code(), Some(ErrorCode::E301));
-        assert_eq!(diag.message(), "type `User` is defined multiple times");
-        assert_eq!(diag.labels().len(), 2);
-        assert_eq!(
-            diag.help(),
-            Some("remove the duplicate or use a different name")
-        );
+        assert_eq!(diag.message(), "cannot override built-in type `Component`");
+        assert_eq!(diag.labels().len(), 1);
+        assert_eq!(diag.help(), Some("built-in types cannot be redefined"));
     }
 }

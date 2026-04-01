@@ -12,10 +12,7 @@ use std::{cell::RefCell, fmt, rc::Rc};
 
 use orrery_core::{identifier::Id, semantic::DiagramKind};
 
-use crate::{
-    file_id::FileId,
-    span::{Span, Spanned},
-};
+use crate::span::{Span, Spanned};
 
 /// Type specifier used in both declarations and invocations.
 ///
@@ -205,6 +202,15 @@ impl<'a> AttributeValue<'a> {
         }
     }
 
+    /// Returns a mutable reference to the inner [`TypeSpec`], or an error if
+    /// this is not a type spec value.
+    pub fn as_type_spec_mut(&mut self) -> Result<&mut TypeSpec<'a>, &'static str> {
+        match self {
+            AttributeValue::TypeSpec(type_spec) => Ok(type_spec),
+            _ => Err("Expected type spec"),
+        }
+    }
+
     /// Extract an identifier list, returning an error if this is not an identifiers value
     pub fn as_identifiers(&self) -> Result<&[Spanned<Id>], &'static str> {
         match self {
@@ -284,6 +290,11 @@ impl FileHeader<'_> {
             FileHeader::Library { span } => *span,
         }
     }
+
+    /// Returns `true` if this header is a [`Library`](FileHeader::Library) variant.
+    pub fn is_library(&self) -> bool {
+        matches!(self, FileHeader::Library { .. })
+    }
 }
 
 /// Import declaration — a syntactic `import "path";` statement.
@@ -310,8 +321,6 @@ pub struct Import<'a> {
     /// Used to scope imported symbols (e.g., `styles::Card`). `None` when the
     /// import is not namespaced.
     pub namespace: Option<Id>,
-    /// Identifies which file this import resolved to.
-    pub file_id: FileId,
     /// The fully parsed AST of the imported file.
     ///
     /// Stored as `Rc<RefCell<…>>` so that diamond dependencies (the same file

@@ -129,7 +129,7 @@ impl Id {
     /// assert_eq!(nested.name(), "profile");
     /// assert_eq!(nested.namespace(), Some("user"));
     /// ```
-    pub fn create_nested(&self, child_id: Id) -> Self {
+    pub fn create_nested(self, child_id: Id) -> Self {
         // Optimization: when parent has no namespace and child has no namespace,
         // the new namespace is simply the parent's name symbol — no allocation needed.
         if self.namespace.is_none() && child_id.namespace.is_none() {
@@ -202,7 +202,7 @@ impl Id {
     }
 
     /// Resolves the full path using an already-acquired [`interner::Interner`] guard.
-    fn full_path_with(&self, interner: &interner::Interner) -> String {
+    fn full_path_with(self, interner: &interner::Interner) -> String {
         let name_str = interner.resolve(self.name);
         match self.namespace {
             Some(ns) => {
