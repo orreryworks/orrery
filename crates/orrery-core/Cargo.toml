@@ -28,7 +28,7 @@ serde = { version = "1.0", features = ["derive"] }
 
 [dev-dependencies]
 float-cmp = "0.10"
-proptest = "1.10"
+proptest = "1.11"
 
 [package.metadata.release]
 pre-release-replacements = [
