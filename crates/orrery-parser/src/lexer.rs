@@ -19,7 +19,7 @@ use winnow::{
 };
 
 use crate::{
-    error::{Diagnostic, DiagnosticCollector, ErrorCode, ParseError},
+    error::{Diagnostic, DiagnosticCollector, ErrorCode},
     span::Span,
     tokens::{PositionedToken, Token},
 };
@@ -403,7 +403,7 @@ impl<'a> Lexer<'a> {
     }
 
     /// Finishes lexing and returns tokens or collected errors.
-    fn finish(self) -> Result<Vec<PositionedToken<'a>>, ParseError> {
+    fn finish(self) -> Result<Vec<PositionedToken<'a>>, Vec<Diagnostic>> {
         self.diagnostics.finish().map(|()| self.tokens)
     }
 
@@ -463,9 +463,12 @@ impl<'a> Lexer<'a> {
 ///
 /// # Returns
 ///
-/// The token sequence on success, or a [`ParseError`] containing all
+/// The token sequence on success, or a [`Vec<Diagnostic>`] containing all
 /// accumulated diagnostics on failure.
-pub fn tokenize(input: &str, base_offset: usize) -> Result<Vec<PositionedToken<'_>>, ParseError> {
+pub fn tokenize(
+    input: &str,
+    base_offset: usize,
+) -> Result<Vec<PositionedToken<'_>>, Vec<Diagnostic>> {
     let located_input = LocatingSlice::new(input);
     let mut lexer = Lexer::new(base_offset);
     lexer.tokenize(located_input);
@@ -1026,7 +1029,7 @@ mod tests {
                 "Expected lexer to fail on input: '{input}'"
             );
             let parse_error = result.unwrap_err();
-            let diagnostics = parse_error.diagnostics();
+            let diagnostics = &parse_error;
             assert_eq!(
                 diagnostics.len(),
                 expected_codes.len(),
@@ -1090,7 +1093,7 @@ mod tests {
             assert!(result.is_err());
 
             let parse_error = result.unwrap_err();
-            let diagnostics = parse_error.diagnostics();
+            let diagnostics = &parse_error;
             assert!(!diagnostics.is_empty(), "Expected at least one diagnostic");
             let diagnostic = &diagnostics[0];
             let labels = diagnostic.labels();
@@ -1166,7 +1169,7 @@ mod tests {
     fn tokenize_with_base_offset_shifts_error_spans() {
         // '$' is an unexpected character that produces E002.
         let err = tokenize("$", 200).unwrap_err();
-        let diag = &err.diagnostics()[0];
+        let diag = &err[0];
         let label = &diag.labels()[0];
 
         assert!(

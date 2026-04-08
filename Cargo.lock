@@ -701,6 +701,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 name = "orrery"
 version = "0.1.1"
 dependencies = [
+ "bumpalo",
  "color",
  "cosmic-text",
  "indexmap",
@@ -721,6 +722,7 @@ dependencies = [
 name = "orrery-cli"
 version = "0.1.1"
 dependencies = [
+ "bumpalo",
  "clap",
  "directories",
  "env_logger",

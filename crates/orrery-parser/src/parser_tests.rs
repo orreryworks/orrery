@@ -7,7 +7,7 @@ use crate::{lexer, parser};
 
 /// Helper function to parse a source string and return success/failure
 fn parse_source(source: &str) -> Result<(), String> {
-    let tokens = lexer::tokenize(source, 0).map_err(|err| format!("Lexer error: {}", err))?;
+    let tokens = lexer::tokenize(source, 0).map_err(|err| format!("Lexer error: {:?}", err))?;
     let _ast = parser::build_file(&tokens).map_err(|err| format!("Parser error: {}", err))?;
     Ok(())
 }

@@ -13,7 +13,7 @@ use orrery_core::{
 };
 
 use crate::{
-    error::OrreryError,
+    error::RenderError,
     layout::{
         component::Component,
         engines::{EmbeddedLayouts, SequenceEngine},
@@ -23,7 +23,8 @@ use crate::{
     structure::{SequenceEvent, SequenceGraph},
 };
 
-/// Return type for process_events: (messages, activation_boxes, fragments, notes, final_y)
+/// Collected output from [`Engine::process_events`]: messages, activation boxes,
+/// fragments, notes, and the final Y coordinate.
 type ProcessEventsResult<'a> = (
     Vec<Message<'a>>,
     Vec<ActivationBox>,
@@ -32,13 +33,22 @@ type ProcessEventsResult<'a> = (
     f32,
 );
 
-/// Basic sequence layout engine implementation that implements the SequenceLayoutEngine trait
+/// Basic deterministic layout engine for sequence diagrams.
+///
+/// Distributes participants horizontally, processes events sequentially
+/// to place messages and activations, and builds lifelines from
+/// participant boxes to the final event position.
 pub struct Engine {
-    min_spacing: f32, // Minimum space between participants
+    /// Minimum horizontal space between participants.
+    min_spacing: f32,
+    /// Vertical padding between consecutive events.
     event_padding: f32,
+    /// Vertical margin above participant boxes.
     top_margin: f32,
+    /// Padding inside participant shapes.
     padding: Insets,
-    label_padding: f32, // Padding to add for message labels
+    /// Extra horizontal padding to accommodate message labels.
+    label_padding: f32,
 }
 
 impl Engine {
@@ -104,12 +114,21 @@ impl Engine {
         crate::layout::positioning::calculate_label_spacing(labels, self.label_padding)
     }
 
-    /// Calculate layout for a sequence diagram
+    /// Calculate layout for a sequence diagram.
+    ///
+    /// # Arguments
+    ///
+    /// * `graph` - The sequence diagram graph to lay out.
+    /// * `embedded_layouts` - Pre-calculated layouts for embedded diagrams.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RenderError::Layout`] if position or shape calculation fails.
     pub fn calculate_layout<'a>(
         &self,
         graph: &'a SequenceGraph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<ContentStack<Layout<'a>>, OrreryError> {
+    ) -> Result<ContentStack<Layout<'a>>, RenderError> {
         // Create shapes with text for participants
         let mut participant_shapes: HashMap<_, _> = HashMap::new();
         for node in graph.nodes() {
@@ -129,7 +148,7 @@ impl Engine {
                 shape_with_text
                     .set_inner_content_size(content_size)
                     .map_err(|err| {
-                        OrreryError::Layout(format!(
+                        RenderError::Layout(format!(
                             "Failed to set content size for participant '{}': {err}",
                             node.display_text()
                         ))
@@ -161,7 +180,7 @@ impl Engine {
         let mut sizes: Vec<Size> = Vec::new();
         for id in graph.node_ids() {
             let shape_with_text = participant_shapes.get(id).ok_or_else(|| {
-                OrreryError::Layout("Participant shape not found for node".to_string())
+                RenderError::Layout("Participant shape not found for node".to_string())
             })?;
             sizes.push(shape_with_text.size());
         }
@@ -177,7 +196,7 @@ impl Engine {
         let mut components: HashMap<Id, Component> = HashMap::new();
         for (i, node) in graph.nodes().enumerate() {
             let shape_with_text = participant_shapes.remove(&node.id()).ok_or_else(|| {
-                OrreryError::Layout(format!("Participant shape not found for node '{node}'"))
+                RenderError::Layout(format!("Participant shape not found for node '{node}'"))
             })?;
             let mut position = Point::new(x_positions[i], self.top_margin);
 
@@ -271,7 +290,7 @@ impl Engine {
         graph: &SequenceGraph<'a>,
         participants_height: f32,
         components: &HashMap<Id, Component<'a>>,
-    ) -> Result<ProcessEventsResult<'a>, OrreryError> {
+    ) -> Result<ProcessEventsResult<'a>, RenderError> {
         let mut messages: Vec<Message<'a>> = Vec::new();
         let mut activation_boxes: Vec<ActivationBox> = Vec::new();
         let mut fragments: Vec<draw::PositionedDrawable<draw::Fragment>> = Vec::new();
@@ -407,7 +426,7 @@ impl Engine {
         note: &semantic::Note,
         components: &HashMap<Id, Component<'a>>,
         current_y: f32,
-    ) -> Result<draw::PositionedDrawable<draw::Note>, OrreryError> {
+    ) -> Result<draw::PositionedDrawable<draw::Note>, RenderError> {
         const NOTE_SPACING: f32 = 20.0; // Spacing between note and participant lifeline
 
         // Select appropriate components: all if on=[], otherwise specified ones
@@ -418,7 +437,7 @@ impl Engine {
                 .iter()
                 .map(|id| {
                     components.get(id).ok_or_else(|| {
-                        OrreryError::Layout("Component not found for note".to_string())
+                        RenderError::Layout("Component not found for note".to_string())
                     })
                 })
                 .collect::<Result<Vec<_>, _>>()?
@@ -445,7 +464,7 @@ impl Engine {
             .map(edge_map)
             .reduce(|(min_x, max_x), (left_x, right_x)| (min_x.min(left_x), max_x.max(right_x)))
             .ok_or_else(|| {
-                OrreryError::Layout("Note should have at least one participant".to_string())
+                RenderError::Layout("Note should have at least one participant".to_string())
             })?;
 
         let mut new_note_def = Rc::clone(note.definition());
@@ -476,7 +495,7 @@ impl SequenceEngine for Engine {
         &self,
         graph: &'a SequenceGraph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<ContentStack<Layout<'a>>, OrreryError> {
+    ) -> Result<ContentStack<Layout<'a>>, RenderError> {
         self.calculate_layout(graph, embedded_layouts)
     }
 }

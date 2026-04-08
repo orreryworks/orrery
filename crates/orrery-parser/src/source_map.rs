@@ -52,7 +52,6 @@ pub struct SourceFile<'a> {
     first_imported_at: Option<Span>,
 }
 
-#[allow(dead_code)]
 impl SourceFile<'_> {
     /// Returns the human-readable name of this file.
     pub fn name(&self) -> &str {
@@ -173,7 +172,6 @@ impl<'a> SourceMap<'a> {
     ///
     /// The [`SourceFile`] containing `offset`, or `None` if the offset falls
     /// in a gap between files or is out of range.
-    #[allow(dead_code)]
     pub fn lookup_file(&self, offset: usize) -> Option<&SourceFile<'a>> {
         // `partition_point` returns the count of files whose `start_offset <= offset`.
         let idx = self.files.partition_point(|f| f.start_offset <= offset);
@@ -188,6 +186,29 @@ impl<'a> SourceMap<'a> {
         }
     }
 
+    /// Looks up the source file containing the given [`Span`].
+    ///
+    /// This verifies that the *entire* span (not just its start offset)
+    /// falls within a single file.
+    ///
+    /// # Arguments
+    ///
+    /// * `span` - A [`Span`] in the virtual address space.
+    ///
+    /// # Returns
+    ///
+    /// The [`SourceFile`] containing the full span, or `None` if the span
+    /// crosses a file boundary, falls in a gap, or is out of range.
+    pub fn lookup_file_by_span(&self, span: Span) -> Option<&SourceFile<'a>> {
+        let file = self.lookup_file(span.start())?;
+        // Verify the entire span stays within this file.
+        if span.end() <= file.end_offset {
+            Some(file)
+        } else {
+            None
+        }
+    }
+
     /// Extracts the source text corresponding to a span.
     ///
     /// # Arguments
@@ -198,26 +219,19 @@ impl<'a> SourceMap<'a> {
     ///
     /// The source text slice, or `None` if the span crosses a file boundary,
     /// falls in a gap, or is out of range.
-    #[allow(dead_code)]
     pub fn source_slice(&self, span: Span) -> Option<&str> {
-        let file = self.lookup_file(span.start())?;
-        // Verify the entire span stays within this file.
-        if span.end() > file.end_offset {
-            return None;
-        }
+        let file = self.lookup_file_by_span(span)?;
         let local_start = span.start() - file.start_offset;
         let local_end = span.end() - file.start_offset;
         Some(&file.source[local_start..local_end])
     }
 
     /// Returns the number of registered source files.
-    #[allow(dead_code)]
     pub fn file_count(&self) -> usize {
         self.files.len()
     }
 
     /// Returns all registered source files.
-    #[allow(dead_code)]
     pub fn files(&self) -> &[SourceFile<'a>] {
         &self.files
     }

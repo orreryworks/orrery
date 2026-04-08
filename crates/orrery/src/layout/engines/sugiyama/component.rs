@@ -13,7 +13,7 @@ use orrery_core::{
 };
 
 use crate::{
-    error::OrreryError,
+    error::RenderError,
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
@@ -22,25 +22,27 @@ use crate::{
     structure::{ComponentGraph, ContainmentScope},
 };
 
-/// The Sugiyama layout engine for component diagrams
-/// Based on the Sugiyama algorithm for layered drawing of directed graphs
-/// Uses the rust-sugiyama implementation with fallback to a simple hierarchical layout
+/// Sugiyama-based layout engine for component diagrams.
+///
+/// Uses the Sugiyama algorithm for layered drawing of directed graphs.
+/// Produces aesthetically pleasing layouts by minimizing edge
+/// crossings between layers.
 pub struct Engine {
-    /// Padding around text elements
+    /// Padding around text elements.
     text_padding: f32,
 
-    /// Horizontal spacing between components
+    /// Horizontal spacing between components.
     horizontal_spacing: f32,
 
-    /// Vertical spacing between layers
+    /// Vertical spacing between layers.
     vertical_spacing: f32,
 
-    /// Container padding for nested components
+    /// Container padding for nested components.
     container_padding: Insets,
 }
 
 impl Engine {
-    /// Create a new Sugiyama component layout engine
+    /// Create a new Sugiyama component layout engine.
     pub fn new() -> Self {
         Self {
             text_padding: 20.0,
@@ -50,26 +52,26 @@ impl Engine {
         }
     }
 
-    /// Set the text padding
+    /// Set the text padding.
     #[allow(dead_code)]
     pub fn set_text_padding(&mut self, padding: f32) -> &mut Self {
         self.text_padding = padding;
         self
     }
 
-    /// Set the horizontal spacing between components
+    /// Set the horizontal spacing between components.
     pub fn set_horizontal_spacing(&mut self, spacing: f32) -> &mut Self {
         self.horizontal_spacing = spacing;
         self
     }
 
-    /// Set the vertical spacing between layers
+    /// Set the vertical spacing between layers.
     pub fn set_vertical_spacing(&mut self, spacing: f32) -> &mut Self {
         self.vertical_spacing = spacing;
         self
     }
 
-    /// Set the padding inside container components
+    /// Set the padding inside container components.
     pub fn set_container_padding(&mut self, padding: Insets) -> &mut Self {
         self.container_padding = padding;
         self
@@ -79,7 +81,7 @@ impl Engine {
         &self,
         graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<ContentStack<Layout<'a>>, OrreryError> {
+    ) -> Result<ContentStack<Layout<'a>>, RenderError> {
         let mut content_stack = ContentStack::<Layout<'a>>::new();
         let mut positioned_content_sizes = HashMap::<Id, Size>::new();
 
@@ -105,10 +107,10 @@ impl Engine {
             let mut components: Vec<Component> = Vec::new();
             for node in graph.scope_nodes(containment_scope) {
                 let position = *positions.get(&node.id()).ok_or_else(|| {
-                    OrreryError::Layout(format!("Position not found for node {node}"))
+                    RenderError::Layout(format!("Position not found for node {node}"))
                 })?;
                 let shape_with_text = component_shapes.remove(&node.id()).ok_or_else(|| {
-                    OrreryError::Layout(format!("Shape not found for node {node}"))
+                    RenderError::Layout(format!("Shape not found for node {node}"))
                 })?;
                 components.push(Component::new(node, shape_with_text, position));
             }
@@ -163,7 +165,7 @@ impl Engine {
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<Id, Size>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<HashMap<Id, draw::ShapeWithText<'a>>, OrreryError> {
+    ) -> Result<HashMap<Id, draw::ShapeWithText<'a>>, RenderError> {
         let mut component_shapes: HashMap<Id, draw::ShapeWithText<'a>> = HashMap::new();
 
         // TODO: move it to the best place.
@@ -178,14 +180,14 @@ impl Engine {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
                     let layout = embedded_layouts.get(&node.id()).ok_or_else(|| {
-                        OrreryError::Layout(format!("Embedded layout not found for node {node}"))
+                        RenderError::Layout(format!("Embedded layout not found for node {node}"))
                     })?;
 
                     let content_size = layout.calculate_size();
                     shape_with_text
                         .set_inner_content_size(content_size)
                         .map_err(|err| {
-                            OrreryError::Layout(format!(
+                            RenderError::Layout(format!(
                                 "Failed to set content size for diagram block {node}: {err}"
                             ))
                         })?;
@@ -193,12 +195,12 @@ impl Engine {
                 semantic::Block::Scope(_) => {
                     let content_size =
                         *positioned_content_sizes.get(&node.id()).ok_or_else(|| {
-                            OrreryError::Layout(format!("Scope size not found for node {node}"))
+                            RenderError::Layout(format!("Scope size not found for node {node}"))
                         })?;
                     shape_with_text
                         .set_inner_content_size(content_size)
                         .map_err(|err| {
-                            OrreryError::Layout(format!(
+                            RenderError::Layout(format!(
                                 "Failed to set content size for scope block {node}: {err}"
                             ))
                         })?;
@@ -219,7 +221,7 @@ impl Engine {
         graph: &ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
         component_sizes: &HashMap<Id, Size>,
-    ) -> Result<HashMap<Id, Point>, OrreryError> {
+    ) -> Result<HashMap<Id, Point>, RenderError> {
         // Prepare layout
         let mut positions = HashMap::new();
 
@@ -326,7 +328,7 @@ impl Engine {
 
                     // If mapping failed for all nodes, return error
                     if positions.is_empty() {
-                        return Err(OrreryError::Layout(
+                        return Err(RenderError::Layout(
                             "Failed to map any rust-sugiyama positions back to graph nodes"
                                 .to_string(),
                         ));
@@ -335,14 +337,14 @@ impl Engine {
 
                 // Empty results case
                 Ok(results) if results.is_empty() => {
-                    return Err(OrreryError::Layout(
+                    return Err(RenderError::Layout(
                         "Rust-sugiyama returned empty layout results".to_string(),
                     ));
                 }
 
                 // Unexpected success case
                 Ok(_) => {
-                    return Err(OrreryError::Layout(
+                    return Err(RenderError::Layout(
                         "Rust-sugiyama returned unexpected result format".to_string(),
                     ));
                 }
@@ -354,7 +356,7 @@ impl Engine {
                     } else {
                         "Rust-sugiyama layout engine panicked with unknown error".to_string()
                     };
-                    return Err(OrreryError::Layout(message));
+                    return Err(RenderError::Layout(message));
                 }
             }
 
@@ -385,7 +387,7 @@ impl Engine {
         &self,
         positions: &mut HashMap<Id, Point>,
         component_sizes: &HashMap<Id, Size>,
-    ) -> Result<(), OrreryError> {
+    ) -> Result<(), RenderError> {
         if positions.is_empty() {
             return Ok(());
         }
@@ -397,7 +399,7 @@ impl Engine {
 
         for (node_id, point) in positions.iter() {
             let size = component_sizes.get(node_id).ok_or_else(|| {
-                OrreryError::Layout(format!("Component size not found for node {node_id}"))
+                RenderError::Layout(format!("Component size not found for node {node_id}"))
             })?;
             let half_width = size.width() / 2.0;
             let half_height = size.height() / 2.0;
@@ -425,7 +427,7 @@ impl ComponentEngine for Engine {
         &self,
         graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<ContentStack<Layout<'a>>, OrreryError> {
+    ) -> Result<ContentStack<Layout<'a>>, RenderError> {
         self.calculate_layout(graph, embedded_layouts)
     }
 }

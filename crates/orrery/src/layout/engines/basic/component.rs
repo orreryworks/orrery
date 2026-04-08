@@ -16,7 +16,7 @@ use orrery_core::{
 };
 
 use crate::{
-    error::OrreryError,
+    error::RenderError,
     layout::{
         component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
@@ -25,16 +25,24 @@ use crate::{
     structure::{ComponentGraph, ContainmentScope},
 };
 
-/// Basic component layout engine implementation that implements the ComponentLayoutEngine trait
+/// Basic layout engine for component diagrams.
+///
+/// Assigns components to layers using BFS traversal and positions them
+/// in a left-to-right arrangement. Relation labels influence inter-layer
+/// spacing, and containment scopes are processed from innermost to
+/// outermost.
 #[derive(Default)]
 pub struct Engine {
+    /// Padding inside component shapes.
     padding: Insets,
+    /// Padding around text elements.
     text_padding: f32,
+    /// Minimum spacing between adjacent components.
     min_spacing: f32,
 }
 
 impl Engine {
-    /// Create a new basic component layout engine
+    /// Create a new basic component layout engine.
     pub fn new() -> Self {
         Self {
             text_padding: 20.0,
@@ -42,31 +50,40 @@ impl Engine {
         }
     }
 
-    /// Set the padding around components
+    /// Set the padding around components.
     pub fn set_padding(&mut self, padding: Insets) -> &mut Self {
         self.padding = padding;
         self
     }
 
-    /// Set the padding for text elements
+    /// Set the padding for text elements.
     #[allow(dead_code)]
     pub fn set_text_padding(&mut self, padding: f32) -> &mut Self {
         self.text_padding = padding;
         self
     }
 
-    /// Set the minimum spacing between components
+    /// Set the minimum spacing between components.
     pub fn set_min_spacing(&mut self, spacing: f32) -> &mut Self {
         self.min_spacing = spacing;
         self
     }
 
-    /// Calculate the layout for a component diagram
+    /// Calculate the layout for a component diagram.
+    ///
+    /// # Arguments
+    ///
+    /// * `graph` - The component diagram graph to lay out.
+    /// * `embedded_layouts` - Pre-calculated layouts for embedded diagrams.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RenderError::Layout`] if position or shape calculation fails.
     pub fn calculate_layout<'a>(
         &self,
         graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<ContentStack<Layout<'a>>, OrreryError> {
+    ) -> Result<ContentStack<Layout<'a>>, RenderError> {
         let mut content_stack = ContentStack::<Layout<'a>>::new();
         let mut positioned_content_sizes = HashMap::<Id, Size>::new();
 
@@ -87,12 +104,12 @@ impl Engine {
                 .scope_nodes(containment_scope)
                 .map(|node| {
                     let mut position = *positions.get(&node.id()).ok_or_else(|| {
-                        OrreryError::Layout(format!(
+                        RenderError::Layout(format!(
                             "Position not found for node '{node}' during component layout"
                         ))
                     })?;
                     let shape_with_text = component_shapes.remove(&node.id()).ok_or_else(|| {
-                        OrreryError::Layout(format!(
+                        RenderError::Layout(format!(
                             "Shape not found for node '{node}' during component layout"
                         ))
                     })?;
@@ -107,7 +124,7 @@ impl Engine {
 
                     Ok(Component::new(node, shape_with_text, position))
                 })
-                .collect::<Result<Vec<_>, OrreryError>>()?;
+                .collect::<Result<Vec<_>, RenderError>>()?;
 
             // Map node IDs to their component indices
             let component_indices: HashMap<_, _> = components
@@ -152,14 +169,14 @@ impl Engine {
         Ok(content_stack)
     }
 
-    /// Calculate component shapes with proper content size and padding
+    /// Calculate component shapes with proper content size and padding.
     fn calculate_component_shapes<'a>(
         &self,
         graph: &'a ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<Id, Size>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<HashMap<Id, draw::ShapeWithText<'a>>, OrreryError> {
+    ) -> Result<HashMap<Id, draw::ShapeWithText<'a>>, RenderError> {
         let mut component_shapes: HashMap<Id, draw::ShapeWithText<'a>> = HashMap::new();
 
         // TODO: move it to the best place.
@@ -174,7 +191,7 @@ impl Engine {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
                     let layout = embedded_layouts.get(&node.id()).ok_or_else(|| {
-                        OrreryError::Layout(format!(
+                        RenderError::Layout(format!(
                             "Embedded layout not found for diagram block '{node}'"
                         ))
                     })?;
@@ -183,7 +200,7 @@ impl Engine {
                     shape_with_text
                         .set_inner_content_size(content_size)
                         .map_err(|err| {
-                            OrreryError::Layout(format!(
+                            RenderError::Layout(format!(
                                 "Failed to set content size for diagram block '{node}': {err}"
                             ))
                         })?;
@@ -191,12 +208,12 @@ impl Engine {
                 semantic::Block::Scope(_) => {
                     let content_size =
                         *positioned_content_sizes.get(&node.id()).ok_or_else(|| {
-                            OrreryError::Layout(format!("Scope size not found for node '{node}'"))
+                            RenderError::Layout(format!("Scope size not found for node '{node}'"))
                         })?;
                     shape_with_text
                         .set_inner_content_size(content_size)
                         .map_err(|err| {
-                            OrreryError::Layout(format!(
+                            RenderError::Layout(format!(
                                 "Failed to set content size for scope block '{node}': {err}"
                             ))
                         })?;
@@ -211,13 +228,13 @@ impl Engine {
         Ok(component_shapes)
     }
 
-    /// Calculate positions for components in a containment scope
+    /// Calculate positions for components in a containment scope.
     fn positions<'a>(
         &self,
         graph: &'a ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
         component_shapes: &HashMap<Id, draw::ShapeWithText<'a>>,
-    ) -> Result<HashMap<Id, Point>, OrreryError> {
+    ) -> Result<HashMap<Id, Point>, RenderError> {
         // Step 1: Assign layers for the top-level nodes
         let layers = Self::assign_layers_for_containment_scope_graph(graph, containment_scope)?;
         // Step 2: Calculate layer metrics (widths and spacings)
@@ -229,14 +246,14 @@ impl Engine {
         self.position_nodes_in_layers(&layers, &layer_x_positions, component_shapes)
     }
 
-    /// Calculate metrics for each layer: widths and spacings between layers
+    /// Calculate metrics for each layer: widths and spacings between layers.
     fn calculate_layer_metrics<'a>(
         &self,
         graph: &'a ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
         layers: &[Vec<Id>],
         component_shapes: &HashMap<Id, draw::ShapeWithText<'a>>,
-    ) -> Result<(Vec<f32>, Vec<f32>), OrreryError> {
+    ) -> Result<(Vec<f32>, Vec<f32>), RenderError> {
         // Calculate max width for each layer
         let layer_widths: Vec<f32> = layers
             .iter()
@@ -246,7 +263,7 @@ impl Engine {
                         .get(&node_idx)
                         .map(|shape| shape.size().width())
                         .ok_or_else(|| {
-                            OrreryError::Layout(format!(
+                            RenderError::Layout(format!(
                                 "Component shape not found for node '{}' during layer metrics calculation",
                                 node_idx
                             ))
@@ -254,7 +271,7 @@ impl Engine {
                     Ok(max_width.max(width))
                 })
             })
-            .collect::<Result<Vec<f32>, OrreryError>>()?;
+            .collect::<Result<Vec<f32>, RenderError>>()?;
 
         // Initialize spacings with default padding
         let mut layer_spacings =
@@ -286,7 +303,7 @@ impl Engine {
         Ok((layer_widths, layer_spacings))
     }
 
-    /// Find which layer contains nodes for a given relation
+    /// Find which layer contains nodes for a given relation.
     // PERF: Deprecate this method in favor of a more efficient approach.
     fn find_node_layers(
         &self,
@@ -310,7 +327,7 @@ impl Engine {
         (source_layer, target_layer)
     }
 
-    /// Calculate X positions for each layer based on widths and spacings
+    /// Calculate X positions for each layer based on widths and spacings.
     fn calculate_layer_x_positions(
         &self,
         layer_widths: &[f32],
@@ -332,13 +349,13 @@ impl Engine {
         layer_x_positions
     }
 
-    /// Position nodes within their layers
+    /// Position nodes within their layers.
     fn position_nodes_in_layers<'a>(
         &self,
         layers: &[Vec<Id>],
         layer_x_positions: &[f32],
         component_shapes: &HashMap<Id, draw::ShapeWithText<'a>>,
-    ) -> Result<HashMap<Id, Point>, OrreryError> {
+    ) -> Result<HashMap<Id, Point>, RenderError> {
         let mut positions = HashMap::new();
 
         for (layer_idx, layer_nodes) in layers.iter().enumerate() {
@@ -350,7 +367,7 @@ impl Engine {
                 let node_height = component_shapes
                     .get(&node_idx)
                     .ok_or_else(|| {
-                        OrreryError::Layout(format!(
+                        RenderError::Layout(format!(
                             "Component shape not found for node '{}' during position calculation",
                             node_idx
                         ))
@@ -372,11 +389,11 @@ impl Engine {
         Ok(positions)
     }
 
-    /// Helper method to assign layers for a specific graph
+    /// Helper method to assign layers for a specific graph.
     fn assign_layers_for_containment_scope_graph(
         graph: &ComponentGraph,
         containment_scope: &ContainmentScope,
-    ) -> Result<Vec<Vec<Id>>, OrreryError> {
+    ) -> Result<Vec<Vec<Id>>, RenderError> {
         let mut layers = Vec::new();
         let mut visited = HashSet::new();
 
@@ -421,11 +438,11 @@ impl Engine {
                 .node_ids()
                 .find(|id| !visited.contains(id))
                 .ok_or_else(|| {
-                    OrreryError::Layout("Expected unvisited nodes but none found".to_string())
+                    RenderError::Layout("Expected unvisited nodes but none found".to_string())
                 })?;
 
             let unvisited_node = graph.node_by_id(unvisited_node_id).ok_or_else(|| {
-                OrreryError::Layout(format!(
+                RenderError::Layout(format!(
                     "Node '{}' from containment scope not found in graph",
                     unvisited_node_id
                 ))
@@ -463,7 +480,7 @@ impl ComponentEngine for Engine {
         &self,
         graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<ContentStack<Layout<'a>>, OrreryError> {
+    ) -> Result<ContentStack<Layout<'a>>, RenderError> {
         self.calculate_layout(graph, embedded_layouts)
     }
 }

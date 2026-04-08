@@ -20,7 +20,7 @@ use orrery_core::{
 };
 
 use crate::{
-    error::OrreryError,
+    error::RenderError,
     layout::{component, positioning::LayoutBounds, sequence},
 };
 
@@ -127,18 +127,18 @@ impl<'a> LayeredLayout<'a> {
         container_idx: usize,
         positioned_shape: &draw::PositionedDrawable<draw::ShapeWithText>,
         embedded_idx: usize,
-    ) -> Result<(), OrreryError> {
+    ) -> Result<(), RenderError> {
         let [container_layer, embedded_layer] =
             self.layers
                 .get_disjoint_mut([container_idx, embedded_idx])
                 .map_err(|err| {
-                    OrreryError::Layout(format!(
+                    RenderError::Layout(format!(
                         "Invalid layer indices (container_idx={container_idx}, embedded_idx={embedded_idx}): {err}"
                     ))
                 })?;
 
         let content_bounds = positioned_shape.content_bounds().ok_or_else(|| {
-            OrreryError::Layout(
+            RenderError::Layout(
                 "Container shape must have inner content size set for embedded diagram positioning"
                     .to_string(),
             )

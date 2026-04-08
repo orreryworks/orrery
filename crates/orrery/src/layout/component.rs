@@ -22,7 +22,7 @@ use orrery_core::{
 };
 
 use crate::{
-    error::OrreryError,
+    error::RenderError,
     layout::{layer, positioning::LayoutBounds},
     structure,
 };
@@ -209,13 +209,13 @@ impl<'a> LayoutBounds for Layout<'a> {
 /// 3. Updates the destination layer's offset to position the nested content correctly
 ///
 /// # Errors
-/// Returns `OrreryError::Layout` if a component referenced in the containment graph
+/// Returns `RenderError::Layout` if a component referenced in the containment graph
 /// is not found in its corresponding layout layer.
 // TODO: Once added enough abstractions, make this a method on ContentStack.
 pub fn adjust_positioned_contents_offset<'a>(
     content_stack: &mut layer::ContentStack<Layout>,
     graph: &'a structure::ComponentGraph<'a, '_>,
-) -> Result<(), OrreryError> {
+) -> Result<(), RenderError> {
     let container_indices: HashMap<_, _> = graph
         .containment_scopes()
         .enumerate()
@@ -235,7 +235,7 @@ pub fn adjust_positioned_contents_offset<'a>(
             }
             let source = content_stack.get_unchecked(source_idx);
             let node = graph.node_by_id(node_id).ok_or_else(|| {
-                OrreryError::Layout(format!(
+                RenderError::Layout(format!(
                     "Node with id {node_id} not found in graph during layout adjustment"
                 ))
             })?;
@@ -247,7 +247,7 @@ pub fn adjust_positioned_contents_offset<'a>(
                 .iter()
                 .find(|component| component.node_id == node.id())
                 .ok_or_else(|| {
-                    OrreryError::Layout(format!(
+                    RenderError::Layout(format!(
                         "Component with id {node} not found in source layer {source_idx}"
                     ))
                 })?;

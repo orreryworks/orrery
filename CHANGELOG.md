@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Import system specification** — Formal specification for the file-based import system covering `import` syntax, `library;` file header, path resolution, namespaces, diagram embedding via import, scope and visibility, and conflict resolution. Updated main specification and error handling specification with cross-references. ([#44](https://github.com/orreryworks/orrery/issues/44))
+- **Namespaced import system** — Reuse type definitions across files with `import "path";` and `library;` file headers. Imports are namespace-qualified (e.g., `styles::Service`), support transitive chaining, and include circular dependency detection, diamond deduplication, and cross-file error reporting with import traces. ([#45](https://github.com/orreryworks/orrery/issues/45))
 
 ### Changed
 

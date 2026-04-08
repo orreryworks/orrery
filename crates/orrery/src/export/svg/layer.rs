@@ -21,7 +21,7 @@ impl Svg {
         let content_size = content_bounds.to_size();
 
         // Calculate final SVG dimensions with margins
-        let svg_size = self.calculate_svg_dimensions(&content_size);
+        let svg_size = self.calculate_svg_dimensions(content_size);
 
         // Create the SVG document with calculated dimensions
         let doc = svg::Document::new()

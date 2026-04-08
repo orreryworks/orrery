@@ -8,17 +8,26 @@
 
 use std::path::Path;
 
+use bumpalo::Bump;
+
 use orrery_core::{
     identifier::Id,
     semantic::{Block, Diagram, DiagramKind, Element, LayoutEngine, NoteAlign},
 };
-use orrery_parser::{ElaborateConfig, InMemorySourceProvider, error::ParseError, parse};
+use orrery_parser::{ElaborateConfig, InMemorySourceProvider, parse};
 
 /// Helper: parse a single source string through the full pipeline.
-fn parse_source(source: &str) -> Result<Diagram, ParseError> {
+fn parse_source(source: &str) -> Diagram {
+    let arena = Bump::new();
     let mut provider = InMemorySourceProvider::new();
     provider.add_file("test.orr", source);
-    parse(Path::new("test.orr"), provider, ElaborateConfig::default())
+    parse(
+        &arena,
+        Path::new("test.orr"),
+        provider,
+        ElaborateConfig::default(),
+    )
+    .expect("parse_source: unexpected parse failure")
 }
 
 #[test]
@@ -28,8 +37,7 @@ fn test_simple_component_diagram() {
         diagram component;
         box: Rectangle;
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     assert_eq!(diagram.kind(), DiagramKind::Component);
 
@@ -55,8 +63,7 @@ fn test_simple_sequence_diagram() {
         server: Rectangle;
         client -> server: "Request";
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     assert_eq!(diagram.kind(), DiagramKind::Sequence);
 
@@ -100,8 +107,7 @@ fn test_node_with_display_name() {
         diagram component;
         svc as "User Service": Rectangle;
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 1);
@@ -123,8 +129,7 @@ fn test_with_type_definitions() {
         type Button = Rectangle[fill_color="blue"];
         submit: Button;
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 1);
@@ -148,8 +153,7 @@ fn test_with_relations() {
         b <- a;
         a <-> b;
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 5); // 2 nodes + 3 relations
@@ -186,11 +190,20 @@ fn test_with_relations() {
 
 #[test]
 fn test_syntax_error() {
-    let result = parse_source(
+    let arena = Bump::new();
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file(
+        "test.orr",
         r#"
         diagram component
         missing_semicolon: Rectangle;
     "#,
+    );
+    let result = parse(
+        &arena,
+        Path::new("test.orr"),
+        provider,
+        ElaborateConfig::default(),
     );
     assert!(result.is_err(), "Should fail on syntax error");
 
@@ -203,11 +216,12 @@ fn test_syntax_error() {
 
 #[test]
 fn test_with_custom_config() {
+    let arena = Bump::new();
     let mut provider = InMemorySourceProvider::new();
     provider.add_file("test.orr", "diagram component;\nbox: Rectangle;");
 
     let config = ElaborateConfig::new(LayoutEngine::Sugiyama, LayoutEngine::Basic);
-    let diagram = parse(Path::new("test.orr"), provider, config).expect("Failed to parse");
+    let diagram = parse(&arena, Path::new("test.orr"), provider, config).expect("Failed to parse");
 
     assert_eq!(diagram.layout_engine(), LayoutEngine::Sugiyama);
 }
@@ -219,8 +233,7 @@ fn test_diagram_layout_attribute() {
         diagram component [layout_engine="sugiyama"];
         box: Rectangle;
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     // Diagram-level attribute overrides config
     assert_eq!(diagram.layout_engine(), LayoutEngine::Sugiyama);
@@ -234,8 +247,7 @@ fn test_with_notes() {
         client: Rectangle;
         note [on=[client]]: "Important note";
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 2);
@@ -259,8 +271,7 @@ fn test_note_with_alignment() {
         client: Rectangle;
         note [on=[client], align="left"]: "Left note";
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     let elements = diagram.scope().elements();
     match &elements[1] {
@@ -283,8 +294,7 @@ fn test_with_fragments() {
             client -> server: "Maybe";
         };
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 3); // 2 nodes + 1 fragment
@@ -324,8 +334,7 @@ fn test_alt_fragment_with_sections() {
             client -> server: "Error";
         };
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     let elements = diagram.scope().elements();
 
@@ -351,8 +360,7 @@ fn test_nested_components() {
             child2: Rectangle;
         };
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 1);
@@ -399,8 +407,7 @@ fn test_activation() {
             client -> server: "Request";
         };
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 5); // 2 nodes + activate + relation + deactivate
@@ -437,8 +444,7 @@ fn test_relation_with_label() {
         b: Rectangle;
         a -> b: "connects to";
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     let elements = diagram.scope().elements();
 
@@ -462,8 +468,7 @@ fn test_cross_level_relation() {
         external: Rectangle;
         parent::child -> external;
     "#,
-    )
-    .expect("Failed to parse");
+    );
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 3); // parent, external, relation
@@ -480,7 +485,7 @@ fn test_cross_level_relation() {
 
 #[test]
 fn test_empty_diagram() {
-    let diagram = parse_source("diagram component;").expect("Failed to parse");
+    let diagram = parse_source("diagram component;");
 
     assert_eq!(diagram.kind(), DiagramKind::Component);
     assert!(diagram.scope().elements().is_empty());
@@ -508,8 +513,14 @@ fn test_import_library_types() {
     "#,
     );
 
-    let diagram = parse(Path::new("main.orr"), provider, ElaborateConfig::default())
-        .expect("Failed to parse");
+    let arena = Bump::new();
+    let diagram = parse(
+        &arena,
+        Path::new("main.orr"),
+        provider,
+        ElaborateConfig::default(),
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 2);
@@ -548,8 +559,14 @@ fn test_import_transitive_libraries() {
     "#,
     );
 
-    let diagram = parse(Path::new("main.orr"), provider, ElaborateConfig::default())
-        .expect("Failed to parse");
+    let arena = Bump::new();
+    let diagram = parse(
+        &arena,
+        Path::new("main.orr"),
+        provider,
+        ElaborateConfig::default(),
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 2);
@@ -598,8 +615,14 @@ fn test_import_diamond_dependency() {
     "#,
     );
 
-    let diagram = parse(Path::new("main.orr"), provider, ElaborateConfig::default())
-        .expect("Failed to parse");
+    let arena = Bump::new();
+    let diagram = parse(
+        &arena,
+        Path::new("main.orr"),
+        provider,
+        ElaborateConfig::default(),
+    )
+    .expect("Failed to parse");
 
     let elements = diagram.scope().elements();
     assert_eq!(elements.len(), 2);
@@ -617,7 +640,13 @@ fn test_error_file_not_found() {
     "#,
     );
 
-    let result = parse(Path::new("main.orr"), provider, ElaborateConfig::default());
+    let arena = Bump::new();
+    let result = parse(
+        &arena,
+        Path::new("main.orr"),
+        provider,
+        ElaborateConfig::default(),
+    );
     assert!(result.is_err(), "Should fail on missing import");
 
     let err = result.unwrap_err();
@@ -648,7 +677,13 @@ fn test_error_circular_dependency() {
     "#,
     );
 
-    let result = parse(Path::new("a.orr"), provider, ElaborateConfig::default());
+    let arena = Bump::new();
+    let result = parse(
+        &arena,
+        Path::new("a.orr"),
+        provider,
+        ElaborateConfig::default(),
+    );
     assert!(result.is_err(), "Should fail on circular dependency");
 
     let err = result.unwrap_err();
@@ -665,7 +700,9 @@ fn test_error_circular_dependency() {
 fn test_error_missing_root_file() {
     let provider = InMemorySourceProvider::new();
 
+    let arena = Bump::new();
     let result = parse(
+        &arena,
         Path::new("does_not_exist.orr"),
         provider,
         ElaborateConfig::default(),

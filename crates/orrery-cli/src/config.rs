@@ -12,24 +12,28 @@ use directories::ProjectDirs;
 use log::{debug, info};
 use thiserror::Error;
 
-use orrery::{OrreryError, config::AppConfig};
+use orrery::{RenderError, config::AppConfig};
 
 /// Configuration-related errors for CLI
 #[derive(Debug, Error)]
 pub enum ConfigError {
+    /// A TOML parsing failure.
     #[error("Failed to parse TOML configuration: {0}")]
     Parse(String),
 
+    /// The specified configuration file does not exist.
     #[error("Missing configuration file: {0}")]
     MissingFile(PathBuf),
 
+    /// A configuration value failed validation.
     #[error("Validation error: {0}")]
     Validation(String),
 }
 
-impl From<ConfigError> for OrreryError {
+/// Converts a `ConfigError` into a [`RenderError`] by wrapping it as an I/O error.
+impl From<ConfigError> for RenderError {
     fn from(err: ConfigError) -> Self {
-        OrreryError::Io(std::io::Error::other(err.to_string()))
+        RenderError::Io(std::io::Error::other(err.to_string()))
     }
 }
 
@@ -50,7 +54,7 @@ impl From<ConfigError> for OrreryError {
 /// Returns error if:
 /// - Explicit path is provided but file doesn't exist
 /// - Config file exists but cannot be parsed
-pub fn load_config(explicit_path: Option<impl AsRef<Path>>) -> Result<AppConfig, OrreryError> {
+pub fn load_config(explicit_path: Option<impl AsRef<Path>>) -> Result<AppConfig, RenderError> {
     // 1. Try the explicitly provided path first if available
     if let Some(path) = explicit_path {
         let path = path.as_ref();
@@ -97,7 +101,7 @@ pub fn load_config(explicit_path: Option<impl AsRef<Path>>) -> Result<AppConfig,
 /// - File doesn't exist
 /// - File cannot be read
 /// - TOML parsing fails
-fn load_config_file(path: impl AsRef<Path>) -> Result<AppConfig, OrreryError> {
+fn load_config_file(path: impl AsRef<Path>) -> Result<AppConfig, RenderError> {
     let path = path.as_ref();
 
     // Check if file exists

@@ -3,19 +3,20 @@
 //! Wires together configuration loading, the [`DiagramBuilder`] pipeline,
 //! and file I/O to turn a `.orr` source file into an SVG on disk.
 
-pub mod error_adapter;
-
 mod args;
 mod config;
+mod error;
 mod source_provider;
 
 pub use args::Args;
+pub use error::Error;
 
 use std::{fs, path::Path};
 
+use bumpalo::Bump;
 use log::info;
 
-use orrery::{DiagramBuilder, OrreryError};
+use orrery::DiagramBuilder;
 
 use source_provider::FsSourceProvider;
 
@@ -27,15 +28,14 @@ use source_provider::FsSourceProvider;
 /// # Arguments
 ///
 /// * `args` - Command-line arguments.
+/// * `arena` - Bump arena for source text allocation. Must outlive the
+///   returned error, since [`Error::Parse`] borrows from it.
 ///
 /// # Errors
 ///
-/// Returns [`OrreryError`] if:
-/// - Configuration cannot be loaded
-/// - The input file cannot be found or parsed
-/// - Layout or rendering fails
-/// - The output file cannot be written
-pub fn run(args: &Args) -> Result<(), OrreryError> {
+/// Returns [`Error::Parse`] for syntax/validation errors with rich
+/// diagnostics, or [`Error::Render`] for I/O, layout, or export errors.
+pub fn run<'a>(args: &Args, arena: &'a Bump) -> Result<(), Error<'a>> {
     info!(
         input_path = args.input,
         output_path = args.output;
@@ -49,7 +49,7 @@ pub fn run(args: &Args) -> Result<(), OrreryError> {
     let root_path = Path::new(&args.input);
     let provider = FsSourceProvider::new();
     let builder = DiagramBuilder::new(app_config, &provider);
-    let diagram = builder.parse(root_path)?;
+    let diagram = builder.parse(arena, root_path)?;
     let svg = builder.render_svg(&diagram)?;
 
     // Write output file

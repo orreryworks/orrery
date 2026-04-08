@@ -1,10 +1,16 @@
+//! End-to-end smoke tests for the Orrery CLI.
+//!
+//! These tests verify that valid example files produce SVG output
+//! and that error example files fail as expected.
+
 use std::{fs, path::PathBuf};
 
+use bumpalo::Bump;
 use tempfile::tempdir;
 
 use orrery_cli::{Args, run};
 
-/// Collects all .orr files from a directory
+/// Collects all `.orr` files from a directory.
 fn collect_orr_files(dir: PathBuf) -> Vec<PathBuf> {
     let mut files = if let Ok(entries) = fs::read_dir(&dir) {
         entries
@@ -58,8 +64,9 @@ fn e2e_smoke_test_valid_examples() {
             log_level: "off".to_string(),
         };
 
-        if let Err(e) = run(&args) {
-            failed_examples.push((example_path.clone(), e));
+        let arena = Bump::new();
+        if let Err(e) = run(&args, &arena) {
+            failed_examples.push((example_path.clone(), e.to_string()));
         }
     }
 
@@ -113,7 +120,8 @@ fn e2e_smoke_test_error_examples() {
             log_level: "off".to_string(),
         };
 
-        if run(&args).is_ok() {
+        let arena = Bump::new();
+        if run(&args, &arena).is_ok() {
             unexpectedly_succeeded.push(example_path.clone());
         }
     }

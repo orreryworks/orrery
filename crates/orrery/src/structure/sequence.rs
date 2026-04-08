@@ -20,7 +20,7 @@ use log::debug;
 
 use orrery_core::{identifier::Id, semantic};
 
-use crate::OrreryError;
+use crate::RenderError;
 
 /// Represents ordered events in a sequence diagram.
 ///
@@ -147,7 +147,7 @@ impl<'a> SequenceGraph<'a> {
     /// diagrams found during processing.
     pub(super) fn new_from_elements<'idx>(
         elements: &'a [semantic::Element],
-    ) -> Result<(Self, Vec<super::HierarchyNode<'a, 'idx>>), OrreryError> {
+    ) -> Result<(Self, Vec<super::HierarchyNode<'a, 'idx>>), RenderError> {
         let mut graph = Self::new();
 
         let child_diagrams = Self::process_elements(elements, &mut graph)?;
@@ -186,7 +186,7 @@ impl<'a> SequenceGraph<'a> {
     fn process_elements<'idx>(
         elements: &'a [semantic::Element],
         graph: &mut SequenceGraph<'a>,
-    ) -> Result<Vec<super::HierarchyNode<'a, 'idx>>, OrreryError> {
+    ) -> Result<Vec<super::HierarchyNode<'a, 'idx>>, RenderError> {
         let mut child_diagrams = Vec::new();
         for element in elements {
             match element {
