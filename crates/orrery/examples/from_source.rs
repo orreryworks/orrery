@@ -7,6 +7,7 @@
 
 use std::path::Path;
 
+use bumpalo::Bump;
 use orrery::{DiagramBuilder, InMemorySourceProvider, config::AppConfig};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -37,7 +38,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Parse the source code into a semantic diagram
     println!("Parsing diagram from source...");
-    let diagram = builder.parse(Path::new("example.orr"))?;
+    let arena = Bump::new();
+    let diagram = builder
+        .parse(&arena, Path::new("example.orr"))
+        .map_err(|e| e.to_string())?;
 
     // Inspect the parsed diagram
     println!("Diagram kind: {:?}", diagram.kind());

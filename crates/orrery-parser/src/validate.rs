@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use orrery_core::{identifier::Id, semantic::DiagramKind};
 
 use crate::{
-    error::{Diagnostic, DiagnosticCollector, ErrorCode, ParseError},
+    error::{Diagnostic, DiagnosticCollector, ErrorCode},
     parser_types::{
         Attribute, AttributeValue, Element, FileAst, FileHeader, Fragment, FragmentSection, Import,
         Note, TypeDefinition, TypeSpec,
@@ -568,12 +568,12 @@ impl<'a> Visitor<'a> for Validator {
 /// # Returns
 ///
 /// - `Ok(())` when no validation issues are found.
-/// - `Err(`[`ParseError`]`)` with all collected diagnostics otherwise.
+/// - `Err(Vec<Diagnostic>)` with all collected diagnostics otherwise.
 ///
 /// # Errors
 ///
-/// Returns [`ParseError`] if one or more semantic validation checks fail.
-pub fn validate(ast: &FileAst<'_>) -> Result<(), ParseError> {
+/// Returns `Vec<Diagnostic>` if one or more semantic validation checks fail.
+pub fn validate(ast: &FileAst<'_>) -> Result<(), Vec<Diagnostic>> {
     let mut validator = Validator::new();
     visit_file_ast(&mut validator, ast);
     validator.diagnostics.finish()
@@ -944,7 +944,7 @@ mod note_validation_tests {
         assert!(result.is_err(), "Invalid align should fail validation");
 
         let err = result.unwrap_err();
-        assert!(format!("{err}").contains("invalid align value `top` for sequence diagram"));
+        assert!(format!("{}", err[0]).contains("invalid align value `top` for sequence diagram"));
     }
 
     #[test]
@@ -962,7 +962,7 @@ mod note_validation_tests {
         assert!(result.is_err(), "Invalid align should fail validation");
 
         let err = result.unwrap_err();
-        assert!(format!("{err}").contains("invalid align value `over` for component diagram"));
+        assert!(format!("{}", err[0]).contains("invalid align value `over` for component diagram"));
     }
 
     #[test]
@@ -1098,12 +1098,8 @@ mod identifier_validation_tests {
 
         // Should have an error
         let err = validator.diagnostics.finish().unwrap_err();
-        assert_eq!(err.diagnostics().len(), 1);
-        assert!(
-            err.diagnostics()[0]
-                .to_string()
-                .contains("component `unknown` not found")
-        );
+        assert_eq!(err.len(), 1);
+        assert!(err[0].to_string().contains("component `unknown` not found"));
     }
 
     #[test]
@@ -1145,12 +1141,8 @@ mod identifier_validation_tests {
 
         // Should have one error for the missing component
         let err = validator.diagnostics.finish().unwrap_err();
-        assert_eq!(err.diagnostics().len(), 1);
-        assert!(
-            err.diagnostics()[0]
-                .to_string()
-                .contains("component `unknown` not found")
-        );
+        assert_eq!(err.len(), 1);
+        assert!(err[0].to_string().contains("component `unknown` not found"));
     }
 
     #[test]
@@ -1229,7 +1221,7 @@ mod identifier_validation_tests {
         let result = validate(&diagram);
         assert!(result.is_err(), "Invalid source should fail validation");
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("component `unknown` not found"));
+        assert!(err[0].to_string().contains("component `unknown` not found"));
     }
 
     #[test]
@@ -1265,7 +1257,7 @@ mod identifier_validation_tests {
         let result = validate(&diagram);
         assert!(result.is_err(), "Invalid target should fail validation");
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("component `missing` not found"));
+        assert!(err[0].to_string().contains("component `missing` not found"));
     }
 
     #[test]
@@ -1332,7 +1324,7 @@ mod identifier_validation_tests {
         let result = validate(&diagram);
         assert!(result.is_err(), "Invalid activate should fail validation");
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("component `unknown` not found"));
+        assert!(err[0].to_string().contains("component `unknown` not found"));
     }
 
     #[test]
@@ -1364,7 +1356,7 @@ mod identifier_validation_tests {
         let result = validate(&diagram);
         assert!(result.is_err(), "Invalid deactivate should fail validation");
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("component `missing` not found"));
+        assert!(err[0].to_string().contains("component `missing` not found"));
     }
 
     #[test]
@@ -1406,7 +1398,7 @@ mod identifier_validation_tests {
         let result = validate(&diagram);
         assert!(result.is_err(), "Note with invalid component should fail");
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("component `unknown` not found"));
+        assert!(err[0].to_string().contains("component `unknown` not found"));
     }
 
     #[test]

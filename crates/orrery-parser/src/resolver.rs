@@ -61,23 +61,10 @@ pub struct ResolvedFile<'arena> {
 }
 
 impl<'arena> ResolvedFile<'arena> {
-    /// Returns the source map covering all files loaded during resolution.
-    #[allow(dead_code)]
-    pub fn source_map(&self) -> &SourceMap<'arena> {
-        &self.source_map
-    }
-
-    /// Returns the root [`FileAst`] with imports populated recursively.
-    #[allow(dead_code)]
-    pub fn file_ast(&self) -> &FileAst<'arena> {
-        &self.file_ast
-    }
-
-    /// Consumes the resolved file and returns the root [`FileAst`].
-    ///
-    /// The [`SourceMap`] is dropped.
-    pub fn into_file_ast(self) -> FileAst<'arena> {
-        self.file_ast
+    /// Consumes the resolved file and returns the AST and source map
+    /// as separate values.
+    pub fn into_parts(self) -> (FileAst<'arena>, SourceMap<'arena>) {
+        (self.file_ast, self.source_map)
     }
 }
 
@@ -152,8 +139,11 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
     /// Returns [`ParseError`] if any file cannot be found (E400), a circular
     /// dependency is detected (E401), an import path is invalid (E402), or
     /// lexing/parsing fails.
-    pub fn resolve(mut self, root_path: &Path) -> Result<ResolvedFile<'arena>, ParseError> {
-        let root_rc = self.resolve_file(root_path, None)?;
+    pub fn resolve(mut self, root_path: &Path) -> Result<ResolvedFile<'arena>, ParseError<'arena>> {
+        let root_rc = match self.resolve_file(root_path, None) {
+            Ok(rc) => rc,
+            Err(diags) => return Err(ParseError::new(diags, self.source_map)),
+        };
 
         // Drop the cache so the root Rc's refcount drops to 1.
         // (Imported files inside the tree keep their own Rc clones alive.)
@@ -178,7 +168,7 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
         &mut self,
         path: &Path,
         import_span: Option<Span>,
-    ) -> Result<Rc<RefCell<FileAst<'arena>>>, ParseError> {
+    ) -> Result<Rc<RefCell<FileAst<'arena>>>, Vec<Diagnostic>> {
         let file_id = FileId::new(path);
 
         // 1. Deduplication — return cached Rc if already fully resolved.
@@ -188,7 +178,7 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
 
         // 2. Cycle detection.
         if self.resolution_stack.contains(&file_id) {
-            return Err(self.cycle_error(file_id, import_span));
+            return Err(vec![self.cycle_error(file_id, import_span)]);
         }
 
         // 3. Push onto resolution stack.
@@ -198,7 +188,7 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
         let source_string = self
             .provider
             .read_source(path)
-            .map_err(|e| Self::file_not_found_error(&e, import_span))?;
+            .map_err(|e| vec![Self::file_not_found_diagnostic(&e, import_span)])?;
 
         // 5. Copy source text into the arena (long-lived allocation).
         let source: &'arena str = self.arena.alloc_str(&source_string);
@@ -213,26 +203,26 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
         let tokens = lexer::tokenize(source, base_offset)?;
 
         // 8. Parse.
-        let mut file_ast = parser::build_file(&tokens).map_err(ParseError::from)?;
+        let mut file_ast = parser::build_file(&tokens).map_err(|diag| vec![diag])?;
 
         // 9. Resolve each import declaration and populate `file_ast.imports`.
         for import_decl in &file_ast.import_decls {
             let import_path = &import_decl.path;
             let decl_span = import_decl.span();
 
-            Self::validate_import_path(import_path, decl_span)?;
+            Self::validate_import_path(import_path, decl_span).map_err(|diag| vec![diag])?;
 
             let resolved_path = self
                 .provider
                 .resolve_path(path, import_path)
-                .map_err(|e| Self::file_not_found_error(&e, Some(decl_span)))?;
+                .map_err(|e| vec![Self::file_not_found_diagnostic(&e, Some(decl_span))])?;
 
             let imported_rc = self.resolve_file(&resolved_path, Some(decl_span))?;
 
             let namespace = self
                 .provider
                 .derive_namespace(&resolved_path)
-                .map_err(|e| Self::invalid_namespace_error(&e, decl_span))?;
+                .map_err(|e| vec![Self::invalid_namespace_diagnostic(&e, decl_span)])?;
 
             file_ast.imports.push(Import {
                 namespace: Some(namespace),
@@ -250,33 +240,28 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
 
     /// Rejects empty import paths, which would silently mis-resolve to the
     /// parent directory with an `.orr` extension.
-    fn validate_import_path(import_path: &str, span: Span) -> Result<(), ParseError> {
+    fn validate_import_path(import_path: &str, span: Span) -> Result<(), Diagnostic> {
         if import_path.is_empty() {
-            return Err(ParseError::from(
-                Diagnostic::error("import path is empty")
-                    .with_code(ErrorCode::E402)
-                    .with_label(span, "empty path"),
-            ));
+            return Err(Diagnostic::error("import path is empty")
+                .with_code(ErrorCode::E402)
+                .with_label(span, "empty path"));
         }
 
         Ok(())
     }
 
-    /// Converts a [`SourceError`] from namespace derivation into a
-    /// [`ParseError`] with error code E403.
-    fn invalid_namespace_error(source_error: &SourceError, span: Span) -> ParseError {
-        ParseError::from(
-            Diagnostic::error(format!(
-                "cannot derive namespace: {}",
-                source_error.message()
-            ))
-            .with_code(ErrorCode::E403)
-            .with_label(span, "imported here"),
-        )
+    /// Builds a [`Diagnostic`] for a namespace-derivation failure (E403).
+    fn invalid_namespace_diagnostic(source_error: &SourceError, span: Span) -> Diagnostic {
+        Diagnostic::error(format!(
+            "cannot derive namespace: {}",
+            source_error.message()
+        ))
+        .with_code(ErrorCode::E403)
+        .with_label(span, "imported here")
     }
 
-    /// Converts a [`SourceError`] into a [`ParseError`] with error code E400.
-    fn file_not_found_error(source_error: &SourceError, span: Option<Span>) -> ParseError {
+    /// Builds a [`Diagnostic`] for a file-not-found failure (E400).
+    fn file_not_found_diagnostic(source_error: &SourceError, span: Option<Span>) -> Diagnostic {
         let mut diag = Diagnostic::error(format!(
             "cannot find file: {}",
             source_error.path().display()
@@ -287,11 +272,12 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
             diag = diag.with_label(span, "imported here");
         }
 
-        ParseError::from(diag)
+        diag
     }
 
-    /// Builds a circular-dependency error (E401) showing the full import chain.
-    fn cycle_error(&self, file_id: FileId, import_span: Option<Span>) -> ParseError {
+    /// Builds a circular-dependency [`Diagnostic`] (E401) showing the full
+    /// import chain.
+    fn cycle_error(&self, file_id: FileId, import_span: Option<Span>) -> Diagnostic {
         let cycle_start = self
             .resolution_stack
             .iter()
@@ -313,7 +299,7 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
             diag = diag.with_label(span, "cyclic import");
         }
 
-        ParseError::from(diag)
+        diag
     }
 }
 
@@ -327,7 +313,7 @@ mod tests {
         arena: &'a Bump,
         files: &[(&str, &str)],
         root: &str,
-    ) -> Result<ResolvedFile<'a>, ParseError> {
+    ) -> Result<ResolvedFile<'a>, ParseError<'a>> {
         let mut provider = InMemorySourceProvider::new();
         for &(path, source) in files {
             provider.add_file(path, source);
@@ -346,8 +332,8 @@ mod tests {
         )
         .expect("should resolve");
 
-        assert!(resolved.file_ast().imports.is_empty());
-        assert_eq!(resolved.source_map().file_count(), 1);
+        assert!(resolved.file_ast.imports.is_empty());
+        assert_eq!(resolved.source_map.file_count(), 1);
     }
 
     #[test]
@@ -356,9 +342,11 @@ mod tests {
         let resolved = resolve_with(&arena, &[("lib.orr", "library;")], "lib.orr")
             .expect("should resolve library");
 
-        let ast = resolved.file_ast();
-        assert!(ast.imports.is_empty());
-        assert!(matches!(ast.header, FileHeader::Library { .. }));
+        assert!(resolved.file_ast.imports.is_empty());
+        assert!(matches!(
+            resolved.file_ast.header,
+            FileHeader::Library { .. }
+        ));
     }
 
     #[test]
@@ -377,11 +365,11 @@ mod tests {
         )
         .expect("should resolve");
 
-        assert_eq!(resolved.file_ast().imports.len(), 1);
-        assert_eq!(resolved.source_map().file_count(), 2);
+        assert_eq!(resolved.file_ast.imports.len(), 1);
+        assert_eq!(resolved.source_map.file_count(), 2);
 
         // The imported file should be a library.
-        let imported = &resolved.file_ast().imports[0];
+        let imported = &resolved.file_ast.imports[0];
         let imported_ast = imported.file_ast.borrow();
         assert!(matches!(imported_ast.header, FileHeader::Library { .. }));
     }
@@ -405,8 +393,8 @@ mod tests {
             )
             .expect("should resolve");
 
-        assert_eq!(resolved.file_ast().imports.len(), 3);
-        assert_eq!(resolved.source_map().file_count(), 4);
+        assert_eq!(resolved.file_ast.imports.len(), 3);
+        assert_eq!(resolved.source_map.file_count(), 4);
     }
 
     #[test]
@@ -424,10 +412,10 @@ mod tests {
         )
         .expect("should resolve nested imports");
 
-        assert_eq!(resolved.source_map().file_count(), 3);
+        assert_eq!(resolved.source_map.file_count(), 3);
 
         // A → B → C chain.
-        let b_ast = resolved.file_ast().imports[0].file_ast.borrow();
+        let b_ast = resolved.file_ast.imports[0].file_ast.borrow();
         let c_ast = b_ast.imports[0].file_ast.borrow();
         assert!(matches!(c_ast.header, FileHeader::Library { .. }));
         assert!(c_ast.imports.is_empty());
@@ -451,10 +439,10 @@ mod tests {
         .expect("should resolve");
 
         // Two import entries in the AST (one per import decl).
-        assert_eq!(resolved.file_ast().imports.len(), 2);
+        assert_eq!(resolved.file_ast.imports.len(), 2);
 
         // But only 2 files in the source map (not 3).
-        assert_eq!(resolved.source_map().file_count(), 2);
+        assert_eq!(resolved.source_map.file_count(), 2);
     }
 
     #[test]
@@ -477,14 +465,14 @@ mod tests {
         .expect("should resolve diamond");
 
         // D is loaded only once (source map has 4 entries, not 5).
-        assert_eq!(resolved.source_map().file_count(), 4);
+        assert_eq!(resolved.source_map.file_count(), 4);
 
         // A has two imports (B and C).
-        assert_eq!(resolved.file_ast().imports.len(), 2);
+        assert_eq!(resolved.file_ast.imports.len(), 2);
 
         // Both B and C each have one import (D).
-        let b_ast = resolved.file_ast().imports[0].file_ast.borrow();
-        let c_ast = resolved.file_ast().imports[1].file_ast.borrow();
+        let b_ast = resolved.file_ast.imports[0].file_ast.borrow();
+        let c_ast = resolved.file_ast.imports[1].file_ast.borrow();
         assert_eq!(b_ast.imports.len(), 1);
         assert_eq!(c_ast.imports.len(), 1);
     }
@@ -581,7 +569,7 @@ mod tests {
         )
         .expect("should resolve relative import");
 
-        let import = &resolved.file_ast().imports[0];
+        let import = &resolved.file_ast.imports[0];
         let ns = import.namespace.as_ref().expect("should have namespace");
         assert!(ns == "base", "expected namespace 'base', got '{ns:?}'");
     }

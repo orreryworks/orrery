@@ -21,7 +21,7 @@ use log::trace;
 
 use orrery_core::{identifier::Id, semantic};
 
-use crate::OrreryError;
+use crate::RenderError;
 
 /// Unified representation of different diagram graph types.
 ///
@@ -50,7 +50,7 @@ impl<'a, 'idx> GraphKind<'a, 'idx> {
     /// - A vector of [`HierarchyNode`] representing any embedded diagrams found
     fn build_component(
         elements: &'a [semantic::Element],
-    ) -> Result<(Self, Vec<HierarchyNode<'a, 'idx>>), OrreryError> {
+    ) -> Result<(Self, Vec<HierarchyNode<'a, 'idx>>), RenderError> {
         let (graph, children) = ComponentGraph::new_from_elements(elements)?;
         Ok((Self::ComponentGraph(graph), children))
     }
@@ -69,7 +69,7 @@ impl<'a, 'idx> GraphKind<'a, 'idx> {
     /// - A vector of [`HierarchyNode`] representing any embedded diagrams found
     fn build_sequence(
         elements: &'a [semantic::Element],
-    ) -> Result<(Self, Vec<HierarchyNode<'a, 'idx>>), OrreryError> {
+    ) -> Result<(Self, Vec<HierarchyNode<'a, 'idx>>), RenderError> {
         let (graph, children) = SequenceGraph::new_from_elements(elements)?;
         Ok((Self::SequenceGraph(graph), children))
     }
@@ -156,7 +156,7 @@ impl<'a, 'idx> HierarchyNode<'a, 'idx> {
     fn build_from_ast_diagram(
         ast_diagram: &'a semantic::Diagram,
         container_id: Option<Id>,
-    ) -> Result<Self, OrreryError> {
+    ) -> Result<Self, RenderError> {
         let (graph, children) = match ast_diagram.kind() {
             semantic::DiagramKind::Component => {
                 GraphKind::build_component(ast_diagram.scope().elements())?
@@ -210,8 +210,8 @@ impl<'a, 'idx> DiagramHierarchy<'a, 'idx> {
     /// # Returns
     ///
     /// A [`DiagramHierarchy`] containing the graph representations of all diagrams
-    /// in the hierarchy, or an [`OrreryError`] if graph construction fails.
-    pub fn from_diagram(diagram: &'a semantic::Diagram) -> Result<Self, OrreryError> {
+    /// in the hierarchy, or an [`RenderError`] if graph construction fails.
+    pub fn from_diagram(diagram: &'a semantic::Diagram) -> Result<Self, RenderError> {
         // Process all elements in the diagram recursively
         let root_diagram = HierarchyNode::build_from_ast_diagram(diagram, None)?;
 

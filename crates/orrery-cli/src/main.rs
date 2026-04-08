@@ -2,10 +2,11 @@
 
 use std::{process, str::FromStr};
 
+use bumpalo::Bump;
 use clap::Parser;
 use log::{LevelFilter, debug, error, info};
 
-use orrery_cli::{Args, error_adapter::to_reportables};
+use orrery_cli::Args;
 
 fn main() {
     // Install miette's pretty panic hook early for better panic reports
@@ -30,15 +31,18 @@ fn main() {
     info!(log_level:?; "Starting Orrery");
     debug!(args:?; "Parsed arguments");
 
+    // Create the arena at the top level so it outlives any error references.
+    let arena = Bump::new();
+
     // Run the application
-    if let Err(err) = orrery_cli::run(&args) {
+    if let Err(err) = orrery_cli::run(&args, &arena) {
         let reporter = miette::GraphicalReportHandler::new();
 
         // Render each diagnostic independently
-        for reportable in to_reportables(&err) {
+        for reportable in err.reportables() {
             let mut writer = String::new();
             reporter
-                .render_report(&mut writer, &reportable)
+                .render_report(&mut writer, &*reportable)
                 .expect("Writing to String buffer is infallible");
 
             error!("{writer}");

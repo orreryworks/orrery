@@ -25,10 +25,10 @@
 //! # Error Handling
 //!
 //! Export operations return [`Error`], covering rendering failures and I/O
-//! errors. [`Error`] converts into [`OrreryError::Export`] at the crate
+//! errors. [`Error`] converts into [`RenderError::Export`] at the crate
 //! boundary.
 //!
-//! [`OrreryError::Export`]: crate::OrreryError::Export
+//! [`RenderError::Export`]: crate::RenderError::Export
 
 /// SVG export backend.
 pub mod svg;
@@ -61,32 +61,16 @@ pub trait Exporter {
 
 /// Errors that can occur during diagram export.
 ///
-/// This type is converted into [`OrreryError::Export`] at the crate
+/// This type is converted into [`RenderError::Export`] at the crate
 /// boundary via the [`From`] implementation in [`crate::error`].
 ///
-/// [`OrreryError::Export`]: crate::OrreryError::Export
-#[derive(Debug)]
+/// [`RenderError::Export`]: crate::RenderError::Export
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// A rendering or conversion failure described by `message`.
+    #[error("Render error: {0}")]
     Render(String),
     /// An I/O error encountered while writing output.
-    Io(std::io::Error),
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Render(msg) => write!(f, "Render error: {msg}"),
-            Self::Io(err) => write!(f, "I/O error: {err}"),
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Render(_) => None,
-            Self::Io(err) => Some(err),
-        }
-    }
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
 }

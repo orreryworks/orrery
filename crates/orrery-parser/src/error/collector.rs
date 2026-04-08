@@ -3,7 +3,7 @@
 //! The [`DiagnosticCollector`] allows phases to report multiple errors
 //! and warnings instead of failing on the first error encountered.
 
-use crate::error::{Diagnostic, ParseError};
+use crate::error::Diagnostic;
 
 /// A collector for accumulating diagnostics during a processing phase.
 ///
@@ -63,9 +63,9 @@ impl DiagnosticCollector {
     /// - If there are no errors, returns `Ok(())`.
     ///
     /// Note: Warnings are currently discarded in the success case.
-    pub fn finish(self) -> Result<(), ParseError> {
+    pub fn finish(self) -> Result<(), Vec<Diagnostic>> {
         if self.has_errors {
-            Err(ParseError::new(self.diagnostics))
+            Err(self.diagnostics)
         } else {
             Ok(())
         }
@@ -127,8 +127,8 @@ mod tests {
         assert!(result.is_err());
 
         let err = result.unwrap_err();
-        assert_eq!(err.diagnostics().len(), 2);
-        assert_eq!(err.diagnostics()[0].message(), "test error");
+        assert_eq!(err.len(), 2);
+        assert_eq!(err[0].message(), "test error");
     }
 
     #[test]

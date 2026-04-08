@@ -20,7 +20,7 @@ use orrery_core::{geometry, identifier::Id, semantic::LayoutEngine};
 
 use super::layer::ContentStack;
 use crate::{
-    error::OrreryError,
+    error::RenderError,
     layout::{
         component,
         layer::{LayeredLayout, LayoutContent},
@@ -30,8 +30,9 @@ use crate::{
     structure,
 };
 
-/// Enum to store different layout results based on diagram type
-/// Contains the direct layout information without any embedded diagram data
+/// Enum to store different layout results based on diagram type.
+///
+/// Contains the direct layout information without any embedded diagram data.
 #[derive(Debug, Clone)]
 pub enum LayoutResult<'a> {
     // TODO: Do I need this?
@@ -79,49 +80,62 @@ impl<'a> LayoutResult<'a> {
 }
 
 /// Map type containing pre-calculated layout information for embedded diagrams,
-/// indexed by the Id of the node containing the embedded diagram
+/// indexed by the `Id` of the node containing the embedded diagram.
 pub type EmbeddedLayouts<'a> = HashMap<Id, LayoutResult<'a>>;
 
-// Trait defining the interface for component diagram layout engines
+/// Layout engine for component diagrams.
+///
+/// Implementors calculate spatial positions for all components and their
+/// connecting relations within a component diagram graph.
 pub trait ComponentEngine {
-    /// Calculate layout for a component diagram
+    /// Calculate layout for a component diagram.
     ///
-    /// - `graph`: The graph representing the diagram to layout
-    /// - `embedded_layouts`: Pre-calculated layouts for any embedded diagrams,
-    ///   indexed by their Id. When a node contains an embedded diagram,
+    /// # Arguments
+    ///
+    /// * `graph` - The graph representing the diagram to lay out.
+    /// * `embedded_layouts` - Pre-calculated layouts for any embedded diagrams,
+    ///   indexed by their `Id`. When a node contains an embedded diagram,
     ///   its size should be determined by looking up its layout here rather than
     ///   calculating it again.
     ///
     /// # Errors
-    /// Returns `OrreryError::Layout` if the layout engine fails to calculate positions.
+    ///
+    /// Returns [`RenderError::Layout`] if the layout engine fails to calculate positions.
     fn calculate<'a>(
         &self,
         graph: &'a structure::ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<ContentStack<component::Layout<'a>>, OrreryError>;
+    ) -> Result<ContentStack<component::Layout<'a>>, RenderError>;
 }
 
-/// Trait defining the interface for sequence diagram layout engines
+/// Layout engine for sequence diagrams.
+///
+/// Implementors calculate temporal layout positions for participants,
+/// messages, and activations within a sequence diagram graph.
 pub trait SequenceEngine {
-    /// Calculate layout for a sequence diagram
+    /// Calculate layout for a sequence diagram.
     ///
-    /// - `graph`: The graph representing the diagram to layout
-    /// - `embedded_layouts`: Pre-calculated layouts for any embedded diagrams,
-    ///   indexed by their Id. When a node contains an embedded diagram,
+    /// # Arguments
+    ///
+    /// * `graph` - The graph representing the diagram to lay out.
+    /// * `embedded_layouts` - Pre-calculated layouts for any embedded diagrams,
+    ///   indexed by their `Id`. When a node contains an embedded diagram,
     ///   its size should be determined by looking up its layout here rather than
     ///   calculating it again.
     ///
     /// # Errors
-    /// Returns `OrreryError::Layout` if the layout engine fails to calculate positions.
+    ///
+    /// Returns [`RenderError::Layout`] if the layout engine fails to calculate positions.
     fn calculate<'a>(
         &self,
         graph: &'a structure::SequenceGraph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<ContentStack<sequence::Layout<'a>>, OrreryError>;
+    ) -> Result<ContentStack<sequence::Layout<'a>>, RenderError>;
 }
 
 /// Builder for creating and configuring layout engines.
-/// Builder is not reuseable after build() is called.
+///
+/// Builder is not reusable after `build()` is called.
 #[derive(Default)]
 pub struct EngineBuilder {
     // Cache for reusing engines with the same configuration
@@ -137,30 +151,30 @@ pub struct EngineBuilder {
 }
 
 impl EngineBuilder {
-    /// Create a new engine builder with default engine cache and configuration
+    /// Create a new engine builder with default engine cache and configuration.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Set the padding inside all shapes (components, participants, containers)
+    /// Set the padding inside all shapes (components, participants, containers).
     pub fn with_padding(mut self, padding: geometry::Insets) -> Self {
         self.padding = padding;
         self
     }
 
-    /// Set the minimum spacing between elements
+    /// Set the minimum spacing between elements.
     pub fn with_min_spacing(mut self, spacing: f32) -> Self {
         self.min_spacing = spacing;
         self
     }
 
-    /// Set the horizontal spacing between elements
+    /// Set the horizontal spacing between elements.
     pub fn with_horizontal_spacing(mut self, spacing: f32) -> Self {
         self.horizontal_spacing = spacing;
         self
     }
 
-    /// Set the vertical spacing between elements
+    /// Set the vertical spacing between elements.
     pub fn with_vertical_spacing(mut self, spacing: f32) -> Self {
         self.vertical_spacing = spacing;
         self
@@ -172,7 +186,7 @@ impl EngineBuilder {
         self
     }
 
-    /// Get a component engine of the specified type with configured options
+    /// Get a component engine of the specified type with configured options.
     pub fn component_engine(&mut self, engine_type: LayoutEngine) -> &dyn ComponentEngine {
         let engine = self
             .component_engines
@@ -201,7 +215,7 @@ impl EngineBuilder {
         &**engine
     }
 
-    /// Get a sequence engine of the specified type with configured options
+    /// Get a sequence engine of the specified type with configured options.
     pub fn sequence_engine(&mut self, engine_type: LayoutEngine) -> &dyn SequenceEngine {
         let engine = self.sequence_engines.entry(engine_type).or_insert_with(|| {
             // Currently only Basic is supported for sequence diagrams
@@ -224,11 +238,11 @@ impl EngineBuilder {
     /// 2. Adjust positions of embedded diagrams relative to their containers
     ///
     /// # Errors
-    /// Returns `OrreryError::Layout` if any layout engine fails to calculate positions.
+    /// Returns `RenderError::Layout` if any layout engine fails to calculate positions.
     pub fn build<'a>(
         mut self,
         collection: &'a structure::DiagramHierarchy<'a, '_>,
-    ) -> Result<LayeredLayout<'a>, OrreryError> {
+    ) -> Result<LayeredLayout<'a>, RenderError> {
         let mut layered_layout = LayeredLayout::new();
 
         let mut layout_info: HashMap<Id, LayoutResult<'a>> = HashMap::new();

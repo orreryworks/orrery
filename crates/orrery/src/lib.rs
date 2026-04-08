@@ -11,13 +11,15 @@ mod layout;
 mod structure;
 
 pub use orrery_core::{color, draw, identifier, semantic};
+pub use orrery_parser::error::ParseError;
 
-pub use error::OrreryError;
+pub use error::RenderError;
 
 use std::{fs, path::Path};
 
 pub use orrery_parser::{InMemorySourceProvider, SourceProvider};
 
+use bumpalo::Bump;
 use log::{debug, info, trace};
 
 use orrery_core::geometry::Insets;
@@ -35,7 +37,9 @@ use export::Exporter;
 ///
 /// ```rust,no_run
 /// # use std::path::Path;
+/// # use bumpalo::Bump;
 /// # use orrery::{DiagramBuilder, SourceProvider, InMemorySourceProvider, config::AppConfig};
+/// let arena = Bump::new();
 /// let mut provider = InMemorySourceProvider::new();
 /// provider.add_file("app.orr", "diagram component; app: Rectangle;");
 ///
@@ -44,7 +48,7 @@ use export::Exporter;
 /// let builder = DiagramBuilder::new(config, &provider);
 ///
 /// // Parse file to semantic model
-/// let diagram = builder.parse(Path::new("app.orr"))
+/// let diagram = builder.parse(&arena, Path::new("app.orr"))
 ///     .expect("Failed to parse");
 ///
 /// // Render semantic model to SVG
@@ -87,32 +91,35 @@ impl<'a, P: SourceProvider> DiagramBuilder<'a, P> {
     ///
     /// # Errors
     ///
-    /// Returns `OrreryError` for syntax errors, validation errors, or
+    /// Returns `RenderError` for syntax errors, validation errors, or
     /// elaboration errors.
     ///
     /// # Examples
     ///
     /// ```rust,no_run
     /// # use std::path::Path;
+    /// # use bumpalo::Bump;
     /// # use orrery::{DiagramBuilder, InMemorySourceProvider, config::AppConfig};
+    /// let arena = Bump::new();
     /// let mut provider = InMemorySourceProvider::new();
     /// provider.add_file("app.orr", "diagram component; app: Rectangle;");
     ///
     /// let builder = DiagramBuilder::new(AppConfig::default(), &provider);
-    /// let diagram = builder.parse(Path::new("app.orr"))
+    /// let diagram = builder.parse(&arena, Path::new("app.orr"))
     ///     .expect("Failed to parse diagram");
     /// ```
-    pub fn parse(&self, root_path: &Path) -> Result<semantic::Diagram, OrreryError> {
+    pub fn parse<'b>(
+        &self,
+        arena: &'b Bump,
+        root_path: &Path,
+    ) -> Result<semantic::Diagram, ParseError<'b>> {
         info!("Parsing diagram");
-        let root_source = self.provider.read_source(root_path).unwrap_or_default();
-
         let elaborate_config = ElaborateConfig::new(
             self.config.layout().component(),
             self.config.layout().sequence(),
         );
 
-        let diagram = orrery_parser::parse(root_path, self.provider, elaborate_config)
-            .map_err(|err| OrreryError::new_parse_error(err, root_source))?;
+        let diagram = orrery_parser::parse(arena, root_path, self.provider, elaborate_config)?;
 
         debug!("Diagram parsed successfully");
         trace!(diagram:?; "Parsed diagram");
@@ -131,19 +138,21 @@ impl<'a, P: SourceProvider> DiagramBuilder<'a, P> {
     ///
     /// # Errors
     ///
-    /// Returns `OrreryError` for layout or rendering errors.
+    /// Returns `RenderError` for layout or rendering errors.
     ///
     /// # Examples
     ///
     /// ```rust,no_run
     /// # use std::path::Path;
+    /// # use bumpalo::Bump;
     /// # use orrery::{DiagramBuilder, InMemorySourceProvider, config::AppConfig};
+    /// let arena = Bump::new();
     /// let mut provider = InMemorySourceProvider::new();
     /// provider.add_file("app.orr", "diagram component; app: Rectangle;");
     ///
     /// let builder = DiagramBuilder::new(AppConfig::default(), &provider);
     ///
-    /// let diagram = builder.parse(Path::new("app.orr"))
+    /// let diagram = builder.parse(&arena, Path::new("app.orr"))
     ///     .expect("Failed to parse");
     ///
     /// let svg = builder.render_svg(&diagram)
@@ -151,7 +160,7 @@ impl<'a, P: SourceProvider> DiagramBuilder<'a, P> {
     ///
     /// println!("{}", svg);
     /// ```
-    pub fn render_svg(&self, diagram: &semantic::Diagram) -> Result<String, OrreryError> {
+    pub fn render_svg(&self, diagram: &semantic::Diagram) -> Result<String, RenderError> {
         // Build the diagram structure/graph
         info!(diagram_kind:? = diagram.kind(); "Building diagram structure");
         let diagram_hierarchy = structure::DiagramHierarchy::from_diagram(diagram)?;
@@ -173,7 +182,7 @@ impl<'a, P: SourceProvider> DiagramBuilder<'a, P> {
         // Render to SVG using a temporary file
         // TODO: In the future, modify SvgBuilder to support in-memory rendering
         let temp_file =
-            tempfile::NamedTempFile::new().map_err(|err| OrreryError::Export(Box::new(err)))?;
+            tempfile::NamedTempFile::new().map_err(|err| RenderError::Export(Box::new(err)))?;
         let temp_path = temp_file.path().to_string_lossy().to_string();
 
         let mut svg_exporter = export::svg::SvgBuilder::new(&temp_path)
@@ -184,7 +193,7 @@ impl<'a, P: SourceProvider> DiagramBuilder<'a, P> {
         svg_exporter.export_layered_layout(&layered_layout)?;
 
         // Read the SVG content back from the temp file
-        let svg_string = fs::read_to_string(&temp_path).map_err(OrreryError::Io)?;
+        let svg_string = fs::read_to_string(&temp_path).map_err(RenderError::Io)?;
 
         info!("SVG rendered successfully");
         Ok(svg_string)

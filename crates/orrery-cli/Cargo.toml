@@ -24,6 +24,7 @@ path = "src/main.rs"
 [dependencies]
 orrery.workspace = true
 orrery-parser.workspace = true
+bumpalo = "3.20.2"
 clap = { version = "4.5.60", features = ["derive"] }
 env_logger = { version = "0.11.9", features = ["kv"] }
 log = { version = "0.4.29", features = ["kv", "kv_std"] }

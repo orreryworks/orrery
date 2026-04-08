@@ -27,7 +27,7 @@ use super::{
     HierarchyNode,
     graph_base::{EdgeIndex, GraphInternal},
 };
-use crate::OrreryError;
+use crate::RenderError;
 
 /// A containment scope within a component diagram.
 ///
@@ -121,7 +121,7 @@ impl<'a, 'idx> ContainmentScope<'a, 'idx> {
         graph: &mut ComponentGraph<'a, '_>,
         elements: &'a [semantic::Element],
         container: Option<Id>,
-    ) -> Result<Vec<HierarchyNode<'a, 'idx>>, OrreryError> {
+    ) -> Result<Vec<HierarchyNode<'a, 'idx>>, RenderError> {
         let mut child_diagrams = vec![];
 
         let mut containment_scope = ContainmentScope::new(container);
@@ -269,7 +269,7 @@ impl<'a, 'idx> ComponentGraph<'a, 'idx> {
     /// embedded diagrams that need separate processing.
     pub(super) fn new_from_elements(
         elements: &'a [semantic::Element],
-    ) -> Result<(Self, Vec<HierarchyNode<'a, 'idx>>), OrreryError> {
+    ) -> Result<(Self, Vec<HierarchyNode<'a, 'idx>>), RenderError> {
         let mut graph = Self::new();
         let children = ContainmentScope::populate_component_graph(&mut graph, elements, None)?;
         Ok((graph, children))
