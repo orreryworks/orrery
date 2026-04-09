@@ -38,10 +38,10 @@ use crate::{
     error::{Diagnostic, ErrorCode, ParseError, SourceError},
     file_id::FileId,
     lexer, parser,
-    parser_types::{FileAst, Import},
+    parser_types::{FileAst, Import, ImportDecl, ImportForm},
     source_map::SourceMap,
     source_provider::SourceProvider,
-    span::Span,
+    span::{Span, Spanned},
 };
 
 /// The output of resolving a root Orrery file and all of its transitive
@@ -207,27 +207,8 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
 
         // 9. Resolve each import declaration and populate `file_ast.imports`.
         for import_decl in &file_ast.import_decls {
-            let import_path = &import_decl.path;
-            let decl_span = import_decl.span();
-
-            Self::validate_import_path(import_path, decl_span).map_err(|diag| vec![diag])?;
-
-            let resolved_path = self
-                .provider
-                .resolve_path(path, import_path)
-                .map_err(|e| vec![Self::file_not_found_diagnostic(&e, Some(decl_span))])?;
-
-            let imported_rc = self.resolve_file(&resolved_path, Some(decl_span))?;
-
-            let namespace = self
-                .provider
-                .derive_namespace(&resolved_path)
-                .map_err(|e| vec![Self::invalid_namespace_diagnostic(&e, decl_span)])?;
-
-            file_ast.imports.push(Import {
-                namespace: Some(namespace),
-                file_ast: imported_rc,
-            });
+            let import = self.resolve_import_decl(path, import_decl)?;
+            file_ast.imports.push(import);
         }
 
         // 10. Pop from the resolution stack and cache the result.
@@ -236,6 +217,54 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
         self.cache.insert(file_id, Rc::clone(&rc));
 
         Ok(rc)
+    }
+
+    /// Resolves a single [`ImportDecl`] into a fully populated [`Import`].
+    ///
+    /// Validates the path, recursively resolves the referenced file, and
+    /// derives the namespace (for namespaced imports) or leaves it `None`
+    /// (for glob imports).
+    ///
+    /// # Errors
+    ///
+    /// Returns diagnostics if:
+    /// - The referenced file cannot be found (E400).
+    /// - A circular dependency is detected (E401).
+    /// - The import path is empty (E402).
+    /// - The namespace cannot be derived from the file path (E403,
+    ///   namespaced imports only).
+    fn resolve_import_decl(
+        &mut self,
+        parent_path: &Path,
+        import_decl: &Spanned<ImportDecl>,
+    ) -> Result<Import<'arena>, Vec<Diagnostic>> {
+        let import_path = &import_decl.path;
+        let decl_span = import_decl.span();
+
+        Self::validate_import_path(import_path, decl_span).map_err(|diag| vec![diag])?;
+
+        let resolved_path = self
+            .provider
+            .resolve_path(parent_path, import_path)
+            .map_err(|e| vec![Self::file_not_found_diagnostic(&e, Some(decl_span))])?;
+
+        let file_ast = self.resolve_file(&resolved_path, Some(decl_span))?;
+
+        let namespace = match import_decl.inner().form {
+            ImportForm::Namespaced => {
+                let ns = self
+                    .provider
+                    .derive_namespace(&resolved_path)
+                    .map_err(|e| vec![Self::invalid_namespace_diagnostic(&e, decl_span)])?;
+                Some(ns)
+            }
+            ImportForm::Glob => None,
+        };
+
+        Ok(Import {
+            namespace,
+            file_ast,
+        })
     }
 
     /// Rejects empty import paths, which would silently mis-resolve to the

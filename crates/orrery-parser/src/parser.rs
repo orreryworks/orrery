@@ -1201,7 +1201,7 @@ fn file_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::File
     })
 }
 
-/// Parses a single import declaration: `import "path";`.
+/// Parses a single import declaration: `import "path";` or `import "path"::*;`.
 fn import_decl<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<types::ImportDecl>> {
     let import_token = any
         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Import))
@@ -1211,9 +1211,28 @@ fn import_decl<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<typ
         let path = string_literal
             .context(Context::Label("import path"))
             .parse_next(input)?;
+
+        // Parse optional `::*` suffix for glob imports.
+        let glob_star = opt(|input: &mut Input<'tok, 'src>| {
+            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::DoubleColon))
+                .parse_next(input)?;
+            cut_err(input, |input| {
+                any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Star))
+                    .context(Context::Label("'*' after '::'"))
+                    .parse_next(input)
+            })
+        })
+        .parse_next(input)?;
+
+        let (form, end_span) = if let Some(star_token) = glob_star {
+            (types::ImportForm::Glob, star_token.span)
+        } else {
+            (types::ImportForm::Namespaced, path.span())
+        };
+
         semicolon.parse_next(input)?;
-        let span = import_token.span.union(path.span());
-        Ok(make_spanned(types::ImportDecl { path }, span))
+        let span = import_token.span.union(end_span);
+        Ok(make_spanned(types::ImportDecl { path, form }, span))
     })
 }
 
@@ -3659,6 +3678,10 @@ import "shared/styles";"#;
             *file_ast.import_decls[0].inner().path.inner(),
             "shared/styles"
         );
+        assert_eq!(
+            file_ast.import_decls[0].inner().form,
+            types::ImportForm::Namespaced
+        );
     }
 
     #[test]
@@ -3739,18 +3762,85 @@ import "path/to/file";"#;
         assert!(result.is_ok(), "Failed: {:?}", result.err());
         let file_ast = result.unwrap();
         assert_eq!(file_ast.import_decls.len(), 1);
-        let import = &file_ast.import_decls[0];
-        let span = import.span();
         assert_eq!(
-            span.start(),
-            19,
-            "Import span should start at 'import' keyword"
+            file_ast.import_decls[0].inner().form,
+            types::ImportForm::Namespaced
+        );
+        // import(19..25) union "path/to/file"(26..40) = 19..40
+        assert_eq!(file_ast.import_decls[0].span(), Span::from(19..40));
+    }
+
+    #[test]
+    fn test_glob_import() {
+        let input = r#"diagram component;
+import "shared/styles"::*;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert_eq!(file_ast.import_decls.len(), 1);
+        let import = file_ast.import_decls[0].inner();
+        assert_eq!(*import.path.inner(), "shared/styles");
+        assert_eq!(import.form, types::ImportForm::Glob);
+        // import(19..25) union *(43..44) = 19..44
+        assert_eq!(file_ast.import_decls[0].span(), Span::from(19..44));
+    }
+
+    #[test]
+    fn test_mixed_namespaced_and_glob_imports() {
+        let input = r#"diagram component;
+import "shared/styles";
+import "common/types"::*;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert_eq!(file_ast.import_decls.len(), 2);
+        assert_eq!(
+            file_ast.import_decls[0].inner().form,
+            types::ImportForm::Namespaced
         );
         assert_eq!(
-            span.end(),
-            40,
-            "Import span should end after the path string literal"
+            file_ast.import_decls[1].inner().form,
+            types::ImportForm::Glob
         );
+    }
+
+    #[test]
+    fn test_multiple_glob_imports() {
+        let input = r#"diagram component;
+import "shared/styles"::*;
+import "common/types"::*;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert_eq!(file_ast.import_decls.len(), 2);
+        assert_eq!(
+            file_ast.import_decls[0].inner().form,
+            types::ImportForm::Glob
+        );
+        assert_eq!(
+            file_ast.import_decls[1].inner().form,
+            types::ImportForm::Glob
+        );
+    }
+
+    #[test]
+    fn test_glob_import_in_library() {
+        let input = r#"library;
+import "base/types"::*;
+type Service = Rectangle;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert_eq!(file_ast.import_decls.len(), 1);
+        assert_eq!(
+            file_ast.import_decls[0].inner().form,
+            types::ImportForm::Glob
+        );
+        assert_eq!(file_ast.type_definitions.len(), 1);
     }
 
     #[test]

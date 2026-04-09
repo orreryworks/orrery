@@ -320,7 +320,7 @@ fn single_char_token<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
             ']'.value(Token::RightBracket),
             ';'.value(Token::Semicolon),
         )),
-        ','.value(Token::Comma),
+        alt((','.value(Token::Comma), '*'.value(Token::Star))),
     ))
     .parse_next(input)
 }
