@@ -297,7 +297,22 @@ impl FileHeader<'_> {
     }
 }
 
-/// Import declaration — a syntactic `import "path";` statement.
+/// The syntactic form of an import declaration.
+///
+/// Determines how imported types are brought into scope — behind a namespace
+/// prefix or flat into the current scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportForm {
+    /// `import "path";` — all types behind a derived namespace, accessed as
+    /// `namespace::TypeName`.
+    Namespaced,
+    /// `import "path"::*;` — all types flat in the current scope, no namespace
+    /// prefix required.
+    Glob,
+}
+
+/// Import declaration — a syntactic `import "path";` or `import "path"::*;`
+/// statement.
 ///
 /// Captures the raw import path exactly as written in source. The path is a
 /// string literal without the `.orr` extension, resolved relative to the
@@ -307,6 +322,8 @@ pub struct ImportDecl {
     /// The import path string (e.g., `"shared/styles"`), wrapped in
     /// [`Spanned`].
     pub path: Spanned<String>,
+    /// The syntactic [`ImportForm`] — namespaced or glob.
+    pub form: ImportForm,
 }
 
 /// Resolved import — populated by the resolver after parsing.

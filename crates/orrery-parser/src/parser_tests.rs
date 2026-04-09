@@ -3,7 +3,13 @@
 //! These tests verify that the winnow parser correctly handles all Orrery
 //! language constructs and provides proper error handling.
 
-use crate::{lexer, parser};
+use std::path::Path;
+
+use bumpalo::Bump;
+
+use orrery_core::{identifier::Id, semantic::Element};
+
+use crate::{ElaborateConfig, InMemorySourceProvider, lexer, parse, parser};
 
 /// Helper function to parse a source string and return success/failure
 fn parse_source(source: &str) -> Result<(), String> {
@@ -1473,5 +1479,314 @@ mod typespec_case_tests {
             app: Rectangle[color="blue";
         "#;
         assert_parse_fails(source);
+    }
+}
+
+mod import_tests {
+    use super::*;
+
+    #[test]
+    fn test_namespaced_import_library_types() {
+        let mut provider = InMemorySourceProvider::new();
+        provider.add_file(
+            "shared/styles.orr",
+            r#"
+            library;
+            type Service = Rectangle[fill_color="lightblue"];
+            type Database = Oval[fill_color="lightgreen"];
+        "#,
+        );
+        provider.add_file(
+            "main.orr",
+            r#"
+            diagram component;
+            import "shared/styles";
+
+            api: styles::Service;
+            db: styles::Database;
+        "#,
+        );
+
+        let arena = Bump::new();
+        let diagram = parse(
+            &arena,
+            Path::new("main.orr"),
+            provider,
+            ElaborateConfig::default(),
+        )
+        .expect("Failed to parse");
+
+        let elements = diagram.scope().elements();
+        assert_eq!(elements.len(), 2);
+        assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("api")));
+        assert!(matches!(&elements[1], Element::Node(n) if n.id() == Id::new("db")));
+    }
+
+    #[test]
+    fn test_namespaced_import_transitive_library() {
+        let mut provider = InMemorySourceProvider::new();
+        provider.add_file(
+            "base.orr",
+            r#"
+            library;
+            type Service = Rectangle[fill_color="lightblue"];
+        "#,
+        );
+        provider.add_file(
+            "extended.orr",
+            r#"
+            library;
+            import "base";
+
+            type SecureService = base::Service[stroke=[color="red"]];
+        "#,
+        );
+        provider.add_file(
+            "main.orr",
+            r#"
+            diagram component;
+            import "extended";
+
+            api: extended::SecureService;
+            svc: extended::base::Service;
+        "#,
+        );
+
+        let arena = Bump::new();
+        let diagram = parse(
+            &arena,
+            Path::new("main.orr"),
+            provider,
+            ElaborateConfig::default(),
+        )
+        .expect("Failed to parse");
+
+        let elements = diagram.scope().elements();
+        assert_eq!(elements.len(), 2);
+        assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("api")));
+        assert!(matches!(&elements[1], Element::Node(n) if n.id() == Id::new("svc")));
+    }
+
+    #[test]
+    fn test_namespaced_import_diamond_dependency() {
+        let mut provider = InMemorySourceProvider::new();
+        provider.add_file(
+            "base.orr",
+            r#"
+            library;
+            type Service = Rectangle[fill_color="lightblue"];
+        "#,
+        );
+        provider.add_file(
+            "ext_a.orr",
+            r#"
+            library;
+            import "base";
+
+            type ServiceA = base::Service[stroke=[color="red"]];
+        "#,
+        );
+        provider.add_file(
+            "ext_b.orr",
+            r#"
+            library;
+            import "base";
+
+            type ServiceB = base::Service[stroke=[color="blue"]];
+        "#,
+        );
+        provider.add_file(
+            "main.orr",
+            r#"
+            diagram component;
+            import "ext_a";
+            import "ext_b";
+
+            a: ext_a::ServiceA;
+            b: ext_b::ServiceB;
+        "#,
+        );
+
+        let arena = Bump::new();
+        let diagram = parse(
+            &arena,
+            Path::new("main.orr"),
+            provider,
+            ElaborateConfig::default(),
+        )
+        .expect("Failed to parse");
+
+        let elements = diagram.scope().elements();
+        assert_eq!(elements.len(), 2);
+        assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("a")));
+        assert!(matches!(&elements[1], Element::Node(n) if n.id() == Id::new("b")));
+    }
+
+    #[test]
+    fn test_glob_import_library_types() {
+        let mut provider = InMemorySourceProvider::new();
+        provider.add_file(
+            "shared/styles.orr",
+            r#"
+            library;
+            type Service = Rectangle[fill_color="lightblue"];
+            type Database = Oval[fill_color="lightgreen"];
+        "#,
+        );
+        provider.add_file(
+            "main.orr",
+            r#"
+            diagram component;
+            import "shared/styles"::*;
+
+            api: Service;
+            db: Database;
+        "#,
+        );
+
+        let arena = Bump::new();
+        let diagram = parse(
+            &arena,
+            Path::new("main.orr"),
+            provider,
+            ElaborateConfig::default(),
+        )
+        .expect("Failed to parse");
+
+        let elements = diagram.scope().elements();
+        assert_eq!(elements.len(), 2);
+        assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("api")));
+        assert!(matches!(&elements[1], Element::Node(n) if n.id() == Id::new("db")));
+    }
+
+    #[test]
+    fn test_glob_import_override_last_writer_wins() {
+        let mut provider = InMemorySourceProvider::new();
+        provider.add_file(
+            "theme_a.orr",
+            r#"
+            library;
+            type Service = Rectangle[fill_color="blue"];
+        "#,
+        );
+        provider.add_file(
+            "theme_b.orr",
+            r#"
+            library;
+            type Service = Rectangle[fill_color="red"];
+        "#,
+        );
+        provider.add_file(
+            "main.orr",
+            r#"
+            diagram component;
+            import "theme_a"::*;
+            import "theme_b"::*;
+
+            api: Service;
+        "#,
+        );
+
+        let arena = Bump::new();
+        let diagram = parse(
+            &arena,
+            Path::new("main.orr"),
+            provider,
+            ElaborateConfig::default(),
+        )
+        .expect("Failed to parse");
+
+        let elements = diagram.scope().elements();
+        assert_eq!(elements.len(), 1);
+        assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("api")));
+    }
+
+    #[test]
+    fn test_mixed_namespaced_and_glob_imports() {
+        let mut provider = InMemorySourceProvider::new();
+        provider.add_file(
+            "styles.orr",
+            r#"
+            library;
+            type Service = Rectangle[fill_color="lightblue"];
+        "#,
+        );
+        provider.add_file(
+            "types.orr",
+            r#"
+            library;
+            type Database = Oval[fill_color="lightgreen"];
+        "#,
+        );
+        provider.add_file(
+            "main.orr",
+            r#"
+            diagram component;
+            import "styles";
+            import "types"::*;
+
+            api: styles::Service;
+            db: Database;
+        "#,
+        );
+
+        let arena = Bump::new();
+        let diagram = parse(
+            &arena,
+            Path::new("main.orr"),
+            provider,
+            ElaborateConfig::default(),
+        )
+        .expect("Failed to parse");
+
+        let elements = diagram.scope().elements();
+        assert_eq!(elements.len(), 2);
+        assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("api")));
+        assert!(matches!(&elements[1], Element::Node(n) if n.id() == Id::new("db")));
+    }
+
+    #[test]
+    fn test_glob_import_transitive_library() {
+        let mut provider = InMemorySourceProvider::new();
+        provider.add_file(
+            "base.orr",
+            r#"
+            library;
+            type Service = Rectangle[fill_color="lightblue"];
+        "#,
+        );
+        provider.add_file(
+            "extended.orr",
+            r#"
+            library;
+            import "base"::*;
+
+            type SecureService = Service[stroke=[color="red"]];
+        "#,
+        );
+        provider.add_file(
+            "main.orr",
+            r#"
+            diagram component;
+            import "extended"::*;
+
+            api: SecureService;
+            svc: Service;
+        "#,
+        );
+
+        let arena = Bump::new();
+        let diagram = parse(
+            &arena,
+            Path::new("main.orr"),
+            provider,
+            ElaborateConfig::default(),
+        )
+        .expect("Failed to parse");
+
+        let elements = diagram.scope().elements();
+        assert_eq!(elements.len(), 2);
+        assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("api")));
+        assert!(matches!(&elements[1], Element::Node(n) if n.id() == Id::new("svc")));
     }
 }

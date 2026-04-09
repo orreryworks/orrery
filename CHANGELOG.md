@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Namespaced import system** — Reuse type definitions across files with `import "path";` and `library;` file headers. Imports are namespace-qualified (e.g., `styles::Service`), support transitive chaining, and include circular dependency detection, diamond deduplication, and cross-file error reporting with import traces. ([#45](https://github.com/orreryworks/orrery/issues/45))
+- **Glob import** — Bring all types from a file flat into the current scope with `import "path"::*;`, removing the need for namespace prefixes. Supports last-writer-wins override semantics and transitive re-exports. ([#46](https://github.com/orreryworks/orrery/issues/46))
 - **Import system specification** — Formal specification for the file-based import system covering `import` syntax, `library;` file header, path resolution, namespaces, diagram embedding via import, scope and visibility, and conflict resolution. Updated main specification and error handling specification with cross-references. ([#44](https://github.com/orreryworks/orrery/issues/44))
 - **Text label background layering** — Text label backgrounds now render above all other diagram elements (arrows, fragments, lifelines, activations, etc.), with only the text itself on top. This ensures labels with a background always remain legible regardless of overlapping elements. ([#75](https://github.com/orreryworks/orrery/issues/75))
 
