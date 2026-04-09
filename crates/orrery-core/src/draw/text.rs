@@ -332,7 +332,7 @@ impl<'a> Drawable for Text<'a> {
                 .set("fill-opacity", bg_color.alpha())
                 .set("rx", 3.0); // Slightly rounded corners
 
-            output.add_to_layer(RenderLayer::Background, Box::new(bg));
+            output.add_to_layer(RenderLayer::TextBackground, Box::new(bg));
         }
 
         output.add_to_layer(RenderLayer::Text, Box::new(rendered_text));

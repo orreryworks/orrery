@@ -55,6 +55,8 @@ pub enum RenderLayer {
     Note,
     /// Arrows, relations, and messages between elements
     Arrow,
+    /// Backgrounds for text labels
+    TextBackground,
     /// Text labels and annotations
     Text,
 }
@@ -70,6 +72,7 @@ impl RenderLayer {
             Self::Fragment => "fragment",
             Self::Note => "note",
             Self::Arrow => "arrow",
+            Self::TextBackground => "text_background",
             Self::Text => "text",
         }
     }
