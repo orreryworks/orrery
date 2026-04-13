@@ -12,7 +12,7 @@ use winnow::stream::Location;
 
 use crate::span::Span;
 
-/// Token types for the Orrery language
+/// Token types for the Orrery language.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token<'src> {
     // Keywords
@@ -69,7 +69,7 @@ pub enum Token<'src> {
     Newline,
 }
 
-/// A token with position information for winnow integration
+/// A token with position information for winnow integration.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PositionedToken<'src> {
     pub token: Token<'src>,

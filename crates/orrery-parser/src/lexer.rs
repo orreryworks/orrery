@@ -295,7 +295,7 @@ fn identifier<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
     .parse_next(input)
 }
 
-/// Parse multi-character operators (order matters - longest first)
+/// Parses multi-character operators (order matters — longest first).
 fn multi_char_operator<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
     alt((
         literal("<->").value(Token::DoubleArrow),
@@ -306,7 +306,7 @@ fn multi_char_operator<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
     .parse_next(input)
 }
 
-/// Parse single character tokens
+/// Parses a single-character operator or punctuation token.
 fn single_char_token<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
     alt((
         alt((
@@ -325,19 +325,19 @@ fn single_char_token<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
     .parse_next(input)
 }
 
-/// Parse whitespace (spaces, tabs, etc. but not newlines)
+/// Parses whitespace (spaces, tabs, etc. but not newlines).
 fn whitespace<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
     take_while(1.., |c: char| c.is_whitespace() && c != '\n')
         .value(Token::Whitespace)
         .parse_next(input)
 }
 
-/// Parse newline
+/// Parses a newline character.
 fn newline<'a>(input: &mut Input<'a>) -> IResult<'a, Token<'a>> {
     '\n'.value(Token::Newline).parse_next(input)
 }
 
-/// Parse a single token with position tracking
+/// Parses a single token with position tracking.
 fn positioned_token<'a>(input: &mut Input<'a>) -> IResult<'a, PositionedToken<'a>> {
     let start_pos = input.current_token_start();
 

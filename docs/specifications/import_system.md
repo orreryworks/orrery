@@ -48,9 +48,9 @@ Library files can contain `import` declarations and `type` definitions. They **c
 
 The `import` keyword brings types and diagram references from other `.orr` files into the current file's scope.
 
-### 3.1 Three Import Forms
+### 3.1 Import Forms
 
-Orrery supports three distinct import forms:
+Orrery supports two import forms:
 
 #### 3.1.1 Namespaced Import
 
@@ -86,32 +86,12 @@ api: Service;
 db: Database;
 ```
 
-#### 3.1.3 Selective Import
-
-Imports only the named types flat into the current scope. Individual types can be aliased using the `as` keyword.
-
-**Syntax:**
-```
-import "path"::{TypeA, TypeB};
-import "path"::{TypeA as Alias, TypeB};
-```
-
-**Example:**
-```
-import "shared/styles"::{Service, Database};
-import "shared/styles"::{Service as Svc, Database as DB};
-
-api: Service;
-db: Database;
-```
-
 ### 3.2 Summary
 
 | Form | Syntax | Result |
 |---|---|---|
 | Namespaced | `import "path";` | All types behind namespace, accessed as `name::Type` |
 | Glob | `import "path"::*;` | All types flat in current scope, no namespace |
-| Selective | `import "path"::{A, B};` | Named types flat in current scope |
 
 ## 4. Import Paths
 
@@ -202,7 +182,7 @@ auth_box: Rectangle embed auth;
 
 ### 6.3 Restrictions
 
-- **Only namespaced imports** create embed references. Glob and selective imports do **not** create embed references.
+- **Only namespaced imports** create embed references. Glob imports do **not** create embed references.
 - **Only diagram files** can be embedded. Attempting to embed a library file is a compile-time error.
 
 | Import Form | Creates Embed Reference |
@@ -210,7 +190,6 @@ auth_box: Rectangle embed auth;
 | `import "diagram_file";` | Yes |
 | `import "diagram_file" as name;` | Yes (uses alias) |
 | `import "diagram_file"::*;` | No |
-| `import "diagram_file"::{A, B};` | No |
 
 ### 6.4 Comparison with Inline Embedding
 
@@ -425,19 +404,19 @@ diagram component;
 // Namespaced import — types accessed via namespace, diagram available for embedding
 import "auth_flow";
 
+// Namespaced import with alias
+import "../shared/secure" as sec;
+
 // Glob import — all types flat in scope
 import "../shared/styles"::*;
-
-// Selective import with alias
-import "../shared/secure"::{SecureService, CriticalService as Critical};
 
 // Local type using imported base
 type Gateway = Service[rounded=10, fill_color="orange"];
 
 // Elements using various imported types
 api_gateway: Gateway;
-auth_service: SecureService;
-core_service: Critical;
+auth_service: sec::SecureService;
+core_service: sec::CriticalService;
 user_db: Database;
 
 // Import-based diagram embedding

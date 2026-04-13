@@ -119,7 +119,7 @@ impl From<std::ops::Range<usize>> for Span {
 ///
 /// `Spanned<T>` wraps any type `T` with location metadata, allowing parser and
 /// elaboration code to provide rich diagnostic errors with precise source locations.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Eq)]
 pub struct Spanned<T> {
     /// The wrapped value
     value: T,

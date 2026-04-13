@@ -299,20 +299,30 @@ impl FileHeader<'_> {
 
 /// The syntactic form of an import declaration.
 ///
-/// Determines how imported types are brought into scope — behind a namespace
-/// prefix or flat into the current scope.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Each variant corresponds to a distinct syntactic form the user can write:
+///
+/// ```text
+/// import "path";              → Namespaced
+/// import "path" as alias;     → Aliased
+/// import "path"::*;           → Glob
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportForm {
     /// `import "path";` — all types behind a derived namespace, accessed as
-    /// `namespace::TypeName`.
+    /// `namespace::TypeName`. The namespace is derived from the last path
+    /// segment by the resolver.
     Namespaced,
+    /// `import "path" as alias;` — all types behind an explicit namespace,
+    /// accessed as `alias::TypeName`. The alias overrides the derived
+    /// namespace.
+    Aliased(Spanned<Id>),
     /// `import "path"::*;` — all types flat in the current scope, no namespace
     /// prefix required.
     Glob,
 }
 
-/// Import declaration — a syntactic `import "path";` or `import "path"::*;`
-/// statement.
+/// Import declaration — a syntactic `import "path";`,
+/// `import "path" as alias;`, or `import "path"::*;` statement.
 ///
 /// Captures the raw import path exactly as written in source. The path is a
 /// string literal without the `.orr` extension, resolved relative to the
@@ -322,7 +332,7 @@ pub struct ImportDecl {
     /// The import path string (e.g., `"shared/styles"`), wrapped in
     /// [`Spanned`].
     pub path: Spanned<String>,
-    /// The syntactic [`ImportForm`] — namespaced or glob.
+    /// The syntactic [`ImportForm`] — namespaced, aliased, or glob.
     pub form: ImportForm,
 }
 

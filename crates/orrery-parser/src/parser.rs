@@ -1201,7 +1201,12 @@ fn file_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::File
     })
 }
 
-/// Parses a single import declaration: `import "path";` or `import "path"::*;`.
+/// Parses a single import declaration.
+///
+/// Supports three syntactic forms:
+/// - `import "path";` — namespaced import.
+/// - `import "path" as alias;` — aliased import.
+/// - `import "path"::*;` — glob import.
 fn import_decl<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<types::ImportDecl>> {
     let import_token = any
         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Import))
@@ -1212,23 +1217,38 @@ fn import_decl<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<typ
             .context(Context::Label("import path"))
             .parse_next(input)?;
 
-        // Parse optional `::*` suffix for glob imports.
-        let glob_star = opt(|input: &mut Input<'tok, 'src>| {
-            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::DoubleColon))
-                .parse_next(input)?;
-            cut_err(input, |input| {
-                any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Star))
-                    .context(Context::Label("'*' after '::'"))
-                    .parse_next(input)
-            })
-        })
+        // Parse the import form: `as alias`, `::*`, or plain namespaced.
+        let (form, end_span) = alt((
+            // `as <identifier>` → Aliased
+            |input: &mut Input<'tok, 'src>| {
+                ws_comments0.parse_next(input)?;
+                any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::As))
+                    .parse_next(input)?;
+                cut_err(input, |input| {
+                    ws_comments0.parse_next(input)?;
+                    let alias = identifier
+                        .context(Context::Label("alias identifier after 'as'"))
+                        .parse_next(input)?;
+                    let end = alias.span();
+                    Ok((types::ImportForm::Aliased(alias), end))
+                })
+            },
+            // `::*` → Glob
+            |input: &mut Input<'tok, 'src>| {
+                any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::DoubleColon))
+                    .parse_next(input)?;
+                cut_err(input, |input| {
+                    let star = any
+                        .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Star))
+                        .context(Context::Label("'*' after '::'"))
+                        .parse_next(input)?;
+                    Ok((types::ImportForm::Glob, star.span))
+                })
+            },
+            // Nothing → Namespaced
+            |_input: &mut Input<'tok, 'src>| Ok((types::ImportForm::Namespaced, path.span())),
+        ))
         .parse_next(input)?;
-
-        let (form, end_span) = if let Some(star_token) = glob_star {
-            (types::ImportForm::Glob, star_token.span)
-        } else {
-            (types::ImportForm::Namespaced, path.span())
-        };
 
         semicolon.parse_next(input)?;
         let span = import_token.span.union(end_span);
@@ -3787,26 +3807,6 @@ import "shared/styles"::*;"#;
     }
 
     #[test]
-    fn test_mixed_namespaced_and_glob_imports() {
-        let input = r#"diagram component;
-import "shared/styles";
-import "common/types"::*;"#;
-        let tokens = parse_tokens(input);
-        let result = build_file(&tokens);
-        assert!(result.is_ok(), "Failed: {:?}", result.err());
-        let file_ast = result.unwrap();
-        assert_eq!(file_ast.import_decls.len(), 2);
-        assert_eq!(
-            file_ast.import_decls[0].inner().form,
-            types::ImportForm::Namespaced
-        );
-        assert_eq!(
-            file_ast.import_decls[1].inner().form,
-            types::ImportForm::Glob
-        );
-    }
-
-    #[test]
     fn test_multiple_glob_imports() {
         let input = r#"diagram component;
 import "shared/styles"::*;
@@ -3841,6 +3841,55 @@ type Service = Rectangle;"#;
             types::ImportForm::Glob
         );
         assert_eq!(file_ast.type_definitions.len(), 1);
+    }
+
+    #[test]
+    fn test_aliased_import() {
+        let input = r#"diagram component;
+import "shared/styles" as theme;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert_eq!(file_ast.import_decls.len(), 1);
+        let import = &file_ast.import_decls[0];
+        assert_eq!(*import.inner().path.inner(), "shared/styles");
+        // import(19..25) union theme(45..50) = 19..50
+        assert_eq!(import.span(), Span::from(19..50));
+        match &import.inner().form {
+            types::ImportForm::Aliased(alias) => {
+                assert_eq!(*alias.inner(), Id::new("theme"));
+                assert_eq!(alias.span(), Span::from(45..50));
+            }
+            other => panic!("Expected Aliased, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_mixed_namespaced_aliased_and_glob_imports() {
+        let input = r#"diagram component;
+import "shared/styles";
+import "common/types" as ct;
+import "base/utils"::*;"#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert_eq!(file_ast.import_decls.len(), 3);
+        assert_eq!(
+            file_ast.import_decls[0].inner().form,
+            types::ImportForm::Namespaced
+        );
+        match &file_ast.import_decls[1].inner().form {
+            types::ImportForm::Aliased(alias) => {
+                assert_eq!(*alias.inner(), Id::new("ct"));
+            }
+            other => panic!("Expected Aliased, got {:?}", other),
+        }
+        assert_eq!(
+            file_ast.import_decls[2].inner().form,
+            types::ImportForm::Glob
+        );
     }
 
     #[test]
