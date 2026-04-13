@@ -1702,50 +1702,6 @@ mod import_tests {
     }
 
     #[test]
-    fn test_mixed_namespaced_and_glob_imports() {
-        let mut provider = InMemorySourceProvider::new();
-        provider.add_file(
-            "styles.orr",
-            r#"
-            library;
-            type Service = Rectangle[fill_color="lightblue"];
-        "#,
-        );
-        provider.add_file(
-            "types.orr",
-            r#"
-            library;
-            type Database = Oval[fill_color="lightgreen"];
-        "#,
-        );
-        provider.add_file(
-            "main.orr",
-            r#"
-            diagram component;
-            import "styles";
-            import "types"::*;
-
-            api: styles::Service;
-            db: Database;
-        "#,
-        );
-
-        let arena = Bump::new();
-        let diagram = parse(
-            &arena,
-            Path::new("main.orr"),
-            provider,
-            ElaborateConfig::default(),
-        )
-        .expect("Failed to parse");
-
-        let elements = diagram.scope().elements();
-        assert_eq!(elements.len(), 2);
-        assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("api")));
-        assert!(matches!(&elements[1], Element::Node(n) if n.id() == Id::new("db")));
-    }
-
-    #[test]
     fn test_glob_import_transitive_library() {
         let mut provider = InMemorySourceProvider::new();
         provider.add_file(
@@ -1788,5 +1744,131 @@ mod import_tests {
         assert_eq!(elements.len(), 2);
         assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("api")));
         assert!(matches!(&elements[1], Element::Node(n) if n.id() == Id::new("svc")));
+    }
+
+    #[test]
+    fn test_aliased_import_library_types() {
+        let mut provider = InMemorySourceProvider::new();
+        provider.add_file(
+            "shared/styles.orr",
+            r#"
+            library;
+            type Service = Rectangle[fill_color="lightblue"];
+            type Database = Oval[fill_color="lightgreen"];
+        "#,
+        );
+        provider.add_file(
+            "main.orr",
+            r#"
+            diagram component;
+            import "shared/styles" as theme;
+
+            api: theme::Service;
+            db: theme::Database;
+        "#,
+        );
+
+        let arena = Bump::new();
+        let diagram = parse(
+            &arena,
+            Path::new("main.orr"),
+            provider,
+            ElaborateConfig::default(),
+        )
+        .expect("Failed to parse");
+
+        let elements = diagram.scope().elements();
+        assert_eq!(elements.len(), 2);
+        assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("api")));
+        assert!(matches!(&elements[1], Element::Node(n) if n.id() == Id::new("db")));
+    }
+
+    #[test]
+    fn test_aliased_import_transitive_library() {
+        let mut provider = InMemorySourceProvider::new();
+        provider.add_file(
+            "base.orr",
+            r#"
+            library;
+            type Service = Rectangle[fill_color="lightblue"];
+        "#,
+        );
+        provider.add_file(
+            "extended.orr",
+            r#"
+            library;
+            import "base" as b;
+
+            type SecureService = b::Service[stroke=[color="red"]];
+        "#,
+        );
+        provider.add_file(
+            "main.orr",
+            r#"
+            diagram component;
+            import "extended" as ext;
+
+            api: ext::SecureService;
+            svc: ext::b::Service;
+        "#,
+        );
+
+        let arena = Bump::new();
+        let diagram = parse(
+            &arena,
+            Path::new("main.orr"),
+            provider,
+            ElaborateConfig::default(),
+        )
+        .expect("Failed to parse");
+
+        let elements = diagram.scope().elements();
+        assert_eq!(elements.len(), 2);
+        assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("api")));
+        assert!(matches!(&elements[1], Element::Node(n) if n.id() == Id::new("svc")));
+    }
+
+    #[test]
+    fn test_mixed_namespaced_aliased_and_glob_imports() {
+        let mut provider = InMemorySourceProvider::new();
+        provider.add_file(
+            "styles.orr",
+            r#"
+            library;
+            type Service = Rectangle[fill_color="lightblue"];
+        "#,
+        );
+        provider.add_file(
+            "types.orr",
+            r#"
+            library;
+            type Database = Oval[fill_color="lightgreen"];
+        "#,
+        );
+        provider.add_file(
+            "main.orr",
+            r#"
+            diagram component;
+            import "styles" as theme;
+            import "types"::*;
+
+            api: theme::Service;
+            db: Database;
+        "#,
+        );
+
+        let arena = Bump::new();
+        let diagram = parse(
+            &arena,
+            Path::new("main.orr"),
+            provider,
+            ElaborateConfig::default(),
+        )
+        .expect("Failed to parse");
+
+        let elements = diagram.scope().elements();
+        assert_eq!(elements.len(), 2);
+        assert!(matches!(&elements[0], Element::Node(n) if n.id() == Id::new("api")));
+        assert!(matches!(&elements[1], Element::Node(n) if n.id() == Id::new("db")));
     }
 }

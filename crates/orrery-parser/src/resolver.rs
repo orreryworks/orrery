@@ -222,8 +222,8 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
     /// Resolves a single [`ImportDecl`] into a fully populated [`Import`].
     ///
     /// Validates the path, recursively resolves the referenced file, and
-    /// derives the namespace (for namespaced imports) or leaves it `None`
-    /// (for glob imports).
+    /// determines the namespace: derived from the file path (namespaced),
+    /// taken from the explicit alias (aliased), or `None` (glob).
     ///
     /// # Errors
     ///
@@ -250,7 +250,7 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
 
         let file_ast = self.resolve_file(&resolved_path, Some(decl_span))?;
 
-        let namespace = match import_decl.inner().form {
+        let namespace = match &import_decl.inner().form {
             ImportForm::Namespaced => {
                 let ns = self
                     .provider
@@ -258,6 +258,7 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
                     .map_err(|e| vec![Self::invalid_namespace_diagnostic(&e, decl_span)])?;
                 Some(ns)
             }
+            ImportForm::Aliased(alias) => Some(*alias.inner()),
             ImportForm::Glob => None,
         };
 
@@ -583,27 +584,6 @@ mod tests {
     }
 
     #[test]
-    fn namespace_derived_from_import_path() {
-        let arena = Bump::new();
-        let resolved = resolve_with(
-            &arena,
-            &[
-                (
-                    "dir/main.orr",
-                    "diagram component;\nimport \"../common/base\";\na: Rectangle;",
-                ),
-                ("dir/../common/base.orr", "library;"),
-            ],
-            "dir/main.orr",
-        )
-        .expect("should resolve relative import");
-
-        let import = &resolved.file_ast.imports[0];
-        let ns = import.namespace.as_ref().expect("should have namespace");
-        assert!(ns == "base", "expected namespace 'base', got '{ns:?}'");
-    }
-
-    #[test]
     fn cycle_error_shows_readable_paths() {
         // A → B → A (simple cycle)
         let arena = Bump::new();
@@ -638,5 +618,47 @@ mod tests {
             help.contains(" → "),
             "help should format the chain with arrow separators: {help}"
         );
+    }
+
+    #[test]
+    fn namespace_derived_from_import_path() {
+        let arena = Bump::new();
+        let resolved = resolve_with(
+            &arena,
+            &[
+                (
+                    "dir/main.orr",
+                    "diagram component;\nimport \"../common/base\";\na: Rectangle;",
+                ),
+                ("dir/../common/base.orr", "library;"),
+            ],
+            "dir/main.orr",
+        )
+        .expect("should resolve relative import");
+
+        let import = &resolved.file_ast.imports[0];
+        let ns = import.namespace.as_ref().expect("should have namespace");
+        assert!(ns == "base", "expected namespace 'base', got '{ns:?}'");
+    }
+
+    #[test]
+    fn alias_overrides_derived_namespace() {
+        let arena = Bump::new();
+        let resolved = resolve_with(
+            &arena,
+            &[
+                (
+                    "main.orr",
+                    "diagram component;\nimport \"styles\" as theme;\na: Rectangle;",
+                ),
+                ("styles.orr", "library;"),
+            ],
+            "main.orr",
+        )
+        .expect("should resolve aliased import");
+
+        let import = &resolved.file_ast.imports[0];
+        let ns = import.namespace.as_ref().expect("should have namespace");
+        assert!(ns == "theme", "expected namespace 'theme', got '{ns:?}'");
     }
 }
