@@ -11,6 +11,8 @@
 //! - **Activate/Deactivate Pairing**: Ensures activate statements have corresponding deactivate
 //!   statements in sequence diagrams.
 //! - **Note Alignment**: Validates that note alignment values are appropriate for the diagram type.
+//! - **Embed Reference Resolution**: Validates that all `DiagramSource::Ref` nodes were resolved
+//!   during desugaring. Surviving refs indicate an unknown embed reference.
 
 use std::collections::HashMap;
 
@@ -19,8 +21,8 @@ use orrery_core::{identifier::Id, semantic::DiagramKind};
 use crate::{
     error::{Diagnostic, DiagnosticCollector, ErrorCode},
     parser_types::{
-        Attribute, AttributeValue, Element, FileAst, FileHeader, Fragment, FragmentSection, Import,
-        Note, TypeDefinition, TypeSpec,
+        Attribute, AttributeValue, ComponentContent, DiagramSource, Element, FileAst, FileHeader,
+        Fragment, FragmentSection, Import, Note, TypeDefinition, TypeSpec,
     },
     span::{Span, Spanned},
 };
@@ -57,26 +59,26 @@ trait Visitor<'a> {
         }
     }
 
-    /// Visit the diagram kind (component, sequence, etc.)
+    /// Visits the diagram kind (component, sequence, etc.).
     fn visit_diagram_kind(&mut self, _kind: &Spanned<DiagramKind>) {}
 
-    /// Visit a list of attributes
+    /// Visits a list of attributes.
     fn visit_attributes(&mut self, attributes: &[Attribute<'a>]) {
         for attr in attributes {
             self.visit_attribute(attr);
         }
     }
 
-    /// Visit a single attribute
+    /// Visits a single attribute.
     fn visit_attribute(&mut self, attribute: &Attribute<'a>) {
         self.visit_attribute_name(&attribute.name);
         self.visit_attribute_value(&attribute.value);
     }
 
-    /// Visit an attribute name
+    /// Visits an attribute name.
     fn visit_attribute_name(&mut self, _name: &Spanned<&'a str>) {}
 
-    /// Visit an attribute value
+    /// Visits an attribute value.
     fn visit_attribute_value(&mut self, value: &AttributeValue<'a>) {
         match value {
             AttributeValue::String(s) => self.visit_string_value(s),
@@ -87,42 +89,42 @@ trait Visitor<'a> {
         }
     }
 
-    /// Visit a string attribute value
+    /// Visits a string attribute value.
     fn visit_string_value(&mut self, _value: &Spanned<String>) {}
 
-    /// Visit a float attribute value
+    /// Visits a float attribute value.
     fn visit_float_value(&mut self, _value: &Spanned<f32>) {}
 
-    /// Visit a single identifier (component reference)
+    /// Visits a single identifier (component reference).
     fn visit_identifier(&mut self, _identifier: &Spanned<Id>) {}
 
-    /// Visit an identifiers attribute value (list of identifiers)
+    /// Visits an identifiers attribute value (list of identifiers).
     fn visit_identifiers(&mut self, identifiers: &[Spanned<Id>]) {
         for identifier in identifiers {
             self.visit_identifier(identifier);
         }
     }
 
-    /// Visit a list of type definitions
+    /// Visits a list of type definitions.
     fn visit_type_definitions(&mut self, type_definitions: &[TypeDefinition<'a>]) {
         for td in type_definitions {
             self.visit_type_definition(td);
         }
     }
 
-    /// Visit a single type definition
+    /// Visits a single type definition.
     fn visit_type_definition(&mut self, type_def: &TypeDefinition<'a>) {
         self.visit_type_name(&type_def.name);
         self.visit_type_spec(&type_def.type_spec);
     }
 
-    /// Visit a type name
+    /// Visits a type name.
     fn visit_type_name(&mut self, _name: &Spanned<Id>) {}
 
-    /// Visit a base type
+    /// Visits a base type.
     fn visit_base_type(&mut self, _base_type: &Spanned<Id>) {}
 
-    /// Visit a type specification
+    /// Visits a type specification.
     fn visit_type_spec(&mut self, type_spec: &TypeSpec<'a>) {
         if let Some(ref type_name) = type_spec.type_name {
             self.visit_base_type(type_name);
@@ -130,22 +132,24 @@ trait Visitor<'a> {
         self.visit_attributes(&type_spec.attributes);
     }
 
-    /// Visit a list of elements
+    /// Visits a list of elements.
     fn visit_elements(&mut self, elements: &[Element<'a>]) {
         for elem in elements {
             self.visit_element(elem);
         }
     }
 
-    /// Visit a single element
+    /// Visits a single element by dispatching to the appropriate typed visitor method.
+    ///
+    /// Each [`Element`] variant is routed to its dedicated `visit_*` method.
     fn visit_element(&mut self, element: &Element<'a>) {
         match *element {
             Element::Component {
                 ref name,
                 ref display_name,
                 ref type_spec,
-                ref nested_elements,
-            } => self.visit_component(name, display_name, type_spec, nested_elements),
+                ref content,
+            } => self.visit_component(name, display_name, type_spec, content),
             Element::Relation {
                 ref source,
                 ref target,
@@ -153,7 +157,6 @@ trait Visitor<'a> {
                 ref type_spec,
                 ref label,
             } => self.visit_relation(source, target, relation_type, type_spec, label),
-            Element::Diagram(ref diagram) => self.visit_file_ast(diagram),
             Element::ActivateBlock {
                 ref component,
                 ref type_spec,
@@ -223,14 +226,14 @@ trait Visitor<'a> {
         }
     }
 
-    /// Visit a fragment
+    /// Visits a fragment.
     fn visit_fragment(&mut self, fragment: &Fragment<'a>) {
         for section in &fragment.sections {
             self.visit_fragment_section(section);
         }
     }
 
-    /// Visit a fragment section
+    /// Visits a fragment section.
     fn visit_fragment_section(&mut self, section: &FragmentSection<'a>) {
         // Traverse section title as a string literal and its elements
         if let Some(title) = &section.title {
@@ -239,29 +242,46 @@ trait Visitor<'a> {
         self.visit_elements(&section.elements);
     }
 
-    /// Visit a component element
+    /// Visits a component element.
     fn visit_component(
         &mut self,
         name: &Spanned<Id>,
         display_name: &Option<Spanned<String>>,
         type_spec: &TypeSpec<'a>,
-        nested_elements: &[Element<'a>],
+        content: &ComponentContent<'a>,
     ) {
         self.visit_component_name(name);
         if let Some(dn) = display_name {
             self.visit_display_name(dn);
         }
         self.visit_type_spec(type_spec);
-        self.visit_elements(nested_elements);
+        self.visit_component_content(content);
     }
 
-    /// Visit a component name
+    /// Visits the content of a component element.
+    fn visit_component_content(&mut self, content: &ComponentContent<'a>) {
+        match content {
+            ComponentContent::None => {}
+            ComponentContent::Scope(elements) => self.visit_elements(elements),
+            ComponentContent::Diagram(source) => self.visit_diagram_source(source),
+        }
+    }
+
+    /// Visits an embedded diagram source inside a component.
+    fn visit_diagram_source(&mut self, source: &DiagramSource<'a>) {
+        match source {
+            DiagramSource::Inline(rc) => self.visit_file_ast(&rc.borrow()),
+            DiagramSource::Ref(_) => {}
+        }
+    }
+
+    /// Visits a component name.
     fn visit_component_name(&mut self, _name: &Spanned<Id>) {}
 
-    /// Visit a display name
+    /// Visits a display name.
     fn visit_display_name(&mut self, _display_name: &Spanned<String>) {}
 
-    /// Visit a relation element
+    /// Visits a relation element.
     fn visit_relation(
         &mut self,
         source: &Spanned<Id>,
@@ -279,23 +299,23 @@ trait Visitor<'a> {
         }
     }
 
-    /// Visit a relation source
+    /// Visits a relation source.
     fn visit_relation_source(&mut self, source: &Spanned<Id>) {
         self.visit_identifier(source);
     }
 
-    /// Visit a relation target
+    /// Visits a relation target.
     fn visit_relation_target(&mut self, target: &Spanned<Id>) {
         self.visit_identifier(target);
     }
 
-    /// Visit a relation type
+    /// Visits a relation type.
     fn visit_relation_type(&mut self, _relation_type: &Spanned<&'a str>) {}
 
-    /// Visit a relation label
+    /// Visits a relation label.
     fn visit_relation_label(&mut self, _label: &Spanned<String>) {}
 
-    /// Visit an activate block element
+    /// Visits an activate block element.
     fn visit_activate_block(
         &mut self,
         component: &Spanned<Id>,
@@ -307,27 +327,27 @@ trait Visitor<'a> {
         self.visit_elements(elements);
     }
 
-    /// Visit an activate block component reference
+    /// Visits an activate block component reference.
     fn visit_activate_component(&mut self, _component: &Spanned<Id>) {}
 
-    /// Visit an activate statement
+    /// Visits an activate statement.
     fn visit_activate(&mut self, component: &Spanned<Id>, type_spec: &TypeSpec<'a>) {
         self.visit_identifier(component);
         self.visit_type_spec(type_spec);
     }
 
-    /// Visit a deactivate statement
+    /// Visits a deactivate statement.
     fn visit_deactivate(&mut self, component: &Spanned<Id>) {
         self.visit_identifier(component);
     }
 
-    /// Visit a note element
+    /// Visits a note element.
     fn visit_note(&mut self, note: &Note<'a>) {
         self.visit_type_spec(&note.type_spec);
         self.visit_note_content(&note.content);
     }
 
-    /// Visit note content
+    /// Visits note content.
     fn visit_note_content(&mut self, _content: &Spanned<String>) {}
 }
 
@@ -342,6 +362,7 @@ fn visit_file_ast<'a, V: Visitor<'a>>(visitor: &mut V, file_ast: &FileAst<'a>) {
 /// - Component identifier references (relations, notes, activate/deactivate).
 /// - Activate/deactivate pairing in sequence diagrams.
 /// - Note attribute values (align).
+/// - Embed reference resolution (diagram sources).
 ///
 /// The validator collects all errors during traversal for reporting after traversal.
 ///
@@ -367,6 +388,7 @@ pub struct Validator {
 }
 
 impl Validator {
+    /// Creates a new [`Validator`] with empty state.
     pub fn new() -> Self {
         Self {
             activation_stack: Vec::new(),
@@ -376,13 +398,16 @@ impl Validator {
         }
     }
 
+    /// Returns a mutable reference to the current activation scope.
+    ///
+    /// Panics if the activation stack is empty.
     fn activation_state_mut(&mut self) -> &mut HashMap<Id, Vec<Span>> {
         self.activation_stack
             .last_mut()
             .expect("activation scope not initialized")
     }
 
-    /// Validate that align value is appropriate for the diagram type
+    /// Validates that an `align` value is appropriate for the current diagram type.
     ///
     /// Sequence diagrams support: over, left, right
     /// Component diagrams support: left, right, top, bottom
@@ -428,6 +453,7 @@ impl Validator {
 }
 
 impl<'a> Visitor<'a> for Validator {
+    /// Pushes a fresh component registry scope before visiting the file's children.
     fn visit_file_ast(&mut self, file_ast: &FileAst<'a>) {
         // Begin component registry for this diagram
         self.component_registry.push(HashMap::new());
@@ -442,10 +468,12 @@ impl<'a> Visitor<'a> for Validator {
         self.component_registry.pop();
     }
 
+    /// Records the current diagram kind for later validation.
     fn visit_diagram_kind(&mut self, kind: &Spanned<DiagramKind>) {
         self.diagram_kind = Some(**kind);
     }
 
+    /// Pushes an activation scope, visits child elements, then validates unpaired activations (`E201`).
     fn visit_elements(&mut self, elements: &[Element<'a>]) {
         // Begin new activation scope
         self.activation_stack.push(HashMap::new());
@@ -474,8 +502,8 @@ impl<'a> Visitor<'a> for Validator {
         }
     }
 
+    /// Registers the component name in the current diagram's component registry.
     fn visit_component_name(&mut self, name: &Spanned<Id>) {
-        // Register this component in the current diagram's registry
         let registry = self
             .component_registry
             .last_mut()
@@ -483,6 +511,7 @@ impl<'a> Visitor<'a> for Validator {
         registry.insert(*name.inner(), name.span());
     }
 
+    /// Validates the activation target and pushes it onto the activation stack.
     fn visit_activate(&mut self, component: &Spanned<Id>, type_spec: &TypeSpec<'a>) {
         // Validate component identifier exists
         self.visit_identifier(component);
@@ -497,6 +526,7 @@ impl<'a> Visitor<'a> for Validator {
             .push(component.span());
     }
 
+    /// Validates the deactivation target and pops it from the activation stack, emitting `E202` on mismatch.
     fn visit_deactivate(&mut self, component: &Spanned<Id>) {
         // Validate component identifier exists
         self.visit_identifier(component);
@@ -523,6 +553,7 @@ impl<'a> Visitor<'a> for Validator {
         }
     }
 
+    /// Validates the `align` attribute against the current diagram type, emitting `E203` if invalid.
     fn visit_note(&mut self, note: &Note<'a>) {
         self.visit_type_spec(&note.type_spec);
 
@@ -539,6 +570,39 @@ impl<'a> Visitor<'a> for Validator {
         self.visit_note_content(&note.content);
     }
 
+    /// Emits `E204` for any `DiagramSource::Ref` that survived desugaring.
+    ///
+    /// An `Inline` source is traversed normally. A `Ref` source means the embed
+    /// reference was never resolved to a known namespaced import, so an
+    /// "unknown embed reference" diagnostic is emitted.
+    fn visit_diagram_source(&mut self, source: &DiagramSource<'a>) {
+        match source {
+            DiagramSource::Inline(rc) => self.visit_file_ast(&rc.borrow()),
+            DiagramSource::Ref(id) => {
+                // TODO: This reports E204 for all unresolved embed refs, but
+                // doesn't distinguish between a truly unknown name and a name
+                // that matches a *library* import (which can't be embedded).
+                // The latter should ideally report ("cannot embed library
+                // file") with a more targeted message.
+                self.diagnostics.emit(
+                    Diagnostic::error(format!(
+                        "unknown embed reference `{}`",
+                        id.inner()
+                    ))
+                    .with_code(ErrorCode::E204)
+                    .with_label(
+                        id.span(),
+                        "no namespaced import matches this identifier",
+                    )
+                    .with_help(
+                        "add a namespaced import: `import \"diagram_file\";` or `import \"path\" as name;`",
+                    ),
+                );
+            }
+        }
+    }
+
+    /// Checks that the referenced component exists in the registry, emitting `E200` if not found.
     fn visit_identifier(&mut self, identifier: &Spanned<Id>) {
         let registry = self
             .component_registry
@@ -608,7 +672,7 @@ mod tests {
             name: &Spanned<Id>,
             display_name: &Option<Spanned<String>>,
             type_spec: &TypeSpec<'a>,
-            nested_elements: &[Element<'a>],
+            content: &ComponentContent<'a>,
         ) {
             self.component_count += 1;
             // Call default traversal
@@ -617,7 +681,7 @@ mod tests {
                 self.visit_display_name(dn);
             }
             self.visit_type_spec(type_spec);
-            self.visit_elements(nested_elements);
+            self.visit_component_content(content);
         }
 
         fn visit_relation(
@@ -669,7 +733,7 @@ mod tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(16..25))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("user"), Span::new(30..34)),
@@ -715,7 +779,7 @@ mod tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(6..15))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("user"), Span::new(17..21)),
@@ -788,7 +852,7 @@ mod tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(6..15))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("user"), Span::new(17..21)),
@@ -829,7 +893,7 @@ mod tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(6..15))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Component {
                     name: Spanned::new(Id::new("server"), Span::new(17..23)),
@@ -838,7 +902,7 @@ mod tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(25..34))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("user"), Span::new(36..40)),
@@ -1023,7 +1087,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(10..19))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![
+                    content: ComponentContent::Scope(vec![
                         Element::Component {
                             name: Spanned::new(Id::new("frontend::app"), Span::new(20..33)),
                             display_name: None,
@@ -1034,7 +1098,7 @@ mod identifier_validation_tests {
                                 )),
                                 attributes: vec![],
                             },
-                            nested_elements: vec![],
+                            content: ComponentContent::None,
                         },
                         Element::Component {
                             name: Spanned::new(Id::new("frontend::ui"), Span::new(45..57)),
@@ -1046,9 +1110,9 @@ mod identifier_validation_tests {
                                 )),
                                 attributes: vec![],
                             },
-                            nested_elements: vec![],
+                            content: ComponentContent::None,
                         },
-                    ],
+                    ]),
                 },
                 Element::Component {
                     name: Spanned::new(Id::new("backend"), Span::new(69..76)),
@@ -1057,7 +1121,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(78..87))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![Element::Component {
+                    content: ComponentContent::Scope(vec![Element::Component {
                         name: Spanned::new(Id::new("backend::api"), Span::new(88..100)),
                         display_name: None,
                         type_spec: TypeSpec {
@@ -1067,8 +1131,8 @@ mod identifier_validation_tests {
                             )),
                             attributes: vec![],
                         },
-                        nested_elements: vec![],
-                    }],
+                        content: ComponentContent::None,
+                    }]),
                 },
             ],
             imports: vec![],
@@ -1162,7 +1226,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(5..14))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Component {
                     name: Spanned::new(Id::new("db"), Span::new(15..17)),
@@ -1171,7 +1235,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(19..28))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Relation {
                     source: Spanned::new(Id::new("app"), Span::new(30..33)),
@@ -1205,7 +1269,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(19..28))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Relation {
                     source: Spanned::new(Id::new("unknown"), Span::new(30..37)),
@@ -1241,7 +1305,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(5..14))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Relation {
                     source: Spanned::new(Id::new("app"), Span::new(30..33)),
@@ -1277,7 +1341,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(8..17))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("server"), Span::new(20..26)),
@@ -1311,7 +1375,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(8..17))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("unknown"), Span::new(20..27)),
@@ -1344,7 +1408,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(8..17))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Deactivate {
                     component: Spanned::new(Id::new("missing"), Span::new(20..27)),
@@ -1376,7 +1440,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(8..17))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Note(Note {
                     type_spec: TypeSpec {
@@ -1418,7 +1482,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(8..17))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Component {
                     name: Spanned::new(Id::new("server"), Span::new(19..25)),
@@ -1427,7 +1491,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(27..36))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Note(Note {
                     type_spec: TypeSpec {
@@ -1470,7 +1534,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(8..17))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Note(Note {
                     type_spec: TypeSpec {
@@ -1525,7 +1589,7 @@ mod identifier_validation_tests {
                             )),
                         }],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Component {
                     name: Spanned::new(Id::new("server"), Span::new(85..91)),
@@ -1534,7 +1598,7 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(93..102))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Activate {
                     component: Spanned::new(Id::new("server"), Span::new(110..116)),
@@ -1596,5 +1660,77 @@ mod identifier_validation_tests {
             result.is_ok(),
             "Diagram with comprehensive TypeSpec usage should pass validation"
         );
+    }
+}
+
+#[cfg(test)]
+mod embed_ref_validation_tests {
+    use super::*;
+    use crate::{lexer::tokenize, parser::build_file};
+
+    #[test]
+    fn test_embed_ref_unknown_produces_e204() {
+        let input = r#"
+        diagram component;
+        box: Rectangle embed nonexistent;
+        "#;
+
+        let tokens = tokenize(input, 0).expect("Failed to tokenize");
+        let ast = build_file(&tokens).expect("Failed to parse");
+        // Note: desugar is NOT called here — we test the validator directly
+        // against an AST with an unresolved DiagramSource::Ref.
+        let result = validate(&ast);
+        assert!(
+            result.is_err(),
+            "Unresolved embed ref should fail validation"
+        );
+
+        let err = result.unwrap_err();
+        assert_eq!(err.len(), 1);
+        assert_eq!(
+            err[0].code(),
+            Some(ErrorCode::E204),
+            "Expected E204, got: {:?}",
+            err[0].code()
+        );
+    }
+
+    #[test]
+    fn test_embed_inline_passes_validation() {
+        let input = r#"
+        diagram component;
+        box: Rectangle embed { diagram sequence; };
+        "#;
+
+        let tokens = tokenize(input, 0).expect("Failed to tokenize");
+        let ast = build_file(&tokens).expect("Failed to parse");
+        let result = validate(&ast);
+        assert!(
+            result.is_ok(),
+            "Inline embed should pass validation: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_embed_ref_multiple_unresolved() {
+        let input = r#"
+        diagram component;
+        box1: Rectangle embed missing1;
+        box2: Rectangle embed missing2;
+        "#;
+
+        let tokens = tokenize(input, 0).expect("Failed to tokenize");
+        let ast = build_file(&tokens).expect("Failed to parse");
+        let result = validate(&ast);
+        assert!(
+            result.is_err(),
+            "Unresolved embed refs should fail validation"
+        );
+
+        let err = result.unwrap_err();
+        assert_eq!(err.len(), 2, "Expected two E204 errors, got: {:?}", err);
+        assert_eq!(err[0].code(), Some(ErrorCode::E204));
+        assert_eq!(err[1].code(), Some(ErrorCode::E204));
     }
 }
