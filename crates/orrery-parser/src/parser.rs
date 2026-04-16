@@ -4,6 +4,8 @@
 //! a parsed AST defined in [`parser_types`](super::parser_types). The public
 //! entry point is [`build_file`].
 
+use std::{cell::RefCell, rc::Rc};
+
 use winnow::{
     Parser as _,
     combinator::{alt, delimited, opt, preceded, repeat, separated},
@@ -503,17 +505,20 @@ fn relation_type<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<&'src str
     Ok(arrow)
 }
 
-/// Parse a component with optional nested elements
+/// Parses a component declaration with optional content.
 ///
-/// Syntax: `identifier as "display_name" : TypeSpec { nested_elements };`
+/// A component consists of a name, optional display name, a type spec, optional
+/// content (nested scope **or** embedded diagram), and a trailing semicolon.
+///
+/// Syntax: `identifier as "display_name" : TypeSpec <content>? ;`
 ///
 /// Examples:
 /// - `user: Person;`
 /// - `server as "API Server": Rectangle[fill_color="blue"];`
 /// - `container: Box { nested_component: Circle; };`
-fn component_with_elements<'tok, 'src>(
-    input: &mut Input<'tok, 'src>,
-) -> IResult<types::Element<'src>> {
+/// - `panel: Box embed { diagram sequence; user -> server; };`
+/// - `panel: Box embed auth_flow;`
+fn component<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
     let name = identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -536,25 +541,7 @@ fn component_with_elements<'tok, 'src>(
 
     ws_comments0.parse_next(input)?;
 
-    // Optional nested content: either embedded diagram or nested elements in braces
-    let nested_elements = opt(alt((
-        // Try parsing embedded diagram first (starts with 'embed' keyword)
-        embedded_diagram.map(|diag| vec![diag]),
-        // Fall back to nested elements in braces
-        delimited(
-            (
-                any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace)),
-                ws_comments0,
-            ),
-            elements,
-            (
-                ws_comments0,
-                any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace)),
-            ),
-        ),
-    )))
-    .map(|nested| nested.unwrap_or_default())
-    .parse_next(input)?;
+    let content = component_content.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
     semicolon.parse_next(input)?;
@@ -563,7 +550,7 @@ fn component_with_elements<'tok, 'src>(
         name,
         display_name,
         type_spec,
-        nested_elements,
+        content,
     })
 }
 
@@ -1068,7 +1055,10 @@ fn note_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Ele
 
     Ok(types::Element::Note(types::Note { type_spec, content }))
 }
-/// Parse any element (component or relation)
+/// Parses zero or more diagram elements.
+///
+/// An invalid-statement catch-all provides better error reporting when no
+/// valid parser matches.
 fn elements<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<types::Element<'src>>> {
     repeat(
         0..,
@@ -1091,7 +1081,7 @@ fn elements<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<types::Ele
                 alt((
                     fragment_block,
                     relation,
-                    component_with_elements,
+                    component,
                     invalid_statement_with_semicolon,
                 )),
             )),
@@ -1284,10 +1274,53 @@ fn file<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::FileAst<'sr
     })
 }
 
-/// Parses an embedded diagram block: `embed .*`.
+/// Parses optional component content that follows a component's type spec.
 ///
-/// Embedded diagrams allow nesting a full file structure inside a pair of braces.
-fn embedded_diagram<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
+/// A component declaration may end with a semicolon (no content), contain
+/// nested elements in braces, or embed another diagram. This parser
+/// dispatches to the appropriate sub-parser based on the next token.
+///
+/// Returns one of:
+/// - `ComponentContent::Diagram(...)` — when an `embed` keyword is found.
+/// - `ComponentContent::Scope(...)` — when a `{` brace block is found.
+/// - `ComponentContent::None` — when neither is present.
+fn component_content<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
+) -> IResult<types::ComponentContent<'src>> {
+    opt(alt((
+        // Try parsing embedded diagram first (starts with 'embed' keyword)
+        embedded_diagram,
+        // Fall back to nested elements in braces
+        delimited(
+            (
+                any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace)),
+                ws_comments0,
+            ),
+            elements,
+            (
+                ws_comments0,
+                any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace)),
+            ),
+        )
+        .map(types::ComponentContent::Scope),
+    )))
+    .map(|opt_content| opt_content.unwrap_or(types::ComponentContent::None))
+    .parse_next(input)
+}
+
+/// Parses an `embed` directive inside a component declaration.
+///
+/// Embedded diagrams allow nesting a full file structure inside a pair of braces,
+/// or referencing an imported diagram by its namespace identifier.
+///
+/// Forms:
+/// - `embed { diagram sequence; ... }` — inline definition
+///   → `ComponentContent::Diagram(DiagramSource::Inline(...))`
+/// - `embed auth_flow` — reference to an imported diagram
+///   → `ComponentContent::Diagram(DiagramSource::Ref(...))`
+fn embedded_diagram<'tok, 'src>(
+    input: &mut Input<'tok, 'src>,
+) -> IResult<types::ComponentContent<'src>> {
     // Parse: embed
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Embed))
         .parse_next(input)?;
@@ -1295,14 +1328,22 @@ fn embedded_diagram<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types:
     cut_err(input, |input| {
         ws_comments0.parse_next(input)?;
 
-        let file_ast = delimited(
-            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace)),
-            file,
-            any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace)),
-        )
-        .parse_next(input)?;
-
-        Ok(types::Element::Diagram(file_ast))
+        alt((
+            // Inline: embed { ... }
+            delimited(
+                any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBrace)),
+                file,
+                any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace)),
+            )
+            .map(|file_ast| {
+                types::ComponentContent::Diagram(types::DiagramSource::Inline(Rc::new(
+                    RefCell::new(file_ast),
+                )))
+            }),
+            // Ref: embed <identifier>
+            identifier.map(|id| types::ComponentContent::Diagram(types::DiagramSource::Ref(id))),
+        ))
+        .parse_next(input)
     })
 }
 
@@ -3941,22 +3982,83 @@ a: Rectangle embed {
         let outer_elements = &file_ast.elements;
         assert_eq!(outer_elements.len(), 1);
         match &outer_elements[0] {
-            types::Element::Component {
-                nested_elements, ..
-            } => {
-                assert_eq!(nested_elements.len(), 1);
-                match &nested_elements[0] {
-                    types::Element::Diagram(inner_file) => {
-                        assert_eq!(inner_file.import_decls.len(), 1);
-                        assert_eq!(
-                            *inner_file.import_decls[0].inner().path.inner(),
-                            "shared/styles"
-                        );
+            types::Element::Component { content, .. } => match &content {
+                types::ComponentContent::Diagram(types::DiagramSource::Inline(rc)) => {
+                    let inner_file = rc.borrow();
+                    assert_eq!(inner_file.import_decls.len(), 1);
+                    assert_eq!(
+                        *inner_file.import_decls[0].inner().path.inner(),
+                        "shared/styles"
+                    );
+                }
+                other => panic!("Expected Diagram content, got: {:?}", other),
+            },
+            other => panic!("Expected Component element, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_embed_ref_produces_diagram_source_ref() {
+        let input = r#"diagram component;
+            auth_box: Rectangle embed auth_flow;
+        "#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert_eq!(file_ast.elements.len(), 1);
+        match &file_ast.elements[0] {
+            types::Element::Component { name, content, .. } => {
+                assert_eq!(*name.inner(), "auth_box");
+                match content {
+                    types::ComponentContent::Diagram(types::DiagramSource::Ref(id)) => {
+                        assert_eq!(*id.inner(), "auth_flow");
                     }
-                    other => panic!("Expected Diagram element, got: {:?}", other),
+                    other => panic!("Expected DiagramSource::Ref, got: {:?}", other),
                 }
             }
             other => panic!("Expected Component element, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_embed_ref_and_inline_in_same_file() {
+        let input = r#"diagram component;
+            box1: Rectangle embed some_import;
+            box2: Rectangle embed { diagram sequence; };
+        "#;
+        let tokens = parse_tokens(input);
+        let result = build_file(&tokens);
+        assert!(result.is_ok(), "Failed: {:?}", result.err());
+        let file_ast = result.unwrap();
+        assert_eq!(file_ast.elements.len(), 2);
+
+        // First element: embed ref
+        match &file_ast.elements[0] {
+            types::Element::Component { content, .. } => {
+                assert!(
+                    matches!(
+                        content,
+                        types::ComponentContent::Diagram(types::DiagramSource::Ref(_))
+                    ),
+                    "Expected DiagramSource::Ref for box1"
+                );
+            }
+            other => panic!("Expected Component, got: {:?}", other),
+        }
+
+        // Second element: embed inline
+        match &file_ast.elements[1] {
+            types::Element::Component { content, .. } => {
+                assert!(
+                    matches!(
+                        content,
+                        types::ComponentContent::Diagram(types::DiagramSource::Inline(_))
+                    ),
+                    "Expected DiagramSource::Inline for box2"
+                );
+            }
+            other => panic!("Expected Component, got: {:?}", other),
         }
     }
 

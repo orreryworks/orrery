@@ -4,8 +4,8 @@
 //! enabling precise source location information for diagnostics, suggestions,
 //! logging, and other tools that reference source code.
 //!
-//! - [`Span`] - A byte range within source text
-//! - [`Spanned<T>`] - A value with associated source location
+//! - [`Span`] - A byte range within source text.
+//! - [`Spanned<T>`] - A value with associated source location.
 //!
 //! # Example
 //!
@@ -17,7 +17,7 @@
 //! assert_eq!(span.len(), 15);
 //! ```
 
-use std::fmt;
+use std::{fmt, ops::Deref};
 
 /// A byte range representing a location in source text.
 ///
@@ -47,7 +47,11 @@ pub struct Span {
 }
 
 impl Span {
-    /// Create a new span from a range
+    /// Creates a new [`Span`] from a byte range.
+    ///
+    /// # Arguments
+    ///
+    /// * `range` - The start..end byte offset range.
     pub fn new(range: std::ops::Range<usize>) -> Self {
         Self {
             start: range.start,
@@ -55,17 +59,26 @@ impl Span {
         }
     }
 
-    /// Get the start offset of the span
+    /// Creates a zero-length, empty span.
+    pub fn empty() -> Self {
+        Self::new(0..0)
+    }
+
+    /// Returns the start byte offset.
     pub fn start(&self) -> usize {
         self.start
     }
 
-    /// Get the end offset of the span
+    /// Returns the end byte offset.
     pub fn end(&self) -> usize {
         self.end
     }
 
-    /// Get the length of the span
+    /// Returns the length of the span in bytes.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `end` is less than `start`.
     pub fn len(&self) -> usize {
         if self.end >= self.start {
             self.end - self.start
@@ -74,20 +87,32 @@ impl Span {
         }
     }
 
-    /// Check if the span is empty
+    /// Returns `true` if the span has zero length.
     pub fn is_empty(&self) -> bool {
         self.start == self.end
     }
 
-    /// Create a union of two spans (encompassing both)
+    /// Creates the smallest span encompassing both `self` and `other`.
+    ///
+    /// If either span is empty, the other is returned unchanged.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The span to merge with.
     pub fn union(&self, other: Span) -> Span {
+        if self.is_empty() {
+            return other;
+        }
+        if other.is_empty() {
+            return *self;
+        }
         Self {
             start: self.start.min(other.start),
             end: self.end.max(other.end),
         }
     }
 
-    /// Returns a new span with both offsets translated by `base` byte.
+    /// Returns a new span with both offsets translated by `base` bytes.
     ///
     /// This shifts the span's position in the virtual address space
     /// without changing its length.
@@ -105,7 +130,7 @@ impl Span {
 
 impl Default for Span {
     fn default() -> Self {
-        Self::new(0..0)
+        Self::empty()
     }
 }
 
@@ -115,34 +140,53 @@ impl From<std::ops::Range<usize>> for Span {
     }
 }
 
-/// A generic wrapper for AST elements that tracks source position information.
+/// A value paired with its source location in the input text.
 ///
-/// `Spanned<T>` wraps any type `T` with location metadata, allowing parser and
-/// elaboration code to provide rich diagnostic errors with precise source locations.
+/// `Spanned<T>` wraps any type `T` with a [`Span`], carrying precise source
+/// locations through to diagnostics.
+///
+/// Equality comparison ([`PartialEq`]) considers only the inner value;
+/// two `Spanned` values with different spans but equal inner values are equal.
+///
+/// # Examples
+///
+/// ```ignore
+/// let name = Spanned::new("server", Span::new(4..10));
+/// assert_eq!(*name.inner(), "server");
+/// assert_eq!(name.span().start(), 4);
+///
+/// // Deref lets you call methods on the inner value directly
+/// assert!(name.starts_with("ser"));
+/// ```
 #[derive(Debug, Default, Clone, Eq)]
 pub struct Spanned<T> {
-    /// The wrapped value
+    /// The wrapped value.
     value: T,
-    /// The span information from the parser
+    /// Source location of this value.
     span: Span,
 }
 
 impl<T> Spanned<T> {
-    /// Create a new spanned value from a value and span information
+    /// Creates a new [`Spanned`] value.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The value to wrap.
+    /// * `span` - The source location of `value`.
     pub fn new(value: T, span: Span) -> Self {
         Self { value, span }
     }
 
-    /// Returns the source span associated with this value.
-    ///
-    /// The span indicates where in the source text this value originated.
+    /// Returns the source [`Span`] associated with this value.
     pub fn span(&self) -> Span {
         self.span
     }
 
-    /// Convert from one spanned type to another using the provided function
+    /// Transforms the inner value while preserving the span.
     ///
-    /// This maintains the same span information while transforming the value.
+    /// # Arguments
+    ///
+    /// * `f` - A function applied to a reference of the inner value.
     pub fn map<F, U>(&self, f: F) -> Spanned<U>
     where
         F: FnOnce(&T) -> U,
@@ -153,20 +197,20 @@ impl<T> Spanned<T> {
         }
     }
 
-    /// Get a reference to the underlying value
+    /// Returns a reference to the inner value.
     pub fn inner(&self) -> &T {
         &self.value
     }
 
-    /// Consume the Spanned wrapper and return just the inner value
+    /// Consumes the wrapper and returns the inner value.
     #[allow(dead_code)]
     pub fn into_inner(self) -> T {
         self.value
     }
 }
 
-// Implement Deref to make Spanned<T> easier to use
-impl<T> std::ops::Deref for Spanned<T> {
+// Delegates field/method access to the inner value.
+impl<T> Deref for Spanned<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -174,14 +218,14 @@ impl<T> std::ops::Deref for Spanned<T> {
     }
 }
 
-// Implement Display by delegating to the inner value's Display implementation
+// Delegates formatting to the inner value.
 impl<T: fmt::Display> fmt::Display for Spanned<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.value.fmt(f)
     }
 }
 
-// PartialEq compares only the inner values, ignoring span information
+// Compares only the inner values, ignoring span information.
 impl<T: PartialEq> PartialEq for Spanned<T> {
     fn eq(&self, other: &Self) -> bool {
         self.value.eq(&other.value)
@@ -239,5 +283,86 @@ mod tests {
         assert_eq!(spanned.span().start(), 5);
         assert_eq!(spanned.span().len(), 5);
         assert_eq!(*spanned.inner(), "test");
+    }
+
+    #[test]
+    fn test_span_empty_constructor() {
+        let span = Span::empty();
+        assert_eq!(span.start(), 0);
+        assert_eq!(span.end(), 0);
+        assert_eq!(span.len(), 0);
+        assert!(span.is_empty());
+    }
+
+    #[test]
+    fn test_span_default_is_empty() {
+        let span = Span::default();
+        assert_eq!(span, Span::empty());
+        assert!(span.is_empty());
+    }
+
+    #[test]
+    fn test_span_union_with_left_empty() {
+        let empty = Span::empty();
+        let span = Span::new(5..10);
+        let union = empty.union(span);
+        assert_eq!(union, span);
+    }
+
+    #[test]
+    fn test_span_union_with_right_empty() {
+        let span = Span::new(5..10);
+        let empty = Span::empty();
+        let union = span.union(empty);
+        assert_eq!(union, span);
+    }
+
+    #[test]
+    fn test_span_union_both_empty() {
+        let union = Span::empty().union(Span::empty());
+        assert!(union.is_empty());
+    }
+
+    #[test]
+    fn test_spanned_eq_ignores_span() {
+        let a = Spanned::new(42, Span::new(0..5));
+        let b = Spanned::new(42, Span::new(10..20));
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_spanned_ne_different_values() {
+        let a = Spanned::new(1, Span::new(0..5));
+        let b = Spanned::new(2, Span::new(0..5));
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_spanned_map() {
+        let spanned = Spanned::new(5, Span::new(0..10));
+        let mapped = spanned.map(|v| v * 2);
+        assert_eq!(*mapped.inner(), 10);
+        assert_eq!(mapped.span(), spanned.span());
+    }
+
+    #[test]
+    fn test_spanned_into_inner() {
+        let spanned = Spanned::new(String::from("hello"), Span::new(0..5));
+        let value = spanned.into_inner();
+        assert_eq!(value, "hello");
+    }
+
+    #[test]
+    fn test_spanned_deref() {
+        let spanned = Spanned::new(String::from("hello"), Span::new(0..5));
+        // Deref lets us call String methods directly
+        assert_eq!(spanned.len(), 5);
+        assert!(spanned.starts_with("he"));
+    }
+
+    #[test]
+    fn test_spanned_display() {
+        let spanned = Spanned::new(42, Span::new(0..5));
+        assert_eq!(format!("{spanned}"), "42");
     }
 }

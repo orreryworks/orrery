@@ -84,6 +84,12 @@ pub enum ErrorCode {
     /// The specified alignment is not valid for this diagram type.
     E203,
 
+    /// Unknown embed reference.
+    ///
+    /// An `embed <name>` references an identifier that doesn't match any
+    /// namespaced import in the current file.
+    E204,
+
     // =========================================================================
     // Elaboration Errors (E3xx)
     // =========================================================================
@@ -134,10 +140,9 @@ pub enum ErrorCode {
     /// does not support it.
     E308,
 
-    /// Diagram cannot share scope with other elements.
+    /// Unresolved embed reference.
     ///
-    /// A diagram was placed alongside other elements where it must be
-    /// the only element in its scope.
+    /// An `embed <name>` references a diagram that could not be resolved.
     E309,
 
     // =========================================================================
@@ -185,6 +190,7 @@ impl ErrorCode {
             ErrorCode::E201 => "E201",
             ErrorCode::E202 => "E202",
             ErrorCode::E203 => "E203",
+            ErrorCode::E204 => "E204",
             // Elaboration errors
             ErrorCode::E300 => "E300",
             ErrorCode::E301 => "E301",
@@ -222,6 +228,7 @@ impl ErrorCode {
             ErrorCode::E201 => "unpaired activate",
             ErrorCode::E202 => "unpaired deactivate",
             ErrorCode::E203 => "invalid align value",
+            ErrorCode::E204 => "unknown embed reference",
             // Elaboration errors
             ErrorCode::E300 => "undefined type",
             ErrorCode::E301 => "type override not supported",
@@ -232,7 +239,7 @@ impl ErrorCode {
             ErrorCode::E306 => "invalid diagram structure",
             ErrorCode::E307 => "type mismatch",
             ErrorCode::E308 => "shape does not support nested content",
-            ErrorCode::E309 => "diagram cannot share scope",
+            ErrorCode::E309 => "unresolved embed reference",
             // Resolver errors
             ErrorCode::E400 => "file not found",
             ErrorCode::E401 => "circular dependency",

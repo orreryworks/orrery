@@ -177,7 +177,7 @@ impl TextAttributeExtractor {
         match *name {
             "font_size" => {
                 let val = value.as_u16().map_err(|_| {
-                        Diagnostic::error(format!("invalid font_size value `{value}`"))
+                        Diagnostic::error(format!("invalid `font_size` value `{value}`"))
                             .with_code(ErrorCode::E302)
                             .with_label(attr.span(), "invalid number")
                             .with_help("font size must be a positive integer")
@@ -202,7 +202,7 @@ impl TextAttributeExtractor {
                         .with_help("color values must be strings")
                 })?)
                 .map_err(|err| {
-                    Diagnostic::error(format!("invalid background_color: {err}"))
+                    Diagnostic::error(format!("invalid `background_color`: {err}"))
                         .with_code(ErrorCode::E302)
                         .with_label(attr.span(), "invalid color")
                         .with_help("use a CSS color")
@@ -212,7 +212,7 @@ impl TextAttributeExtractor {
             }
             "padding" => {
                 let val = value.as_float().map_err(|err| {
-                    Diagnostic::error(format!("invalid padding value: {err}"))
+                    Diagnostic::error(format!("invalid `padding` value: {err}"))
                         .with_code(ErrorCode::E302)
                         .with_label(attr.span(), "invalid number")
                         .with_help("text padding must be a positive number")
@@ -228,7 +228,7 @@ impl TextAttributeExtractor {
                         .with_help("color values must be strings")
                 })?)
                 .map_err(|err| {
-                    Diagnostic::error(format!("invalid color: {err}"))
+                    Diagnostic::error(format!("invalid `color`: {err}"))
                         .with_code(ErrorCode::E302)
                         .with_label(attr.span(), "invalid color")
                         .with_help("use a CSS color")
@@ -240,7 +240,7 @@ impl TextAttributeExtractor {
                 .with_code(ErrorCode::E303)
                 .with_label(attr.span(), "unknown attribute")
                 .with_help(
-                    "valid text attributes are: font_size, font_family, background_color, padding, color",
+                    "valid text attributes are: `font_size`, `font_family`, `background_color`, `padding`, `color`",
                 )),
         }
     }
@@ -278,7 +278,7 @@ impl StrokeAttributeExtractor {
                         .with_help("color values must be strings")
                 })?;
                 let val = Color::new(color_str).map_err(|err| {
-                    Diagnostic::error(format!("invalid stroke color: {err}"))
+                    Diagnostic::error(format!("invalid stroke `color`: {err}"))
                         .with_code(ErrorCode::E302)
                         .with_label(attr.span(), "invalid color")
                         .with_help("use a CSS color")
@@ -288,7 +288,7 @@ impl StrokeAttributeExtractor {
             }
             "width" => {
                 let val = value.as_float().map_err(|err| {
-                    Diagnostic::error(format!("invalid stroke width value: {err}"))
+                    Diagnostic::error(format!("invalid stroke `width` value: {err}"))
                         .with_code(ErrorCode::E302)
                         .with_label(attr.span(), "invalid number")
                         .with_help("width must be a positive number")
@@ -325,7 +325,7 @@ impl StrokeAttributeExtractor {
                     Diagnostic::error(err)
                         .with_code(ErrorCode::E302)
                         .with_label(attr.span(), "invalid stroke cap")
-                        .with_help("valid values are: butt, round, square")
+                        .with_help("valid values are: `butt`, `round`, `square`")
                 })?;
                 stroke_def.set_cap(cap);
                 Ok(())
@@ -341,7 +341,7 @@ impl StrokeAttributeExtractor {
                     Diagnostic::error(err)
                         .with_code(ErrorCode::E302)
                         .with_label(attr.span(), "invalid stroke join")
-                        .with_help("valid values are: miter, round, bevel")
+                        .with_help("valid values are: `miter`, `round`, `bevel`")
                 })?;
                 stroke_def.set_join(join);
                 Ok(())
@@ -350,7 +350,9 @@ impl StrokeAttributeExtractor {
                 Diagnostic::error(format!("unknown stroke attribute `{name}`"))
                     .with_code(ErrorCode::E303)
                     .with_label(attr.span(), "unknown attribute")
-                    .with_help("valid stroke attributes are: color, width, style, cap, join"),
+                    .with_help(
+                        "valid stroke attributes are: `color`, `width`, `style`, `cap`, `join`",
+                    ),
             ),
         }
     }
@@ -548,7 +550,7 @@ mod elaborate_tests {
         assert!(result.is_err());
         if let Err(err) = result {
             let error_message = format!("{err}");
-            assert!(error_message.contains("invalid stroke color"));
+            assert!(error_message.contains("invalid stroke `color`"));
         }
     }
 
