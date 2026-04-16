@@ -162,7 +162,7 @@ impl<'a> AttributeValue<'a> {
         if let AttributeValue::String(s) = self {
             Ok(s.inner())
         } else {
-            Err("Expected string value")
+            Err("expected string value")
         }
     }
 
@@ -171,7 +171,7 @@ impl<'a> AttributeValue<'a> {
         if let AttributeValue::Float(f) = self {
             Ok(*f.inner())
         } else {
-            Err("Expected float value")
+            Err("expected float value")
         }
     }
 
@@ -180,7 +180,7 @@ impl<'a> AttributeValue<'a> {
         if let AttributeValue::Float(f) = self {
             Ok(*f.inner() as usize)
         } else {
-            Err("Expected float value")
+            Err("expected float value")
         }
     }
 
@@ -189,7 +189,7 @@ impl<'a> AttributeValue<'a> {
         if let AttributeValue::Float(f) = self {
             Ok(*f.inner() as u16)
         } else {
-            Err("Expected float value")
+            Err("expected float value")
         }
     }
 
@@ -198,7 +198,7 @@ impl<'a> AttributeValue<'a> {
         match self {
             AttributeValue::TypeSpec(type_spec) => Ok(type_spec),
             AttributeValue::Empty => Ok(&EMPTY_TYPE_SPEC),
-            _ => Err("Expected type spec"),
+            _ => Err("expected type spec"),
         }
     }
 
@@ -207,7 +207,7 @@ impl<'a> AttributeValue<'a> {
     pub fn as_type_spec_mut(&mut self) -> Result<&mut TypeSpec<'a>, &'static str> {
         match self {
             AttributeValue::TypeSpec(type_spec) => Ok(type_spec),
-            _ => Err("Expected type spec"),
+            _ => Err("expected type spec"),
         }
     }
 
@@ -216,7 +216,7 @@ impl<'a> AttributeValue<'a> {
         match self {
             AttributeValue::Identifiers(ids) => Ok(ids),
             AttributeValue::Empty => Ok(&[]),
-            _ => Err("Expected identifiers"),
+            _ => Err("expected identifiers"),
         }
     }
 }
@@ -459,15 +459,83 @@ impl Note<'_> {
     }
 }
 
+/// What content a component declaration carries.
+///
+/// Used in the [`Element::Component`] variant to represent the component's
+/// body. The parser produces one of three forms:
+///
+/// - `None` — a simple declaration with no body.
+/// - `Scope` — a brace-delimited block of child [`Element`]s.
+/// - `Diagram` — an `embed` clause that attaches a [`DiagramSource`] to the
+///   component.
+#[derive(Debug, Clone)]
+pub enum ComponentContent<'a> {
+    /// No nested content — a bare declaration like `box: Rectangle;`.
+    None,
+    /// Brace-delimited child [`Element`]s: `box: Rectangle { child: Oval; };`.
+    Scope(Vec<Element<'a>>),
+    /// Embedded diagram via [`DiagramSource`]: `box: Rectangle embed { ... };` or `box: Rectangle embed name;`.
+    Diagram(DiagramSource<'a>),
+}
+
+impl ComponentContent<'_> {
+    /// Returns the combined span of the content.
+    pub fn span(&self) -> Span {
+        match self {
+            ComponentContent::None => Span::empty(),
+            ComponentContent::Scope(elements) => elements
+                .iter()
+                .map(|elem| elem.span())
+                .reduce(|acc, s| acc.union(s))
+                .unwrap_or(Span::empty()),
+            ComponentContent::Diagram(source) => source.span(),
+        }
+    }
+}
+
+/// How an embedded diagram is sourced.
+///
+/// Appears inside [`ComponentContent::Diagram`] to represent the `embed`
+/// clause of a component declaration. The two forms are:
+///
+/// - `Inline` — a full diagram AST written in-place.
+/// - `Ref` — a symbolic reference to an imported diagram, resolved to
+///   [`Inline`](DiagramSource::Inline) during the desugar pass.
+#[derive(Debug, Clone)]
+pub enum DiagramSource<'a> {
+    /// Inline definition: `embed { diagram sequence; ... }`.
+    ///
+    /// Wraps a full [`FileAst`] as `Rc<RefCell<…>>` to allow shared ownership.
+    Inline(Rc<RefCell<FileAst<'a>>>),
+    /// Reference to an imported diagram: `embed auth_flow`.
+    ///
+    /// Resolved to [`Inline`](DiagramSource::Inline) during desugaring.
+    Ref(Spanned<Id>),
+}
+
+impl DiagramSource<'_> {
+    /// Returns the source span of this diagram source.
+    pub fn span(&self) -> Span {
+        match self {
+            DiagramSource::Inline(rc) => rc.borrow().span(),
+            DiagramSource::Ref(id) => id.span(),
+        }
+    }
+}
+
 /// AST node representing a diagram body element.
 #[derive(Debug, Clone)]
 pub enum Element<'a> {
-    /// Named component declaration with optional display name and nested children.
+    /// Named component declaration with optional display name and [`ComponentContent`].
     Component {
+        /// The component's identifier, e.g. `box` in `box: Rectangle;`.
         name: Spanned<Id>,
+        /// Optional human-readable label shown in rendered output.
         display_name: Option<Spanned<String>>,
+        /// Type and attributes applied to this component.
         type_spec: TypeSpec<'a>,
-        nested_elements: Vec<Element<'a>>,
+        /// The component's body — children, embedded diagram, or nothing.
+        content: ComponentContent<'a>,
     },
     /// Directed relation between two components with an optional label.
     Relation {
@@ -477,8 +545,6 @@ pub enum Element<'a> {
         type_spec: TypeSpec<'a>,
         label: Option<Spanned<String>>,
     },
-    /// Embedded sub-diagram.
-    Diagram(FileAst<'a>),
     /// Explicit fragment block declared.
     Fragment(Fragment<'a>),
     /// Activation scope that wraps a list of elements. Desugared into explicit
@@ -542,14 +608,9 @@ impl Element<'_> {
                 name,
                 display_name,
                 type_spec,
-                nested_elements,
+                content,
             } => {
-                let span = name.span().union(type_spec.span());
-
-                let mut span = nested_elements
-                    .iter()
-                    .map(|elem| elem.span())
-                    .fold(span, |acc, span| acc.union(span));
+                let mut span = name.span().union(type_spec.span()).union(content.span());
 
                 if let Some(display_name) = display_name {
                     span = span.union(display_name.span());
@@ -576,7 +637,6 @@ impl Element<'_> {
 
                 span
             }
-            Element::Diagram(file_ast) => file_ast.span(),
             Element::Fragment(fragment) => fragment.span(),
             Element::ActivateBlock {
                 component,

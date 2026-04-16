@@ -14,7 +14,7 @@ use orrery_core::{
     identifier::Id,
     semantic::{Block, Diagram, DiagramKind, Element, LayoutEngine, NoteAlign},
 };
-use orrery_parser::{ElaborateConfig, InMemorySourceProvider, parse};
+use orrery_parser::{ElaborateConfig, InMemorySourceProvider, error::ErrorCode, parse};
 
 /// Helper: parse a single source string through the full pipeline.
 fn parse_source(source: &str) -> Diagram {
@@ -715,5 +715,212 @@ fn test_error_missing_root_file() {
         diag.message().contains("cannot find file"),
         "Expected file-not-found error, got: {}",
         diag.message()
+    );
+}
+
+#[test]
+fn test_import_embed_ref_happy_path() {
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file(
+        "inner.orr",
+        r#"
+        diagram sequence;
+        client: Rectangle;
+        server: Rectangle;
+        client -> server: "Request";
+    "#,
+    );
+    provider.add_file(
+        "main.orr",
+        r#"
+        diagram component;
+        import "inner";
+        gateway: Rectangle embed inner;
+    "#,
+    );
+
+    let arena = Bump::new();
+    let diagram = parse(
+        &arena,
+        Path::new("main.orr"),
+        provider,
+        ElaborateConfig::default(),
+    )
+    .expect("Failed to parse");
+
+    assert_eq!(diagram.kind(), DiagramKind::Component);
+    let elements = diagram.scope().elements();
+    assert_eq!(elements.len(), 1);
+
+    match &elements[0] {
+        Element::Node(node) => {
+            assert_eq!(node.id(), Id::new("gateway"));
+            assert!(
+                matches!(node.block(), Block::Diagram(_)),
+                "Expected Block::Diagram for embed ref, got: {:?}",
+                node.block()
+            );
+        }
+        _ => panic!("Expected Node element"),
+    }
+}
+
+#[test]
+fn test_import_embed_ref_unknown_import() {
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file(
+        "main.orr",
+        r#"
+        diagram component;
+        box: Rectangle embed nonexistent;
+    "#,
+    );
+
+    let arena = Bump::new();
+    let result = parse(
+        &arena,
+        Path::new("main.orr"),
+        provider,
+        ElaborateConfig::default(),
+    );
+    assert!(result.is_err(), "Should fail with unknown embed reference");
+
+    let err = result.unwrap_err();
+    let diag = &err.diagnostics()[0];
+    assert_eq!(
+        diag.code(),
+        Some(ErrorCode::E204),
+        "Expected E204, got: {:?}",
+        diag.code()
+    );
+}
+
+#[test]
+fn test_import_embed_ref_library_not_diagram() {
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file(
+        "styles.orr",
+        r#"
+        library;
+        type Card = Rectangle[fill_color="blue"];
+    "#,
+    );
+    provider.add_file(
+        "main.orr",
+        r#"
+        diagram component;
+        import "styles";
+        box: Rectangle embed styles;
+    "#,
+    );
+
+    let arena = Bump::new();
+    let result = parse(
+        &arena,
+        Path::new("main.orr"),
+        provider,
+        ElaborateConfig::default(),
+    );
+    assert!(result.is_err(), "Should fail when embedding a library file");
+
+    // Library imports don't create embed references, so the ref is
+    // unresolved and validate reports E204. Ideally this would be
+    // ("cannot embed library file") — see TODO in validate.rs.
+    let err = result.unwrap_err();
+    let diag = &err.diagnostics()[0];
+    assert_eq!(
+        diag.code(),
+        Some(ErrorCode::E204),
+        "Expected E204, got: {:?}",
+        diag.code()
+    );
+}
+
+#[test]
+fn test_import_embed_ref_with_other_components() {
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file(
+        "flow.orr",
+        r#"
+        diagram sequence;
+        a: Rectangle;
+        b: Rectangle;
+        a -> b: "msg";
+    "#,
+    );
+    provider.add_file(
+        "main.orr",
+        r#"
+        diagram component;
+        import "flow";
+        gateway: Rectangle;
+        service: Rectangle embed flow;
+        db: Rectangle;
+        gateway -> service: "Forward";
+        service -> db: "Persist";
+    "#,
+    );
+
+    let arena = Bump::new();
+    let diagram = parse(
+        &arena,
+        Path::new("main.orr"),
+        provider,
+        ElaborateConfig::default(),
+    )
+    .expect("Failed to parse");
+
+    let elements = diagram.scope().elements();
+    // 3 nodes + 2 relations = 5 elements
+    assert_eq!(elements.len(), 5);
+
+    // The second element should be the service node with an embedded diagram
+    match &elements[1] {
+        Element::Node(node) => {
+            assert_eq!(node.id(), Id::new("service"));
+            assert!(
+                matches!(node.block(), Block::Diagram(_)),
+                "Expected Block::Diagram for service embed ref",
+            );
+        }
+        _ => panic!("Expected Node element for service"),
+    }
+}
+
+#[test]
+fn test_import_embed_ref_glob_import_does_not_resolve() {
+    let mut provider = InMemorySourceProvider::new();
+    provider.add_file(
+        "styles.orr",
+        r#"
+        library;
+        type Card = Rectangle[fill_color="blue"];
+    "#,
+    );
+    provider.add_file(
+        "main.orr",
+        r#"
+        diagram component;
+        import "styles"::*;
+        box: Rectangle embed styles;
+    "#,
+    );
+
+    let arena = Bump::new();
+    let result = parse(
+        &arena,
+        Path::new("main.orr"),
+        provider,
+        ElaborateConfig::default(),
+    );
+    assert!(result.is_err(), "Glob import should not resolve embed ref");
+
+    let err = result.unwrap_err();
+    let diag = &err.diagnostics()[0];
+    assert_eq!(
+        diag.code(),
+        Some(ErrorCode::E204),
+        "Expected E204, got: {:?}",
+        diag.code()
     );
 }
