@@ -30,7 +30,7 @@ pub struct ElaborateConfig {
 }
 
 impl ElaborateConfig {
-    /// Create a new ElaborateConfig with specified layout engines
+    /// Creates a new [`ElaborateConfig`] with the specified layout engines.
     pub fn new(
         component_layout: semantic::LayoutEngine,
         sequence_layout: semantic::LayoutEngine,
@@ -296,7 +296,7 @@ impl Builder {
                     // Create a rich diagnostic error with source location information
                     self.create_undefined_type_error(
                         base_type_name,
-                        &format!("Base type '{}' not found", base_type_name.inner()),
+                        &format!("base type `{}` not found", base_type_name.inner()),
                     )
                 })?;
 
@@ -311,97 +311,99 @@ impl Builder {
         Ok(())
     }
 
-    fn build_diagram_from_parser(
+    /// Builds a semantic diagram from a parsed file AST.
+    ///
+    /// Converts a [`FileAst`](parser_types::FileAst) into a [`Diagram`](semantic::Diagram)
+    /// by extracting the diagram kind, processing elements into a scope, and resolving
+    /// diagram-level attributes. This is the internal counterpart of [`Builder::build`],
+    /// used when elaborating embedded diagrams that have already been fully parsed and
+    /// desugared.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `E3xx` error if elaboration fails.
+    fn build_diagram_from_file_ast(
         &mut self,
-        diag: &parser_types::Element,
+        file_ast: &parser_types::FileAst,
     ) -> Result<semantic::Diagram> {
-        match diag {
-            parser_types::Element::Diagram(file_ast) => {
-                let (kind_spanned, attributes) = match &file_ast.header {
-                    parser_types::FileHeader::Diagram { kind, attributes } => (kind, attributes),
-                    parser_types::FileHeader::Library { span } => {
-                        return Err(Diagnostic::error("expected diagram, found library")
-                            .with_code(ErrorCode::E306)
-                            .with_label(*span, "expected diagram"));
-                    }
-                };
-
-                let kind = **kind_spanned;
-                // Create a block from the diagram elements
-                let block = self.build_block_from_elements(&file_ast.elements, kind)?;
-                let scope = match block {
-                    semantic::Block::None => semantic::Scope::default(),
-                    semantic::Block::Scope(scope) => scope,
-                    semantic::Block::Diagram(_) => {
-                        return Err(Diagnostic::error("nested diagram not allowed")
-                            .with_code(ErrorCode::E305)
-                            .with_label(kind_spanned.span(), "nested diagram")
-                            .with_help("diagrams cannot be nested inside other diagrams"));
-                    }
-                };
-
-                let (layout_engine, background_color, lifeline_definition) =
-                    self.extract_diagram_attributes(kind, attributes)?;
-
-                Ok(semantic::Diagram::new(
-                    kind,
-                    scope,
-                    layout_engine,
-                    background_color,
-                    lifeline_definition,
-                ))
+        let (kind_spanned, attributes) = match &file_ast.header {
+            parser_types::FileHeader::Diagram { kind, attributes } => (kind, attributes),
+            parser_types::FileHeader::Library { span } => {
+                return Err(Diagnostic::error("expected diagram, found library")
+                    .with_code(ErrorCode::E306)
+                    .with_label(*span, "expected diagram"));
             }
-            _ => Err(Diagnostic::error("invalid element, expected diagram")
-                .with_code(ErrorCode::E306)
-                .with_label(diag.span(), "expected diagram")),
-        }
+        };
+
+        let kind = **kind_spanned;
+        let block = self.build_block_from_elements(&file_ast.elements, kind)?;
+        let scope = match block {
+            semantic::Block::None => semantic::Scope::default(),
+            semantic::Block::Scope(scope) => scope,
+            semantic::Block::Diagram(_) => {
+                return Err(Diagnostic::error("nested diagram not allowed")
+                    .with_code(ErrorCode::E305)
+                    .with_label(kind_spanned.span(), "nested diagram")
+                    .with_help("diagrams cannot be nested inside other diagrams"));
+            }
+        };
+
+        let (layout_engine, background_color, lifeline_definition) =
+            self.extract_diagram_attributes(kind, attributes)?;
+
+        Ok(semantic::Diagram::new(
+            kind,
+            scope,
+            layout_engine,
+            background_color,
+            lifeline_definition,
+        ))
     }
 
-    fn build_diagram_from_embedded_diagram(
+    /// Builds a semantic diagram from a [`DiagramSource`](parser_types::DiagramSource).
+    ///
+    /// Dispatches on the source variant:
+    /// - [`Inline`](parser_types::DiagramSource::Inline) — the referenced file's AST
+    ///   has been inlined, so elaboration proceeds via
+    ///   [`build_diagram_from_file_ast`](Self::build_diagram_from_file_ast).
+    /// - [`Ref`](parser_types::DiagramSource::Ref) — a defensive guard. The desugar
+    ///   phase must resolve all `Ref` variants before elaboration runs; reaching
+    ///   this branch indicates a compiler bug and produces `E309`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `E309` if a `DiagramSource::Ref` is encountered, or propagates any
+    /// error from [`build_diagram_from_file_ast`](Self::build_diagram_from_file_ast).
+    fn build_diagram_from_diagram_source(
         &mut self,
-        element: &parser_types::Element,
+        source: &parser_types::DiagramSource,
     ) -> Result<semantic::Diagram> {
-        if let parser_types::Element::Diagram(file_ast) = element {
-            let (kind_spanned, attributes) = match &file_ast.header {
-                parser_types::FileHeader::Diagram { kind, attributes } => (kind, attributes),
-                parser_types::FileHeader::Library { span } => {
-                    return Err(Diagnostic::error("expected diagram, found library")
-                        .with_code(ErrorCode::E306)
-                        .with_label(*span, "expected diagram"));
-                }
-            };
-
-            let kind = **kind_spanned;
-            // Create a block from the diagram elements
-            let block = self.build_block_from_elements(&file_ast.elements, kind)?;
-            let scope = match block {
-                semantic::Block::None => semantic::Scope::default(),
-                semantic::Block::Scope(scope) => scope,
-                semantic::Block::Diagram(_) => {
-                    return Err(Diagnostic::error("nested diagram not allowed")
-                        .with_code(ErrorCode::E305)
-                        .with_label(kind_spanned.span(), "nested diagram")
-                        .with_help("diagrams cannot be nested inside other diagrams"));
-                }
-            };
-
-            let (layout_engine, background_color, lifeline_definition) =
-                self.extract_diagram_attributes(kind, attributes)?;
-
-            Ok(semantic::Diagram::new(
-                kind,
-                scope,
-                layout_engine,
-                background_color,
-                lifeline_definition,
+        match source {
+            parser_types::DiagramSource::Inline(rc) => {
+                let file_ast = rc.borrow();
+                self.build_diagram_from_file_ast(&file_ast)
+            }
+            // Defensive: validate (E204) catches unresolved embed references
+            // before elaboration runs, so this branch should never be reached.
+            parser_types::DiagramSource::Ref(id) => Err(Diagnostic::error(format!(
+                "unresolved embed reference `{id}`",
             ))
-        } else {
-            Err(Diagnostic::error("expected diagram element")
-                .with_code(ErrorCode::E306)
-                .with_label(element.span(), "expected diagram"))
+            .with_code(ErrorCode::E309)
+            .with_label(id.span(), "expected inlined embedded diagram")),
         }
     }
 
+    /// Converts a slice of parser elements into a semantic [`Block`](semantic::Block).
+    ///
+    /// Returns `Block::None` for an empty slice, or wraps the elaborated elements
+    /// in a `Block::Scope`. This function only produces `None` or `Scope` variants;
+    /// the `Block::Diagram` variant is constructed by
+    /// [`build_component_element`](Self::build_component_element) when it encounters
+    /// a `ComponentContent::Diagram`.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from [`build_scope_from_elements`](Self::build_scope_from_elements).
     fn build_block_from_elements(
         &mut self,
         parser_elements: &[parser_types::Element],
@@ -409,26 +411,7 @@ impl Builder {
     ) -> Result<semantic::Block> {
         if parser_elements.is_empty() {
             Ok(semantic::Block::None)
-        } else if let parser_types::Element::Diagram { .. } = &parser_elements[0] {
-            // This case happens when a diagram is the first element in a block
-            Ok(semantic::Block::Diagram(
-                self.build_diagram_from_parser(&parser_elements[0])?,
-            ))
         } else {
-            // Check to make sure no diagrams are mixed with other elements
-            for parser_elm in parser_elements {
-                if let parser_types::Element::Diagram(file_ast) = parser_elm {
-                    // If we found a diagram mixed with other elements, provide a rich error
-                    return Err(Diagnostic::error(
-                        "diagram cannot share scope with other elements",
-                    )
-                    .with_code(ErrorCode::E309)
-                    .with_label(file_ast.header.span(), "must be sole element")
-                    .with_help("a diagram declaration must be the only element in its scope"));
-                }
-            }
-
-            // If no diagrams were found mixed with other elements, build the scope
             Ok(semantic::Block::Scope(self.build_scope_from_elements(
                 parser_elements,
                 diagram_kind,
@@ -436,6 +419,16 @@ impl Builder {
         }
     }
 
+    /// Elaborates a slice of parser elements into a semantic [`Scope`](semantic::Scope).
+    ///
+    /// Dispatches each [`Element`](parser_types::Element) variant to the appropriate
+    /// `build_*_element` method. Sugar variants (`ActivateBlock`, `AltElseBlock`,
+    /// etc.) are expected to have been desugared already and trigger an
+    /// `unreachable!` panic if encountered.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any `E3xx` error from individual element elaboration.
     fn build_scope_from_elements(
         &mut self,
         parser_elements: &[parser_types::Element],
@@ -449,12 +442,12 @@ impl Builder {
                     name,
                     display_name,
                     type_spec,
-                    nested_elements,
+                    content,
                 } => self.build_component_element(
                     name,
                     display_name,
                     type_spec,
-                    nested_elements,
+                    content,
                     parser_elm,
                     diagram_kind,
                 )?,
@@ -466,12 +459,6 @@ impl Builder {
                     label,
                 } => {
                     self.build_relation_element(source, target, relation_type, type_spec, label)?
-                }
-                parser_types::Element::Diagram(_) => {
-                    // This should never happen since we already filtered out invalid elements
-                    return Err(Diagnostic::error("invalid element type")
-                        .with_code(ErrorCode::E306)
-                        .with_label(parser_elm.span(), "invalid element"));
                 }
                 parser_types::Element::ActivateBlock { .. } => {
                     unreachable!(
@@ -505,13 +492,29 @@ impl Builder {
         Ok(semantic::Scope::new(elements))
     }
 
-    /// Builds a component element from parser data
+    /// Builds a component element from parser data.
+    ///
+    /// Resolves the component's type definition, validates that the shape supports
+    /// content (if any), and constructs the semantic [`Node`](semantic::Node).
+    ///
+    /// Content is determined by matching on [`ComponentContent`](parser_types::ComponentContent):
+    /// - `None` — the component has no nested content.
+    /// - `Scope` — the component contains child elements, elaborated recursively
+    ///   via [`build_block_from_elements`](Self::build_block_from_elements).
+    /// - `Diagram` — the component embeds a diagram, elaborated via
+    ///   [`build_diagram_from_diagram_source`](Self::build_diagram_from_diagram_source).
+    ///
+    /// # Errors
+    ///
+    /// Returns `E307` if the type is not a valid shape, `E308` if the shape does not
+    /// support content but content was provided, or propagates errors from nested
+    /// elaboration.
     fn build_component_element(
         &mut self,
         name: &Spanned<Id>,
         display_name: &Option<Spanned<String>>,
         type_spec: &parser_types::TypeSpec,
-        nested_elements: &[parser_types::Element],
+        content: &parser_types::ComponentContent,
         parser_elm: &parser_types::Element,
         diagram_kind: semantic::DiagramKind,
     ) -> Result<semantic::Element> {
@@ -523,7 +526,8 @@ impl Builder {
                 .with_label(type_spec.span(), "invalid shape type")
         })?;
 
-        if !nested_elements.is_empty() && !shape_def.supports_content() {
+        if !matches!(content, parser_types::ComponentContent::None) && !shape_def.supports_content()
+        {
             let type_name = type_spec
                 .type_name
                 .as_ref()
@@ -538,17 +542,14 @@ impl Builder {
             )));
         }
 
-        // Check if there's a nested diagram element
-        let block = if nested_elements.len() == 1
-            && matches!(&nested_elements[0], parser_types::Element::Diagram(_))
-        {
-            // Handle a single diagram element specially
-            let elaborated_diagram =
-                self.build_diagram_from_embedded_diagram(&nested_elements[0])?;
-            semantic::Block::Diagram(elaborated_diagram)
-        } else {
-            // Process regular nested elements
-            self.build_block_from_elements(nested_elements, diagram_kind)?
+        let block = match content {
+            parser_types::ComponentContent::None => semantic::Block::None,
+            parser_types::ComponentContent::Scope(elements) => {
+                self.build_block_from_elements(elements, diagram_kind)?
+            }
+            parser_types::ComponentContent::Diagram(source) => {
+                semantic::Block::Diagram(self.build_diagram_from_diagram_source(source)?)
+            }
         };
 
         let node = semantic::Node::new(
@@ -561,7 +562,16 @@ impl Builder {
         Ok(semantic::Element::Node(node))
     }
 
-    /// Builds a relation element from parser data
+    /// Builds a relation element from parser data.
+    ///
+    /// Resolves the arrow type definition, parses the arrow direction string
+    /// (`->`, `<-`, `<->`, `-`), and constructs a semantic
+    /// [`Relation`](semantic::Relation).
+    ///
+    /// # Errors
+    ///
+    /// Returns `E307` for an invalid arrow type, or `E302` for an unrecognised
+    /// arrow direction string.
     fn build_relation_element(
         &mut self,
         source: &Spanned<Id>,
@@ -580,10 +590,10 @@ impl Builder {
         })?;
 
         let arrow_direction = draw::ArrowDirection::from_str(relation_type).map_err(|_| {
-            Diagnostic::error(format!("Invalid arrow direction '{relation_type}'"))
+            Diagnostic::error(format!("invalid arrow direction `{relation_type}`"))
                 .with_code(ErrorCode::E302)
                 .with_label(relation_type.span(), "invalid direction")
-                .with_help("Arrow direction must be '->', '<-', '<->', or '-'")
+                .with_help("arrow direction must be `->`, `<-`, `<->`, or `-`")
         })?;
 
         Ok(semantic::Element::Relation(semantic::Relation::new(
@@ -595,7 +605,16 @@ impl Builder {
         )))
     }
 
-    /// Builds an activate element from parser data
+    /// Builds an activate element from parser data.
+    ///
+    /// Validates that activation is only used in sequence diagrams, resolves the
+    /// activation-box type definition, and constructs a semantic
+    /// [`Activate`](semantic::Activate).
+    ///
+    /// # Errors
+    ///
+    /// Returns `E304` if the diagram is not a sequence diagram, or `E307` if the
+    /// type is not a valid activation box.
     fn build_activate_element(
         &mut self,
         component: &Spanned<Id>,
@@ -605,11 +624,11 @@ impl Builder {
         // Only allow activate in sequence diagrams
         if diagram_kind != semantic::DiagramKind::Sequence {
             return Err(Diagnostic::error(
-                "Activate statements are only supported in sequence diagrams",
+                "activate statements are only supported in sequence diagrams",
             )
             .with_code(ErrorCode::E304)
             .with_label(component.span(), "activate not allowed here")
-            .with_help("Activate statements are used for temporal grouping in sequence diagrams"));
+            .with_help("activate statements are used for temporal grouping in sequence diagrams"));
         }
 
         let activate_type_def = self.build_type_definition(type_spec)?;
@@ -628,7 +647,14 @@ impl Builder {
         )))
     }
 
-    /// Builds a deactivate element from parser data
+    /// Builds a deactivate element from parser data.
+    ///
+    /// Validates that deactivation is only used in sequence diagrams and
+    /// constructs a semantic [`Deactivate`](semantic::Element::Deactivate).
+    ///
+    /// # Errors
+    ///
+    /// Returns `E304` if the diagram is not a sequence diagram.
     fn build_deactivate_element(
         &mut self,
         component: &Spanned<Id>,
@@ -637,19 +663,28 @@ impl Builder {
         // Only allow deactivate in sequence diagrams
         if diagram_kind != semantic::DiagramKind::Sequence {
             return Err(Diagnostic::error(
-                "Deactivate statements are only supported in sequence diagrams",
+                "deactivate statements are only supported in sequence diagrams",
             )
             .with_code(ErrorCode::E304)
             .with_label(component.span(), "deactivate not allowed here")
             .with_help(
-                "Deactivate statements are used for temporal grouping in sequence diagrams",
+                "deactivate statements are used for temporal grouping in sequence diagrams",
             ));
         }
 
         Ok(semantic::Element::Deactivate(*component.inner()))
     }
 
-    /// Builds a fragment element from parser data
+    /// Builds a fragment element from parser data.
+    ///
+    /// Validates that fragments are only used in sequence diagrams, resolves the
+    /// fragment type definition, and elaborates each section's elements into
+    /// a [`FragmentSection`](semantic::FragmentSection).
+    ///
+    /// # Errors
+    ///
+    /// Returns `E304` if the diagram is not a sequence diagram, `E300` if the
+    /// fragment type is invalid, or `E307` if the type is not a fragment definition.
     fn build_fragment_element(
         &mut self,
         fragment: &parser_types::Fragment,
@@ -658,11 +693,11 @@ impl Builder {
         // Only allow fragments in sequence diagrams
         if diagram_kind != semantic::DiagramKind::Sequence {
             return Err(Diagnostic::error(
-                "Fragment blocks are only supported in sequence diagrams",
+                "fragment blocks are only supported in sequence diagrams",
             )
             .with_code(ErrorCode::E304)
             .with_label(fragment.span(), "fragment not allowed here")
-            .with_help("Fragment blocks are used for grouping in sequence diagrams"));
+            .with_help("fragment blocks are used for grouping in sequence diagrams"));
         }
 
         // Build the type definition for this fragment
@@ -675,7 +710,7 @@ impl Builder {
                 ))
                 .with_code(ErrorCode::E300)
                 .with_label(fragment.operation.span(), "invalid fragment type")
-                .with_help("Fragment types must be defined in the type system")
+                .with_help("fragment types must be defined in the type system")
             })?;
 
         let fragment_def = type_def.fragment_definition().map_err(|err| {
@@ -707,14 +742,14 @@ impl Builder {
         type_spec: &parser_types::TypeSpec,
     ) -> Result<elaborate_utils::TypeDefinition> {
         let type_name = type_spec.type_name.as_ref().ok_or_else(|| {
-            Diagnostic::error("base type type_spec must have a type name")
+            Diagnostic::error("base type `type_spec` must have a type name")
                 .with_code(ErrorCode::E306)
                 .with_label(type_spec.span(), "missing type name")
         })?;
         // Look up the base type
         let Some(base) = self.type_definitions.get(type_name.inner()) else {
             return Err(
-                self.create_undefined_type_error(type_name, &format!("Unknown type '{type_name}'"))
+                self.create_undefined_type_error(type_name, &format!("unknown type `{type_name}`"))
             );
         };
 
@@ -749,7 +784,7 @@ impl Builder {
                     Diagnostic::error(format!("undefined text type `{}`", type_name.inner()))
                         .with_code(ErrorCode::E300)
                         .with_label(type_spec.span(), "undefined type")
-                        .with_help("Type must be defined with 'type' statement before use")
+                        .with_help("type must be defined with `type` statement before use")
                 })?;
 
             let base_text_rc = base_type.text_definition_from_draw().map_err(|err| {
@@ -760,7 +795,7 @@ impl Builder {
                 ))
                 .with_code(ErrorCode::E307)
                 .with_label(type_spec.span(), "invalid type reference")
-                .with_help("Only Text types can be used for text attributes")
+                .with_help("only `Text` types can be used for text attributes")
             })?;
 
             Rc::clone(base_text_rc)
@@ -799,7 +834,7 @@ impl Builder {
                     Diagnostic::error(format!("undefined stroke type `{}`", type_name.inner()))
                         .with_code(ErrorCode::E300)
                         .with_label(type_spec.span(), "undefined type")
-                        .with_help("Type must be defined with 'type' statement before use")
+                        .with_help("type must be defined with `type` statement before use")
                 })?;
 
             let base_stroke_rc = base_type.stroke_definition().map_err(|err| {
@@ -810,7 +845,7 @@ impl Builder {
                 ))
                 .with_code(ErrorCode::E307)
                 .with_label(type_spec.span(), "invalid type reference")
-                .with_help("Only Stroke types can be used for stroke attributes")
+                .with_help("only `Stroke` types can be used for stroke attributes")
             })?;
 
             Rc::clone(base_stroke_rc)
@@ -884,7 +919,7 @@ impl Builder {
                             .with_code(ErrorCode::E303)
                             .with_label(attr.span(), "unknown attribute")
                             .with_help(
-                                "Valid shape attributes are: fill_color, stroke=[...], rounded, text=[...]",
+                                "valid shape attributes are: `fill_color`, `stroke`=[...], `rounded`, `text`=[...]",
                             ));
                         }
                     }
@@ -916,7 +951,7 @@ impl Builder {
                                     .with_code(ErrorCode::E302)
                                     .with_label(attr.span(), "invalid style")
                                     .with_help(
-                                        "Arrow style must be 'straight', 'curved', or 'orthogonal'",
+                                        "arrow style must be `straight`, `curved`, or `orthogonal`",
                                     )
                             })?;
                             arrow_def_mut.set_style(val);
@@ -934,7 +969,7 @@ impl Builder {
                             .with_code(ErrorCode::E303)
                             .with_label(attr.span(), "unknown attribute")
                             .with_help(
-                                "Valid arrow attributes are: stroke=[...], style, text=[...]",
+                                "valid arrow attributes are: `stroke`=[...], `style`, `text`=[...]",
                             ));
                         }
                     }
@@ -995,7 +1030,7 @@ impl Builder {
                             ))
                             .with_code(ErrorCode::E303)
                             .with_label(attr.span(), "unknown attribute")
-                            .with_help("Valid fragment attributes are: border_stroke=[...], separator_stroke=[...], background_color, operation_label_text=[...], section_title_text=[...]"));
+                            .with_help("valid fragment attributes are: `border_stroke`=[...], `separator_stroke`=[...], `background_color`, `operation_label_text`=[...], `section_title_text`=[...]"));
                         }
                     }
                 }
@@ -1040,7 +1075,7 @@ impl Builder {
                             .with_code(ErrorCode::E303)
                             .with_label(attr.span(), "unknown attribute")
                             .with_help(
-                                "Valid note attributes are: background_color, stroke=[...], text=[...]",
+                                "valid note attributes are: `background_color`, `stroke`=[...], `text`=[...]",
                             ));
                         }
                     }
@@ -1082,7 +1117,7 @@ impl Builder {
                             ))
                             .with_code(ErrorCode::E303)
                             .with_label(attr.span(), "unknown attribute")
-                            .with_help("Valid activation box attributes are: width, nesting_offset, fill_color, stroke=[...]"));
+                            .with_help("valid activation box attributes are: `width`, `nesting_offset`, `fill_color`, `stroke`=[...]"));
                         }
                     }
                 }
@@ -1111,18 +1146,18 @@ impl Builder {
         }
     }
 
-    /// Creates a standardized error for undefined type situations
+    /// Creates a standardized error for undefined type situations.
     fn create_undefined_type_error(&self, span: &Spanned<Id>, message: &str) -> Diagnostic {
         Diagnostic::error(message)
             .with_code(ErrorCode::E300)
             .with_label(span.span(), "undefined type")
             .with_help(format!(
-                "type `{}` must be a built-in type or defined with a 'type' statement before it can be used as a base type",
+                "type `{}` must be a built-in type or defined with a `type` statement before it can be used as a base type",
                 span.inner()
             ))
     }
 
-    /// Extract diagram attributes (layout engine, background color, and lifeline definition)
+    /// Extract diagram attributes (layout engine, background color, and lifeline definition).
     fn extract_diagram_attributes(
         &self,
         kind: semantic::DiagramKind,
@@ -1177,12 +1212,12 @@ impl Builder {
         Ok((layout_engine, background_color, lifeline_definition))
     }
 
-    /// Extract background color from an attribute
+    /// Extract background color from an attribute.
     fn extract_background_color(color_attr: &parser_types::Attribute<'_>) -> Result<Color> {
         Self::extract_color(color_attr, "background_color")
     }
 
-    /// Extract lifeline definition from an attribute
+    /// Extract lifeline definition from an attribute.
     fn extract_lifeline_definition(
         &self,
         lifeline_attr: &parser_types::Attribute<'_>,
@@ -1205,7 +1240,7 @@ impl Builder {
                 ))
                 .with_code(ErrorCode::E303)
                 .with_label(type_spec.attributes[0].span(), "unknown attribute")
-                .with_help("Valid lifeline attributes are: stroke=[...]"));
+                .with_help("valid lifeline attributes are: `stroke`=[...]"));
             } else {
                 default_stroke_rc
             };
@@ -1213,7 +1248,7 @@ impl Builder {
         Ok(draw::LifelineDefinition::new(stroke_rc))
     }
 
-    /// Determines the layout engine from an attribute
+    /// Determines the layout engine from an attribute.
     fn determine_layout_engine(
         engine_attr: &parser_types::Attribute<'_>,
     ) -> Result<semantic::LayoutEngine> {
@@ -1222,7 +1257,7 @@ impl Builder {
             Diagnostic::error(format!("invalid `layout_engine` value: `{engine_str}`"))
                 .with_code(ErrorCode::E302)
                 .with_label(engine_attr.value.span(), "unsupported layout engine")
-                .with_help("Supported layout engines are: 'basic', 'sugiyama'")
+                .with_help("supported layout engines are: `basic`, `sugiyama`")
         })
     }
 
@@ -1298,7 +1333,7 @@ impl Builder {
                         Diagnostic::error("`on` attribute must be a list of element identifiers")
                             .with_code(ErrorCode::E302)
                             .with_label(attr.value.span(), "invalid on value")
-                            .with_help("Use syntax: on=[element1, element2]")
+                            .with_help("use syntax: `on=[element1, element2]`")
                     })?;
 
                     on = Some(ids.iter().map(|id| *id.inner()).collect());
@@ -1310,7 +1345,7 @@ impl Builder {
                         Diagnostic::error(format!("invalid alignment value: `{}`", align_str))
                             .with_code(ErrorCode::E302)
                             .with_label(attr.value.span(), "invalid alignment")
-                            .with_help("Valid values: over, left, right, top, bottom")
+                            .with_help("valid values: over, left, right, top, bottom")
                     })?;
 
                     align = Some(alignment);
@@ -1604,7 +1639,7 @@ mod tests {
                     type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(5..14))),
                     attributes: vec![],
                 },
-                nested_elements: vec![],
+                content: parser_types::ComponentContent::None,
             },
             // Activate the component
             parser_types::Element::Activate {
@@ -1685,7 +1720,7 @@ mod tests {
                     type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(5..14))),
                     attributes: vec![],
                 },
-                nested_elements: vec![],
+                content: parser_types::ComponentContent::None,
             },
             // Try to activate the component (should fail)
             parser_types::Element::Activate {
@@ -1715,7 +1750,7 @@ mod tests {
             let error_message = format!("{}", err);
             assert!(
                 error_message
-                    .contains("Activate statements are only supported in sequence diagrams"),
+                    .contains("activate statements are only supported in sequence diagrams"),
                 "Error should mention that activate is not allowed in component diagrams"
             );
         }
@@ -1734,7 +1769,7 @@ mod tests {
                     type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(0..9))),
                     attributes: vec![],
                 },
-                nested_elements: vec![],
+                content: parser_types::ComponentContent::None,
             },
             parser_types::Element::Component {
                 name: Spanned::new(Id::new("server"), Span::new(0..6)),
@@ -1743,7 +1778,7 @@ mod tests {
                     type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(0..9))),
                     attributes: vec![],
                 },
-                nested_elements: vec![],
+                content: parser_types::ComponentContent::None,
             },
             parser_types::Element::Component {
                 name: Spanned::new(Id::new("database"), Span::new(0..8)),
@@ -1752,7 +1787,7 @@ mod tests {
                     type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(0..9))),
                     attributes: vec![],
                 },
-                nested_elements: vec![],
+                content: parser_types::ComponentContent::None,
             },
             // activations and relations
             parser_types::Element::Activate {
@@ -2057,7 +2092,7 @@ mod tests {
         let result = Builder::extract_type_spec(&attr, "text");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Expected type spec"));
+        assert!(err.to_string().contains("expected type spec"));
     }
 
     #[test]
@@ -2086,7 +2121,7 @@ mod tests {
         let result = Builder::extract_string(&attr, "style");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Expected string value"));
+        assert!(err.to_string().contains("expected string value"));
     }
 
     #[test]
@@ -2114,7 +2149,7 @@ mod tests {
         let result = Builder::extract_color(&attr, "fill_color");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Expected string value"));
+        assert!(err.to_string().contains("expected string value"));
     }
 
     #[test]
@@ -2164,7 +2199,7 @@ mod tests {
         let result = Builder::extract_positive_float(&attr, "width");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Expected"));
+        assert!(err.to_string().contains("expected"));
     }
 
     #[test]
@@ -2196,7 +2231,7 @@ mod tests {
         let result = Builder::extract_usize(&attr, "rounded", "must be a positive number");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Expected"));
+        assert!(err.to_string().contains("expected"));
     }
 
     #[test]

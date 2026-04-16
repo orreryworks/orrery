@@ -15,15 +15,20 @@
 //! For example, a reference to "child1" inside "parent" becomes "parent::child1".
 //! This enables the validation phase to perform comprehensive cross-reference checks.
 
-use std::{cell::RefCell, collections::HashSet, mem, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    mem,
+    rc::Rc,
+};
 
 use orrery_core::identifier::Id;
 
 use crate::{
     builtin_types,
     parser_types::{
-        Attribute, AttributeValue, Element, FileAst, FileHeader, Fragment, FragmentSection, Import,
-        Note, TypeDefinition, TypeSpec,
+        Attribute, AttributeValue, ComponentContent, DiagramSource, Element, FileAst, FileHeader,
+        Fragment, FragmentSection, Import, Note, TypeDefinition, TypeSpec,
     },
     span::Spanned,
 };
@@ -254,8 +259,8 @@ trait Folder<'a> {
                 name,
                 display_name,
                 type_spec,
-                nested_elements,
-            } => self.fold_component(name, display_name, type_spec, nested_elements),
+                content,
+            } => self.fold_component(name, display_name, type_spec, content),
             Element::Relation {
                 source,
                 target,
@@ -263,7 +268,6 @@ trait Folder<'a> {
                 type_spec,
                 label,
             } => self.fold_relation(source, target, relation_type, type_spec, label),
-            Element::Diagram(file_ast) => Element::Diagram(self.fold_file_ast(file_ast)),
             Element::ActivateBlock {
                 component,
                 elements,
@@ -351,13 +355,34 @@ trait Folder<'a> {
         name: Spanned<Id>,
         display_name: Option<Spanned<String>>,
         type_spec: TypeSpec<'a>,
-        nested_elements: Vec<Element<'a>>,
+        content: ComponentContent<'a>,
     ) -> Element<'a> {
         Element::Component {
             name: self.fold_component_name(name),
             display_name: display_name.map(|dn| self.fold_display_name(dn)),
             type_spec: self.fold_component_type_spec(type_spec),
-            nested_elements: self.fold_elements(nested_elements),
+            content: self.fold_component_content(content),
+        }
+    }
+
+    /// Folds a [`ComponentContent`] node.
+    fn fold_component_content(&mut self, content: ComponentContent<'a>) -> ComponentContent<'a> {
+        match content {
+            ComponentContent::None => ComponentContent::None,
+            ComponentContent::Scope(elements) => {
+                ComponentContent::Scope(self.fold_elements(elements))
+            }
+            ComponentContent::Diagram(source) => {
+                ComponentContent::Diagram(self.fold_diagram_source(source))
+            }
+        }
+    }
+
+    /// Folds a [`DiagramSource`] node.
+    fn fold_diagram_source(&mut self, source: DiagramSource<'a>) -> DiagramSource<'a> {
+        match source {
+            DiagramSource::Inline(rc) => DiagramSource::Inline(self.fold_rc_file_ast(rc)),
+            DiagramSource::Ref(id) => DiagramSource::Ref(id),
         }
     }
 
@@ -462,7 +487,7 @@ trait Folder<'a> {
     }
 }
 
-/// Desugaring pass for the Orrery AST
+/// Desugaring pass for the Orrery AST.
 ///
 /// This folder performs desugaring transformations:
 /// 1. `ActivateBlock` → explicit `activate`/`deactivate` statements
@@ -482,13 +507,23 @@ trait Folder<'a> {
 /// ## Path Stack
 /// The `path_stack` field tracks the current position in the component hierarchy,
 /// allowing nested identifiers to be qualified with their full path from the root.
-pub struct Desugar {
+pub struct Desugar<'a> {
+    /// Tracks the current position in the component hierarchy for identifier
+    /// qualification.
     path_stack: PathStack,
+    /// Set of built-in type [`Id`]s (e.g., `Rectangle`, `Stroke`) that must not
+    /// receive a namespace prefix during import qualification.
     builtin_types: HashSet<Id>,
+    /// Lookup map from namespace [`Id`] → `Rc<RefCell<FileAst>>` for diagram imports.
+    /// Built during `fold_file_ast` and used to resolve `DiagramSource::Ref`.
+    embed_refs: HashMap<Id, Rc<RefCell<FileAst<'a>>>>,
 }
 
-impl Desugar {
-    /// Create a new Desugar folder instance
+impl<'a> Desugar<'a> {
+    /// Creates a new [`Desugar`] folder instance.
+    ///
+    /// Initializes the built-in type set from [`builtin_types::defaults`] and
+    /// starts with an empty `embed_refs` map and root-level path stack.
     fn new() -> Self {
         let type_ids = builtin_types::defaults()
             .into_iter()
@@ -497,6 +532,7 @@ impl Desugar {
         Self {
             path_stack: PathStack::new(),
             builtin_types: type_ids,
+            embed_refs: HashMap::new(),
         }
     }
 
@@ -535,7 +571,7 @@ impl Desugar {
     ///
     /// Consumes the `type_definitions` vec from each import's [`FileAst`] so
     /// that library ASTs are left empty after extraction.
-    fn extract_type_definitions_from_imports<'a>(
+    fn extract_type_definitions_from_imports(
         &self,
         imports: Vec<Import<'a>>,
     ) -> impl DoubleEndedIterator<Item = TypeDefinition<'a>> {
@@ -559,7 +595,7 @@ impl Desugar {
     /// Imported definitions come first; local definitions are chained after.
     /// When names collide the last writer wins, so local definitions take
     /// precedence over imported ones.
-    fn merge_with_import_type_definitions<'a>(
+    fn merge_with_import_type_definitions(
         &self,
         type_defs: Vec<TypeDefinition<'a>>,
         imports: Vec<Import<'a>>,
@@ -582,18 +618,32 @@ impl Desugar {
     }
 }
 
-impl<'a> Folder<'a> for Desugar {
+impl<'a> Folder<'a> for Desugar<'a> {
     /// Desugars a complete [`FileAst`] by flattening library imports into the
-    /// root type-definition list and forwarding diagram imports unchanged.
+    /// root type-definition list and consuming diagram imports into `embed_refs`.
     fn fold_file_ast(&mut self, mut file_ast: FileAst<'a>) -> FileAst<'a> {
+        // Save the parent's embed refs so nested fold_file_ast calls (from
+        // inline embeds processed during fold_elements) don't clobber them.
+        let saved_embed_refs = mem::take(&mut self.embed_refs);
+
         let imports = self.fold_imports(file_ast.imports);
 
         // Library imports export type definitions — extract and merge them into
-        // the root scope. Diagram imports are internal to their own diagram and
-        // are kept as-is for downstream rendering.
-        let (lib_imports, diagram_imports): (Vec<_>, Vec<_>) = imports
-            .into_iter()
-            .partition(|import| import.file_ast.borrow().header.is_library());
+        // the root scope. Diagram imports are consumed into the embed_refs
+        // lookup and not forwarded downstream.
+        let mut lib_imports = Vec::new();
+        for import in imports {
+            if import.file_ast.borrow().header.is_library() {
+                lib_imports.push(import);
+            } else {
+                // Consume diagram import: move its Rc into embed_refs if
+                // namespaced; drop it otherwise (glob imports don't create
+                // embed references).
+                if let Some(ns) = import.namespace {
+                    self.embed_refs.insert(ns, import.file_ast);
+                }
+            }
+        }
 
         // Merge must happen before fold_type_definitions so that imported types
         // are visible during any subsequent elaboration.
@@ -602,28 +652,53 @@ impl<'a> Folder<'a> for Desugar {
             lib_imports,
         );
 
+        let header = self.fold_header(file_ast.header);
+        let type_definitions = self.fold_type_definitions(type_defs);
+        let elements = self.fold_elements(file_ast.elements);
+
+        self.embed_refs = saved_embed_refs;
+
         FileAst {
-            header: self.fold_header(file_ast.header),
+            header,
             import_decls: file_ast.import_decls,
-            imports: diagram_imports,
-            type_definitions: self.fold_type_definitions(type_defs),
-            elements: self.fold_elements(file_ast.elements),
+            imports: vec![],
+            type_definitions,
+            elements,
         }
     }
 
-    /// Override fold_component to add path tracking for identifier resolution
+    /// Resolves a [`DiagramSource`] reference against the `embed_refs` lookup table.
+    fn fold_diagram_source(&mut self, source: DiagramSource<'a>) -> DiagramSource<'a> {
+        match source {
+            DiagramSource::Inline(rc) => DiagramSource::Inline(self.fold_rc_file_ast(rc)),
+            DiagramSource::Ref(id) => {
+                if let Some(rc) = self.embed_refs.get(id.inner()) {
+                    DiagramSource::Inline(Rc::clone(rc))
+                } else {
+                    // Leave unresolved — validate will report E204
+                    DiagramSource::Ref(id)
+                }
+            }
+        }
+    }
+
+    /// Folds a component with path-stack tracking for identifier resolution.
+    ///
+    /// Pushes the component's name onto the [`PathStack`] before folding its
+    /// content (so nested identifiers are qualified under this component's
+    /// namespace), then pops it afterward to restore the parent scope.
     fn fold_component(
         &mut self,
         name: Spanned<Id>,
         display_name: Option<Spanned<String>>,
         type_spec: TypeSpec<'a>,
-        nested_elements: Vec<Element<'a>>,
+        content: ComponentContent<'a>,
     ) -> Element<'a> {
         // Enter this component's namespace
         self.path_stack.push(*name.inner());
 
-        // Process nested elements (they will be qualified with this component's path)
-        let resolved_nested = self.fold_elements(nested_elements);
+        // Process content (nested elements will be qualified with this component's path)
+        let content = self.fold_component_content(content);
 
         // Exit this component's namespace
         self.path_stack.pop();
@@ -632,7 +707,7 @@ impl<'a> Folder<'a> for Desugar {
             name: self.fold_component_name(name),
             display_name: display_name.map(|dn| self.fold_display_name(dn)),
             type_spec: self.fold_component_type_spec(type_spec),
-            nested_elements: resolved_nested,
+            content,
         }
     }
 
@@ -643,6 +718,14 @@ impl<'a> Folder<'a> for Desugar {
         Spanned::new(qualified, original_span)
     }
 
+    /// Folds a list of elements, desugaring [`ActivateBlock`](Element::ActivateBlock) in-place.
+    ///
+    /// Each `ActivateBlock { component, elements, type_spec }` is expanded into:
+    /// 1. An [`Element::Activate`] statement for `component`.
+    /// 2. The recursively folded inner `elements`.
+    /// 3. An [`Element::Deactivate`] statement for `component`.
+    ///
+    /// All other element variants are delegated to [`fold_element`](Folder::fold_element).
     fn fold_elements(&mut self, elements: Vec<Element<'a>>) -> Vec<Element<'a>> {
         let mut out = Vec::with_capacity(elements.len());
         for elem in elements {
@@ -719,8 +802,8 @@ impl<'a> Folder<'a> for Desugar {
                 name,
                 display_name,
                 type_spec,
-                nested_elements,
-            } => self.fold_component(name, display_name, type_spec, nested_elements),
+                content,
+            } => self.fold_component(name, display_name, type_spec, content),
             Element::Relation {
                 source,
                 target,
@@ -728,7 +811,6 @@ impl<'a> Folder<'a> for Desugar {
                 type_spec,
                 label,
             } => self.fold_relation(source, target, relation_type, type_spec, label),
-            Element::Diagram(file_ast) => Element::Diagram(self.fold_file_ast(file_ast)),
             Element::ActivateBlock {
                 component,
                 elements,
@@ -957,35 +1039,27 @@ mod tests {
 
     #[test]
     fn test_identity_folder_preserves_simple_diagram() {
-        // Create a simple diagram wrapped in Element
-        let diagram = Element::Diagram(make_diagram_ast(vec![], vec![]));
-        let wrapped = spanned(diagram);
+        // Create a simple diagram FileAst and fold it directly
+        let file_ast = make_diagram_ast(vec![], vec![]);
 
-        // Apply the identity folder
         let mut folder = IdentityFolder;
-        let result_elem = folder.fold_element(wrapped.into_inner());
+        let result = folder.fold_file_ast(file_ast);
 
-        // Verify the structure is unchanged
-        match result_elem {
-            Element::Diagram(d) => {
-                match &d.header {
-                    FileHeader::Diagram { kind, attributes } => {
-                        assert_eq!(**kind, DiagramKind::Component);
-                        assert!(attributes.is_empty());
-                    }
-                    _ => panic!("Expected diagram header"),
-                }
-                assert!(d.type_definitions.is_empty());
-                assert!(d.elements.is_empty());
+        match &result.header {
+            FileHeader::Diagram { kind, attributes } => {
+                assert_eq!(**kind, DiagramKind::Component);
+                assert!(attributes.is_empty());
             }
-            _ => panic!("Expected diagram element"),
+            _ => panic!("Expected diagram header"),
         }
+        assert!(result.type_definitions.is_empty());
+        assert!(result.elements.is_empty());
     }
 
     #[test]
     fn test_identity_folder_preserves_attributes() {
-        // Create a diagram with attributes
-        let diagram = Element::Diagram(FileAst {
+        // Create a diagram FileAst with attributes and fold it directly
+        let file_ast = FileAst {
             header: FileHeader::Diagram {
                 kind: spanned(DiagramKind::Component),
                 attributes: vec![
@@ -1003,34 +1077,28 @@ mod tests {
             type_definitions: vec![],
             elements: vec![],
             imports: vec![],
-        });
-        let wrapped = spanned(diagram);
+        };
 
-        // Apply the identity folder
         let mut folder = IdentityFolder;
-        let result_elem = folder.fold_element(wrapped.into_inner());
+        let result = folder.fold_file_ast(file_ast);
 
-        // Verify attributes are preserved
-        match result_elem {
-            Element::Diagram(d) => match &d.header {
-                FileHeader::Diagram { attributes, .. } => {
-                    assert_eq!(attributes.len(), 2);
-                    assert_eq!(*attributes[0].name.inner(), "background_color");
-                    match &attributes[0].value {
-                        AttributeValue::String(s) => assert_eq!(s.inner(), "#ffffff"),
-                        _ => panic!("Expected string attribute"),
-                    }
+        match &result.header {
+            FileHeader::Diagram { attributes, .. } => {
+                assert_eq!(attributes.len(), 2);
+                assert_eq!(*attributes[0].name.inner(), "background_color");
+                match &attributes[0].value {
+                    AttributeValue::String(s) => assert_eq!(s.inner(), "#ffffff"),
+                    _ => panic!("Expected string attribute"),
                 }
-                _ => panic!("Expected Diagram header"),
-            },
-            _ => panic!("Expected diagram element"),
+            }
+            _ => panic!("Expected Diagram header"),
         }
     }
 
     #[test]
     fn test_identity_folder_preserves_type_definitions() {
-        // Create a diagram with type definitions
-        let diagram = Element::Diagram(make_diagram_ast(
+        // Create a diagram FileAst with type definitions and fold it directly
+        let file_ast = make_diagram_ast(
             vec![TypeDefinition {
                 name: spanned(Id::new("Database")),
                 type_spec: TypeSpec {
@@ -1042,37 +1110,29 @@ mod tests {
                 },
             }],
             vec![],
-        ));
-        let wrapped = spanned(diagram);
+        );
 
-        // Apply the identity folder
         let mut folder = IdentityFolder;
-        let result_elem = folder.fold_element(wrapped.into_inner());
+        let result = folder.fold_file_ast(file_ast);
 
-        // Verify type definitions are preserved
-        match result_elem {
-            Element::Diagram(d) => {
-                assert_eq!(d.type_definitions.len(), 1);
-                assert_eq!(*d.type_definitions[0].name.inner(), "Database");
-                assert_eq!(
-                    *d.type_definitions[0]
-                        .type_spec
-                        .type_name
-                        .as_ref()
-                        .unwrap()
-                        .inner(),
-                    "Rectangle"
-                );
-                assert_eq!(d.type_definitions[0].type_spec.attributes.len(), 1);
-            }
-            _ => panic!("Expected diagram element"),
-        }
+        assert_eq!(result.type_definitions.len(), 1);
+        assert_eq!(*result.type_definitions[0].name.inner(), "Database");
+        assert_eq!(
+            *result.type_definitions[0]
+                .type_spec
+                .type_name
+                .as_ref()
+                .unwrap()
+                .inner(),
+            "Rectangle"
+        );
+        assert_eq!(result.type_definitions[0].type_spec.attributes.len(), 1);
     }
 
     #[test]
     fn test_identity_folder_preserves_components() {
-        // Create a diagram with a component element
-        let diagram = Element::Diagram(make_diagram_ast(
+        // Create a diagram FileAst with a component element and fold it directly
+        let file_ast = make_diagram_ast(
             vec![],
             vec![Element::Component {
                 name: spanned(Id::new("frontend")),
@@ -1084,43 +1144,35 @@ mod tests {
                         value: AttributeValue::String(spanned("blue".to_string())),
                     }],
                 },
-                nested_elements: vec![],
+                content: ComponentContent::None,
             }],
-        ));
-        let wrapped = spanned(diagram);
+        );
 
-        // Apply the identity folder
         let mut folder = IdentityFolder;
-        let result_elem = folder.fold_element(wrapped.into_inner());
+        let result = folder.fold_file_ast(file_ast);
 
-        // Verify component is preserved
-        match result_elem {
-            Element::Diagram(d) => {
-                assert_eq!(d.elements.len(), 1);
-                match &d.elements[0] {
-                    Element::Component {
-                        name,
-                        display_name,
-                        type_spec,
-                        nested_elements,
-                    } => {
-                        assert_eq!(*name.inner(), "frontend");
-                        assert_eq!(display_name.as_ref().unwrap().inner(), "Frontend App");
-                        assert_eq!(*type_spec.type_name.as_ref().unwrap().inner(), "Rectangle");
-                        assert_eq!(type_spec.attributes.len(), 1);
-                        assert!(nested_elements.is_empty());
-                    }
-                    _ => panic!("Expected component element"),
-                }
+        assert_eq!(result.elements.len(), 1);
+        match &result.elements[0] {
+            Element::Component {
+                name,
+                display_name,
+                type_spec,
+                content,
+            } => {
+                assert_eq!(*name.inner(), "frontend");
+                assert_eq!(display_name.as_ref().unwrap().inner(), "Frontend App");
+                assert_eq!(*type_spec.type_name.as_ref().unwrap().inner(), "Rectangle");
+                assert_eq!(type_spec.attributes.len(), 1);
+                assert!(matches!(content, ComponentContent::None));
             }
-            _ => panic!("Expected diagram element"),
+            _ => panic!("Expected component element"),
         }
     }
 
     #[test]
     fn test_identity_folder_preserves_activate_block() {
-        // Create a diagram with an activate block
-        let diagram = Element::Diagram(make_sequence_ast(vec![Element::ActivateBlock {
+        // Create a sequence diagram FileAst with an activate block and fold it directly
+        let file_ast = make_sequence_ast(vec![Element::ActivateBlock {
             component: spanned(Id::new("user")),
             type_spec: TypeSpec::default(),
             elements: vec![Element::Relation {
@@ -1130,43 +1182,35 @@ mod tests {
                 type_spec: TypeSpec::default(),
                 label: Some(spanned("Request".to_string())),
             }],
-        }]));
-        let wrapped = spanned(diagram);
+        }]);
 
-        // Apply the identity folder
         let mut folder = IdentityFolder;
-        let result_elem = folder.fold_element(wrapped.into_inner());
+        let result = folder.fold_file_ast(file_ast);
 
-        // Verify activate block is preserved
-        match result_elem {
-            Element::Diagram(d) => {
-                assert_eq!(d.elements.len(), 1);
-                match &d.elements[0] {
-                    Element::ActivateBlock {
-                        component,
-                        elements,
-                        ..
-                    } => {
-                        assert_eq!(*component.inner(), "user");
-                        assert_eq!(elements.len(), 1);
-                        match &elements[0] {
-                            Element::Relation { label, .. } => {
-                                assert_eq!(label.as_ref().unwrap().inner(), "Request");
-                            }
-                            _ => panic!("Expected relation in activate block"),
-                        }
+        assert_eq!(result.elements.len(), 1);
+        match &result.elements[0] {
+            Element::ActivateBlock {
+                component,
+                elements,
+                ..
+            } => {
+                assert_eq!(*component.inner(), "user");
+                assert_eq!(elements.len(), 1);
+                match &elements[0] {
+                    Element::Relation { label, .. } => {
+                        assert_eq!(label.as_ref().unwrap().inner(), "Request");
                     }
-                    _ => panic!("Expected ActivateBlock element"),
+                    _ => panic!("Expected relation in activate block"),
                 }
             }
-            _ => panic!("Expected diagram element"),
+            _ => panic!("Expected ActivateBlock element"),
         }
     }
 
     #[test]
     fn test_desugar_rewrites_activate_blocks() {
-        // Create a diagram with an activate block
-        let diagram = Element::Diagram(make_sequence_ast(vec![Element::ActivateBlock {
+        // Create a sequence diagram FileAst with an activate block and desugar it
+        let file_ast = make_sequence_ast(vec![Element::ActivateBlock {
             component: spanned(Id::new("user")),
             type_spec: TypeSpec::default(),
             elements: vec![Element::Relation {
@@ -1176,37 +1220,33 @@ mod tests {
                 type_spec: TypeSpec::default(),
                 label: Some(spanned("Request".to_string())),
             }],
-        }]));
-        let wrapped = spanned(diagram);
+        }]);
 
-        // Apply Desugar folder directly
         let mut folder = Desugar::new();
-        let result_elem = folder.fold_element(wrapped.into_inner());
+        let result = folder.fold_file_ast(file_ast);
 
-        // Verify activate block was rewritten into explicit statements
-        match result_elem {
-            Element::Diagram(d) => {
-                assert_eq!(d.elements.len(), 3, "Expected Activate, inner, Deactivate");
-                match &d.elements[0] {
-                    Element::Activate { component, .. } => {
-                        assert_eq!(*component.inner(), "user");
-                    }
-                    _ => panic!("Expected Activate element"),
-                }
-                match &d.elements[1] {
-                    Element::Relation { label, .. } => {
-                        assert_eq!(label.as_ref().unwrap().inner(), "Request");
-                    }
-                    _ => panic!("Expected inner Relation element"),
-                }
-                match &d.elements[2] {
-                    Element::Deactivate { component } => {
-                        assert_eq!(*component.inner(), "user");
-                    }
-                    _ => panic!("Expected Deactivate element"),
-                }
+        assert_eq!(
+            result.elements.len(),
+            3,
+            "Expected Activate, inner, Deactivate"
+        );
+        match &result.elements[0] {
+            Element::Activate { component, .. } => {
+                assert_eq!(*component.inner(), "user");
             }
-            _ => panic!("Expected diagram element"),
+            _ => panic!("Expected Activate element"),
+        }
+        match &result.elements[1] {
+            Element::Relation { label, .. } => {
+                assert_eq!(label.as_ref().unwrap().inner(), "Request");
+            }
+            _ => panic!("Expected inner Relation element"),
+        }
+        match &result.elements[2] {
+            Element::Deactivate { component } => {
+                assert_eq!(*component.inner(), "user");
+            }
+            _ => panic!("Expected Deactivate element"),
         }
     }
 
@@ -1653,7 +1693,7 @@ mod tests {
                 type_name: Some(spanned(Id::new("Rectangle"))),
                 attributes: vec![],
             },
-            nested_elements: vec![
+            content: ComponentContent::Scope(vec![
                 Element::Component {
                     name: spanned(Id::new("child1")),
                     display_name: None,
@@ -1661,7 +1701,7 @@ mod tests {
                         type_name: Some(spanned(Id::new("Oval"))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Component {
                     name: spanned(Id::new("child2")),
@@ -1670,7 +1710,7 @@ mod tests {
                         type_name: Some(spanned(Id::new("Rectangle"))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Relation {
                     source: spanned(Id::new("child1")),
@@ -1679,27 +1719,28 @@ mod tests {
                     type_spec: TypeSpec::default(),
                     label: None,
                 },
-            ],
+            ]),
         };
 
         let mut folder = Desugar::new();
         let result = folder.fold_element(parent_component);
 
         // Extract the relation from the result
-        if let Element::Component {
-            nested_elements, ..
-        } = result
-        {
-            let relation = nested_elements.iter().find_map(|e| match e {
-                Element::Relation { source, target, .. } => Some((source, target)),
-                _ => None,
-            });
+        if let Element::Component { content, .. } = result {
+            if let ComponentContent::Scope(elements) = content {
+                let relation = elements.iter().find_map(|e| match e {
+                    Element::Relation { source, target, .. } => Some((source, target)),
+                    _ => None,
+                });
 
-            if let Some((source, target)) = relation {
-                assert_eq!(source.inner(), "parent::child1");
-                assert_eq!(target.inner(), "parent::child2");
+                if let Some((source, target)) = relation {
+                    assert_eq!(source.inner(), "parent::child1");
+                    assert_eq!(target.inner(), "parent::child2");
+                } else {
+                    panic!("Expected to find a relation in nested elements");
+                }
             } else {
-                panic!("Expected to find a relation in nested elements");
+                panic!("Expected Scope content");
             }
         } else {
             panic!("Expected Component element");
@@ -1716,14 +1757,14 @@ mod tests {
                 type_name: Some(spanned(Id::new("Rectangle"))),
                 attributes: vec![],
             },
-            nested_elements: vec![Element::Component {
+            content: ComponentContent::Scope(vec![Element::Component {
                 name: spanned(Id::new("level2")),
                 display_name: None,
                 type_spec: TypeSpec {
                     type_name: Some(spanned(Id::new("Rectangle"))),
                     attributes: vec![],
                 },
-                nested_elements: vec![
+                content: ComponentContent::Scope(vec![
                     Element::Component {
                         name: spanned(Id::new("level3")),
                         display_name: None,
@@ -1731,7 +1772,7 @@ mod tests {
                             type_name: Some(spanned(Id::new("Oval"))),
                             attributes: vec![],
                         },
-                        nested_elements: vec![],
+                        content: ComponentContent::None,
                     },
                     Element::Relation {
                         source: spanned(Id::new("level3")),
@@ -1740,37 +1781,37 @@ mod tests {
                         type_spec: TypeSpec::default(),
                         label: None,
                     },
-                ],
-            }],
+                ]),
+            }]),
         };
 
         let mut folder = Desugar::new();
         let result = folder.fold_element(level1);
 
         // Navigate to the deeply nested relation
-        if let Element::Component {
-            nested_elements: level1_nested,
-            ..
-        } = result
-        {
-            if let Some(Element::Component {
-                nested_elements: level2_nested,
-                ..
-            }) = level1_nested.first()
-            {
-                let relation = level2_nested.iter().find_map(|e| match e {
-                    Element::Relation { source, target, .. } => Some((source, target)),
-                    _ => None,
-                });
+        if let Element::Component { content, .. } = result {
+            if let ComponentContent::Scope(level1_elements) = content {
+                if let Some(Element::Component { content, .. }) = level1_elements.first() {
+                    if let ComponentContent::Scope(level2_elements) = content {
+                        let relation = level2_elements.iter().find_map(|e| match e {
+                            Element::Relation { source, target, .. } => Some((source, target)),
+                            _ => None,
+                        });
 
-                if let Some((source, target)) = relation {
-                    assert_eq!(source.inner(), "level1::level2::level3");
-                    assert_eq!(target.inner(), "level1::level2::sibling");
+                        if let Some((source, target)) = relation {
+                            assert_eq!(source.inner(), "level1::level2::level3");
+                            assert_eq!(target.inner(), "level1::level2::sibling");
+                        } else {
+                            panic!("Expected to find a relation");
+                        }
+                    } else {
+                        panic!("Expected Scope content at level2");
+                    }
                 } else {
-                    panic!("Expected to find a relation");
+                    panic!("Expected nested component");
                 }
             } else {
-                panic!("Expected nested component");
+                panic!("Expected Scope content at level1");
             }
         } else {
             panic!("Expected Component element");
@@ -1786,7 +1827,7 @@ mod tests {
                 type_name: Some(spanned(Id::new("Rectangle"))),
                 attributes: vec![],
             },
-            nested_elements: vec![
+            content: ComponentContent::Scope(vec![
                 Element::Component {
                     name: spanned(Id::new("child")),
                     display_name: None,
@@ -1794,31 +1835,32 @@ mod tests {
                         type_name: Some(spanned(Id::new("Oval"))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Activate {
                     component: spanned(Id::new("child")),
                     type_spec: TypeSpec::default(),
                 },
-            ],
+            ]),
         };
 
         let mut folder = Desugar::new();
         let result = folder.fold_element(parent_component);
 
-        if let Element::Component {
-            nested_elements, ..
-        } = result
-        {
-            let activate = nested_elements.iter().find_map(|e| match e {
-                Element::Activate { component, .. } => Some(component),
-                _ => None,
-            });
+        if let Element::Component { content, .. } = result {
+            if let ComponentContent::Scope(elements) = content {
+                let activate = elements.iter().find_map(|e| match e {
+                    Element::Activate { component, .. } => Some(component),
+                    _ => None,
+                });
 
-            if let Some(component) = activate {
-                assert_eq!(component.inner(), "parent::child");
+                if let Some(component) = activate {
+                    assert_eq!(component.inner(), "parent::child");
+                } else {
+                    panic!("Expected to find Activate element");
+                }
             } else {
-                panic!("Expected to find Activate element");
+                panic!("Expected Scope content");
             }
         } else {
             panic!("Expected Component element");
@@ -1834,7 +1876,7 @@ mod tests {
                 type_name: Some(spanned(Id::new("Rectangle"))),
                 attributes: vec![],
             },
-            nested_elements: vec![
+            content: ComponentContent::Scope(vec![
                 Element::Component {
                     name: spanned(Id::new("child")),
                     display_name: None,
@@ -1842,7 +1884,7 @@ mod tests {
                         type_name: Some(spanned(Id::new("Oval"))),
                         attributes: vec![],
                     },
-                    nested_elements: vec![],
+                    content: ComponentContent::None,
                 },
                 Element::Note(Note {
                     type_spec: TypeSpec {
@@ -1854,38 +1896,39 @@ mod tests {
                     },
                     content: spanned("Note about child".to_string()),
                 }),
-            ],
+            ]),
         };
 
         let mut folder = Desugar::new();
         let result = folder.fold_element(parent_component);
 
-        if let Element::Component {
-            nested_elements, ..
-        } = result
-        {
-            let note = nested_elements.iter().find_map(|e| match e {
-                Element::Note(n) => Some(n),
-                _ => None,
-            });
+        if let Element::Component { content, .. } = result {
+            if let ComponentContent::Scope(elements) = content {
+                let note = elements.iter().find_map(|e| match e {
+                    Element::Note(n) => Some(n),
+                    _ => None,
+                });
 
-            if let Some(note) = note {
-                let on_attr = note
-                    .type_spec
-                    .attributes
-                    .iter()
-                    .find(|a| *a.name.inner() == "on");
-                if let Some(attr) = on_attr {
-                    if let AttributeValue::Identifiers(ids) = &attr.value {
-                        assert_eq!(ids[0].inner(), "parent::child");
+                if let Some(note) = note {
+                    let on_attr = note
+                        .type_spec
+                        .attributes
+                        .iter()
+                        .find(|a| *a.name.inner() == "on");
+                    if let Some(attr) = on_attr {
+                        if let AttributeValue::Identifiers(ids) = &attr.value {
+                            assert_eq!(ids[0].inner(), "parent::child");
+                        } else {
+                            panic!("Expected Identifiers value");
+                        }
                     } else {
-                        panic!("Expected Identifiers value");
+                        panic!("Expected 'on' attribute");
                     }
                 } else {
-                    panic!("Expected 'on' attribute");
+                    panic!("Expected Note element");
                 }
             } else {
-                panic!("Expected Note element");
+                panic!("Expected Scope content");
             }
         } else {
             panic!("Expected Component element");
@@ -1925,28 +1968,29 @@ mod tests {
                 type_name: Some(spanned(Id::new("Rectangle"))),
                 attributes: vec![],
             },
-            nested_elements: vec![Element::Relation {
+            content: ComponentContent::Scope(vec![Element::Relation {
                 source: Spanned::new(Id::new("child"), original_span),
                 target: spanned(Id::new("other")),
                 relation_type: spanned("->"),
                 type_spec: TypeSpec::default(),
                 label: None,
-            }],
+            }]),
         };
 
         let mut folder = Desugar::new();
         let result = folder.fold_element(parent_component);
 
-        if let Element::Component {
-            nested_elements, ..
-        } = result
-        {
-            if let Some(Element::Relation { source, .. }) = nested_elements.first() {
-                // The identifier should be qualified, but the span should be preserved
-                assert_eq!(source.inner(), "parent::child");
-                assert_eq!(source.span(), original_span);
+        if let Element::Component { content, .. } = result {
+            if let ComponentContent::Scope(elements) = content {
+                if let Some(Element::Relation { source, .. }) = elements.first() {
+                    // The identifier should be qualified, but the span should be preserved
+                    assert_eq!(source.inner(), "parent::child");
+                    assert_eq!(source.span(), original_span);
+                } else {
+                    panic!("Expected Relation element");
+                }
             } else {
-                panic!("Expected Relation element");
+                panic!("Expected Scope content");
             }
         } else {
             panic!("Expected Component element");
@@ -2636,7 +2680,7 @@ mod tests {
 
     #[test]
     fn test_import_diagram_preserved_library_consumed() {
-        // Verify library imports consumed, diagram imports preserved.
+        // Verify library imports consumed, diagram imports consumed into embed refs.
         let lib_ast = make_library_ast(vec![TypeDefinition {
             name: spanned(Id::new("Card")),
             type_spec: TypeSpec {
@@ -2665,10 +2709,8 @@ mod tests {
         let mut folder = Desugar::new();
         let result = folder.fold_file_ast(main_ast);
 
-        // Library import is consumed – NOT in output imports.
-        // Diagram import is preserved in output imports.
-        assert_eq!(result.imports.len(), 1);
-        assert_eq!(result.imports[0].namespace, Some(Id::new("flow")));
+        // Both library and diagram imports are consumed — none in output.
+        assert!(result.imports.is_empty());
 
         // Library's types are merged into type_definitions.
         let has_card = result
@@ -2720,5 +2762,193 @@ mod tests {
             .as_ref()
             .expect("type_name should be present");
         assert_eq!(**type_name, "Rectangle");
+    }
+
+    #[test]
+    fn test_embed_ref_resolved_to_inline() {
+        let imported_ast = make_diagram_ast(vec![], vec![]);
+        let imported_rc = Rc::new(RefCell::new(imported_ast));
+
+        // Create the root file with a diagram import and a component that embeds it by ref
+        let root_ast = FileAst {
+            header: FileHeader::Diagram {
+                kind: spanned(DiagramKind::Component),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: vec![],
+            elements: vec![Element::Component {
+                name: spanned(Id::new("auth_box")),
+                display_name: None,
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Rectangle"))),
+                    attributes: vec![],
+                },
+                content: ComponentContent::Diagram(DiagramSource::Ref(spanned(Id::new(
+                    "auth_flow",
+                )))),
+            }],
+            imports: vec![Import {
+                namespace: Some(Id::new("auth_flow")),
+                file_ast: Rc::clone(&imported_rc),
+            }],
+        };
+
+        let result = desugar(root_ast);
+
+        // The component should now have DiagramSource::Inline
+        match &result.elements[0] {
+            Element::Component { content, .. } => match content {
+                ComponentContent::Diagram(DiagramSource::Inline(rc)) => {
+                    // Verify it's a diagram (not a library)
+                    assert!(matches!(rc.borrow().header, FileHeader::Diagram { .. }));
+                }
+                other => panic!("Expected DiagramSource::Inline, got: {:?}", other),
+            },
+            other => panic!("Expected Component element, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_embed_ref_unresolved_stays_as_ref() {
+        let root_ast = FileAst {
+            header: FileHeader::Diagram {
+                kind: spanned(DiagramKind::Component),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: vec![],
+            elements: vec![Element::Component {
+                name: spanned(Id::new("auth_box")),
+                display_name: None,
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Rectangle"))),
+                    attributes: vec![],
+                },
+                content: ComponentContent::Diagram(DiagramSource::Ref(spanned(Id::new(
+                    "nonexistent",
+                )))),
+            }],
+            imports: vec![],
+        };
+
+        let result = desugar(root_ast);
+
+        match &result.elements[0] {
+            Element::Component { content, .. } => {
+                assert!(
+                    matches!(content, ComponentContent::Diagram(DiagramSource::Ref(_))),
+                    "Expected unresolved DiagramSource::Ref, got: {:?}",
+                    content
+                );
+            }
+            other => panic!("Expected Component element, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_embed_ref_does_not_match_glob_import() {
+        let imported_ast = make_diagram_ast(vec![], vec![]);
+        let imported_rc = Rc::new(RefCell::new(imported_ast));
+
+        let root_ast = FileAst {
+            header: FileHeader::Diagram {
+                kind: spanned(DiagramKind::Component),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: vec![],
+            elements: vec![Element::Component {
+                name: spanned(Id::new("box")),
+                display_name: None,
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Rectangle"))),
+                    attributes: vec![],
+                },
+                content: ComponentContent::Diagram(DiagramSource::Ref(spanned(Id::new("styles")))),
+            }],
+            imports: vec![Import {
+                namespace: None, // glob import — no namespace
+                file_ast: imported_rc,
+            }],
+        };
+
+        let result = desugar(root_ast);
+
+        match &result.elements[0] {
+            Element::Component { content, .. } => {
+                assert!(
+                    matches!(content, ComponentContent::Diagram(DiagramSource::Ref(_))),
+                    "Glob import should not resolve embed ref, got: {:?}",
+                    content
+                );
+            }
+            other => panic!("Expected Component element, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_embed_ref_survives_inline_embed_in_same_file() {
+        // Regression: an inline embed's fold_file_ast must not clobber the
+        // parent file's embed_refs map. If it did, the ref embed that follows
+        // would fail to resolve.
+        let imported_ast = make_diagram_ast(vec![], vec![]);
+        let imported_rc = Rc::new(RefCell::new(imported_ast));
+
+        let inline_ast = make_sequence_ast(vec![]);
+
+        let root_ast = FileAst {
+            header: FileHeader::Diagram {
+                kind: spanned(DiagramKind::Component),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: vec![],
+            elements: vec![
+                // First: inline embed — its fold_file_ast must not clear embed_refs
+                Element::Component {
+                    name: spanned(Id::new("box1")),
+                    display_name: None,
+                    type_spec: TypeSpec {
+                        type_name: Some(spanned(Id::new("Rectangle"))),
+                        attributes: vec![],
+                    },
+                    content: ComponentContent::Diagram(DiagramSource::Inline(Rc::new(
+                        RefCell::new(inline_ast),
+                    ))),
+                },
+                // Second: ref embed — must still resolve
+                Element::Component {
+                    name: spanned(Id::new("box2")),
+                    display_name: None,
+                    type_spec: TypeSpec {
+                        type_name: Some(spanned(Id::new("Rectangle"))),
+                        attributes: vec![],
+                    },
+                    content: ComponentContent::Diagram(DiagramSource::Ref(spanned(Id::new(
+                        "imported",
+                    )))),
+                },
+            ],
+            imports: vec![Import {
+                namespace: Some(Id::new("imported")),
+                file_ast: Rc::clone(&imported_rc),
+            }],
+        };
+
+        let result = desugar(root_ast);
+
+        // box2's ref should have been resolved to Inline
+        match &result.elements[1] {
+            Element::Component { name, content, .. } => {
+                assert_eq!(*name.inner(), "box2");
+                assert!(
+                    matches!(content, ComponentContent::Diagram(DiagramSource::Inline(_))),
+                    "Embed ref after inline embed should resolve, got: {:?}",
+                    content
+                );
+            }
+            other => panic!("Expected Component element, got: {:?}", other),
+        }
     }
 }
