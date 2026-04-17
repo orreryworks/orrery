@@ -20,6 +20,7 @@ path = "src/lib.rs"
 [dependencies]
 orrery-core.workspace = true
 bumpalo = "3.20.2"
+indexmap = "2.14"
 winnow = "1.0.1"
 log = { version = "0.4.29", features = ["kv", "kv_std"] }
 thiserror = "2.0.18"
