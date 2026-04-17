@@ -22,6 +22,7 @@ use std::{
     rc::Rc,
 };
 
+use indexmap::IndexMap;
 use orrery_core::identifier::Id;
 
 use crate::{
@@ -592,29 +593,25 @@ impl<'a> Desugar<'a> {
 
     /// Merges imported and local [`TypeDefinition`]s, deduplicating by name.
     ///
-    /// Imported definitions come first; local definitions are chained after.
-    /// When names collide the last writer wins, so local definitions take
-    /// precedence over imported ones.
+    /// Chains imported definitions before local ones and collects into an
+    /// [`IndexMap`] keyed by type name. On duplicate keys `IndexMap` overwrites
+    /// the value but preserves the original insertion order, giving "first
+    /// position, last value" semantics:
+    ///
+    /// - **Position**: the earliest import determines where a name appears.
+    /// - **Value**: the last definition (local > later import > earlier import)
+    ///   wins, matching the "last writer wins" rule from the spec.
     fn merge_with_import_type_definitions(
         &self,
         type_defs: Vec<TypeDefinition<'a>>,
         imports: Vec<Import<'a>>,
     ) -> Vec<TypeDefinition<'a>> {
-        let mut seen_type_names = HashSet::new();
-        // Chain order is imported → local so that local definitions appear last.
-        // Reversing before filtering keeps the *last* occurrence of each name
-        // (i.e., local wins over imported). A second reverse restores source order.
-        // Note: a lazy `.rev().filter().rev()` does NOT work — the two Rev
-        // adapters cancel out at the driving level, making filter see forward
-        // order and keep the *first* occurrence instead.
-        let mut dedup_types: Vec<_> = self
+        let dedup: IndexMap<_, _> = self
             .extract_type_definitions_from_imports(imports)
             .chain(type_defs)
-            .rev()
-            .filter(|type_def| seen_type_names.insert(*type_def.name.inner()))
+            .map(|type_def| (*type_def.name.inner(), type_def))
             .collect();
-        dedup_types.reverse();
-        dedup_types
+        dedup.into_values().collect()
     }
 }
 
@@ -2950,5 +2947,68 @@ mod tests {
             }
             other => panic!("Expected Component element, got: {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_import_type_def_dedup_preserves_dependency_order() {
+        // When two glob imports re-export the same type, the surviving
+        // definition must appear at the *first* position where that name was
+        // seen. Otherwise a type that depends on it (defined between the two
+        // occurrences) ends up before its dependency.
+        //
+        // Scenario:
+        //   a.orr  (library): type Service = Rectangle;
+        //   b.orr  (library): import "a"::*;  type Critical = Service;
+        //   diag.orr: import "b"::*;  import "a"::*;
+        //
+        // After desugaring b, its type_definitions = [Service, Critical].
+        // In diag the chain is: [Service(via b), Critical(via b), Service(from a)]
+        //
+        // Expected result: [Service, Critical]  (Service first — Critical depends on it)
+
+        // a.orr: type Service = Rectangle
+        let a_ast = make_library_ast(vec![TypeDefinition {
+            name: spanned(Id::new("Service")),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![],
+            },
+        }]);
+
+        // b.orr: import "a"::*;  type Critical = Service;
+        // After b's own desugaring its type_definitions are [Service, Critical].
+        let b_ast = make_library_ast(vec![
+            TypeDefinition {
+                name: spanned(Id::new("Service")),
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Rectangle"))),
+                    attributes: vec![],
+                },
+            },
+            TypeDefinition {
+                name: spanned(Id::new("Critical")),
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Service"))),
+                    attributes: vec![],
+                },
+            },
+        ]);
+
+        // diag.orr: import "b"::*;  import "a"::*;
+        let mut main_ast = make_diagram_ast(vec![], vec![]);
+        main_ast.imports = vec![
+            make_import(None, b_ast), // glob import of b
+            make_import(None, a_ast), // glob import of a
+        ];
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        // Should have exactly two types after dedup.
+        assert_eq!(result.type_definitions.len(), 2);
+
+        // Service must come first (Critical depends on it).
+        assert_eq!(*result.type_definitions[0].name.inner(), "Service");
+        assert_eq!(*result.type_definitions[1].name.inner(), "Critical");
     }
 }
