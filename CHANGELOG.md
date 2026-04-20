@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-20
+
 ### Added
 
 - **Namespaced import system** — Reuse type definitions across files with `import "path";` and `library;` file headers. Imports are namespace-qualified (e.g., `styles::Service`), support transitive chaining, and include circular dependency detection, diamond deduplication, and cross-file error reporting with import traces. ([#45](https://github.com/orreryworks/orrery/issues/45))
@@ -50,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration** — Layered configuration via CLI flags, project-local files, and platform-specific config directories.
 - **Dual licensing** — MIT OR Apache-2.0.
 
-[Unreleased]: https://github.com/orreryworks/orrery/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/orreryworks/orrery/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/orreryworks/orrery/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/orreryworks/orrery/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/orreryworks/orrery/releases/tag/v0.1.0

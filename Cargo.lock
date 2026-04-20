@@ -699,7 +699,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orrery"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "bumpalo",
  "color",
@@ -720,7 +720,7 @@ dependencies = [
 
 [[package]]
 name = "orrery-cli"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "bumpalo",
  "clap",
@@ -738,7 +738,7 @@ dependencies = [
 
 [[package]]
 name = "orrery-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "color",
  "cosmic-text",
@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "orrery-parser"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "bumpalo",
  "indexmap",
