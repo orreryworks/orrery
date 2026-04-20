@@ -1,0 +1,12 @@
+// Error E400: File not found
+// Phase: Resolver
+//
+// The import path references a file that does not exist.
+// Expected: E400 — cannot find file
+
+diagram component;
+
+// ❌ `nonexistent.orr` does not exist
+import "nonexistent";
+
+gateway: Rectangle;

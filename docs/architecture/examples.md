@@ -52,6 +52,7 @@ Use `<phase>_<error>.orr` naming. The phase prefix matches the compiler phase th
 | `parse_` | Parser | E1xx |
 | `validate_` | Validation | E2xx |
 | `elab_` | Elaboration | E3xx |
+| `resolve_` | Resolver | E4xx |
 
 ```
 ✓ parse_missing_semicolon_component.orr

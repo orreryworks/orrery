@@ -7,8 +7,14 @@
 //   - Embedding a sequence diagram inside a sequence diagram participant
 //   - Layout engine attributes on embedded diagrams
 //   - Styled content within embedded diagrams
+//   - Import-based embedding (`embed ref` via namespaced import)
 
 diagram component;
+
+// --- Imports ---
+
+// Namespaced import of a diagram file — creates an embed reference
+import "imports/auth_flow";
 
 // --- Type Definitions ---
 
@@ -138,3 +144,8 @@ outer as "Outer System": Service embed {
 };
 
 gateway -> outer: "Delegate";
+
+// Import-Based Embedding
+auth_overview as "Auth Overview": Service embed auth_flow;
+
+gateway -> auth_overview: "Auth detail";

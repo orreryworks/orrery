@@ -1,0 +1,59 @@
+// Import System
+//
+// Demonstrates:
+//   - Namespaced import (`import "path";`)
+//   - Glob import (`import "path"::*;`)
+//   - Namespace alias (`import "path" as name;`)
+//   - Namespace type access (`name::Type`)
+//   - Transitive chained access (`sec::styles::Type`)
+//   - Local type extending an imported type
+//   - Diagram embedding via import (`embed ref`)
+
+diagram component;
+
+// --- Imports ---
+
+// Namespaced — creates embed reference for auth_flow
+import "imports/auth_flow";
+
+// Namespaced with alias — access types as `sec::Type`
+import "imports/shared/secure" as sec;
+
+// Glob — all types flat in current scope
+import "imports/shared/styles"::*;
+
+// --- Local Types ---
+
+// Extending a glob-imported type
+type Gateway = Service[fill_color="orange", rounded=10];
+
+// Local alias for a namespaced arrow type
+type SecureArrow = sec::SecureArrow;
+
+// --- Elements (Glob Access) ---
+
+// `Service`, `Database`, `DashedArrow` come from glob import of styles
+api_gateway as "API Gateway": Gateway;
+user_db as "Users DB": Database;
+
+// --- Elements (Namespaced Access) ---
+
+// `sec::SecureService` from aliased import of secure
+auth_service as "Auth Service": sec::SecureService;
+
+// --- Elements (Transitive Chained Access) ---
+
+// `sec::styles::Client` — styles is a namespaced import inside secure
+web_client as "Web Client": sec::styles::Client;
+
+// --- Import-Based Embedding ---
+
+// `auth_flow` namespace doubles as an embed reference
+auth_detail as "Auth Flow Detail": Rectangle embed auth_flow;
+
+// --- Relations ---
+
+web_client -> api_gateway: "HTTP Request";
+api_gateway -> auth_service: "Authenticate";
+api_gateway -> @DashedArrow user_db: "Query";
+auth_service -> @SecureArrow user_db: "Verify";

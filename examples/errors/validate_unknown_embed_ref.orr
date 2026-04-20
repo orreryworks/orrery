@@ -1,0 +1,12 @@
+// Error E204: Unknown embed reference
+// Phase: Validation
+//
+// The `embed` name `payment_flow` does not match any namespaced import.
+// Expected: E204 — unknown embed reference
+
+diagram component;
+
+api_gateway as "API Gateway": Rectangle;
+
+// ❌ `payment_flow` was never imported
+payment_detail as "Payment Detail": Rectangle embed payment_flow;
