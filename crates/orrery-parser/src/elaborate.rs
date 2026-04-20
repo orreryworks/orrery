@@ -4,7 +4,7 @@
 //! types ready for layout and rendering. It performs type resolution, validates
 //! semantic correctness, and builds the final representation.
 
-use std::{collections::HashMap, rc::Rc, str::FromStr};
+use std::{collections::HashMap, mem, rc::Rc, str::FromStr};
 
 use log::{debug, info, trace};
 
@@ -63,23 +63,17 @@ pub struct Builder {
 impl Builder {
     /// Creates a new builder with the given configuration.
     ///
-    /// Initializes the builder with built-in type definitions and prepares
-    /// it for elaborating diagram AST nodes.
+    /// Built-in in type definitions are installed for each diagram, ensuring that
+    /// each diagram has its ownpe scope.
     ///
     /// # Arguments
     ///
     /// * `cfg` - Configuration controlling elaboration behavior, including
     ///   default layout engines for different diagram types.
     pub fn new(cfg: ElaborateConfig) -> Self {
-        let type_definitions = builtin_types::defaults();
-        let type_definition_map = type_definitions
-            .into_iter()
-            .map(|def| (def.id(), def))
-            .collect();
-
         Self {
             cfg,
-            type_definitions: type_definition_map,
+            type_definitions: HashMap::new(),
         }
     }
 
@@ -87,11 +81,11 @@ impl Builder {
     // Main Entry Methods
     // ============================================================================
 
-    /// Builds a semantic diagram from a parser AST element.
+    /// Consumes the builder and elaborates a [`FileAst`](parser_types::FileAst)
+    /// into a semantic [`Diagram`](semantic::Diagram).
     ///
-    /// Transforms the validated AST into the semantic model by processing
-    /// type definitions, resolving references, and constructing the final
-    /// diagram structure.
+    /// This is the public entry point for elaboration. It delegates to
+    /// [`build_diagram_from_file_ast`](Self::build_diagram_from_file_ast).
     ///
     /// # Arguments
     ///
@@ -108,7 +102,28 @@ impl Builder {
     /// attributes, nested diagrams, or structural validation failures.
     pub fn build(mut self, ast: &parser_types::FileAst) -> Result<semantic::Diagram> {
         debug!("Building elaborated diagram");
-        let (kind_spanned, attributes) = match &ast.header {
+        self.build_diagram_from_file_ast(ast)
+    }
+
+    /// Builds a semantic diagram from a parsed file AST.
+    ///
+    /// Converts a [`FileAst`](parser_types::FileAst) into a [`Diagram`](semantic::Diagram)
+    /// by registering type definitions, extracting the diagram kind, processing
+    /// elements into a scope, and resolving diagram-level attributes.
+    ///
+    /// Each invocation creates an isolated type definition scope: the current
+    /// `type_definitions` are saved, replaced with fresh built-ins, and
+    /// restored after the diagram is built. This ensures that custom types
+    /// defined in an embedded diagram do not leak into its parent.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `E3xx` error if elaboration fails.
+    fn build_diagram_from_file_ast(
+        &mut self,
+        file_ast: &parser_types::FileAst,
+    ) -> Result<semantic::Diagram> {
+        let (kind_spanned, attributes) = match &file_ast.header {
             parser_types::FileHeader::Diagram { kind, attributes } => (kind, attributes),
             parser_types::FileHeader::Library { span } => {
                 return Err(Diagnostic::error("expected diagram, found library")
@@ -118,20 +133,22 @@ impl Builder {
         };
 
         info!("Processing diagram of kind: {kind_spanned}");
-        trace!("Type definitions: {:?}", ast.type_definitions);
-        trace!("Elements count: {}", ast.elements.len());
+        trace!("Type definitions: {:?}", file_ast.type_definitions);
+        trace!("Elements count: {}", file_ast.elements.len());
 
-        // Update type definitions
+        let saved_type_defs = mem::replace(
+            &mut self.type_definitions,
+            Self::builtin_type_definitions_map(),
+        );
+
         debug!("Updating type definitions");
-        self.update_type_direct_definitions(&ast.type_definitions)?;
+        self.update_type_direct_definitions(&file_ast.type_definitions)?;
 
         let kind = **kind_spanned;
 
-        // Build block from elements
         debug!("Building block from elements");
-        let block = self.build_block_from_elements(&ast.elements, kind)?;
+        let block = self.build_block_from_elements(&file_ast.elements, kind)?;
 
-        // Convert block to scope
         let scope = match block {
             semantic::Block::None => {
                 debug!("Empty block, using default scope");
@@ -156,6 +173,10 @@ impl Builder {
             self.extract_diagram_attributes(kind, attributes)?;
 
         info!(kind:?; "Diagram elaboration completed successfully");
+
+        // Restore parent type definitions.
+        self.type_definitions = saved_type_defs;
+
         Ok(semantic::Diagram::new(
             kind,
             scope,
@@ -163,6 +184,39 @@ impl Builder {
             background_color,
             lifeline_definition,
         ))
+    }
+
+    /// Builds a semantic diagram from a [`DiagramSource`](parser_types::DiagramSource).
+    ///
+    /// Dispatches on the source variant:
+    /// - [`Inline`](parser_types::DiagramSource::Inline) — the referenced file's AST
+    ///   has been inlined, so elaboration proceeds via
+    ///   [`build_diagram_from_file_ast`](Self::build_diagram_from_file_ast).
+    /// - [`Ref`](parser_types::DiagramSource::Ref) — a defensive guard. The desugar
+    ///   phase must resolve all `Ref` variants before elaboration runs; reaching
+    ///   this branch indicates a compiler bug and produces `E309`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `E309` if a `DiagramSource::Ref` is encountered, or propagates any
+    /// error from [`build_diagram_from_file_ast`](Self::build_diagram_from_file_ast).
+    fn build_diagram_from_diagram_source(
+        &mut self,
+        source: &parser_types::DiagramSource,
+    ) -> Result<semantic::Diagram> {
+        match source {
+            parser_types::DiagramSource::Inline(rc) => {
+                let file_ast = rc.borrow();
+                self.build_diagram_from_file_ast(&file_ast)
+            }
+            // Defensive: validate (E204) catches unresolved embed references
+            // before elaboration runs, so this branch should never be reached.
+            parser_types::DiagramSource::Ref(id) => Err(Diagnostic::error(format!(
+                "unresolved embed reference `{id}`",
+            ))
+            .with_code(ErrorCode::E309)
+            .with_label(id.span(), "expected inlined embedded diagram")),
+        }
     }
 
     // ============================================================================
@@ -259,6 +313,14 @@ impl Builder {
     // Type Definition Methods
     // ============================================================================
 
+    /// Returns the built-in type definitions as an id-keyed map.
+    fn builtin_type_definitions_map() -> HashMap<Id, elaborate_utils::TypeDefinition> {
+        builtin_types::defaults()
+            .into_iter()
+            .map(|def| (def.id(), def))
+            .collect()
+    }
+
     // TODO: Change error type so it would not accept a span.
     fn insert_type_definition(
         &mut self,
@@ -309,88 +371,6 @@ impl Builder {
             self.insert_type_definition(new_type_def, type_def.span())?;
         }
         Ok(())
-    }
-
-    /// Builds a semantic diagram from a parsed file AST.
-    ///
-    /// Converts a [`FileAst`](parser_types::FileAst) into a [`Diagram`](semantic::Diagram)
-    /// by extracting the diagram kind, processing elements into a scope, and resolving
-    /// diagram-level attributes. This is the internal counterpart of [`Builder::build`],
-    /// used when elaborating embedded diagrams that have already been fully parsed and
-    /// desugared.
-    ///
-    /// # Errors
-    ///
-    /// Returns an `E3xx` error if elaboration fails.
-    fn build_diagram_from_file_ast(
-        &mut self,
-        file_ast: &parser_types::FileAst,
-    ) -> Result<semantic::Diagram> {
-        let (kind_spanned, attributes) = match &file_ast.header {
-            parser_types::FileHeader::Diagram { kind, attributes } => (kind, attributes),
-            parser_types::FileHeader::Library { span } => {
-                return Err(Diagnostic::error("expected diagram, found library")
-                    .with_code(ErrorCode::E306)
-                    .with_label(*span, "expected diagram"));
-            }
-        };
-
-        let kind = **kind_spanned;
-        let block = self.build_block_from_elements(&file_ast.elements, kind)?;
-        let scope = match block {
-            semantic::Block::None => semantic::Scope::default(),
-            semantic::Block::Scope(scope) => scope,
-            semantic::Block::Diagram(_) => {
-                return Err(Diagnostic::error("nested diagram not allowed")
-                    .with_code(ErrorCode::E305)
-                    .with_label(kind_spanned.span(), "nested diagram")
-                    .with_help("diagrams cannot be nested inside other diagrams"));
-            }
-        };
-
-        let (layout_engine, background_color, lifeline_definition) =
-            self.extract_diagram_attributes(kind, attributes)?;
-
-        Ok(semantic::Diagram::new(
-            kind,
-            scope,
-            layout_engine,
-            background_color,
-            lifeline_definition,
-        ))
-    }
-
-    /// Builds a semantic diagram from a [`DiagramSource`](parser_types::DiagramSource).
-    ///
-    /// Dispatches on the source variant:
-    /// - [`Inline`](parser_types::DiagramSource::Inline) — the referenced file's AST
-    ///   has been inlined, so elaboration proceeds via
-    ///   [`build_diagram_from_file_ast`](Self::build_diagram_from_file_ast).
-    /// - [`Ref`](parser_types::DiagramSource::Ref) — a defensive guard. The desugar
-    ///   phase must resolve all `Ref` variants before elaboration runs; reaching
-    ///   this branch indicates a compiler bug and produces `E309`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `E309` if a `DiagramSource::Ref` is encountered, or propagates any
-    /// error from [`build_diagram_from_file_ast`](Self::build_diagram_from_file_ast).
-    fn build_diagram_from_diagram_source(
-        &mut self,
-        source: &parser_types::DiagramSource,
-    ) -> Result<semantic::Diagram> {
-        match source {
-            parser_types::DiagramSource::Inline(rc) => {
-                let file_ast = rc.borrow();
-                self.build_diagram_from_file_ast(&file_ast)
-            }
-            // Defensive: validate (E204) catches unresolved embed references
-            // before elaboration runs, so this branch should never be reached.
-            parser_types::DiagramSource::Ref(id) => Err(Diagnostic::error(format!(
-                "unresolved embed reference `{id}`",
-            ))
-            .with_code(ErrorCode::E309)
-            .with_label(id.span(), "expected inlined embedded diagram")),
-        }
     }
 
     /// Converts a slice of parser elements into a semantic [`Block`](semantic::Block).
@@ -1367,7 +1347,16 @@ impl Builder {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
     use super::*;
+
+    /// Creates a [`Builder`] pre-populated with the built-in type definitions.
+    fn builder_with_builtins() -> Builder {
+        let mut builder = Builder::new(ElaborateConfig::default());
+        builder.type_definitions = Builder::builtin_type_definitions_map();
+        builder
+    }
 
     #[test]
     #[should_panic(expected = "ActivateBlock should have been desugared")]
@@ -1932,8 +1921,7 @@ mod tests {
 
     #[test]
     fn test_note_with_default_alignment_sequence() {
-        let cfg = ElaborateConfig::default();
-        let mut builder = Builder::new(cfg);
+        let mut builder = builder_with_builtins();
 
         let note = parser_types::Note {
             type_spec: parser_types::TypeSpec {
@@ -1959,8 +1947,7 @@ mod tests {
 
     #[test]
     fn test_note_with_default_alignment_component() {
-        let cfg = ElaborateConfig::default();
-        let mut builder = Builder::new(cfg);
+        let mut builder = builder_with_builtins();
 
         let note = parser_types::Note {
             type_spec: parser_types::TypeSpec {
@@ -1986,8 +1973,7 @@ mod tests {
 
     #[test]
     fn test_note_with_styling_attributes() {
-        let cfg = ElaborateConfig::default();
-        let mut builder = Builder::new(cfg);
+        let mut builder = builder_with_builtins();
 
         let attributes = vec![
             parser_types::Attribute {
@@ -2238,8 +2224,7 @@ mod tests {
     fn test_fragment_with_both_text_attributes() {
         use crate::parser_types::{Attribute, AttributeValue, TypeSpec};
 
-        let cfg = ElaborateConfig::default();
-        let mut builder = Builder::new(cfg);
+        let mut builder = builder_with_builtins();
 
         // Create a fragment type with both operation_label_text and section_title_text attributes
         let type_spec = TypeSpec {
@@ -2282,6 +2267,141 @@ mod tests {
                 // Success - fragment type was created with both operation_label_text and section_title_text attributes
             }
             _ => panic!("Expected Fragment draw definition"),
+        }
+    }
+
+    #[test]
+    fn test_embedded_diagram_type_definitions_are_isolated() {
+        // Verifies that each embedded diagram has its own isolated type definition
+        // scope. The child diagram defines a custom type (`Database`) that is unknown
+        // to the parent, and the parent defines a custom type (`Service`) that is
+        // unknown to the child. Both diagrams should elaborate successfully without
+        // their type definitions interfering with each other.
+
+        // --- Build the embedded diagram AST ---
+        // diagram sequence;
+        // type Database = Oval[fill_color="#e0f0e0"];
+        // database: Database;
+        let child_ast = parser_types::FileAst {
+            header: parser_types::FileHeader::Diagram {
+                kind: Spanned::new(semantic::DiagramKind::Sequence, Span::new(0..8)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: vec![parser_types::TypeDefinition {
+                name: Spanned::new(Id::new("Database"), Span::new(0..8)),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Oval"), Span::new(0..4))),
+                    attributes: vec![parser_types::Attribute {
+                        name: Spanned::new("fill_color", Span::new(0..10)),
+                        value: parser_types::AttributeValue::String(Spanned::new(
+                            "#e0f0e0".to_string(),
+                            Span::new(0..7),
+                        )),
+                    }],
+                },
+            }],
+            elements: vec![parser_types::Element::Component {
+                name: Spanned::new(Id::new("database"), Span::new(0..8)),
+                display_name: None,
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Database"), Span::new(0..8))),
+                    attributes: vec![],
+                },
+                content: parser_types::ComponentContent::None,
+            }],
+            imports: vec![],
+        };
+
+        // --- Build the parent diagram AST ---
+        // diagram component;
+        // type Service = Rectangle[fill_color="#e6f3ff"];
+        // gateway as "API Gateway": Service;
+        // auth_overview as "Auth Overview": Service embed auth_flow;
+        // gateway -> auth_overview: "Auth detail";
+        let parent_ast = parser_types::FileAst {
+            header: parser_types::FileHeader::Diagram {
+                kind: Spanned::new(semantic::DiagramKind::Component, Span::new(0..9)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: vec![parser_types::TypeDefinition {
+                name: Spanned::new(Id::new("Service"), Span::new(0..7)),
+                type_spec: parser_types::TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(0..9))),
+                    attributes: vec![parser_types::Attribute {
+                        name: Spanned::new("fill_color", Span::new(0..10)),
+                        value: parser_types::AttributeValue::String(Spanned::new(
+                            "#e6f3ff".to_string(),
+                            Span::new(0..7),
+                        )),
+                    }],
+                },
+            }],
+            elements: vec![
+                parser_types::Element::Component {
+                    name: Spanned::new(Id::new("gateway"), Span::new(0..7)),
+                    display_name: Some(Spanned::new("API Gateway".to_string(), Span::new(0..11))),
+                    type_spec: parser_types::TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Service"), Span::new(0..7))),
+                        attributes: vec![],
+                    },
+                    content: parser_types::ComponentContent::None,
+                },
+                parser_types::Element::Component {
+                    name: Spanned::new(Id::new("auth_overview"), Span::new(0..13)),
+                    display_name: Some(Spanned::new("Auth Overview".to_string(), Span::new(0..13))),
+                    type_spec: parser_types::TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Service"), Span::new(0..7))),
+                        attributes: vec![],
+                    },
+                    content: parser_types::ComponentContent::Diagram(
+                        parser_types::DiagramSource::Inline(Rc::new(RefCell::new(child_ast))),
+                    ),
+                },
+                parser_types::Element::Relation {
+                    source: Spanned::new(Id::new("gateway"), Span::new(0..7)),
+                    target: Spanned::new(Id::new("auth_overview"), Span::new(0..13)),
+                    relation_type: Spanned::new("->", Span::new(0..2)),
+                    type_spec: parser_types::TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
+                        attributes: vec![],
+                    },
+                    label: Some(Spanned::new("Auth detail".to_string(), Span::new(0..11))),
+                },
+            ],
+            imports: vec![],
+        };
+
+        let config = ElaborateConfig::default();
+        let builder = Builder::new(config);
+        let result = builder.build(&parent_ast);
+
+        assert!(
+            result.is_ok(),
+            "Embedded diagram with its own type definitions should build successfully, got: {:?}",
+            result.err()
+        );
+
+        let diagram = result.unwrap();
+        assert_eq!(diagram.kind(), semantic::DiagramKind::Component);
+
+        // Verify the scope has all three elements: gateway, auth_overview, and a relation
+        let elements = diagram.scope().elements();
+        assert_eq!(
+            elements.len(),
+            3,
+            "Expected gateway, auth_overview, and a relation"
+        );
+
+        // Verify the embedded node contains a diagram block
+        if let semantic::Element::Node(node) = &elements[1] {
+            assert!(
+                matches!(node.block(), semantic::Block::Diagram(_)),
+                "auth_overview should contain an embedded diagram"
+            );
+        } else {
+            panic!("Expected second element to be a Node (auth_overview)");
         }
     }
 }
