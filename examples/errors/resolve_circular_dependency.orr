@@ -1,0 +1,10 @@
+// Error E401: Circular dependency
+// Phase: Resolver
+//
+// The file imports itself, creating a circular dependency.
+// Expected: E401 circular dependency detected
+
+library;
+
+// ❌ Self-import creates a cycle
+import "resolve_circular_dependency";

@@ -1,0 +1,23 @@
+// Shared Styles Library
+//
+// Demonstrates:
+//   - `library;` file header (non-renderable, type-only file)
+//   - Reusable Stroke, component, and arrow type definitions
+
+library;
+
+// --- Stroke Types ---
+
+type DashedLine = Stroke[style="dashed", color="gray"];
+type ThickBorder = Stroke[color="#336699", width=2.0];
+
+// --- Component Types ---
+
+type Service = Rectangle[fill_color="#e6f3ff", stroke=ThickBorder, rounded=5];
+type Database = Oval[fill_color="#e0f0e0", stroke=[color="#339966"]];
+type Client = Oval[fill_color="#fff0e0", stroke=DashedLine];
+
+// --- Arrow Types ---
+
+type DashedArrow = Arrow[stroke=DashedLine];
+type StrongArrow = Arrow[stroke=ThickBorder];

@@ -34,7 +34,10 @@ The generated SVG is saved as `out.svg` in the current directory.
 |------|----------|
 | [`type_system.orr`](type_system.orr) | `type` declarations, composition and extension, attribute group types (`Stroke`, `Text`), declarations (`:`) vs invocations (`@`), named vs anonymous TypeSpec, sugar syntax |
 | [`styling.orr`](styling.orr) | Stroke attributes (color, width, style, dash patterns, cap, join), text attributes (font_size, font_family, color, background_color, padding), color formats (named, hex, rgb, rgba) |
-| [`embedded_diagrams.orr`](embedded_diagrams.orr) | Embedding sequence and component diagrams inside components, layout engines on embedded diagrams, styled embedded content |
+| [`embedded_diagrams.orr`](embedded_diagrams.orr) | Embedding sequence and component diagrams inside components, layout engines on embedded diagrams, styled embedded content, import-based embedding |
+| [`imports.orr`](imports.orr) | Namespaced import, glob import (`::*`), `as` alias, transitive chaining (`sec::styles::Type`), diagram embedding via import |
+
+> The [`imports/`](imports/) directory contains supporting library and diagram files used by `imports.orr` and `embedded_diagrams.orr`.
 
 ### Error Examples
 

@@ -1,0 +1,21 @@
+// Secure Types Library
+//
+// Demonstrates:
+//   - Library importing another library (namespaced)
+//   - Namespaced type access (`styles::Service`)
+//   - Type extension of imported types
+
+library;
+
+// --- Imports ---
+
+import "styles";
+
+// --- Secure Component Types ---
+
+type SecureService = styles::Service[stroke=[color="red", width=2.0]];
+type CriticalService = SecureService[fill_color="#8b0000", text=[color="white"]];
+
+// --- Secure Arrow Types ---
+
+type SecureArrow = styles::DashedArrow[stroke=[color="red"]];

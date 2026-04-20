@@ -42,6 +42,7 @@ cargo run examples/errors/<file>.orr
 | [`validate_unpaired_activate.orr`](validate_unpaired_activate.orr) | E201 | `activate` with no matching `deactivate` before end of scope |
 | [`validate_deactivate_without_activate.orr`](validate_deactivate_without_activate.orr) | E202 | `deactivate` without a matching prior `activate` |
 | [`validate_invalid_align.orr`](validate_invalid_align.orr) | E203 | Invalid `align` value for the diagram type (e.g., `"top"` in sequence diagram) |
+| [`validate_unknown_embed_ref.orr`](validate_unknown_embed_ref.orr) | E204 | `embed` name does not match any namespaced import in the current file |
 
 ## Elaboration Errors
 
@@ -56,6 +57,14 @@ cargo run examples/errors/<file>.orr
 | [`elab_type_mismatch.orr`](elab_type_mismatch.orr) | E307 | Type used in wrong context (e.g., Arrow type as a component shape) |
 | [`elab_content_in_content_free_shape.orr`](elab_content_in_content_free_shape.orr) | E308 | Nested content inside a content-free shape (Actor, Entity, Control, Interface, Boundary) |
 
+## Resolver Errors
+
+| File | Code | Error |
+|------|------|-------|
+| [`resolve_file_not_found.orr`](resolve_file_not_found.orr) | E400 | Import references a file that doesn't exist |
+| [`resolve_circular_dependency.orr`](resolve_circular_dependency.orr) | E401 | File imports itself, creating a circular dependency |
+| [`resolve_empty_import_path.orr`](resolve_empty_import_path.orr) | E402 | Import path is an empty string |
+
 ## Unreachable Error Codes
 
 The following error codes are defined in the system but cannot be triggered via `.orr` input.
@@ -67,3 +76,4 @@ They are defensive guards that protect against invalid internal states.
 | E305 | Nested diagram not allowed | Parser never places a `Diagram` element where the elaborator would detect nesting |
 | E306 | Invalid diagram structure | Parser always produces a valid `Diagram` at the top level |
 | E309 | Diagram cannot share scope | Parser does not allow standalone `embed diagram` as a top-level element |
+| E403 | Invalid namespace derivation | `resolve_path` appends `.orr` before `derive_namespace` runs, so the resolved path always has a valid file stem |

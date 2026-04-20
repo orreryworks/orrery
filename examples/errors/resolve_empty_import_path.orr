@@ -1,0 +1,10 @@
+// Error E402: empty import path
+// Phase: Resolver
+//
+// The import path is an empty string.
+// Expected: E402 — import path is empty
+
+diagram component;
+
+// ❌ Import path must not be empty
+import "";

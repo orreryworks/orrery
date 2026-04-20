@@ -1,0 +1,24 @@
+// Auth Flow (Reusable Diagram)
+//
+// Demonstrates:
+//   - Standalone diagram file for embedding via import
+//   - Glob import from a library (`::*`)
+
+diagram sequence;
+
+// --- Imports ---
+
+import "shared/styles"::*;
+
+// --- Participants ---
+
+client: Service;
+server: Service;
+database: Database;
+
+// --- Auth Sequence ---
+
+client -> server: "Login Request";
+server -> database: "Verify Credentials";
+database -> @DashedArrow server: "Auth Token";
+server -> client: "Login Response";
