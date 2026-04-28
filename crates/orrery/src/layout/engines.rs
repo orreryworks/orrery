@@ -10,6 +10,8 @@
 
 // Layout engine modules with different implementations
 mod basic;
+#[cfg(feature = "graphviz")]
+mod graphviz;
 mod sugiyama;
 
 use std::collections::HashMap;
@@ -206,6 +208,11 @@ impl EngineBuilder {
                         e.set_horizontal_spacing(self.horizontal_spacing);
                         e.set_vertical_spacing(self.vertical_spacing);
                         e.set_container_padding(self.padding);
+                        Box::new(e)
+                    }
+                    #[cfg(feature = "graphviz")]
+                    LayoutEngine::Graphviz => {
+                        let e = graphviz::Component::new();
                         Box::new(e)
                     }
                 };

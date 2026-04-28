@@ -11,6 +11,15 @@ Add to your `Cargo.toml`:
 orrery = "0.1.0"
 ```
 
+### Optional Features
+
+- `graphviz` — Enables the Graphviz-backed layout engine for component diagrams. Disabled by default.
+
+```toml
+[dependencies]
+orrery = { features = ["graphviz"] }
+```
+
 ## Quick Start
 
 ```rust

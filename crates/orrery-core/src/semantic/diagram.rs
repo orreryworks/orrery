@@ -63,16 +63,23 @@ impl Scope {
 ///
 /// # Variants
 ///
-/// - `Basic` - Simple layout algorithm (default)
-/// - `Sugiyama` - Hierarchical graph layout using the Sugiyama method
+/// - [`Basic`](Self::Basic) - Simple layout algorithm (default).
+/// - [`Sugiyama`](Self::Sugiyama) - Hierarchical layered layout using the Sugiyama method.
+/// - `Graphviz` - Graphviz-backed layout engine. Only present when the
+///   `graphviz` Cargo feature is enabled.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LayoutEngine {
-    /// Basic layout engine (default)
+    /// Basic layout engine (default).
     #[default]
     Basic,
-    /// Sugiyama hierarchical layout engine
+    /// Sugiyama hierarchical layout engine.
     Sugiyama,
+    /// Graphviz-backed layout engine for component diagrams.
+    ///
+    /// Gated by the `graphviz` Cargo feature.
+    #[cfg(feature = "graphviz")]
+    Graphviz,
 }
 
 impl FromStr for LayoutEngine {
@@ -82,6 +89,8 @@ impl FromStr for LayoutEngine {
         match s {
             "basic" => Ok(Self::Basic),
             "sugiyama" => Ok(Self::Sugiyama),
+            #[cfg(feature = "graphviz")]
+            "graphviz" => Ok(Self::Graphviz),
             _ => Err("Unsupported layout engine"),
         }
     }
@@ -92,6 +101,8 @@ impl From<LayoutEngine> for &'static str {
         match val {
             LayoutEngine::Basic => "basic",
             LayoutEngine::Sugiyama => "sugiyama",
+            #[cfg(feature = "graphviz")]
+            LayoutEngine::Graphviz => "graphviz",
         }
     }
 }
@@ -208,6 +219,11 @@ mod tests {
             "sugiyama".parse::<LayoutEngine>().unwrap(),
             LayoutEngine::Sugiyama
         );
+        #[cfg(feature = "graphviz")]
+        assert_eq!(
+            "graphviz".parse::<LayoutEngine>().unwrap(),
+            LayoutEngine::Graphviz
+        );
 
         let result: Result<LayoutEngine, _> = "invalid".parse();
         assert!(result.is_err());
@@ -223,5 +239,7 @@ mod tests {
     fn test_layout_engine_display() {
         assert_eq!(LayoutEngine::Basic.to_string(), "basic");
         assert_eq!(LayoutEngine::Sugiyama.to_string(), "sugiyama");
+        #[cfg(feature = "graphviz")]
+        assert_eq!(LayoutEngine::Graphviz.to_string(), "graphviz");
     }
 }
