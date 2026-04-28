@@ -17,6 +17,9 @@ categories = ["visualization", "parser-implementations"]
 name = "orrery"
 path = "src/lib.rs"
 
+[features]
+graphviz = ["orrery-core/graphviz"]
+
 [dependencies]
 orrery-core = { workspace = true }
 orrery-parser = { workspace = true }

@@ -105,6 +105,15 @@ cargo test --workspace
 cargo build --release
 ```
 
+### Optional Features
+
+- `graphviz` — Enables the Graphviz-backed layout engine for component diagrams. Disabled by default.
+
+```bash
+# Build the workspace with the Graphviz layout engine enabled
+cargo build --workspace --features graphviz
+```
+
 ### Running Examples
 
 ```bash

@@ -17,6 +17,9 @@ categories = ["parsing"]
 name = "orrery_parser"
 path = "src/lib.rs"
 
+[features]
+graphviz = ["orrery-core/graphviz"]
+
 [dependencies]
 orrery-core.workspace = true
 bumpalo = "3.20.2"

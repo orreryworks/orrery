@@ -16,6 +16,18 @@ Or from crates.io:
 cargo install orrery-cli
 ```
 
+### Optional Features
+
+- `graphviz` — Enables the Graphviz-backed layout engine for component diagrams. Disabled by default.
+
+```bash
+# Install with the Graphviz layout engine enabled
+cargo install --path . --features graphviz
+
+# Or from crates.io
+cargo install orrery-cli --features graphviz
+```
+
 ## Usage
 
 ```bash

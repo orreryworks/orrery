@@ -21,6 +21,9 @@ path = "src/lib.rs"
 name = "orrery"
 path = "src/main.rs"
 
+[features]
+graphviz = ["orrery/graphviz", "orrery-parser/graphviz"]
+
 [dependencies]
 orrery.workspace = true
 orrery-parser.workspace = true

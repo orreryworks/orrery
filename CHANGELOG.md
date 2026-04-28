@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Graphviz layout engine for component diagrams** — Component diagrams can now select Graphviz as their layout engine with `layout_engine="graphviz"`, delegating spatial positioning to Graphviz for more balanced placements and fewer relation crossings on non-trivial graphs. Gated behind the optional `graphviz` Cargo feature, disabled by default. ([#88](https://github.com/orreryworks/orrery/issues/88))
+
 ## [0.2.0] - 2026-04-20
 
 ### Added
