@@ -18,7 +18,7 @@ cargo install orrery-cli
 
 ### Optional Features
 
-- `graphviz` — Enables the Graphviz-backed layout engine for component diagrams. Disabled by default.
+- `graphviz` — Enables the Graphviz-backed layout engine for component diagrams. Disabled by default. Requires the `dot` command-line tool to be installed (see <https://graphviz.org/download/>).
 
 ```bash
 # Install with the Graphviz layout engine enabled
