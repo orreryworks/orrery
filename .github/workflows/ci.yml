@@ -17,22 +17,22 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - uses: actions/checkout@v6
       - run: cargo fmt --all -- --check
 
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-hack
+      - uses: actions/checkout@v6
       - run: cargo hack clippy --workspace --all-targets --feature-powerset -- -D warnings
 
   docs:
@@ -41,10 +41,10 @@ jobs:
     env:
       RUSTDOCFLAGS: "-D warnings"
     steps:
-      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-hack
+      - uses: actions/checkout@v6
       - run: cargo hack doc --workspace --no-deps --feature-powerset
 
   test:
@@ -55,7 +55,7 @@ jobs:
       matrix:
         toolchain: [stable, "1.88"]
     steps:
-      - uses: actions/checkout@v6
+      - run: sudo apt-get update && sudo apt-get install -y graphviz
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
@@ -63,4 +63,5 @@ jobs:
         with:
           key: ${{ matrix.toolchain }}
       - uses: taiki-e/install-action@cargo-hack
+      - uses: actions/checkout@v6
       - run: cargo hack test --workspace --feature-powerset
