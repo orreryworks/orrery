@@ -13,7 +13,7 @@ orrery = "0.1.0"
 
 ### Optional Features
 
-- `graphviz` — Enables the Graphviz-backed layout engine for component diagrams. Disabled by default.
+- `graphviz` — Enables the Graphviz-backed layout engine for component diagrams. Disabled by default. Requires the `dot` command-line tool to be installed (see <https://graphviz.org/download/>).
 
 ```toml
 [dependencies]

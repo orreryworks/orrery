@@ -212,7 +212,8 @@ impl EngineBuilder {
                     }
                     #[cfg(feature = "graphviz")]
                     LayoutEngine::Graphviz => {
-                        let e = graphviz::Component::new();
+                        let mut e = graphviz::Component::new();
+                        e.set_container_padding(self.padding);
                         Box::new(e)
                     }
                 };
