@@ -18,7 +18,7 @@
 //! ContentStack<Layout>
 //! ```
 
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, io::ErrorKind, rc::Rc};
 
 use dot_structures::{
     Attribute, Edge, EdgeTy, Graph as DotGraph, Id as DotId, Node as DotNode, NodeId, Stmt, Vertex,
@@ -316,7 +316,7 @@ impl Engine {
             let width_str = format!("{width_inches:.4}");
             let height_str = format!("{height_inches:.4}");
             let gv_node = DotNode::new(
-                NodeId(DotId::Plain(node.id().to_string()), None),
+                NodeId(into_dot_id(node.id()), None),
                 vec![
                     dot_attr("shape", "box"),
                     dot_attr("fixedsize", "true"),
@@ -341,8 +341,8 @@ impl Engine {
             };
             let edge = Edge {
                 ty: EdgeTy::Pair(
-                    Vertex::N(NodeId(DotId::Plain(relation.source().to_string()), None)),
-                    Vertex::N(NodeId(DotId::Plain(relation.target().to_string()), None)),
+                    Vertex::N(NodeId(into_dot_id(relation.source()), None)),
+                    Vertex::N(NodeId(into_dot_id(relation.target()), None)),
                 ),
                 attributes,
             };
@@ -370,33 +370,42 @@ fn dot_attr(key: &str, value: &str) -> Attribute {
 /// # Errors
 ///
 /// Returns [`RenderError::Layout`] if:
-/// - The `dot` command cannot be spawned.
-/// - The process exits with a non-zero status.
-/// - The output cannot be re-parsed into a DOT graph.
+/// - The `dot` binary is not found on `PATH`.
+/// - The `dot` process exits with a non-zero status (includes the DOT input in the message).
+/// - The output is not valid UTF-8.
+/// - The output cannot be re-parsed into a [`DotGraph`].
 fn run_graphviz(gv_graph: DotGraph) -> Result<DotGraph, RenderError> {
+    let mut ctx = PrinterContext::default();
+    let dot_input = graphviz_rust::print(gv_graph, &mut ctx);
+    debug!(dot_input:%; "Graphviz DOT input");
+
     // Execute Graphviz with DOT output and -y to invert the Y-axis
-    let output = graphviz_rust::exec(
-        gv_graph,
-        &mut PrinterContext::default(),
+    let output = graphviz_rust::exec_dot(
+        dot_input.clone(),
         vec![
             CommandArg::Format(Format::Dot),
             CommandArg::Custom("-y".into()),
         ],
     )
-    .map_err(|err| {
-        RenderError::Layout(format!(
-            "cannot execute `dot` command, is Graphviz installed? {err}"
-        ))
+    .map_err(|err| match err.kind() {
+        ErrorKind::NotFound => RenderError::Layout(
+            "`dot` command not found, is Graphviz installed? \
+             see https://graphviz.org/download/"
+                .into(),
+        ),
+        _ => RenderError::Layout(format!(
+            "`dot` command failed: {err}\n\nDOT input:\n{dot_input}"
+        )),
     })?;
 
     let dot_output = String::from_utf8(output)
-        .map_err(|err| RenderError::Layout(format!("graphviz output is not valid UTF-8: {err}")))?;
+        .map_err(|err| RenderError::Layout(format!("invalid UTF-8 in `dot` output: {err}")))?;
 
     debug!(dot_output:%; "Graphviz DOT output");
 
     // Re-parse the DOT output into a structured graph
     graphviz_rust::parse(&dot_output)
-        .map_err(|err| RenderError::Layout(format!("cannot parse graphviz DOT output: {err}")))
+        .map_err(|err| RenderError::Layout(format!("cannot parse `dot` output: {err}")))
 }
 
 /// Extracts node positions from a Graphviz-annotated DOT graph.
@@ -444,6 +453,19 @@ fn extract_positions_from_graph(graph: &DotGraph) -> Result<HashMap<Id, Point>, 
     }
 
     Ok(positions)
+}
+
+/// Creates a quoted DOT node identifier.
+///
+/// Wraps the identifier in double quotes so that namespacing characters (e.g. `::`) are
+/// treated as literal parts of the name rather than DOT syntax. This works around
+/// `graphviz_rust`'s printer emitting all [`DotId`] variants verbatim without quoting.
+///
+/// # Arguments
+///
+/// * `id` - The node identifier to quote.
+fn into_dot_id(id: impl std::fmt::Display) -> DotId {
+    DotId::Plain(format!("\"{}\"", id))
 }
 
 /// Extracts the raw string from a [`DotId`].
