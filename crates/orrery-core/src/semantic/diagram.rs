@@ -63,22 +63,25 @@ impl Scope {
 ///
 /// # Variants
 ///
-/// - [`Basic`](Self::Basic) - Simple layout algorithm (default).
+/// - [`Basic`](Self::Basic) - Simple layout algorithm (default without `graphviz` feature).
 /// - [`Sugiyama`](Self::Sugiyama) - Hierarchical layered layout using the Sugiyama method.
 /// - `Graphviz` - Graphviz-backed layout engine. Only present when the
-///   `graphviz` Cargo feature is enabled.
+///   `graphviz` Cargo feature is enabled. When enabled, this becomes the default layout engine.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LayoutEngine {
-    /// Basic layout engine (default).
-    #[default]
-    Basic,
-    /// Sugiyama hierarchical layout engine.
-    Sugiyama,
-    /// Graphviz-backed layout engine for component diagrams.
+    /// Simple built-in layout algorithm.
     ///
-    /// Gated by the `graphviz` Cargo feature.
+    /// Default when the `graphviz` feature is disabled.
+    #[cfg_attr(not(feature = "graphviz"), default)]
+    Basic,
+    /// Hierarchical layered layout using the Sugiyama method.
+    Sugiyama,
+    /// Graphviz-backed layout engine.
+    ///
+    /// Gated by the `graphviz` Cargo feature. When enabled, this becomes the default layout engine.
     #[cfg(feature = "graphviz")]
+    #[cfg_attr(feature = "graphviz", default)]
     Graphviz,
 }
 
@@ -232,6 +235,9 @@ mod tests {
 
     #[test]
     fn test_layout_engine_default() {
+        #[cfg(feature = "graphviz")]
+        assert_eq!(LayoutEngine::default(), LayoutEngine::Graphviz);
+        #[cfg(not(feature = "graphviz"))]
         assert_eq!(LayoutEngine::default(), LayoutEngine::Basic);
     }
 
