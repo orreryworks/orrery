@@ -107,7 +107,7 @@ cargo build --release
 
 ### Optional Features
 
-- `graphviz` — Enables the Graphviz-backed layout engine for component diagrams. Disabled by default. Requires the `dot` command-line tool to be installed (see <https://graphviz.org/download/>).
+- `graphviz` — Enables the Graphviz-backed layout engine for component diagrams. Disabled by default for library crates, enabled by default in the CLI. Requires the `dot` command-line tool to be installed (see <https://graphviz.org/download/>).
 
 ```bash
 # Build the workspace with the Graphviz layout engine enabled
