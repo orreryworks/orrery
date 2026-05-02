@@ -1004,6 +1004,7 @@ Available layout engines:
 
 - `basic`: The default layout engine with simple positioning (available for both component and sequence diagrams)
 - `sugiyama`: A hierarchical layout engine for layered diagrams (available for component diagrams)
+- `graphviz`: Graphviz-backed hierarchical layout via the external `dot` CLI (component diagrams only; requires the `graphviz` Cargo feature)
 
 ### 10.1 Component Diagrams
 
@@ -1257,7 +1258,8 @@ The configuration file uses TOML syntax and supports the following settings:
 ```toml
 # Layout engine configuration
 [layout]
-# Default layout engine for component diagrams (basic, sugiyama)
+# Default layout engine for component diagrams (basic, sugiyama, graphviz*)
+# *graphviz requires the `graphviz` Cargo feature to be enabled
 component = "basic"
 # Default layout engine for sequence diagrams (basic)
 sequence = "basic"
@@ -1284,10 +1286,11 @@ Color values must be valid CSS color strings.
 
 The layout engine names in the configuration file are string representations of the internal enum values:
 
-| String Value | Layout Engine Type | Supported Diagram Types       |
-|--------------|-------------------|------------------------------|
-| "basic"      | Basic layout      | Component, Sequence          |
-| "sugiyama"   | Hierarchical      | Component                    |
+| String Value | Layout Engine Type | Supported Diagram Types       | Build Requirement            |
+|--------------|-------------------|------------------------------|------------------------------|
+| "basic"      | Basic layout      | Component, Sequence          | Always available             |
+| "sugiyama"   | Hierarchical      | Component                    | Always available             |
+| "graphviz"   | Graphviz (dot)    | Component                    | `graphviz` Cargo feature     |
 
 ### 14.4 Style Configuration
 
@@ -1319,7 +1322,7 @@ When determining which styles or layout engines to use, Orrery follows this prio
 
 1. Explicit layout engine in diagram declaration (`layout_engine` attribute)
 2. Default layout engine in configuration file (if found in any of the search locations)
-3. Built-in default (`basic`)
+3. Built-in default (`graphviz` when the `graphviz` Cargo feature is enabled, otherwise `basic`)
 
 #### Style Priority
 
