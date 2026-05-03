@@ -96,10 +96,14 @@ impl ArrowDefinition {
 
 impl Default for ArrowDefinition {
     fn default() -> Self {
+        let mut text_def = TextDefinition::default();
+        text_def.set_background_color(Some(
+            Color::new("rgba(255, 255, 255, 0.85)").expect("valid color"),
+        ));
         Self {
             stroke: Rc::new(StrokeDefinition::default()),
             style: ArrowStyle::default(),
-            text: Rc::new(TextDefinition::default()),
+            text: Rc::new(text_def),
         }
     }
 }
