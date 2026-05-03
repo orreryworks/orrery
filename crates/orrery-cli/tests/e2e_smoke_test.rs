@@ -41,7 +41,13 @@ fn e2e_smoke_test_valid_examples() {
         .parent()
         .unwrap()
         .join("examples");
-    let valid_examples = collect_orr_files(examples_path);
+    let mut valid_examples = collect_orr_files(examples_path.clone());
+
+    // Include feature-gated examples when the corresponding feature is enabled
+    #[cfg(feature = "graphviz")]
+    valid_examples.extend(collect_orr_files(examples_path.join("feat_graphviz")));
+
+    valid_examples.sort();
 
     assert!(
         !valid_examples.is_empty(),

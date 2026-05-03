@@ -39,6 +39,16 @@ The generated SVG is saved as `out.svg` in the current directory.
 
 > The [`imports/`](imports/) directory contains supporting library and diagram files used by `imports.orr` and `embedded_diagrams.orr`.
 
+### Feature-Gated Examples
+
+Examples in `feat_<feature>/` directories require the corresponding Cargo feature to be enabled.
+
+#### `feat_graphviz/` — requires `graphviz` feature
+
+| File | Features |
+|------|----------|
+| [`component_layout_engines.orr`](feat_graphviz/component_layout_engines.orr) | Basic, Sugiyama, and Graphviz layout engines side-by-side |
+
 ### Error Examples
 
 See [`errors/`](errors/) for examples demonstrating Orrery's error reporting.

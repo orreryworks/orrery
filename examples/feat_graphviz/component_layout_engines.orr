@@ -1,0 +1,79 @@
+// Layout Engines (with Graphviz)
+//
+// Demonstrates:
+//   - Basic layout engine
+//   - Sugiyama layout engine (layered graph layout for DAGs)
+//   - Graphviz layout engine (requires `graphviz` feature and `dot` CLI)
+//   - Layout engine attribute on diagram declarations
+//   - Same graph rendered with different engines for comparison
+
+diagram component [background_color="#f5f5f5"];
+
+// --- Embedded: Basic Engine ---
+
+basic_system as "Basic Engine": Rectangle embed {
+    diagram component [layout_engine="basic", background_color="#ffffff"];
+    type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
+    type Database = Rectangle [fill_color="#e0f0e0", rounded=10];
+    gateway as "API Gateway": Service;
+    auth as "Auth Service": Service;
+    users as "User Service": Service;
+    orders as "Order Service": Service;
+    db as "Primary DB": Database;
+    cache as "Cache": Database;
+
+    gateway -> auth;
+    gateway -> users;
+    gateway -> orders;
+    auth -> db;
+    users -> db;
+    orders -> db;
+    orders -> cache;
+};
+
+// --- Embedded: Sugiyama Engine ---
+
+sugiyama_system as "Sugiyama Engine": Rectangle embed {
+    diagram component [layout_engine="sugiyama", background_color="#ffffff"];
+    type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
+    type Database = Rectangle [fill_color="#e0f0e0", rounded=10];
+    gateway as "API Gateway": Service;
+    auth as "Auth Service": Service;
+    users as "User Service": Service;
+    orders as "Order Service": Service;
+    db as "Primary DB": Database;
+    cache as "Cache": Database;
+
+    gateway -> auth;
+    gateway -> users;
+    gateway -> orders;
+    auth -> db;
+    users -> db;
+    orders -> db;
+    orders -> cache;
+};
+
+// --- Embedded: Graphviz Engine ---
+
+graphviz_system as "Graphviz Engine": Rectangle embed {
+    diagram component [layout_engine="graphviz", background_color="#ffffff"];
+    type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
+    type Database = Rectangle [fill_color="#e0f0e0", rounded=10];
+    gateway as "API Gateway": Service;
+    auth as "Auth Service": Service;
+    users as "User Service": Service;
+    orders as "Order Service": Service;
+    db as "Primary DB": Database;
+    cache as "Cache": Database;
+
+    gateway -> auth;
+    gateway -> users;
+    gateway -> orders;
+    auth -> db;
+    users -> db;
+    orders -> db;
+    orders -> cache;
+};
+
+basic_system -> sugiyama_system: "Compare";
+sugiyama_system -> graphviz_system: "Compare";
