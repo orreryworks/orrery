@@ -17,7 +17,7 @@ The generated SVG is saved as `out.svg` in the current directory.
 | [`component_basic.orr`](component_basic.orr) | Component definitions, display names (`as "..."`), relation types (`->`, `<-`, `<->`, `-`), labels |
 | [`component_shapes.orr`](component_shapes.orr) | All built-in shapes: Rectangle, Oval, Component, Actor, Entity, Control, Interface, Boundary; content-free vs content-supporting |
 | [`component_nesting.orr`](component_nesting.orr) | Nested components, multi-level nesting, cross-level relations (`parent::child`) |
-| [`component_layout_engines.orr`](component_layout_engines.orr) | Basic vs Sugiyama layout engines side-by-side |
+| [`component_layout_engines.orr`](component_layout_engines.orr) | Basic, Sugiyama, and Graphviz layout engines side-by-side |
 
 ### Sequence Diagrams
 
