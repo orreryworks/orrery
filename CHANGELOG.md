@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-03
+
 ### Added
 
 - **Graphviz layout engine for component diagrams** — Component diagrams can now select Graphviz as their layout engine with `layout_engine="graphviz"`, delegating spatial positioning to Graphviz for more balanced placements and fewer relation crossings on non-trivial graphs. Gated behind the optional `graphviz` Cargo feature (disabled by default for library crates, enabled by default in the CLI). ([#88](https://github.com/orreryworks/orrery/issues/88))
@@ -57,7 +59,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration** — Layered configuration via CLI flags, project-local files, and platform-specific config directories.
 - **Dual licensing** — MIT OR Apache-2.0.
 
-[Unreleased]: https://github.com/orreryworks/orrery/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/orreryworks/orrery/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/orreryworks/orrery/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/orreryworks/orrery/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/orreryworks/orrery/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/orreryworks/orrery/releases/tag/v0.1.0
