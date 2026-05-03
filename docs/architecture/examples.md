@@ -4,7 +4,7 @@ This document defines the conventions for the `examples/` directory. Examples se
 
 ## Directory Structure
 
-All examples live in a flat directory. Error examples live in `errors/`.
+All examples live in a flat directory. Error examples live in `errors/`. Feature-gated examples live in `feat_<feature>/` directories.
 
 ```
 examples/
@@ -12,6 +12,8 @@ examples/
 ├── component_*.orr
 ├── sequence_*.orr
 ├── <cross-cutting>.orr
+├── feat_<feature>/
+│   └── <feature-gated examples>.orr
 └── errors/
     ├── README.md
     ├── lexer_*.orr
@@ -19,6 +21,14 @@ examples/
     ├── elab_*.orr
     └── validate_*.orr
 ```
+
+### Feature-Gated Directories
+
+Examples that require an optional Cargo feature live in a `feat_<feature>/` subdirectory. The `feat_` prefix signals that the directory is tied to a compile-time feature flag. Files inside follow the same naming conventions as top-level examples.
+
+The E2E smoke test includes these directories only when the corresponding feature is enabled via `#[cfg(feature = "...")]`.
+
+A feature-gated example may duplicate a top-level example with additional feature-specific content.
 
 ## Naming Conventions
 
