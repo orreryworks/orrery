@@ -63,7 +63,7 @@ server -> @PatternArrow client: "Custom dash pattern (5,3,2,3)";
 
 client -> [stroke=[color="darkorange", width=2.5], text=[color="darkorange", font_size=14, font_family="Arial"]] server: "Inline stroke + text";
 
-server -> [stroke=[color="rgb(100, 149, 237)", width=2.0, style="dashed"], text=[color="#4169e1", background_color="white", padding=3.0]] store: "RGB stroke, highlighted label";
+server -> [stroke=[color="rgb(100, 149, 237)", width=2.0, style="dashed"], text=[color="#4169e1", background_color="peachpuff", padding=3.0]] store: "RGB stroke, highlighted label";
 
 // --- Color Format Showcase on Relations ---
 
