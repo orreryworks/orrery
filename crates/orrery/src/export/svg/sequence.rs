@@ -60,6 +60,7 @@ impl Svg {
             message.arrow_with_text(),
             start_point,
             end_point,
+            &[],
         )
     }
 

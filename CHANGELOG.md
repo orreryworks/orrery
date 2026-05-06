@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Edge routing for parallel edges, reverse edges, and self-loops** — Multiple arrows between the same components now render as separate, visually distinguishable curves. Reverse arrows render on opposite sides, and self-referencing relations render as visible loops. ([#104](https://github.com/orreryworks/orrery/issues/104))
+
+### Changed
+
+- **BREAKING: Default `ArrowStyle` changed to `Curved`** — The default arrow style is now `Curved` (was `Straight`). `Curved` renders a straight line when no control points are provided, and follows bezier control points when they are. ([#106](https://github.com/orreryworks/orrery/issues/106))
+- **BREAKING: Arrow rendering API accepts control points** — `ArrowDrawer::draw_arrow`, `ArrowWithText::render_to_layers`, and `ArrowWithTextDrawer::draw_arrow_with_text` now require an additional `control_points: &[Point]` parameter. Pass `&[]` to preserve previous behavior. ([#106](https://github.com/orreryworks/orrery/issues/106))
+
 ## [0.3.0] - 2026-05-03
 
 ### Added

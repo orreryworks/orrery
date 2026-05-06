@@ -35,8 +35,12 @@ impl Svg {
         let source_edge = self.find_intersection(source, target.position());
         let target_edge = self.find_intersection(target, source.position());
 
-        self.arrow_with_text_drawer
-            .draw_arrow_with_text(arrow_with_text, source_edge, target_edge)
+        self.arrow_with_text_drawer.draw_arrow_with_text(
+            arrow_with_text,
+            source_edge,
+            target_edge,
+            &[],
+        )
     }
 
     pub fn calculate_component_diagram_bounds(
