@@ -153,6 +153,79 @@ impl fmt::Display for ArrowDirection {
     }
 }
 
+/// The geometric path of an arrow: source, destination, and optional control points.
+///
+/// For straight arrows, `control_points` is empty. For curved arrows (bezier paths),
+/// `control_points` contains the intermediate curve points.
+///
+/// # Examples
+///
+/// ```
+/// # use orrery_core::geometry::Point;
+/// # use orrery_core::draw::ArrowPath;
+/// // A straight arrow from (0,0) to (100,50)
+/// let path = ArrowPath::straight(Point::new(0.0, 0.0), Point::new(100.0, 50.0));
+///
+/// // A curved arrow with one control point (quadratic bezier)
+/// let curved = ArrowPath::new(
+///     Point::new(0.0, 0.0),
+///     Point::new(100.0, 0.0),
+///     vec![Point::new(50.0, -30.0)],
+/// );
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArrowPath {
+    source: Point,
+    destination: Point,
+    control_points: Vec<Point>,
+}
+
+impl ArrowPath {
+    /// Creates a new arrow path.
+    ///
+    /// # Arguments
+    ///
+    /// * `source` - The starting point of the arrow.
+    /// * `destination` - The ending point of the arrow.
+    /// * `control_points` - Bezier control points for curved paths. Empty for straight arrows.
+    pub fn new(source: Point, destination: Point, control_points: Vec<Point>) -> Self {
+        Self {
+            source,
+            destination,
+            control_points,
+        }
+    }
+
+    /// Creates a straight arrow path.
+    ///
+    /// # Arguments
+    ///
+    /// * `source` - The starting point of the arrow.
+    /// * `destination` - The ending point of the arrow.
+    pub fn straight(source: Point, destination: Point) -> Self {
+        Self {
+            source,
+            destination,
+            control_points: Vec::new(),
+        }
+    }
+
+    /// Returns the starting point of the arrow.
+    pub fn source(&self) -> Point {
+        self.source
+    }
+
+    /// Returns the ending point of the arrow.
+    pub fn destination(&self) -> Point {
+        self.destination
+    }
+
+    /// Returns the control points for curved paths.
+    pub fn control_points(&self) -> &[Point] {
+        &self.control_points
+    }
+}
+
 /// A drawable arrow with styling and direction markers.
 ///
 /// An Arrow combines an `ArrowDefinition` (containing visual properties
@@ -176,30 +249,18 @@ pub struct ArrowDrawer {
 }
 
 impl ArrowDrawer {
-    /// Draws an arrow between two points and collects its color for marker generation.
+    /// Draws an arrow and collects its color for marker generation.
     ///
-    /// Only arrows with [`ArrowStyle::Curved`] use the provided `control_points`.
+    /// Only arrows with [`ArrowStyle::Curved`] use the path's control points.
     /// Other styles ([`ArrowStyle::Straight`], [`ArrowStyle::Orthogonal`]) ignore them entirely.
     ///
     /// # Arguments
     ///
     /// * `arrow` - The arrow to render.
-    /// * `source` - Starting point of the arrow.
-    /// * `destination` - Ending point of the arrow.
-    /// * `control_points` - Bezier control points for [`ArrowStyle::Curved`] arrows.
-    ///   - `[]` — falls back to a straight line.
-    ///   - `[cp]` — quadratic bezier curve.
-    ///   - `[cp1, cp2]` — cubic bezier curve.
-    ///   - 3+ points — chained cubic bezier segments with midpoint anchors.
-    pub fn draw_arrow(
-        &mut self,
-        arrow: &Arrow,
-        source: Point,
-        destination: Point,
-        control_points: &[Point],
-    ) -> Box<dyn svg::Node> {
+    /// * `path` - The geometric path of the arrow.
+    pub fn draw_arrow(&mut self, arrow: &Arrow, path: &ArrowPath) -> Box<dyn svg::Node> {
         self.register_arrow_markers(arrow);
-        arrow.render_to_svg(source, destination, control_points)
+        arrow.render_to_svg(path)
     }
 
     /// Generates SVG marker definitions for all collected arrow colors.
@@ -261,16 +322,11 @@ impl Arrow {
     /// Only [`ArrowStyle::Curved`] respects external `control_points`. When
     /// no control points are provided, it falls back to a straight line.
     /// Other styles (`Straight`, `Orthogonal`) ignore control points entirely.
-    fn render_to_svg(
-        &self,
-        source: Point,
-        destination: Point,
-        control_points: &[Point],
-    ) -> Box<dyn svg::Node> {
+    fn render_to_svg(&self, path: &ArrowPath) -> Box<dyn svg::Node> {
         let path_data = match self.definition.style {
-            ArrowStyle::Curved => Self::curved_path_data(source, control_points, destination),
-            ArrowStyle::Straight => Self::straight_path_data(source, destination),
-            ArrowStyle::Orthogonal => Self::orthogonal_path_data(source, destination),
+            ArrowStyle::Curved => Self::curved_path_data(path),
+            ArrowStyle::Straight => Self::straight_path_data(path.source(), path.destination()),
+            ArrowStyle::Orthogonal => Self::orthogonal_path_data(path.source(), path.destination()),
         };
 
         let color = self.definition.stroke().color();
@@ -338,12 +394,14 @@ impl Arrow {
     ///
     /// See [SVG curve commands](https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorial/Paths#curve_commands)
     /// for details on how bezier control points map to SVG path data.
-    fn curved_path_data(start: Point, control_points: &[Point], end: Point) -> String {
-        if control_points.is_empty() {
-            return Self::straight_path_data(start, end);
+    fn curved_path_data(path: &ArrowPath) -> String {
+        if path.control_points().is_empty() {
+            return Self::straight_path_data(path.source(), path.destination());
         }
 
-        let mut path = format!("M {} {}", start.x(), start.y());
+        let control_points = path.control_points();
+        let end = path.destination();
+        let mut d = format!("M {} {}", path.source().x(), path.source().y());
         let mut i = 0;
         let len = control_points.len();
 
@@ -360,7 +418,7 @@ impl Arrow {
                     // Last pair: end at the destination
                     end
                 };
-                path.push_str(&format!(
+                d.push_str(&format!(
                     " C {} {}, {} {}, {} {}",
                     cp1.x(),
                     cp1.y(),
@@ -373,7 +431,7 @@ impl Arrow {
             } else {
                 // Odd trailing point: quadratic bezier to destination
                 let cp = control_points[i];
-                path.push_str(&format!(
+                d.push_str(&format!(
                     " Q {} {}, {} {}",
                     cp.x(),
                     cp.y(),
@@ -384,7 +442,7 @@ impl Arrow {
             }
         }
 
-        path
+        d
     }
 
     /// Creates a straight-line path data string from two points.
@@ -581,67 +639,76 @@ mod tests {
 
     #[test]
     fn test_curved_path_data_empty_falls_back_to_straight() {
-        let start = Point::new(0.0, 0.0);
-        let end = Point::new(100.0, 50.0);
+        let path = ArrowPath::straight(Point::new(0.0, 0.0), Point::new(100.0, 50.0));
 
-        // Empty control points should produce the same result as straight line
-        let path = Arrow::curved_path_data(start, &[], end);
-        assert_eq!(path, "M 0 0 L 100 50");
+        let result = Arrow::curved_path_data(&path);
+        assert_eq!(result, "M 0 0 L 100 50");
     }
 
     #[test]
     fn test_curved_path_data_quadratic_bezier() {
-        let start = Point::new(0.0, 0.0);
-        let cp = Point::new(50.0, -30.0);
-        let end = Point::new(100.0, 0.0);
+        let path = ArrowPath::new(
+            Point::new(0.0, 0.0),
+            Point::new(100.0, 0.0),
+            vec![Point::new(50.0, -30.0)],
+        );
 
-        let path = Arrow::curved_path_data(start, &[cp], end);
-        assert_eq!(path, "M 0 0 Q 50 -30, 100 0");
+        let result = Arrow::curved_path_data(&path);
+        assert_eq!(result, "M 0 0 Q 50 -30, 100 0");
     }
 
     #[test]
     fn test_curved_path_data_cubic_bezier() {
-        let start = Point::new(0.0, 0.0);
-        let cp1 = Point::new(30.0, -40.0);
-        let cp2 = Point::new(70.0, -40.0);
-        let end = Point::new(100.0, 0.0);
+        let path = ArrowPath::new(
+            Point::new(0.0, 0.0),
+            Point::new(100.0, 0.0),
+            vec![Point::new(30.0, -40.0), Point::new(70.0, -40.0)],
+        );
 
-        let path = Arrow::curved_path_data(start, &[cp1, cp2], end);
-        assert_eq!(path, "M 0 0 C 30 -40, 70 -40, 100 0");
+        let result = Arrow::curved_path_data(&path);
+        assert_eq!(result, "M 0 0 C 30 -40, 70 -40, 100 0");
     }
 
     #[test]
     fn test_curved_path_data_chained_cubic_even() {
         // 4 control points = 2 cubic segments
-        let start = Point::new(0.0, 0.0);
-        let cp1 = Point::new(10.0, 20.0);
-        let cp2 = Point::new(30.0, 40.0);
-        let cp3 = Point::new(60.0, 40.0);
-        let cp4 = Point::new(80.0, 20.0);
-        let end = Point::new(100.0, 0.0);
+        let path = ArrowPath::new(
+            Point::new(0.0, 0.0),
+            Point::new(100.0, 0.0),
+            vec![
+                Point::new(10.0, 20.0),
+                Point::new(30.0, 40.0),
+                Point::new(60.0, 40.0),
+                Point::new(80.0, 20.0),
+            ],
+        );
 
-        let path = Arrow::curved_path_data(start, &[cp1, cp2, cp3, cp4], end);
+        let result = Arrow::curved_path_data(&path);
 
         // First segment: start -> midpoint(cp2, cp3) with cp1, cp2 as control points
         // midpoint(30,40 and 60,40) = (45, 40)
         // Second segment: midpoint -> end with cp3, cp4 as control points
-        assert_eq!(path, "M 0 0 C 10 20, 30 40, 45 40 C 60 40, 80 20, 100 0");
+        assert_eq!(result, "M 0 0 C 10 20, 30 40, 45 40 C 60 40, 80 20, 100 0");
     }
 
     #[test]
     fn test_curved_path_data_chained_odd() {
         // 3 control points = 1 cubic segment + 1 quadratic segment
-        let start = Point::new(0.0, 0.0);
-        let cp1 = Point::new(20.0, -30.0);
-        let cp2 = Point::new(50.0, -30.0);
-        let cp3 = Point::new(80.0, -10.0);
-        let end = Point::new(100.0, 0.0);
+        let path = ArrowPath::new(
+            Point::new(0.0, 0.0),
+            Point::new(100.0, 0.0),
+            vec![
+                Point::new(20.0, -30.0),
+                Point::new(50.0, -30.0),
+                Point::new(80.0, -10.0),
+            ],
+        );
 
-        let path = Arrow::curved_path_data(start, &[cp1, cp2, cp3], end);
+        let result = Arrow::curved_path_data(&path);
 
         // First segment: cubic with cp1, cp2, ending at midpoint(cp2, cp3) = (65, -20)
         // Second segment: quadratic with cp3, ending at destination
-        assert_eq!(path, "M 0 0 C 20 -30, 50 -30, 65 -20 Q 80 -10, 100 0");
+        assert_eq!(result, "M 0 0 C 20 -30, 50 -30, 65 -20 Q 80 -10, 100 0");
     }
 
     #[test]
@@ -656,9 +723,11 @@ mod tests {
         let cp = Point::new(50.0, -20.0);
 
         // Should not panic with control points
-        let _node = drawer.draw_arrow(&arrow, source, destination, &[cp]);
+        let path = ArrowPath::new(source, destination, vec![cp]);
+        let _node = drawer.draw_arrow(&arrow, &path);
 
         // Should also work with empty (fallback)
-        let _node = drawer.draw_arrow(&arrow, source, destination, &[]);
+        let path = ArrowPath::straight(source, destination);
+        let _node = drawer.draw_arrow(&arrow, &path);
     }
 }

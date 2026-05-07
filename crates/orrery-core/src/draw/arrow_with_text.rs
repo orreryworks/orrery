@@ -4,7 +4,7 @@
 //! text along the arrow path.
 
 use crate::{
-    draw::{Arrow, ArrowDrawer, ArrowStyle, Drawable, LayeredOutput, RenderLayer, Text},
+    draw::{Arrow, ArrowDrawer, ArrowPath, ArrowStyle, Drawable, LayeredOutput, RenderLayer, Text},
     geometry::{Point, Size},
 };
 
@@ -28,20 +28,19 @@ impl<'a> ArrowWithText<'a> {
     ///
     /// Only [`ArrowStyle::Curved`] uses control points for positioning. Other
     /// styles always place text at the geometric midpoint of source and destination.
-    fn calculate_text_position(
-        &self,
-        source: Point,
-        destination: Point,
-        control_points: &[Point],
-    ) -> Point {
+    fn calculate_text_position(&self, path: &ArrowPath) -> Point {
         if self.text.is_none() {
             return Point::zero();
         }
+
+        let source = path.source();
+        let destination = path.destination();
 
         if self.arrow.style() != ArrowStyle::Curved {
             return source.midpoint(destination);
         };
 
+        let control_points = path.control_points();
         match control_points {
             [] => source.midpoint(destination),
             [cp] => quadratic_bezier_midpoint(source, *cp, destination),
@@ -69,32 +68,27 @@ impl<'a> ArrowWithText<'a> {
 
     /// Renders the arrow with optional text to layered output.
     ///
-    /// When `control_points` is non-empty, the arrow path follows the provided
+    /// When control points are present in `path`, the arrow follows the provided
     /// bezier curve and the text label is positioned at the curve's visual
     /// midpoint (t=0.5) rather than the geometric midpoint of the endpoints.
     ///
     /// # Arguments
     ///
     /// * `arrow_drawer` - Drawer that manages SVG marker generation.
-    /// * `source` - Starting point of the arrow.
-    /// * `destination` - Ending point of the arrow.
-    /// * `control_points` - Bezier control points. See [`ArrowDrawer::draw_arrow`].
+    /// * `path` - The geometric path of the arrow.
     // TODO: borrowing arrow_drawer is not good in here.
     pub fn render_to_layers(
         &self,
         arrow_drawer: &mut ArrowDrawer,
-        source: Point,
-        destination: Point,
-        control_points: &[Point],
+        path: &ArrowPath,
     ) -> LayeredOutput {
         let mut output = LayeredOutput::new();
 
-        let rendered_arrow =
-            arrow_drawer.draw_arrow(&self.arrow, source, destination, control_points);
+        let rendered_arrow = arrow_drawer.draw_arrow(&self.arrow, path);
         output.add_to_layer(RenderLayer::Arrow, rendered_arrow);
 
         if let Some(text) = &self.text {
-            let text_pos = self.calculate_text_position(source, destination, control_points);
+            let text_pos = self.calculate_text_position(path);
             let text_output = text.render_to_layers(text_pos);
             output.merge(text_output);
         }
@@ -125,22 +119,49 @@ impl ArrowWithTextDrawer {
     /// # Arguments
     ///
     /// * `arrow_with_text` - The arrow and text composite to render.
-    /// * `source` - Starting point of the arrow.
-    /// * `destination` - Ending point of the arrow.
-    /// * `control_points` - Bezier control points. See [`ArrowDrawer::draw_arrow`].
+    /// * `path` - The geometric path of the arrow.
     pub fn draw_arrow_with_text(
         &mut self,
         arrow_with_text: &ArrowWithText,
-        source: Point,
-        destination: Point,
-        control_points: &[Point],
+        path: &ArrowPath,
     ) -> LayeredOutput {
-        arrow_with_text.render_to_layers(&mut self.0, source, destination, control_points)
+        arrow_with_text.render_to_layers(&mut self.0, path)
     }
 
     /// Generates SVG marker definitions for all rendered arrows.
     pub fn draw_marker_definitions(&self) -> Box<dyn svg::Node> {
         self.0.draw_marker_definitions()
+    }
+}
+
+/// An [`ArrowWithText`] paired with its [`ArrowPath`].
+#[derive(Debug, Clone)]
+pub struct PositionedArrowWithText<'a> {
+    arrow_with_text: ArrowWithText<'a>,
+    path: ArrowPath,
+}
+
+impl<'a> PositionedArrowWithText<'a> {
+    /// Creates a new positioned arrow with text.
+    ///
+    /// # Arguments
+    ///
+    /// * `arrow_with_text` - The visual definition of the arrow.
+    /// * `path` - The geometric path of the arrow.
+    pub fn new(arrow_with_text: ArrowWithText<'a>, path: ArrowPath) -> Self {
+        Self {
+            arrow_with_text,
+            path,
+        }
+    }
+
+    /// Renders this positioned arrow to layered SVG output.
+    ///
+    /// # Arguments
+    ///
+    /// * `drawer` - Manages arrow rendering and SVG marker generation.
+    pub fn render_to_layers(&self, drawer: &mut ArrowWithTextDrawer) -> LayeredOutput {
+        drawer.draw_arrow_with_text(&self.arrow_with_text, &self.path)
     }
 }
 
@@ -230,11 +251,8 @@ mod tests {
         let arrow_with_text = ArrowWithText::new(arrow, None);
 
         // Without text, should return zero point.
-        let pos = arrow_with_text.calculate_text_position(
-            Point::new(0.0, 0.0),
-            Point::new(100.0, 100.0),
-            &[],
-        );
+        let path = ArrowPath::straight(Point::new(0.0, 0.0), Point::new(100.0, 100.0));
+        let pos = arrow_with_text.calculate_text_position(&path);
         assert_eq!(pos, Point::zero());
 
         // With text and no control points, should return midpoint.
@@ -243,11 +261,8 @@ mod tests {
         let text = Text::new(&text_def, "Label");
         let arrow_with_text = ArrowWithText::new(arrow, Some(text));
 
-        let pos = arrow_with_text.calculate_text_position(
-            Point::new(0.0, 0.0),
-            Point::new(100.0, 50.0),
-            &[],
-        );
+        let path = ArrowPath::straight(Point::new(0.0, 0.0), Point::new(100.0, 50.0));
+        let pos = arrow_with_text.calculate_text_position(&path);
         assert_eq!(pos, Point::new(50.0, 25.0));
 
         // With text and quadratic control point
@@ -256,12 +271,12 @@ mod tests {
         let text = Text::new(&text_def, "Label");
         let arrow_with_text = ArrowWithText::new(arrow, Some(text));
 
-        let cp = Point::new(50.0, -30.0);
-        let pos = arrow_with_text.calculate_text_position(
+        let path = ArrowPath::new(
             Point::new(0.0, 0.0),
             Point::new(100.0, 0.0),
-            &[cp],
+            vec![Point::new(50.0, -30.0)],
         );
+        let pos = arrow_with_text.calculate_text_position(&path);
         // 0.25*0 + 0.5*50 + 0.25*100 = 50, 0.25*0 + 0.5*(-30) + 0.25*0 = -15
         assert_eq!(pos, Point::new(50.0, -15.0));
 
@@ -271,13 +286,12 @@ mod tests {
         let text = Text::new(&text_def, "Label");
         let arrow_with_text = ArrowWithText::new(arrow, Some(text));
 
-        let cp1 = Point::new(30.0, -40.0);
-        let cp2 = Point::new(70.0, -40.0);
-        let pos = arrow_with_text.calculate_text_position(
+        let path = ArrowPath::new(
             Point::new(0.0, 0.0),
             Point::new(100.0, 0.0),
-            &[cp1, cp2],
+            vec![Point::new(30.0, -40.0), Point::new(70.0, -40.0)],
         );
+        let pos = arrow_with_text.calculate_text_position(&path);
         // 0.125*0 + 0.375*30 + 0.375*70 + 0.125*100 = 0+11.25+26.25+12.5 = 50
         // 0.125*0 + 0.375*(-40) + 0.375*(-40) + 0.125*0 = -15-15 = -30
         assert_eq!(pos, Point::new(50.0, -30.0));
@@ -291,12 +305,12 @@ mod tests {
         let arrow_with_text = ArrowWithText::new(arrow, Some(text));
 
         // Even with control points, Straight style should use geometric midpoint
-        let cp = Point::new(50.0, -30.0);
-        let pos = arrow_with_text.calculate_text_position(
+        let path = ArrowPath::new(
             Point::new(0.0, 0.0),
             Point::new(100.0, 0.0),
-            &[cp],
+            vec![Point::new(50.0, -30.0)],
         );
+        let pos = arrow_with_text.calculate_text_position(&path);
         assert_eq!(pos, Point::new(50.0, 0.0));
     }
 
@@ -308,13 +322,12 @@ mod tests {
         let arrow_with_text = ArrowWithText::new(arrow, Some(text));
 
         // Even with control points, Orthogonal style should use geometric midpoint
-        let cp1 = Point::new(30.0, -40.0);
-        let cp2 = Point::new(70.0, -40.0);
-        let pos = arrow_with_text.calculate_text_position(
+        let path = ArrowPath::new(
             Point::new(0.0, 0.0),
             Point::new(100.0, 0.0),
-            &[cp1, cp2],
+            vec![Point::new(30.0, -40.0), Point::new(70.0, -40.0)],
         );
+        let pos = arrow_with_text.calculate_text_position(&path);
         assert_eq!(pos, Point::new(50.0, 0.0));
     }
 
@@ -345,15 +358,16 @@ mod tests {
         let arrow_with_text = ArrowWithText::new(arrow, Some(text));
         let cp = Point::new(50.0, -20.0);
 
-        let output =
-            arrow_with_text.render_to_layers(&mut arrow_drawer, source, destination, &[cp]);
+        let path = ArrowPath::new(source, destination, vec![cp]);
+        let output = arrow_with_text.render_to_layers(&mut arrow_drawer, &path);
         assert!(!output.is_empty());
 
         // Without text label - should still have arrow layer
         let arrow = create_test_arrow(ArrowDirection::Forward);
         let arrow_with_text = ArrowWithText::new(arrow, None);
 
-        let output = arrow_with_text.render_to_layers(&mut arrow_drawer, source, destination, &[]);
+        let path = ArrowPath::straight(source, destination);
+        let output = arrow_with_text.render_to_layers(&mut arrow_drawer, &path);
         assert!(!output.is_empty());
     }
 
@@ -376,8 +390,8 @@ mod tests {
             let text = Text::new(&text_def, "Label");
             let arrow_with_text = ArrowWithText::new(arrow, Some(text));
 
-            let output =
-                arrow_with_text.render_to_layers(&mut arrow_drawer, source, destination, &[]);
+            let path = ArrowPath::straight(source, destination);
+            let output = arrow_with_text.render_to_layers(&mut arrow_drawer, &path);
             assert!(
                 !output.is_empty(),
                 "Rendering failed for direction: {:?}",

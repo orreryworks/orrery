@@ -18,10 +18,66 @@ use crate::{
         component::Component,
         engines::{EmbeddedLayouts, SequenceEngine},
         layer::{ContentStack, PositionedContent},
-        sequence::{ActivationBox, ActivationTiming, FragmentTiming, Layout, Message, Participant},
+        sequence::{self, ActivationBox, ActivationTiming, FragmentTiming, Layout, Participant},
     },
     structure::{SequenceEvent, SequenceGraph},
 };
+
+/// A message between two participants during event processing.
+///
+/// Holds the arrow definition and vertical position before the full path can be
+/// computed (activation boxes may not be finalized yet during event processing).
+struct Message<'a> {
+    source: Id,
+    target: Id,
+    y_position: f32,
+    arrow_with_text: draw::ArrowWithText<'a>,
+}
+
+impl<'a> Message<'a> {
+    /// Creates a message from a semantic relation and participant IDs.
+    fn from_relation(relation: &'a semantic::Relation, source: Id, target: Id) -> Self {
+        let arrow_def = Rc::clone(relation.arrow_definition());
+        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
+        let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
+        Self {
+            source,
+            target,
+            y_position: 0.0,
+            arrow_with_text,
+        }
+    }
+
+    /// Returns the minimum size needed to render this message's arrow and text.
+    fn min_size(&self) -> Size {
+        self.arrow_with_text.min_size()
+    }
+
+    /// Sets the vertical center position for this message.
+    fn set_y_position(&mut self, y_position: f32) {
+        self.y_position = y_position;
+    }
+
+    /// Returns the source participant ID.
+    fn source(&self) -> Id {
+        self.source
+    }
+
+    /// Returns the target participant ID.
+    fn target(&self) -> Id {
+        self.target
+    }
+
+    /// Returns the vertical center position of this message.
+    fn y_position(&self) -> f32 {
+        self.y_position
+    }
+
+    /// Consumes self and returns the inner [`ArrowWithText`](draw::ArrowWithText).
+    fn into_arrow_with_text(self) -> draw::ArrowWithText<'a> {
+        self.arrow_with_text
+    }
+}
 
 /// Collected output from [`Engine::process_events`]: messages, activation boxes,
 /// fragments, notes, and the final Y coordinate.
@@ -222,6 +278,9 @@ impl Engine {
         let (messages, activations, fragments, notes, lifeline_end) =
             self.process_events(graph, participants_height, &components)?;
 
+        // Compute full arrow paths now that activation boxes are known.
+        let positioned_messages = Self::position_messages(messages, &activations, &components);
+
         // Update lifeline ends to match diagram height and finalize lifelines
         let participants: HashMap<Id, Participant<'a>> = components
             .into_iter()
@@ -242,7 +301,7 @@ impl Engine {
 
         let layout = Layout::new(
             participants,
-            messages,
+            positioned_messages,
             activations,
             fragments,
             notes,
@@ -253,6 +312,45 @@ impl Engine {
         content_stack.push(PositionedContent::new(layout));
 
         Ok(content_stack)
+    }
+
+    /// Computes arrow paths for messages using finalized activation boxes.
+    ///
+    /// Converts intermediate [`Message`] data into positioned arrows by calculating
+    /// the X endpoints based on active activation boxes at each message's Y position.
+    fn position_messages<'a>(
+        messages: Vec<Message<'a>>,
+        activations: &[ActivationBox],
+        components: &HashMap<Id, Component<'a>>,
+    ) -> Vec<draw::PositionedArrowWithText<'a>> {
+        messages
+            .into_iter()
+            .map(|msg| {
+                let source_participant = &components[&msg.source()];
+                let target_participant = &components[&msg.target()];
+
+                let source_x = sequence::calculate_message_endpoint_x(
+                    activations,
+                    source_participant,
+                    msg.source(),
+                    msg.y_position(),
+                    target_participant.position().x(),
+                );
+                let target_x = sequence::calculate_message_endpoint_x(
+                    activations,
+                    target_participant,
+                    msg.target(),
+                    msg.y_position(),
+                    source_participant.position().x(),
+                );
+
+                let start_point = Point::new(source_x, msg.y_position());
+                let end_point = Point::new(target_x, msg.y_position());
+                let path = draw::ArrowPath::straight(start_point, end_point);
+
+                draw::PositionedArrowWithText::new(msg.into_arrow_with_text(), path)
+            })
+            .collect()
     }
 
     /// Process all sequence diagram events to create layout components.
@@ -280,7 +378,7 @@ impl Engine {
     ///
     /// # Returns
     /// A tuple containing:
-    /// * `Vec<Message<'a>>` - All messages with their positions and arrow information
+    /// * `Vec<Message<'a>>` - Intermediate messages (to be finalized with computed paths).
     /// * `Vec<ActivationBox>` - All activation boxes with precise positioning and nesting levels
     /// * `Vec<draw::PositionedDrawable<draw::Fragment>>` - All fragments with their sections and bounds
     /// * `Vec<draw::PositionedDrawable<draw::Note>>` - All notes with their positions and content
@@ -308,7 +406,7 @@ impl Engine {
             match event {
                 SequenceEvent::Relation(relation) => {
                     let mut message =
-                        Message::from_ast(relation, relation.source(), relation.target());
+                        Message::from_relation(relation, relation.source(), relation.target());
                     let message_height = message.min_size().height();
 
                     // Center the arrow line within the message's vertical extent.

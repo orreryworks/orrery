@@ -46,68 +46,6 @@ impl<'a> Participant<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
-/// A rendered message between two participants at a specific Y position.
-pub struct Message<'a> {
-    source: Id,
-    target: Id,
-    y_position: f32,
-    arrow_with_text: draw::ArrowWithText<'a>,
-}
-
-impl<'a> Message<'a> {
-    /// Creates a new [`Message`] from a [`semantic::Relation`] and participant IDs.
-    ///
-    /// # Arguments
-    ///
-    /// * `relation` - The relation to extract arrow definition and text from.
-    /// * `source` - ID of the source participant.
-    /// * `target` - ID of the target participant.
-    pub fn from_ast(relation: &'a semantic::Relation, source: Id, target: Id) -> Self {
-        let arrow_def = Rc::clone(relation.arrow_definition());
-        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
-        let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
-        Self {
-            source,
-            target,
-            y_position: 0.0,
-            arrow_with_text,
-        }
-    }
-
-    /// Returns the minimum [`Size`] needed to render this message.
-    ///
-    /// Delegates to [`ArrowWithText::min_size`](draw::ArrowWithText::min_size).
-    pub fn min_size(&self) -> Size {
-        self.arrow_with_text.min_size()
-    }
-
-    /// Sets the y-coordinate where this message appears.
-    pub fn set_y_position(&mut self, y_position: f32) {
-        self.y_position = y_position;
-    }
-
-    /// Returns a reference to the arrow with text for this message.
-    pub fn arrow_with_text(&self) -> &draw::ArrowWithText<'a> {
-        &self.arrow_with_text
-    }
-
-    /// Returns the ID of the source participant.
-    pub fn source(&self) -> Id {
-        self.source
-    }
-
-    /// Returns the ID of the target participant.
-    pub fn target(&self) -> Id {
-        self.target
-    }
-
-    /// Returns the y-coordinate where this message appears.
-    pub fn y_position(&self) -> f32 {
-        self.y_position
-    }
-}
-
 /// A rendered activation box in a sequence diagram.
 ///
 /// An [`ActivationBox`] is the final result of activation timing calculations, containing
@@ -479,7 +417,7 @@ pub fn calculate_message_endpoint_x(
 #[derive(Debug, Clone)]
 pub struct Layout<'a> {
     participants: HashMap<Id, Participant<'a>>,
-    messages: Vec<Message<'a>>,
+    messages: Vec<draw::PositionedArrowWithText<'a>>,
     activations: Vec<ActivationBox>,
     fragments: Vec<draw::PositionedDrawable<draw::Fragment>>,
     notes: Vec<draw::PositionedDrawable<draw::Note>>,
@@ -491,7 +429,7 @@ impl<'a> Layout<'a> {
     /// Construct a new sequence layout.
     pub fn new(
         participants: HashMap<Id, Participant<'a>>,
-        messages: Vec<Message<'a>>,
+        messages: Vec<draw::PositionedArrowWithText<'a>>,
         activations: Vec<ActivationBox>,
         fragments: Vec<draw::PositionedDrawable<draw::Fragment>>,
         notes: Vec<draw::PositionedDrawable<draw::Note>>,
@@ -521,7 +459,7 @@ impl<'a> Layout<'a> {
     }
 
     /// Borrow all messages in this sequence layout.
-    pub fn messages(&self) -> &[Message<'a>] {
+    pub fn messages(&self) -> &[draw::PositionedArrowWithText<'a>] {
         &self.messages
     }
 

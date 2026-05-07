@@ -2,13 +2,14 @@
 
 use orrery_core::{
     draw::{self, Drawable as _, LayeredOutput},
-    geometry::{Bounds, Point},
+    geometry::Bounds,
 };
 
 use super::Svg;
 use crate::layout::{layer::ContentStack, sequence};
 
 impl Svg {
+    /// Renders a sequence diagram participant to layered SVG output.
     pub fn render_participant(&self, participant: &sequence::Participant) -> LayeredOutput {
         let mut output = LayeredOutput::new();
         let component = participant.component();
@@ -24,44 +25,9 @@ impl Svg {
         output
     }
 
-    pub fn render_message(
-        &mut self,
-        message: &sequence::Message,
-        layout: &sequence::Layout,
-    ) -> LayeredOutput {
-        let source = &layout.participants()[&message.source()];
-        let target = &layout.participants()[&message.target()];
-        let message_y = message.y_position();
-
-        // Calculate source X coordinate with activation box intersection if active
-        let source_x = sequence::calculate_message_endpoint_x(
-            layout.activations(),
-            source.component(),
-            message.source(),
-            message_y,
-            target.component().position().x(), // Use target center X for direction detection
-        );
-
-        // Calculate target X coordinate with activation box intersection if active
-        let target_x = sequence::calculate_message_endpoint_x(
-            layout.activations(),
-            target.component(),
-            message.target(),
-            message_y,
-            source.component().position().x(), // Use source center X for direction detection
-        );
-
-        // Create points for the message line (Y coordinate unchanged)
-        let start_point = Point::new(source_x, message_y);
-        let end_point = Point::new(target_x, message_y);
-
-        // Use the arrow_with_text from the message
-        self.arrow_with_text_drawer.draw_arrow_with_text(
-            message.arrow_with_text(),
-            start_point,
-            end_point,
-            &[],
-        )
+    /// Renders a positioned message arrow to layered SVG output.
+    pub fn render_message(&mut self, message: &draw::PositionedArrowWithText) -> LayeredOutput {
+        message.render_to_layers(&mut self.arrow_with_text_drawer)
     }
 
     /// Renders a fragment box in a sequence diagram.

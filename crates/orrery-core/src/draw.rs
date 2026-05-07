@@ -23,8 +23,8 @@ mod text;
 mod text_positioning;
 
 pub use activation_box::{ActivationBox, ActivationBoxDefinition};
-pub use arrow::{Arrow, ArrowDefinition, ArrowDirection, ArrowDrawer, ArrowStyle};
-pub use arrow_with_text::{ArrowWithText, ArrowWithTextDrawer};
+pub use arrow::{Arrow, ArrowDefinition, ArrowDirection, ArrowDrawer, ArrowPath, ArrowStyle};
+pub use arrow_with_text::{ArrowWithText, ArrowWithTextDrawer, PositionedArrowWithText};
 pub use fragment::{Fragment, FragmentDefinition, FragmentSection};
 pub use layer::{LayeredOutput, RenderLayer};
 pub use lifeline::{Lifeline, LifelineDefinition};
