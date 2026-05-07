@@ -18,7 +18,7 @@ use orrery_core::{
 use crate::{
     error::RenderError,
     layout::{
-        component::{Component, Layout, LayoutRelation, adjust_positioned_contents_offset},
+        component::{self, Component, Layout, adjust_positioned_contents_offset},
         engines::{ComponentEngine, EmbeddedLayouts},
         layer::{ContentStack, PositionedContent},
     },
@@ -134,7 +134,7 @@ impl Engine {
                 .collect();
 
             // Build the list of relations between components
-            let relations: Vec<LayoutRelation> = graph
+            let relations: Vec<draw::PositionedArrowWithText> = graph
                 .scope_relations(containment_scope)
                 .filter_map(|relation| {
                     // Only include relations between visible components
@@ -143,10 +143,10 @@ impl Engine {
                         component_indices.get(&relation.source()),
                         component_indices.get(&relation.target()),
                     ) {
-                        Some(LayoutRelation::from_ast(
+                        Some(component::positioned_arrow_from_relation(
                             relation,
-                            source_index,
-                            target_index,
+                            &components[source_index],
+                            &components[target_index],
                         ))
                     } else {
                         None

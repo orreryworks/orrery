@@ -240,11 +240,7 @@ impl Svg {
 
         // Render all relations within this positioned content
         for relation in content.relations() {
-            let relation_output = self.render_relation(
-                content.source(relation),
-                content.target(relation),
-                relation.arrow_with_text(),
-            );
+            let relation_output = self.render_relation(relation);
             output.merge(relation_output);
         }
 
@@ -285,7 +281,7 @@ impl Svg {
 
         // Render all messages within this positioned content
         for message in content.messages() {
-            let message_output = self.render_message(message, content);
+            let message_output = self.render_message(message);
             output.merge(message_output);
         }
 

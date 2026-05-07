@@ -7,8 +7,12 @@
 //! # Types
 //!
 //! - [`Component`] - A positioned diagram element with bounds
-//! - [`LayoutRelation`] - A relation between components carrying layout-specific data
 //! - [`Layout`] - A complete layout of components and their connecting relations
+//!
+//! # Functions
+//!
+//! - [`positioned_arrow_from_relation`] - Constructs a positioned arrow from a semantic relation
+//! - [`adjust_positioned_contents_offset`] - Adjusts nested content offsets based on containment
 
 use std::{collections::HashMap, rc::Rc};
 
@@ -64,7 +68,7 @@ impl<'a> Component<'a> {
         self.drawable.position()
     }
 
-    /// Calculates the bounds of this component
+    /// Calculates the bounds of this component.
     ///
     /// The position is treated as the center of the component,
     /// and the bounds extend half the width/height in each direction.
@@ -77,54 +81,53 @@ impl<'a> Component<'a> {
     pub fn node_id(&self) -> Id {
         self.node_id
     }
-}
 
-/// A relation (connection) in a component layout with positional information.
-///
-/// LayoutRelation wraps an AST relation with additional layout-specific data,
-/// including the indices of the source and target components within the layout.
-/// This allows the layout system to efficiently reference components when
-/// positioning and rendering relations.
-#[derive(Debug, Clone)]
-pub struct LayoutRelation<'a> {
-    source_index: usize,
-    target_index: usize,
-    arrow_with_text: draw::ArrowWithText<'a>,
-}
-
-impl<'a> LayoutRelation<'a> {
-    /// Creates a new LayoutRelation from an AST relation and component indices.
-    ///
-    /// This method extracts the arrow definition and text from the AST relation
-    /// and creates a self-contained LayoutRelation that doesn't depend on the
-    /// original AST lifetime.
+    /// Calculates the intersection point where a line from this component's center
+    /// to an external point crosses this component's shape boundary.
     ///
     /// # Arguments
-    /// * `relation` - Reference to the AST relation being laid out
-    /// * `source_index` - Index of the source component in the layout
-    /// * `target_index` - Index of the target component in the layout
+    ///
+    /// * `external_point` - The point to draw a line toward from this component's center.
     ///
     /// # Returns
-    /// A new LayoutRelation containing all necessary rendering information
-    pub fn from_ast(
-        relation: &'a semantic::Relation,
-        source_index: usize,
-        target_index: usize,
-    ) -> Self {
-        let arrow_def = Rc::clone(relation.arrow_definition());
-        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
-        let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
-        Self {
-            source_index,
-            target_index,
-            arrow_with_text,
-        }
+    ///
+    /// The point on this component's shape boundary where the line exits.
+    pub fn find_intersection(&self, external_point: Point) -> Point {
+        self.drawable
+            .inner()
+            .find_intersection(self.position(), external_point)
     }
+}
 
-    /// Returns a reference to the arrow with text for this relation.
-    pub fn arrow_with_text(&self) -> &draw::ArrowWithText<'_> {
-        &self.arrow_with_text
-    }
+/// Creates a [`PositionedArrowWithText`](draw::PositionedArrowWithText) from a semantic relation
+/// and positioned source/target components.
+///
+/// Computes the arrow path by finding the intersection points between the
+/// line connecting the source and target centers and each component's shape boundary.
+///
+/// # Arguments
+///
+/// * `relation` - The semantic relation to extract arrow definition and text from.
+/// * `source` - The source component (for boundary intersection calculation).
+/// * `target` - The target component (for boundary intersection calculation).
+///
+/// # Returns
+///
+/// A fully positioned arrow ready for rendering.
+pub fn positioned_arrow_from_relation<'a>(
+    relation: &'a semantic::Relation,
+    source: &Component,
+    target: &Component,
+) -> draw::PositionedArrowWithText<'a> {
+    let arrow_def = Rc::clone(relation.arrow_definition());
+    let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
+    let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
+
+    let source_edge = source.find_intersection(target.position());
+    let target_edge = target.find_intersection(source.position());
+    let path = draw::ArrowPath::straight(source_edge, target_edge);
+
+    draw::PositionedArrowWithText::new(arrow_with_text, path)
 }
 
 /// A complete layout of components and their relationships.
@@ -135,13 +138,16 @@ impl<'a> LayoutRelation<'a> {
 #[derive(Debug, Clone)]
 pub struct Layout<'a> {
     components: Vec<Component<'a>>,
-    relations: Vec<LayoutRelation<'a>>,
+    relations: Vec<draw::PositionedArrowWithText<'a>>,
     bounds: Bounds,
 }
 
 impl<'a> Layout<'a> {
     /// Creates a new layout with the given components and relations.
-    pub fn new(components: Vec<Component<'a>>, relations: Vec<LayoutRelation<'a>>) -> Self {
+    pub fn new(
+        components: Vec<Component<'a>>,
+        relations: Vec<draw::PositionedArrowWithText<'a>>,
+    ) -> Self {
         let bounds = if components.is_empty() {
             Bounds::default()
         } else {
@@ -166,24 +172,8 @@ impl<'a> Layout<'a> {
     }
 
     /// Returns a reference to the relations in this layout.
-    pub fn relations(&self) -> &[LayoutRelation<'a>] {
+    pub fn relations(&self) -> &[draw::PositionedArrowWithText<'a>] {
         &self.relations
-    }
-
-    /// Returns a reference to the source component of the given relation.
-    ///
-    /// # Panics
-    /// Panics if the source index is out of bounds.
-    pub fn source(&self, lr: &LayoutRelation) -> &Component<'_> {
-        &self.components[lr.source_index]
-    }
-
-    /// Returns a reference to the target component of the given relation.
-    ///
-    /// # Panics
-    /// Panics if the target index is out of bounds.
-    pub fn target(&self, lr: &LayoutRelation) -> &Component<'_> {
-        &self.components[lr.target_index]
     }
 }
 
