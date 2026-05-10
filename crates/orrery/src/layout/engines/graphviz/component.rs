@@ -137,17 +137,7 @@ impl Engine {
                     RenderError::Layout(format!("shape not found for node `{node}`"))
                 })?;
 
-                // If this node contains an embedded diagram, adjust position to normalize
-                // the embedded layout's coordinate system to start at origin
-                let final_position = if let semantic::Block::Diagram(_) = node.block()
-                    && let Some(layout) = embedded_layouts.get(&node.id())
-                {
-                    position.add_point(layout.normalize_offset())
-                } else {
-                    position
-                };
-
-                components.push(Component::new(node, shape_with_text, final_position));
+                components.push(Component::new(node, shape_with_text, position));
             }
 
             // Map node IDs to their component indices
