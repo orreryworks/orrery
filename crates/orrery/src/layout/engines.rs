@@ -26,7 +26,6 @@ use crate::{
     layout::{
         component,
         layer::{LayeredLayout, LayoutContent},
-        positioning::LayoutBounds,
         sequence,
     },
     structure,
@@ -43,40 +42,11 @@ pub enum LayoutResult<'a> {
 }
 
 impl<'a> LayoutResult<'a> {
-    /// Calculate the coordinate offset needed to normalize this layout to start at origin.
-    ///
-    /// Embedded layouts may naturally have non-zero minimum points based on how their
-    /// positioning engines calculate positions. This method returns the offset that should
-    /// be applied to normalize the layout's coordinate system so its bounds start at origin (0, 0).
-    ///
-    /// Returns a Point that, when added to component positions, will shift the layout to
-    /// start at the origin.
-    pub fn normalize_offset(&self) -> geometry::Point {
-        let bounds = self.layout_bounds();
-        geometry::Point::new(-bounds.min_x(), -bounds.min_y())
-    }
-
     /// Calculate the size of this layout, using the appropriate sizing implementation
     fn calculate_size(&self) -> geometry::Size {
         match self {
             LayoutResult::Component(layout) => layout.layout_size(),
             LayoutResult::Sequence(layout) => layout.layout_size(),
-        }
-    }
-
-    /// Calculate the bounds of this layout
-    fn layout_bounds(&self) -> geometry::Bounds {
-        match self {
-            LayoutResult::Component(layout) => layout
-                .iter()
-                .last()
-                .map(|content| content.content().layout_bounds())
-                .unwrap_or_default(),
-            LayoutResult::Sequence(layout) => layout
-                .iter()
-                .last()
-                .map(|content| content.content().layout_bounds())
-                .unwrap_or_default(),
         }
     }
 }

@@ -103,7 +103,7 @@ impl Engine {
             let components: Vec<Component> = graph
                 .scope_nodes(containment_scope)
                 .map(|node| {
-                    let mut position = *positions.get(&node.id()).ok_or_else(|| {
+                    let position = *positions.get(&node.id()).ok_or_else(|| {
                         RenderError::Layout(format!(
                             "Position not found for node '{node}' during component layout"
                         ))
@@ -113,14 +113,6 @@ impl Engine {
                             "Shape not found for node '{node}' during component layout"
                         ))
                     })?;
-
-                    // If this node contains an embedded diagram, adjust position to normalize
-                    // the embedded layout's coordinate system to start at origin
-                    if let semantic::Block::Diagram(_) = node.block()
-                        && let Some(layout) = embedded_layouts.get(&node.id())
-                    {
-                        position = position.add_point(layout.normalize_offset());
-                    }
 
                     Ok(Component::new(node, shape_with_text, position))
                 })

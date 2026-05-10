@@ -254,15 +254,7 @@ impl Engine {
             let shape_with_text = participant_shapes.remove(&node.id()).ok_or_else(|| {
                 RenderError::Layout(format!("Participant shape not found for node '{node}'"))
             })?;
-            let mut position = Point::new(x_positions[i], self.top_margin);
-
-            // If this node contains an embedded diagram, adjust position to normalize
-            // the embedded layout's coordinate system to start at origin
-            if let semantic::Block::Diagram(_) = node.block()
-                && let Some(layout) = embedded_layouts.get(&node.id())
-            {
-                position = position.add_point(layout.normalize_offset());
-            }
+            let position = Point::new(x_positions[i], self.top_margin);
 
             let component = Component::new(node, shape_with_text, position);
             components.insert(node.id(), component);
