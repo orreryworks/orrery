@@ -10,5 +10,6 @@
 //! - [`Component`] - Graphviz-based layout engine for component diagrams.
 
 mod component;
+mod dot_bridge;
 
 pub use component::Engine as Component;
