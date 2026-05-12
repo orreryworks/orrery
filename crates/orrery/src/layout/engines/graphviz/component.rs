@@ -1,37 +1,15 @@
 //! Graphviz layout engine for component diagrams.
 //!
-//! Translates [`ComponentGraph`] containment scopes into DOT graphs,
-//! invokes Graphviz `dot` for positioning, and maps the results back
-//! into Orrery's [`Layout`] representation.
-//!
-//! # Data Flow
-//!
-//! ```text
-//! ComponentGraph
-//!     ↓ build_graphviz_graph
-//! dot_structures::Graph
-//!     ↓ run_graphviz (dot -Tdot -y)
-//! dot_structures::Graph (with pos attributes)
-//!     ↓ extract_positions_from_graph
-//! HashMap<Id, Point>
-//!     ↓ calculate_layout
-//! ContentStack<Layout>
-//! ```
+//! This module translates a [`ComponentGraph`] into Graphviz `dot` input,
+//! invokes the external `dot` process via [`DotBridge`],
+//! and converts the resulting positions and edge splines back into Orrery's
+//! [`Layout`] representation.
 
-use std::{collections::HashMap, io::ErrorKind, rc::Rc};
-
-use dot_structures::{
-    Attribute, Edge, EdgeTy, Graph as DotGraph, Id as DotId, Node as DotNode, NodeId, Stmt, Vertex,
-};
-use graphviz_rust::{
-    cmd::{CommandArg, Format},
-    printer::PrinterContext,
-};
-use log::{debug, trace};
+use std::{collections::HashMap, rc::Rc};
 
 use orrery_core::{
-    draw::{self, ArrowDirection, Drawable},
-    geometry::{Insets, Point, Size},
+    draw::{self, Drawable},
+    geometry::{Insets, Size},
     identifier::Id,
     semantic,
 };
@@ -39,15 +17,12 @@ use orrery_core::{
 use crate::{
     error::RenderError,
     layout::{
-        component::{self, Component, Layout, adjust_positioned_contents_offset},
-        engines::{ComponentEngine, EmbeddedLayouts},
+        component::{Component, Layout, adjust_positioned_contents_offset},
+        engines::{ComponentEngine, EmbeddedLayouts, graphviz::dot_bridge::DotBridge},
         layer::{ContentStack, PositionedContent},
     },
     structure::{ComponentGraph, ContainmentScope},
 };
-
-/// Points per inch — Graphviz uses inches for node dimensions.
-const POINTS_PER_INCH: f32 = 72.0;
 
 /// Graphviz-based layout engine for component diagrams.
 ///
@@ -110,65 +85,12 @@ impl Engine {
         let mut positioned_content_sizes = HashMap::<Id, Size>::new();
 
         for containment_scope in graph.containment_scopes() {
-            // Calculate component shapes - they contain all sizing information
-            let mut component_shapes = self.calculate_component_shapes(
+            let positioned_content = self.layout_containment_scope(
                 graph,
                 containment_scope,
                 &positioned_content_sizes,
                 embedded_layouts,
             )?;
-
-            // Extract sizes from shapes for Graphviz node sizing
-            let component_sizes: HashMap<Id, Size> = component_shapes
-                .iter()
-                .map(|(idx, shape_with_text)| (*idx, shape_with_text.size()))
-                .collect();
-
-            // Calculate positions using Graphviz
-            let positions = self.positions(graph, containment_scope, &component_sizes)?;
-
-            // Build the final component list using the pre-configured shapes
-            let mut components: Vec<Component> = Vec::new();
-            for node in graph.scope_nodes(containment_scope) {
-                let position = *positions.get(&node.id()).ok_or_else(|| {
-                    RenderError::Layout(format!("position not found for node `{node}`"))
-                })?;
-                let shape_with_text = component_shapes.remove(&node.id()).ok_or_else(|| {
-                    RenderError::Layout(format!("shape not found for node `{node}`"))
-                })?;
-
-                components.push(Component::new(node, shape_with_text, position));
-            }
-
-            // Map node IDs to their component indices
-            let component_indices: HashMap<_, _> = components
-                .iter()
-                .enumerate()
-                .map(|(idx, component)| (component.node_id(), idx))
-                .collect();
-
-            // Build the list of relations between components
-            let relations: Vec<draw::PositionedArrowWithText> = graph
-                .scope_relations(containment_scope)
-                .filter_map(|relation| {
-                    // Only include relations between visible components
-                    // (not including relations within inner blocks)
-                    if let (Some(&source_index), Some(&target_index)) = (
-                        component_indices.get(&relation.source()),
-                        component_indices.get(&relation.target()),
-                    ) {
-                        Some(component::positioned_arrow_from_relation(
-                            relation,
-                            &components[source_index],
-                            &components[target_index],
-                        ))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            let positioned_content = PositionedContent::new(Layout::new(components, relations));
 
             if let Some(container) = containment_scope.container() {
                 // If this layer is a container, we need to adjust its size based on its contents
@@ -181,6 +103,87 @@ impl Engine {
         adjust_positioned_contents_offset(&mut content_stack, graph)?;
 
         Ok(content_stack)
+    }
+
+    /// Lays out a single containment scope.
+    ///
+    /// First computes sized shapes for every node in the scope via
+    /// [`calculate_component_shapes`](Self::calculate_component_shapes), then
+    /// feeds the resulting sizes into [`DotBridge`] to obtain Graphviz-computed
+    /// node positions and edge spline paths. Finally, assembles the positioned
+    /// components and relations into a [`Layout`] wrapped in
+    /// [`PositionedContent`].
+    ///
+    /// # Arguments
+    ///
+    /// * `graph` - The full [`ComponentGraph`] being laid out.
+    /// * `containment_scope` - The specific [`ContainmentScope`] to process.
+    /// * `positioned_content_sizes` - Sizes of already-laid-out inner scopes.
+    /// * `embedded_layouts` - Pre-calculated layouts for embedded diagrams.
+    ///
+    /// # Returns
+    ///
+    /// A [`PositionedContent`] wrapping the computed [`Layout`] for this scope.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RenderError::Layout`] if shape construction, Graphviz
+    /// invocation, or result assembly fails.
+    fn layout_containment_scope<'a>(
+        &self,
+        graph: &'a ComponentGraph<'a, '_>,
+        containment_scope: &ContainmentScope<'a, 'a>,
+        positioned_content_sizes: &HashMap<Id, Size>,
+        embedded_layouts: &EmbeddedLayouts<'a>,
+    ) -> Result<PositionedContent<Layout<'a>>, RenderError> {
+        if containment_scope.nodes_count() == 0 {
+            return Ok(PositionedContent::new(Layout::new(vec![], vec![])));
+        }
+        let mut component_shapes = self.calculate_component_shapes(
+            graph,
+            containment_scope,
+            positioned_content_sizes,
+            embedded_layouts,
+        )?;
+
+        // Extract sizes from shapes for Graphviz node sizing
+        let component_sizes: HashMap<Id, Size> = component_shapes
+            .iter()
+            .map(|(idx, shape_with_text)| (*idx, shape_with_text.size()))
+            .collect();
+
+        // Run Graphviz to get node positions and edge paths
+        let bridge = DotBridge::new(graph, containment_scope, &component_sizes)?;
+        let layout_result = bridge.run()?;
+
+        // Build the final component list using the pre-configured shapes
+        let components: Vec<Component> = graph
+            .scope_nodes(containment_scope)
+            .map(|node| {
+                let position = layout_result.position(node.id()).ok_or_else(|| {
+                    RenderError::Layout(format!("position not found for `{node}`"))
+                })?;
+                let shape_with_text = component_shapes
+                    .remove(&node.id())
+                    .ok_or_else(|| RenderError::Layout(format!("shape not found for `{node}`")))?;
+
+                Ok(Component::new(node, shape_with_text, position))
+            })
+            .collect::<Result<_, RenderError>>()?;
+
+        // Build relations from the Graphviz edge paths
+        let relations: Vec<draw::PositionedArrowWithText> = layout_result
+            .into_edge_paths()
+            .into_iter()
+            .map(|(relation, path)| {
+                let arrow_def = Rc::clone(relation.arrow_definition());
+                let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
+                let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
+                draw::PositionedArrowWithText::new(arrow_with_text, path)
+            })
+            .collect();
+
+        Ok(PositionedContent::new(Layout::new(components, relations)))
     }
 
     /// Calculates sized shapes for all components in a containment scope.
@@ -207,7 +210,7 @@ impl Engine {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
                     let layout = embedded_layouts.get(&node.id()).ok_or_else(|| {
-                        RenderError::Layout(format!("embedded layout not found for node `{node}`"))
+                        RenderError::Layout(format!("embedded layout not found for `{node}`"))
                     })?;
 
                     let content_size = layout.calculate_size();
@@ -222,7 +225,7 @@ impl Engine {
                 semantic::Block::Scope(_) => {
                     let content_size =
                         *positioned_content_sizes.get(&node.id()).ok_or_else(|| {
-                            RenderError::Layout(format!("scope size not found for node `{node}`"))
+                            RenderError::Layout(format!("scope size not found for `{node}`"))
                         })?;
                     shape_with_text
                         .set_inner_content_size(content_size)
@@ -241,256 +244,11 @@ impl Engine {
 
         Ok(component_shapes)
     }
-
-    /// Computes node positions via Graphviz `dot -Tdot -y`.
-    ///
-    /// Positions are in points (72 per inch). The `-y` flag makes
-    /// Graphviz output Y increasing downward, matching Orrery's
-    /// coordinate system.
-    fn positions(
-        &self,
-        graph: &ComponentGraph<'_, '_>,
-        containment_scope: &ContainmentScope,
-        component_sizes: &HashMap<Id, Size>,
-    ) -> Result<HashMap<Id, Point>, RenderError> {
-        if containment_scope.nodes_count() == 0 {
-            return Ok(HashMap::new());
-        }
-
-        // Build the Graphviz graph structure
-        let gv_graph = self.build_graphviz_graph(graph, containment_scope, component_sizes)?;
-
-        // Execute Graphviz layout
-        let laid_out_graph = run_graphviz(gv_graph)?;
-
-        // Extract node positions from the annotated output
-        let positions = extract_positions_from_graph(&laid_out_graph)?;
-
-        if positions.len() != containment_scope.nodes_count() {
-            return Err(RenderError::Layout(format!(
-                "graphviz produced {} positions, expected {}",
-                positions.len(),
-                containment_scope.nodes_count(),
-            )));
-        }
-
-        Ok(positions)
-    }
-
-    /// Translates a containment scope into a [`DotGraph`].
-    ///
-    /// Nodes are sized in inches (`fixedsize=true`) and edges carry
-    /// `dir`/`constraint` attributes based on [`ArrowDirection`].
-    fn build_graphviz_graph(
-        &self,
-        graph: &ComponentGraph<'_, '_>,
-        containment_scope: &ContainmentScope,
-        component_sizes: &HashMap<Id, Size>,
-    ) -> Result<DotGraph, RenderError> {
-        let mut stmts: Vec<Stmt> = Vec::new();
-
-        // Graph-level attributes
-        stmts.push(Stmt::Attribute(dot_attr("rankdir", "TB")));
-        stmts.push(Stmt::Attribute(dot_attr("nodesep", "0.5")));
-        stmts.push(Stmt::Attribute(dot_attr("ranksep", "0.75")));
-
-        // Add nodes with size attributes
-        for node in graph.scope_nodes(containment_scope) {
-            // Convert size from points/pixels to inches for Graphviz
-            let size = component_sizes.get(&node.id()).ok_or_else(|| {
-                RenderError::Layout(format!("component size not found for node `{node}`"))
-            })?;
-            let width_inches = size.width() / POINTS_PER_INCH;
-            let height_inches = size.height() / POINTS_PER_INCH;
-
-            let width_str = format!("{width_inches:.4}");
-            let height_str = format!("{height_inches:.4}");
-            let gv_node = DotNode::new(
-                NodeId(into_dot_id(node.id()), None),
-                vec![
-                    dot_attr("shape", "box"),
-                    dot_attr("fixedsize", "true"),
-                    Attribute(DotId::Plain("width".into()), DotId::Plain(width_str)),
-                    Attribute(DotId::Plain("height".into()), DotId::Plain(height_str)),
-                ],
-            );
-            stmts.push(Stmt::Node(gv_node));
-        }
-
-        // Add edges for relations within this scope
-        for relation in graph.scope_relations(containment_scope) {
-            let attributes = match relation.arrow_direction() {
-                ArrowDirection::Forward => vec![],
-                ArrowDirection::Backward => vec![dot_attr("dir", "back")],
-                ArrowDirection::Bidirectional => {
-                    vec![dot_attr("dir", "both"), dot_attr("constraint", "false")]
-                }
-                ArrowDirection::Plain => {
-                    vec![dot_attr("dir", "none"), dot_attr("constraint", "false")]
-                }
-            };
-            let edge = Edge {
-                ty: EdgeTy::Pair(
-                    Vertex::N(NodeId(into_dot_id(relation.source()), None)),
-                    Vertex::N(NodeId(into_dot_id(relation.target()), None)),
-                ),
-                attributes,
-            };
-            stmts.push(Stmt::Edge(edge));
-        }
-
-        Ok(DotGraph::DiGraph {
-            id: DotId::Plain("scope".into()),
-            strict: true,
-            stmts,
-        })
-    }
 }
 
-/// Creates a DOT [`Attribute`] from a key-value string pair.
-fn dot_attr(key: &str, value: &str) -> Attribute {
-    Attribute(DotId::Plain(key.into()), DotId::Plain(value.into()))
-}
-
-/// Executes Graphviz `dot` and returns the annotated graph.
+/// [`ComponentEngine`] implementation that delegates to Graphviz.
 ///
-/// Passes `-Tdot` to get DOT output with layout attributes injected,
-/// and `-y` to invert the Y-axis to match screen coordinates.
-///
-/// # Errors
-///
-/// Returns [`RenderError::Layout`] if:
-/// - The `dot` binary is not found on `PATH`.
-/// - The `dot` process exits with a non-zero status (includes the DOT input in the message).
-/// - The output is not valid UTF-8.
-/// - The output cannot be re-parsed into a [`DotGraph`].
-fn run_graphviz(gv_graph: DotGraph) -> Result<DotGraph, RenderError> {
-    let mut ctx = PrinterContext::default();
-    let dot_input = graphviz_rust::print(gv_graph, &mut ctx);
-    debug!(dot_input:%; "Graphviz DOT input");
-
-    // Execute Graphviz with DOT output and -y to invert the Y-axis
-    let output = graphviz_rust::exec_dot(
-        dot_input.clone(),
-        vec![
-            CommandArg::Format(Format::Dot),
-            CommandArg::Custom("-y".into()),
-        ],
-    )
-    .map_err(|err| match err.kind() {
-        ErrorKind::NotFound => RenderError::Layout(
-            "`dot` command not found, is Graphviz installed? \
-             see https://graphviz.org/download/"
-                .into(),
-        ),
-        _ => RenderError::Layout(format!(
-            "`dot` command failed: {err}\n\nDOT input:\n{dot_input}"
-        )),
-    })?;
-
-    let dot_output = String::from_utf8(output)
-        .map_err(|err| RenderError::Layout(format!("invalid UTF-8 in `dot` output: {err}")))?;
-
-    debug!(dot_output:%; "Graphviz DOT output");
-
-    // Re-parse the DOT output into a structured graph
-    graphviz_rust::parse(&dot_output)
-        .map_err(|err| RenderError::Layout(format!("cannot parse `dot` output: {err}")))
-}
-
-/// Extracts node positions from a Graphviz-annotated DOT graph.
-///
-/// Reads the `pos` attribute (`"x,y"` in points) from each node statement.
-/// Positions are used directly — the `-y` flag already aligns output with
-/// Orrery's Y-down coordinate system.
-///
-/// # Errors
-///
-/// Returns [`RenderError::Layout`] if any node lacks a `pos` attribute
-/// or the value cannot be parsed.
-fn extract_positions_from_graph(graph: &DotGraph) -> Result<HashMap<Id, Point>, RenderError> {
-    let stmts = match graph {
-        DotGraph::Graph { stmts, .. } | DotGraph::DiGraph { stmts, .. } => stmts,
-    };
-
-    let mut positions = HashMap::new();
-
-    for node in stmts.iter().filter_map(|stmt| match stmt {
-        Stmt::Node(node) => Some(node),
-        _ => None,
-    }) {
-        let node_name = dot_id_to_str(&node.id.0);
-
-        let pos_str = find_attribute(&node.attributes, "pos").ok_or_else(|| {
-            RenderError::Layout(format!(
-                "node `{node_name}` missing `pos` attribute after graphviz layout"
-            ))
-        })?;
-
-        let pos = parse_pos_str(pos_str).ok_or_else(|| {
-            RenderError::Layout(format!(
-                "cannot parse `pos` value `{pos_str}` for node `{node_name}`"
-            ))
-        })?;
-
-        positions.insert(Id::new(node_name), pos);
-
-        trace!(
-            node_name,
-            pos:?;
-            "Extracted Graphviz position",
-        );
-    }
-
-    Ok(positions)
-}
-
-/// Creates a quoted DOT node identifier.
-///
-/// Wraps the identifier in double quotes so that namespacing characters (e.g. `::`) are
-/// treated as literal parts of the name rather than DOT syntax. This works around
-/// `graphviz_rust`'s printer emitting all [`DotId`] variants verbatim without quoting.
-///
-/// # Arguments
-///
-/// * `id` - The node identifier to quote.
-fn into_dot_id(id: impl std::fmt::Display) -> DotId {
-    DotId::Plain(format!("\"{}\"", id))
-}
-
-/// Extracts the raw string from a [`DotId`].
-///
-/// The `Escaped` variant includes surrounding double quotes which are
-/// stripped to yield the inner content.
-fn dot_id_to_str(id: &DotId) -> &str {
-    match id {
-        DotId::Escaped(s) => s.trim_matches('"'),
-        DotId::Plain(s) | DotId::Html(s) | DotId::Anonymous(s) => s,
-    }
-}
-
-/// Finds an attribute value by key in a list of DOT attributes.
-fn find_attribute<'a>(attributes: &'a [Attribute], key: &str) -> Option<&'a str> {
-    attributes.iter().find_map(|Attribute(k, v)| {
-        if dot_id_to_str(k) == key {
-            Some(dot_id_to_str(v))
-        } else {
-            None
-        }
-    })
-}
-
-/// Parses a Graphviz `pos` value (`"x,y"`) into a [`Point`].
-///
-/// Strips an optional trailing `!` (pinned position indicator).
-fn parse_pos_str(pos_str: &str) -> Option<Point> {
-    let cleaned = pos_str.trim().trim_end_matches('!');
-    let (x_str, y_str) = cleaned.split_once(',')?;
-    let x: f32 = x_str.trim().parse().ok()?;
-    let y: f32 = y_str.trim().parse().ok()?;
-    Some(Point::new(x, y))
-}
-
+/// See [`Engine::calculate_layout`] for the underlying algorithm.
 impl ComponentEngine for Engine {
     fn calculate<'a>(
         &self,
@@ -498,135 +256,5 @@ impl ComponentEngine for Engine {
         embedded_layouts: &EmbeddedLayouts<'a>,
     ) -> Result<ContentStack<Layout<'a>>, RenderError> {
         self.calculate_layout(graph, embedded_layouts)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_pos_value_basic() {
-        assert_eq!(parse_pos_str("72,108"), Some(Point::new(72.0, 108.0)));
-    }
-
-    #[test]
-    fn test_parse_pos_value_with_pin() {
-        assert_eq!(parse_pos_str("50.5,75.3!"), Some(Point::new(50.5, 75.3)));
-    }
-
-    #[test]
-    fn test_parse_pos_value_invalid() {
-        assert_eq!(parse_pos_str(""), None);
-        assert_eq!(parse_pos_str("abc,def"), None);
-        assert_eq!(parse_pos_str("100"), None);
-    }
-
-    #[test]
-    fn test_extract_positions_from_graph() {
-        // Build a graph that simulates Graphviz DOT output with pos attributes
-        let graph = DotGraph::DiGraph {
-            id: DotId::Plain("scope".into()),
-            strict: true,
-            stmts: vec![
-                Stmt::Node(DotNode::new(
-                    NodeId(DotId::Plain("component_a".into()), None),
-                    vec![
-                        dot_attr("pos", "72,144"),
-                        dot_attr("width", "1.0"),
-                        dot_attr("height", "0.75"),
-                    ],
-                )),
-                Stmt::Node(DotNode::new(
-                    NodeId(DotId::Plain("component_b".into()), None),
-                    vec![
-                        dot_attr("pos", "72,36"),
-                        dot_attr("width", "1.0"),
-                        dot_attr("height", "0.75"),
-                    ],
-                )),
-            ],
-        };
-
-        let positions = extract_positions_from_graph(&graph).expect("positions extraction failed");
-
-        let id_a = Id::new("component_a");
-        let id_b = Id::new("component_b");
-
-        assert_eq!(positions.len(), 2);
-        assert!(positions.contains_key(&id_a));
-        assert!(positions.contains_key(&id_b));
-
-        let pos_a = positions[&id_a];
-        assert!((pos_a.x() - 72.0).abs() < 0.01);
-        assert!((pos_a.y() - 144.0).abs() < 0.01);
-
-        let pos_b = positions[&id_b];
-        assert!((pos_b.x() - 72.0).abs() < 0.01);
-        assert!((pos_b.y() - 36.0).abs() < 0.01);
-    }
-
-    #[test]
-    fn test_extract_positions_empty_graph() {
-        let graph = DotGraph::DiGraph {
-            id: DotId::Plain("empty".into()),
-            strict: true,
-            stmts: vec![],
-        };
-        let positions = extract_positions_from_graph(&graph).expect("positions extraction failed");
-        assert!(positions.is_empty());
-    }
-
-    #[test]
-    fn test_run_graphviz_and_extract_positions() {
-        // This test requires graphviz to be installed
-        let gv_graph = DotGraph::DiGraph {
-            id: DotId::Plain("test".into()),
-            strict: true,
-            stmts: vec![
-                Stmt::Attribute(dot_attr("rankdir", "TB")),
-                Stmt::Node(DotNode::new(
-                    NodeId(DotId::Plain("n0".into()), None),
-                    vec![
-                        dot_attr("shape", "box"),
-                        dot_attr("fixedsize", "true"),
-                        dot_attr("width", "1.0"),
-                        dot_attr("height", "0.75"),
-                    ],
-                )),
-                Stmt::Node(DotNode::new(
-                    NodeId(DotId::Plain("n1".into()), None),
-                    vec![
-                        dot_attr("shape", "box"),
-                        dot_attr("fixedsize", "true"),
-                        dot_attr("width", "1.0"),
-                        dot_attr("height", "0.75"),
-                    ],
-                )),
-                Stmt::Edge(Edge {
-                    ty: EdgeTy::Pair(
-                        Vertex::N(NodeId(DotId::Plain("n0".into()), None)),
-                        Vertex::N(NodeId(DotId::Plain("n1".into()), None)),
-                    ),
-                    attributes: vec![],
-                }),
-            ],
-        };
-
-        let laid_out_graph = run_graphviz(gv_graph).expect("graphviz execution failed");
-        let positions =
-            extract_positions_from_graph(&laid_out_graph).expect("positions extraction failed");
-
-        let id0 = Id::new("n0");
-        let id1 = Id::new("n1");
-
-        assert_eq!(positions.len(), 2);
-        assert!(positions.contains_key(&id0));
-        assert!(positions.contains_key(&id1));
-
-        // With rankdir=TB and -y flag: n0 (source) is at top (smaller Y)
-        let pos0 = positions[&id0];
-        let pos1 = positions[&id1];
-        assert!(pos0.y() < pos1.y(), "n0 should be above n1 (smaller Y)");
     }
 }
