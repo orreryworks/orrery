@@ -379,21 +379,31 @@ impl Arrow {
         }
     }
 
-    /// Creates an SVG path data string from external control points.
+    /// Creates an SVG path data string for an [`ArrowPath`].
     ///
-    /// Returns a straight line if `control_points` is empty. Otherwise, the
-    /// slice length determines the curve type:
-    /// - 1 point: quadratic bezier (SVG `Q` command).
-    /// - 2 points: cubic bezier (SVG `C` command).
-    /// - 3+ points: chained cubic bezier segments with midpoint anchors.
+    /// Returns a straight line via [`Self::straight_path_data`] when
+    /// [`control_points`](ArrowPath::control_points) is empty. Otherwise,
+    /// control points are consumed from the front in cubic Bézier groups
+    /// of three, and the tail is resolved based on how many remain:
     ///
-    /// For 3+ points, control points are grouped into pairs. Each pair defines
-    /// one cubic bezier segment. Intermediate anchor points (where segments join)
-    /// are computed as midpoints between consecutive control points at segment
-    /// boundaries. If the count is odd, the final segment is a quadratic bezier.
+    /// | Remaining | SVG commands                                     |
+    /// |-----------|--------------------------------------------------|
+    /// | 0         | `L destination`                                  |
+    /// | 1         | `Q cp, destination`                              |
+    /// | 2         | `C cp1, cp2, destination`                        |
+    /// | 3         | `Q cp1, cp2`  then  `Q cp3, destination`         |
+    /// | ≥ 4       | `C cp1, cp2, cp3`  then re-evaluate remainder    |
     ///
     /// See [SVG curve commands](https://developer.mozilla.org/en-US/docs/Web/SVG/Tutorial/Paths#curve_commands)
-    /// for details on how bezier control points map to SVG path data.
+    /// for details on how Bézier control points map to SVG path data.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The [`ArrowPath`] containing source, destination, and control points.
+    ///
+    /// # Returns
+    ///
+    /// An SVG path data string (`d` attribute) for a `<path>` element.
     fn curved_path_data(path: &ArrowPath) -> String {
         if path.control_points().is_empty() {
             return Self::straight_path_data(path.source(), path.destination());
@@ -406,39 +416,63 @@ impl Arrow {
         let len = control_points.len();
 
         while i < len {
-            let remaining = len - i;
-            if remaining >= 2 {
-                let cp1 = control_points[i];
-                let cp2 = control_points[i + 1];
-                // Determine the endpoint of this segment
-                let segment_end = if i + 2 < len {
-                    // More points follow: anchor at midpoint between cp2 and next cp
-                    cp2.midpoint(control_points[i + 2])
-                } else {
-                    // Last pair: end at the destination
-                    end
-                };
-                d.push_str(&format!(
-                    " C {} {}, {} {}, {} {}",
-                    cp1.x(),
-                    cp1.y(),
-                    cp2.x(),
-                    cp2.y(),
-                    segment_end.x(),
-                    segment_end.y()
-                ));
-                i += 2;
-            } else {
-                // Odd trailing point: quadratic bezier to destination
-                let cp = control_points[i];
-                d.push_str(&format!(
-                    " Q {} {}, {} {}",
-                    cp.x(),
-                    cp.y(),
-                    end.x(),
-                    end.y()
-                ));
-                i += 1;
+            i += match len - i {
+                1 => {
+                    // Quadratic bezier to destination
+                    let cp = control_points[i];
+                    d.push_str(&format!(
+                        " Q {} {}, {} {}",
+                        cp.x(),
+                        cp.y(),
+                        end.x(),
+                        end.y()
+                    ));
+                    1
+                }
+                2 => {
+                    // Cubic bezier to destination
+                    let cp1 = control_points[i];
+                    let cp2 = control_points[i + 1];
+                    d.push_str(&format!(
+                        " C {} {}, {} {}, {} {}",
+                        cp1.x(),
+                        cp1.y(),
+                        cp2.x(),
+                        cp2.y(),
+                        end.x(),
+                        end.y()
+                    ));
+                    2
+                }
+                3 => {
+                    // Quadratic bezier through first two; remaining 1 handled next iteration
+                    let cp1 = control_points[i];
+                    let cp2 = control_points[i + 1];
+                    d.push_str(&format!(
+                        " Q {} {}, {} {}",
+                        cp1.x(),
+                        cp1.y(),
+                        cp2.x(),
+                        cp2.y()
+                    ));
+                    2
+                }
+                _ => {
+                    // 4+: full cubic segment, re-evaluate remainder next iteration
+                    let cp1 = control_points[i];
+                    let cp2 = control_points[i + 1];
+                    let cp3 = control_points[i + 2];
+                    d.push_str(&format!(
+                        " C {} {}, {} {}, {} {}",
+                        cp1.x(),
+                        cp1.y(),
+                        cp2.x(),
+                        cp2.y(),
+                        cp3.x(),
+                        cp3.y()
+                    ));
+                    3
+                }
             }
         }
 
@@ -670,8 +704,26 @@ mod tests {
     }
 
     #[test]
-    fn test_curved_path_data_chained_cubic_even() {
-        // 4 control points = 2 cubic segments
+    fn test_curved_path_data_three_control_points() {
+        // 3 control points = two quadratic beziers (Q cp1,cp2 then Q cp3,dest)
+        let path = ArrowPath::new(
+            Point::new(0.0, 0.0),
+            Point::new(100.0, 0.0),
+            vec![
+                Point::new(20.0, -30.0),
+                Point::new(50.0, -30.0),
+                Point::new(80.0, -10.0),
+            ],
+        );
+
+        let result = Arrow::curved_path_data(&path);
+
+        assert_eq!(result, "M 0 0 Q 20 -30, 50 -30 Q 80 -10, 100 0");
+    }
+
+    #[test]
+    fn test_curved_path_data_four_control_points() {
+        // 4 control points = 1 full group (3) + 1 trailing quadratic
         let path = ArrowPath::new(
             Point::new(0.0, 0.0),
             Point::new(100.0, 0.0),
@@ -685,30 +737,8 @@ mod tests {
 
         let result = Arrow::curved_path_data(&path);
 
-        // First segment: start -> midpoint(cp2, cp3) with cp1, cp2 as control points
-        // midpoint(30,40 and 60,40) = (45, 40)
-        // Second segment: midpoint -> end with cp3, cp4 as control points
-        assert_eq!(result, "M 0 0 C 10 20, 30 40, 45 40 C 60 40, 80 20, 100 0");
-    }
-
-    #[test]
-    fn test_curved_path_data_chained_odd() {
-        // 3 control points = 1 cubic segment + 1 quadratic segment
-        let path = ArrowPath::new(
-            Point::new(0.0, 0.0),
-            Point::new(100.0, 0.0),
-            vec![
-                Point::new(20.0, -30.0),
-                Point::new(50.0, -30.0),
-                Point::new(80.0, -10.0),
-            ],
-        );
-
-        let result = Arrow::curved_path_data(&path);
-
-        // First segment: cubic with cp1, cp2, ending at midpoint(cp2, cp3) = (65, -20)
-        // Second segment: quadratic with cp3, ending at destination
-        assert_eq!(result, "M 0 0 C 20 -30, 50 -30, 65 -20 Q 80 -10, 100 0");
+        // First group: C cp1 cp2 cp3, trailing: Q cp4 destination
+        assert_eq!(result, "M 0 0 C 10 20, 30 40, 60 40 Q 80 20, 100 0");
     }
 
     #[test]
