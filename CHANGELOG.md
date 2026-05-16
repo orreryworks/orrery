@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **BREAKING: Default `ArrowStyle` changed to `Curved`** — The default arrow style is now `Curved` (was `Straight`). `Curved` renders a straight line when no control points are provided, and follows bezier control points when they are. ([#106](https://github.com/orreryworks/orrery/issues/106))
 - **BREAKING: Arrow rendering API accepts control points** — `ArrowDrawer::draw_arrow`, `ArrowWithText::render_to_layers`, and `ArrowWithTextDrawer::draw_arrow_with_text` now require an additional `control_points: &[Point]` parameter. Pass `&[]` to preserve previous behavior. ([#106](https://github.com/orreryworks/orrery/issues/106))
+- **BREAKING: Arrow rendering API accepts an optional label position** — `ArrowWithText::render_to_layers` and `ArrowWithTextDrawer::draw_arrow_with_text` now require an additional `text_position_override: Option<Point>` parameter, and `PositionedArrowWithText` exposes a `with_text_position` builder. ([#117](https://github.com/orreryworks/orrery/issues/117))
 
 ### Fixed
 
