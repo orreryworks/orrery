@@ -3,13 +3,7 @@
 //! This module provides algorithms for calculating element positions in diagrams.
 //! It contains reusable positioning logic that can be used by different layout engines.
 
-use std::cmp::Ordering;
-use std::iter::IntoIterator;
-
-use orrery_core::{
-    draw,
-    geometry::{Bounds, Size},
-};
+use orrery_core::geometry::{Bounds, Size};
 
 /// A trait for types that can calculate their own size and bounds
 pub trait LayoutBounds {
@@ -22,30 +16,6 @@ pub trait LayoutBounds {
     /// Returns the bounding box that contains all content, which may have
     /// a non-zero minimum point if content doesn't start at the origin.
     fn layout_bounds(&self) -> Bounds;
-}
-
-/// Calculate additional spacing needed based on text labels
-///
-/// This function examines a collection of optional text labels and determines
-/// the minimum spacing required to accommodate the widest label plus padding.
-///
-/// # Arguments
-/// * `labels` - Collection of optional text label references
-/// * `padding` - Additional padding to add around the calculated text width
-///
-/// # Returns
-/// The width needed for the widest label plus padding, or 0 if no labels
-pub fn calculate_label_spacing<'a, I>(texts: I, padding: f32) -> f32
-where
-    I: IntoIterator<Item = Option<draw::Text<'a>>>,
-{
-    // HACK: This is hacky, fix it.
-    texts
-        .into_iter()
-        .flatten()
-        .map(|text| text.calculate_size().width() + padding)
-        .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-        .unwrap_or(0.0)
 }
 
 /// Distribute elements horizontally with appropriate spacing
