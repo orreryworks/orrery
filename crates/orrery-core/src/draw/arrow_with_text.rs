@@ -24,13 +24,69 @@ impl<'a> ArrowWithText<'a> {
         Self { arrow, text }
     }
 
+    /// Returns the minimum [`Size`] needed to render this arrow with its text.
+    ///
+    /// Combines the arrow's minimum size with the text label size.
+    pub fn min_size(&self) -> Size {
+        let text_size = self.text.as_ref().map(|t| t.size()).unwrap_or_default();
+        self.arrow.min_size().max(text_size)
+    }
+
+    /// Renders the arrow with optional text to layered output.
+    ///
+    /// When control points are present in `path`, the arrow follows the
+    /// provided Bézier curve and the text label is positioned at the curve's
+    /// visual midpoint (`t = 0.5`) rather than the geometric midpoint of the
+    /// endpoints.
+    ///
+    /// # Arguments
+    ///
+    /// * `arrow_drawer` - Drawer that manages SVG marker generation.
+    /// * `path` - The geometric path of the arrow.
+    /// * `text_position_override` - Explicit label position. When `None`, the
+    ///   renderer computes the position from `path`'s geometry.
+    ///
+    /// # Returns
+    ///
+    /// The rendered arrow (and optional label) as a [`LayeredOutput`].
+    // TODO: borrowing arrow_drawer is not good in here.
+    pub fn render_to_layers(
+        &self,
+        arrow_drawer: &mut ArrowDrawer,
+        path: &ArrowPath,
+        text_position_override: Option<Point>,
+    ) -> LayeredOutput {
+        let mut output = LayeredOutput::new();
+
+        let rendered_arrow = arrow_drawer.draw_arrow(&self.arrow, path);
+        output.add_to_layer(RenderLayer::Arrow, rendered_arrow);
+
+        if let Some(text) = &self.text {
+            let text_pos = self.calculate_text_position(path, text_position_override);
+            let text_output = text.render_to_layers(text_pos);
+            output.merge(text_output);
+        }
+
+        output
+    }
+
     /// Calculates the position where text should be rendered relative to the arrow.
     ///
-    /// Only [`ArrowStyle::Curved`] uses control points for positioning. Other
-    /// styles always place text at the geometric midpoint of source and destination.
-    fn calculate_text_position(&self, path: &ArrowPath) -> Point {
+    /// If `text_position_override` is `Some`, that explicit position is returned
+    /// verbatim. Otherwise, only [`ArrowStyle::Curved`] uses control points for
+    /// positioning; other styles always place text at the geometric midpoint of
+    /// source and destination.
+    fn calculate_text_position(
+        &self,
+        path: &ArrowPath,
+        text_position_override: Option<Point>,
+    ) -> Point {
         if self.text.is_none() {
             return Point::zero();
+        }
+
+        if let Some(position) = text_position_override {
+            return position;
         }
 
         let source = path.source();
@@ -57,44 +113,6 @@ impl<'a> ArrowWithText<'a> {
             }
         }
     }
-
-    /// Returns the minimum [`Size`] needed to render this arrow with its text.
-    ///
-    /// Combines the arrow's minimum size with the text label size.
-    pub fn min_size(&self) -> Size {
-        let text_size = self.text.as_ref().map(|t| t.size()).unwrap_or_default();
-        self.arrow.min_size().max(text_size)
-    }
-
-    /// Renders the arrow with optional text to layered output.
-    ///
-    /// When control points are present in `path`, the arrow follows the provided
-    /// bezier curve and the text label is positioned at the curve's visual
-    /// midpoint (t=0.5) rather than the geometric midpoint of the endpoints.
-    ///
-    /// # Arguments
-    ///
-    /// * `arrow_drawer` - Drawer that manages SVG marker generation.
-    /// * `path` - The geometric path of the arrow.
-    // TODO: borrowing arrow_drawer is not good in here.
-    pub fn render_to_layers(
-        &self,
-        arrow_drawer: &mut ArrowDrawer,
-        path: &ArrowPath,
-    ) -> LayeredOutput {
-        let mut output = LayeredOutput::new();
-
-        let rendered_arrow = arrow_drawer.draw_arrow(&self.arrow, path);
-        output.add_to_layer(RenderLayer::Arrow, rendered_arrow);
-
-        if let Some(text) = &self.text {
-            let text_pos = self.calculate_text_position(path);
-            let text_output = text.render_to_layers(text_pos);
-            output.merge(text_output);
-        }
-
-        output
-    }
 }
 
 /// ArrowWithTextDrawer manages arrow rendering with text and marker generation.
@@ -120,12 +138,15 @@ impl ArrowWithTextDrawer {
     ///
     /// * `arrow_with_text` - The arrow and text composite to render.
     /// * `path` - The geometric path of the arrow.
+    /// * `text_position_override` - Explicit label position. When `None`, the
+    ///   renderer computes the position from `path`'s geometry.
     pub fn draw_arrow_with_text(
         &mut self,
         arrow_with_text: &ArrowWithText,
         path: &ArrowPath,
+        text_position_override: Option<Point>,
     ) -> LayeredOutput {
-        arrow_with_text.render_to_layers(&mut self.0, path)
+        arrow_with_text.render_to_layers(&mut self.0, path, text_position_override)
     }
 
     /// Generates SVG marker definitions for all rendered arrows.
@@ -134,15 +155,35 @@ impl ArrowWithTextDrawer {
     }
 }
 
-/// An [`ArrowWithText`] paired with its [`ArrowPath`].
+/// An [`ArrowWithText`] paired with its [`ArrowPath`] and an optional explicit
+/// text position.
+///
+/// # Examples
+///
+/// ```
+/// # use std::rc::Rc;
+/// # use orrery_core::draw::{Arrow, ArrowDefinition, ArrowDirection, ArrowPath,
+/// #     ArrowWithText, PositionedArrowWithText, StrokeDefinition};
+/// # use orrery_core::geometry::Point;
+/// let stroke = Rc::new(StrokeDefinition::default());
+/// let arrow = Arrow::new(Rc::new(ArrowDefinition::new(stroke)), ArrowDirection::Forward);
+/// let arrow_with_text = ArrowWithText::new(arrow, None);
+/// let path = ArrowPath::straight(Point::new(0.0, 0.0), Point::new(100.0, 0.0));
+///
+/// let positioned = PositionedArrowWithText::new(arrow_with_text, path);
+/// let _override = positioned.with_text_position(Some(Point::new(40.0, 20.0)));
+/// ```
 #[derive(Debug, Clone)]
 pub struct PositionedArrowWithText<'a> {
     arrow_with_text: ArrowWithText<'a>,
     path: ArrowPath,
+    /// Explicit position for the text. When `None`, the renderer computes the
+    /// position from `path`'s geometry.
+    text_position: Option<Point>,
 }
 
 impl<'a> PositionedArrowWithText<'a> {
-    /// Creates a new positioned arrow with text.
+    /// Creates a new positioned arrow with text and no text-position override.
     ///
     /// # Arguments
     ///
@@ -152,7 +193,23 @@ impl<'a> PositionedArrowWithText<'a> {
         Self {
             arrow_with_text,
             path,
+            text_position: None,
         }
+    }
+
+    /// Sets the label-position override.
+    ///
+    /// Use this when the path's geometric midpoint is not where the label
+    /// should appear visually. Pass `None` to let the renderer auto-compute
+    /// the position from the path's geometry.
+    ///
+    /// # Arguments
+    ///
+    /// * `position` - The explicit position for the label, or `None` to
+    ///   the renderer's placement.
+    pub fn with_text_position(mut self, position: Option<Point>) -> Self {
+        self.text_position = position;
+        self
     }
 
     /// Renders this positioned arrow to layered SVG output.
@@ -161,7 +218,7 @@ impl<'a> PositionedArrowWithText<'a> {
     ///
     /// * `drawer` - Manages arrow rendering and SVG marker generation.
     pub fn render_to_layers(&self, drawer: &mut ArrowWithTextDrawer) -> LayeredOutput {
-        drawer.draw_arrow_with_text(&self.arrow_with_text, &self.path)
+        drawer.draw_arrow_with_text(&self.arrow_with_text, &self.path, self.text_position)
     }
 }
 
@@ -252,7 +309,7 @@ mod tests {
 
         // Without text, should return zero point.
         let path = ArrowPath::straight(Point::new(0.0, 0.0), Point::new(100.0, 100.0));
-        let pos = arrow_with_text.calculate_text_position(&path);
+        let pos = arrow_with_text.calculate_text_position(&path, None);
         assert_eq!(pos, Point::zero());
 
         // With text and no control points, should return midpoint.
@@ -262,7 +319,7 @@ mod tests {
         let arrow_with_text = ArrowWithText::new(arrow, Some(text));
 
         let path = ArrowPath::straight(Point::new(0.0, 0.0), Point::new(100.0, 50.0));
-        let pos = arrow_with_text.calculate_text_position(&path);
+        let pos = arrow_with_text.calculate_text_position(&path, None);
         assert_eq!(pos, Point::new(50.0, 25.0));
 
         // With text and quadratic control point
@@ -276,7 +333,7 @@ mod tests {
             Point::new(100.0, 0.0),
             vec![Point::new(50.0, -30.0)],
         );
-        let pos = arrow_with_text.calculate_text_position(&path);
+        let pos = arrow_with_text.calculate_text_position(&path, None);
         // 0.25*0 + 0.5*50 + 0.25*100 = 50, 0.25*0 + 0.5*(-30) + 0.25*0 = -15
         assert_eq!(pos, Point::new(50.0, -15.0));
 
@@ -291,10 +348,30 @@ mod tests {
             Point::new(100.0, 0.0),
             vec![Point::new(30.0, -40.0), Point::new(70.0, -40.0)],
         );
-        let pos = arrow_with_text.calculate_text_position(&path);
+        let pos = arrow_with_text.calculate_text_position(&path, None);
         // 0.125*0 + 0.375*30 + 0.375*70 + 0.125*100 = 0+11.25+26.25+12.5 = 50
         // 0.125*0 + 0.375*(-40) + 0.375*(-40) + 0.125*0 = -15-15 = -30
         assert_eq!(pos, Point::new(50.0, -30.0));
+    }
+
+    #[test]
+    fn test_calculate_text_position_override_takes_precedence() {
+        let arrow = create_test_arrow(ArrowDirection::Forward);
+        let text_def = TextDefinition::default();
+        let text = Text::new(&text_def, "Label");
+        let arrow_with_text = ArrowWithText::new(arrow, Some(text));
+
+        // A curved path whose auto-computed midpoint is at (50, -30)...
+        let path = ArrowPath::new(
+            Point::new(0.0, 0.0),
+            Point::new(100.0, 0.0),
+            vec![Point::new(30.0, -40.0), Point::new(70.0, -40.0)],
+        );
+
+        // ...is overridden to a custom location.
+        let override_pos = Point::new(200.0, 200.0);
+        let pos = arrow_with_text.calculate_text_position(&path, Some(override_pos));
+        assert_eq!(pos, override_pos);
     }
 
     #[test]
@@ -310,7 +387,7 @@ mod tests {
             Point::new(100.0, 0.0),
             vec![Point::new(50.0, -30.0)],
         );
-        let pos = arrow_with_text.calculate_text_position(&path);
+        let pos = arrow_with_text.calculate_text_position(&path, None);
         assert_eq!(pos, Point::new(50.0, 0.0));
     }
 
@@ -327,7 +404,7 @@ mod tests {
             Point::new(100.0, 0.0),
             vec![Point::new(30.0, -40.0), Point::new(70.0, -40.0)],
         );
-        let pos = arrow_with_text.calculate_text_position(&path);
+        let pos = arrow_with_text.calculate_text_position(&path, None);
         assert_eq!(pos, Point::new(50.0, 0.0));
     }
 
@@ -359,7 +436,7 @@ mod tests {
         let cp = Point::new(50.0, -20.0);
 
         let path = ArrowPath::new(source, destination, vec![cp]);
-        let output = arrow_with_text.render_to_layers(&mut arrow_drawer, &path);
+        let output = arrow_with_text.render_to_layers(&mut arrow_drawer, &path, None);
         assert!(!output.is_empty());
 
         // Without text label - should still have arrow layer
@@ -367,7 +444,7 @@ mod tests {
         let arrow_with_text = ArrowWithText::new(arrow, None);
 
         let path = ArrowPath::straight(source, destination);
-        let output = arrow_with_text.render_to_layers(&mut arrow_drawer, &path);
+        let output = arrow_with_text.render_to_layers(&mut arrow_drawer, &path, None);
         assert!(!output.is_empty());
     }
 
@@ -391,7 +468,7 @@ mod tests {
             let arrow_with_text = ArrowWithText::new(arrow, Some(text));
 
             let path = ArrowPath::straight(source, destination);
-            let output = arrow_with_text.render_to_layers(&mut arrow_drawer, &path);
+            let output = arrow_with_text.render_to_layers(&mut arrow_drawer, &path, None);
             assert!(
                 !output.is_empty(),
                 "Rendering failed for direction: {:?}",
