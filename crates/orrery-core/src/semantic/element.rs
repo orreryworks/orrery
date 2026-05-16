@@ -113,6 +113,12 @@ impl Relation {
         self.target
     }
 
+    /// Returns `true` if this relation is a self-loop — i.e., the source
+    /// and target nodes are the same.
+    pub fn is_self_loop(&self) -> bool {
+        self.source == self.target
+    }
+
     /// Get the arrow direction for this relation.
     pub fn arrow_direction(&self) -> draw::ArrowDirection {
         self.arrow_direction

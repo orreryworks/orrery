@@ -23,6 +23,10 @@ use crate::{
     structure::{SequenceEvent, SequenceGraph},
 };
 
+/// Horizontal gap between the right edge of a self-loop's hook and the left
+/// edge of its label.
+const SELF_LOOP_LABEL_GAP: f32 = 4.0;
+
 /// A message between two participants during event processing.
 ///
 /// Holds the arrow definition and vertical position before the full path can be
@@ -36,8 +40,25 @@ struct Message<'a> {
 
 impl<'a> Message<'a> {
     /// Creates a message from a semantic relation and participant IDs.
+    ///
+    /// When a self-loop, the underlying [`draw::ArrowDefinition`] is
+    /// cloned and its style is forced to [`draw::ArrowStyle::Curved`].
+    ///
+    /// # Arguments
+    ///
+    /// * `relation` - The semantic relation backing this message.
+    /// * `source` - ID of the source participant.
+    /// * `target` - ID of the target participant.
+    ///
+    /// # Returns
+    ///
+    /// A [`Message`] with `y_position` defaulted to `0.0`; callers should
+    /// finalize the position with [`Self::set_y_position`].
     fn from_relation(relation: &'a semantic::Relation, source: Id, target: Id) -> Self {
-        let arrow_def = Rc::clone(relation.arrow_definition());
+        let mut arrow_def = Rc::clone(relation.arrow_definition());
+        if source == target && *arrow_def.style() != draw::ArrowStyle::Curved {
+            Rc::make_mut(&mut arrow_def).set_style(draw::ArrowStyle::Curved);
+        }
         let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
         let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
         Self {
@@ -73,6 +94,11 @@ impl<'a> Message<'a> {
         self.y_position
     }
 
+    /// Returns `true` if this message renders as a self-loop on a single participant.
+    fn is_self_loop(&self) -> bool {
+        self.source == self.target
+    }
+
     /// Consumes self and returns the inner [`ArrowWithText`](draw::ArrowWithText).
     fn into_arrow_with_text(self) -> draw::ArrowWithText<'a> {
         self.arrow_with_text
@@ -105,6 +131,16 @@ pub struct Engine {
     padding: Insets,
     /// Extra horizontal padding to accommodate message labels.
     label_padding: f32,
+    /// Minimum bounding [`Size`] reserved for a self-loop.
+    ///
+    /// The width is how far the loop bows out beyond the participant's lifeline; the
+    /// height is the minimum vertical span between the loop's source and destination.
+    self_loop_min_size: Size,
+    /// Radius of the rounded corners of a self-loop.
+    ///
+    /// [`Self::self_loop_min_size`]'s width must be at least this value, and
+    /// its height must be at least twice this value.
+    self_loop_corner_radius: f32,
 }
 
 impl Engine {
@@ -116,6 +152,8 @@ impl Engine {
             top_margin: 60.0,
             padding: Insets::uniform(15.0),
             label_padding: 20.0, // Extra padding for labels
+            self_loop_min_size: Size::new(30.0, 20.0),
+            self_loop_corner_radius: 8.0,
         }
     }
 
@@ -152,22 +190,63 @@ impl Engine {
         self
     }
 
-    /// Calculate additional spacing needed between participants based on message label sizes
-    fn calculate_message_label_spacing(
-        &self,
-        source_id: Id,
-        target_id: Id,
-        messages: &[&semantic::Relation],
-    ) -> f32 {
-        // Filter messages to only those between the two participants
-        let relevant_messages = messages.iter().filter(|relation| {
-            (relation.source() == source_id && relation.target() == target_id)
-                || (relation.source() == target_id && relation.target() == source_id)
-        });
+    /// Sets the minimum bounding [`Size`] for a self-loop.
+    ///
+    /// The width is how far the loop bows out beyond the lifeline; the height
+    /// is the minimum vertical span between the loop's source and destination.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `size.width()` is less than the configured corner radius or
+    /// `size.height()` is less than twice it.
+    #[allow(dead_code)]
+    pub fn set_self_loop_min_size(&mut self, size: Size) -> &mut Self {
+        self.self_loop_min_size = size;
+        self.assert_self_loop_min_size_radius_is_valid();
+        self
+    }
 
-        // Extract labels from relations and use shared function to calculate spacing
-        let labels = relevant_messages.map(|relation| relation.text());
-        crate::layout::positioning::calculate_label_spacing(labels, self.label_padding)
+    /// Sets the rounded-corner radius for self-loops.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `radius` exceeds the configured
+    /// [`Self::self_loop_min_size`]'s width, or if `2 * radius` exceeds its
+    /// height.
+    #[allow(dead_code)]
+    pub fn set_self_loop_corner_radius(&mut self, radius: f32) -> &mut Self {
+        self.self_loop_corner_radius = radius;
+        self.assert_self_loop_min_size_radius_is_valid();
+        self
+    }
+
+    /// Asserts that the configured self-loop minimum size is large enough to
+    /// fit the configured rounded-corner radius.
+    ///
+    /// The loop is a rounded rectangle with arcs only on the right side
+    /// (the lifeline closes the left). Horizontally, at most one arc spans
+    /// the loop in any given row, so the width must be at least the corner
+    /// radius. Vertically, the top-right and bottom-right arcs share the
+    /// vertical extent, so the height must be at least twice the corner
+    /// radius.
+    ///
+    /// # Panics
+    ///
+    /// Panics if [`Self::self_loop_min_size`]'s width is less than
+    /// [`Self::self_loop_corner_radius`], or if its height is less than
+    /// twice it.
+    fn assert_self_loop_min_size_radius_is_valid(&self) {
+        let is_valid = self.self_loop_min_size.width() >= self.self_loop_corner_radius
+            && self.self_loop_min_size.height() >= 2.0 * self.self_loop_corner_radius;
+        assert!(
+            is_valid,
+            "`self_loop_min_size` ({}x{}) is too small to fit \
+             `self_loop_corner_radius` ({}); width must be ≥ the corner \
+             radius and height must be ≥ twice the corner radius",
+            self.self_loop_min_size.width(),
+            self.self_loop_min_size.height(),
+            self.self_loop_corner_radius
+        );
     }
 
     /// Calculate layout for a sequence diagram.
@@ -225,8 +304,11 @@ impl Engine {
         let mut nodes_iter = graph.nodes();
         if let Some(mut last_node) = nodes_iter.next() {
             for node in nodes_iter {
-                let spacing =
-                    self.calculate_message_label_spacing(last_node.id(), node.id(), &messages_vec);
+                let spacing = self.calculate_inter_participant_spacing(
+                    last_node.id(),
+                    node.id(),
+                    &messages_vec,
+                );
                 spacings.push(spacing);
                 last_node = node;
             }
@@ -271,7 +353,7 @@ impl Engine {
             self.process_events(graph, participants_height, &components)?;
 
         // Compute full arrow paths now that activation boxes are known.
-        let positioned_messages = Self::position_messages(messages, &activations, &components);
+        let positioned_messages = self.position_messages(messages, &activations, &components);
 
         // Update lifeline ends to match diagram height and finalize lifelines
         let participants: HashMap<Id, Participant<'a>> = components
@@ -306,11 +388,57 @@ impl Engine {
         Ok(content_stack)
     }
 
+    /// Calculates additional spacing needed between two consecutive
+    /// participants (`source_id` on the left, `target_id` on the right) so
+    /// that message labels and arrows fit between them.
+    ///
+    /// # Arguments
+    ///
+    /// * `source_id` - ID of the left-hand participant.
+    /// * `target_id` - ID of the right-hand participant.
+    /// * `messages` - All relations in the diagram. Only the ones that
+    ///   appear between source and target contribute to the result.
+    ///
+    /// # Returns
+    ///
+    /// The required horizontal spacing between source and target.
+    fn calculate_inter_participant_spacing(
+        &self,
+        source_id: Id,
+        target_id: Id,
+        messages: &[&semantic::Relation],
+    ) -> f32 {
+        let relevant_messages = messages
+            .iter()
+            .filter(|relation| {
+                (relation.source() == source_id
+                    && (relation.target() == target_id || relation.is_self_loop()))
+                    || (relation.source() == target_id && relation.target() == source_id)
+            })
+            .copied();
+        let has_self_loop = relevant_messages
+            .clone()
+            .any(semantic::Relation::is_self_loop);
+        let mut max_size = relevant_messages
+            .flat_map(|relation| relation.text().map(|t| t.calculate_size()))
+            .fold(Size::zero(), Size::max);
+        if has_self_loop {
+            max_size = max_size.max(self.self_loop_min_size)
+        }
+
+        if max_size.width() == 0.0 {
+            0.0
+        } else {
+            max_size.width() + self.label_padding
+        }
+    }
+
     /// Computes arrow paths for messages using finalized activation boxes.
     ///
     /// Converts intermediate [`Message`] data into positioned arrows by calculating
     /// the X endpoints based on active activation boxes at each message's Y position.
     fn position_messages<'a>(
+        &self,
         messages: Vec<Message<'a>>,
         activations: &[ActivationBox],
         components: &HashMap<Id, Component<'a>>,
@@ -318,31 +446,189 @@ impl Engine {
         messages
             .into_iter()
             .map(|msg| {
-                let source_participant = &components[&msg.source()];
-                let target_participant = &components[&msg.target()];
-
-                let source_x = sequence::calculate_message_endpoint_x(
-                    activations,
-                    source_participant,
-                    msg.source(),
-                    msg.y_position(),
-                    target_participant.position().x(),
-                );
-                let target_x = sequence::calculate_message_endpoint_x(
-                    activations,
-                    target_participant,
-                    msg.target(),
-                    msg.y_position(),
-                    source_participant.position().x(),
-                );
-
-                let start_point = Point::new(source_x, msg.y_position());
-                let end_point = Point::new(target_x, msg.y_position());
-                let path = draw::ArrowPath::straight(start_point, end_point);
-
-                draw::PositionedArrowWithText::new(msg.into_arrow_with_text(), path)
+                if msg.is_self_loop() {
+                    let (path, label_position) = self.self_loop_path(&msg, activations, components);
+                    draw::PositionedArrowWithText::new(msg.into_arrow_with_text(), path)
+                        .with_text_position(label_position)
+                } else {
+                    let path = Self::cross_participant_path(&msg, activations, components);
+                    draw::PositionedArrowWithText::new(msg.into_arrow_with_text(), path)
+                }
             })
             .collect()
+    }
+
+    /// Computes a straight-line [`draw::ArrowPath`] between two distinct
+    /// participants, accounting for the right/left edges of any active
+    /// activation boxes at the message's Y position.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - The cross-participant message to position.
+    /// * `activations` - All activation boxes in the diagram.
+    /// * `components` - Map of participant IDs to their positioned components.
+    ///
+    /// # Returns
+    ///
+    /// A straight [`draw::ArrowPath`] from the source endpoint to the target
+    /// endpoint at `msg.y_position()`.
+    fn cross_participant_path(
+        msg: &Message<'_>,
+        activations: &[ActivationBox],
+        components: &HashMap<Id, Component<'_>>,
+    ) -> draw::ArrowPath {
+        let source_participant = &components[&msg.source()];
+        let target_participant = &components[&msg.target()];
+
+        let source_x = sequence::calculate_message_endpoint_x(
+            activations,
+            source_participant,
+            msg.source(),
+            msg.y_position(),
+            target_participant.position().x(),
+        );
+        let target_x = sequence::calculate_message_endpoint_x(
+            activations,
+            target_participant,
+            msg.target(),
+            msg.y_position(),
+            source_participant.position().x(),
+        );
+
+        let start_point = Point::new(source_x, msg.y_position());
+        let end_point = Point::new(target_x, msg.y_position());
+        draw::ArrowPath::straight(start_point, end_point)
+    }
+
+    /// Computes a rounded-rectangular [`draw::ArrowPath`] for a self-loop on a
+    /// single participant.
+    ///
+    /// ```text
+    ///       lifeline
+    ///         |
+    ///  source o-----┐
+    ///         |     |  label text spans
+    ///         |     |  one or more lines
+    ///    dest o<----┘
+    ///         |
+    /// ```
+    ///
+    /// The path is a five-segment chain (line, arc, line, arc, line) encoded
+    /// as a chain of cubic Béziers in the [`draw::ArrowPath`]'s control
+    /// points. The two arcs approximate the quarter-circles at the top-right
+    /// and bottom-right corners.
+    ///
+    /// [`ArrowDirection::Forward`](draw::ArrowDirection::Forward) keeps the
+    /// arrowhead at the destination (the returning bottom point), where SVG
+    /// `marker-end` with `orient="auto"` rotates it to point back into the
+    /// lifeline along the curve's tangent. Other directions are honored
+    /// verbatim by the SVG marker dispatch in `Arrow`.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - The self-loop message to position. Must satisfy
+    ///   [`Message::is_self_loop`].
+    /// * `activations` - All activation boxes in the diagram.
+    /// * `components` - Map of participant IDs to their positioned components.
+    ///
+    /// # Returns
+    ///
+    /// A tuple `(path, label_position)`, where `path` is the rounded-rectangle
+    /// arrow path and `label_position` is the explicit position of the text.
+    fn self_loop_path(
+        &self,
+        msg: &Message<'_>,
+        activations: &[ActivationBox],
+        components: &HashMap<Id, Component<'_>>,
+    ) -> (draw::ArrowPath, Option<Point>) {
+        debug_assert!(msg.is_self_loop(), "expected self-loop message");
+
+        // Geometry:
+        // - `x_anchor` = right edge of the most-nested active activation box at
+        //   `y_position`, or the participant's center X if no activation box is
+        //   active.
+        // - The loop's **horizontal** extent (`arm_length`) is fixed by
+        //   `self.self_loop_min_size.width()`.
+        // - The loop's **vertical** extent (`separation`) grows to fit
+        //   multi-line labels.
+        // - The label is positioned to the right of the loop's hook, offset by
+        //   [`SELF_LOOP_LABEL_GAP`].
+
+        let participant = &components[&msg.source()];
+
+        let x_anchor = sequence::calculate_message_endpoint_x(
+            activations,
+            participant,
+            msg.source(),
+            msg.y_position(),
+            f32::INFINITY,
+        );
+
+        let content_size = msg.min_size();
+        let arrow_size = self.self_loop_with_content_min_arrow_size(content_size);
+
+        let y_center = msg.y_position();
+        let y_top = y_center - arrow_size.height() / 2.0;
+        let y_bottom = y_top + arrow_size.height();
+        let corner_x = x_anchor + arrow_size.width();
+
+        let r = self.self_loop_corner_radius;
+
+        // Anchor points along the loop's perimeter.
+        let a0 = Point::new(x_anchor, y_top); // source
+        let a1 = Point::new(corner_x - r, y_top); // before top-right corner
+        let a2 = Point::new(corner_x, y_top + r); // after top-right corner
+        let a3 = Point::new(corner_x, y_bottom - r); // before bottom-right corner
+        let a4 = Point::new(corner_x - r, y_bottom); // after bottom-right corner
+        let a5 = Point::new(x_anchor, y_bottom); // destination
+
+        // Cubic-Bézier circular-arc constant: control points at distance
+        // `kappa * r` from the anchors along the tangent direction.
+        // (kappa = 4 * (sqrt(2) - 1) / 3, truncated to f32 precision.)
+        const KAPPA: f32 = 0.552_284_8;
+        let off = r * (1.0 - KAPPA);
+
+        // Quarter-arc control points: top-right (right → down) and bottom-right
+        // (down → left).
+        let arc_top_cp1 = Point::new(corner_x - off, y_top);
+        let arc_top_cp2 = Point::new(corner_x, y_top + off);
+        let arc_bot_cp1 = Point::new(corner_x, y_bottom - off);
+        let arc_bot_cp2 = Point::new(corner_x - off, y_bottom);
+
+        let (s1_cp1, s1_cp2) = line_segment_cubic_cps(a0, a1);
+        let (s3_cp1, s3_cp2) = line_segment_cubic_cps(a2, a3);
+        let (s5_cp1, s5_cp2) = line_segment_cubic_cps(a4, a5);
+
+        let control_points = vec![
+            s1_cp1,
+            s1_cp2,
+            a1,
+            arc_top_cp1,
+            arc_top_cp2,
+            a2,
+            s3_cp1,
+            s3_cp2,
+            a3,
+            arc_bot_cp1,
+            arc_bot_cp2,
+            a4,
+            s5_cp1,
+            s5_cp2,
+        ];
+
+        let path = draw::ArrowPath::new(a0, a5, control_points);
+
+        let label_position = if content_size.is_zero() {
+            None
+        } else {
+            let x_center = x_anchor
+                + self.self_loop_min_size.width()
+                + SELF_LOOP_LABEL_GAP
+                + content_size.width() / 2.0;
+            Some(Point::new(x_center, y_center))
+        };
+
+        (path, label_position)
     }
 
     /// Process all sequence diagram events to create layout components.
@@ -399,7 +685,7 @@ impl Engine {
                 SequenceEvent::Relation(relation) => {
                     let mut message =
                         Message::from_relation(relation, relation.source(), relation.target());
-                    let message_height = message.min_size().height();
+                    let message_height = self.message_min_size(&message).height();
 
                     // Center the arrow line within the message's vertical extent.
                     let center_y = current_y + message_height / 2.0;
@@ -497,6 +783,52 @@ impl Engine {
         Ok((messages, activation_boxes, fragments, notes, current_y))
     }
 
+    /// Computes the minimum bounding [`Size`] for a message slot.
+    ///
+    /// - For cross-participant messages this is just the message's intrinsic
+    ///   content size.
+    /// - For self-loops, the slot reserves enough horizontal space for
+    ///   the loop and any overflowing label sitting next to it.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - The message to size.
+    ///
+    /// # Returns
+    ///
+    /// The minimum [`Size`] this message will occupy in the layout.
+    fn message_min_size(&self, message: &Message) -> Size {
+        let content_size = message.min_size();
+        if message.is_self_loop() {
+            if content_size.is_zero() {
+                self.self_loop_min_size
+            } else {
+                let arrow_size = self.self_loop_with_content_min_arrow_size(content_size);
+                let width =
+                    self.self_loop_min_size.width() + SELF_LOOP_LABEL_GAP + content_size.width();
+                Size::new(width, arrow_size.height())
+            }
+        } else {
+            content_size
+        }
+    }
+
+    /// Computes the minimum bounding [`Size`] for the rounded-rectangle arrow
+    /// of a self-loop given the message's `content_size`.
+    ///
+    /// # Arguments
+    ///
+    /// * `content_size` - The intrinsic size of the message's content.
+    ///
+    /// # Returns
+    ///
+    /// The minimum bounding [`Size`] of the loop's arrow path.
+    fn self_loop_with_content_min_arrow_size(&self, content_size: Size) -> Size {
+        let height = (content_size.height() + 2.0 * self.self_loop_corner_radius)
+            .max(self.self_loop_min_size.height());
+        Size::new(self.self_loop_min_size.width(), height)
+    }
+
     /// Create a positioned note drawable for a sequence diagram.
     ///
     /// Calculates the appropriate position and width for a note based on the participants
@@ -587,5 +919,177 @@ impl SequenceEngine for Engine {
         embedded_layouts: &EmbeddedLayouts<'a>,
     ) -> Result<ContentStack<Layout<'a>>, RenderError> {
         self.calculate_layout(graph, embedded_layouts)
+    }
+}
+
+/// Computes the two control points for a cubic-Bézier rendering of a straight
+/// line from `a` to `b`.
+///
+/// # Returns
+///
+/// A tuple `(cp1, cp2)` of the two cubic-Bézier control points.
+fn line_segment_cubic_cps(start: Point, end: Point) -> (Point, Point) {
+    let dx = (end.x() - start.x()) / 3.0;
+    let dy = (end.y() - start.y()) / 3.0;
+    (
+        Point::new(start.x() + dx, start.y() + dy),
+        Point::new(start.x() + 2.0 * dx, start.y() + 2.0 * dy),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use orrery_core::draw::{ArrowDefinition, ArrowDirection, ArrowStyle, RectangleDefinition};
+
+    fn make_relation(source: Id, target: Id, label: Option<&str>) -> semantic::Relation {
+        let mut def = ArrowDefinition::default();
+        def.set_style(ArrowStyle::Straight);
+        semantic::Relation::new(
+            source,
+            target,
+            ArrowDirection::Forward,
+            label.map(str::to_string),
+            Rc::new(def),
+        )
+    }
+
+    fn make_node(name: &str) -> semantic::Node {
+        let id = Id::new(name);
+        let shape_def = Rc::new(
+            Box::new(RectangleDefinition::new()) as Box<dyn orrery_core::draw::ShapeDefinition>
+        );
+        semantic::Node::new(id, None, semantic::Block::None, shape_def)
+    }
+
+    fn make_component<'a>(node: &'a semantic::Node, position: Point) -> Component<'a> {
+        let shape = draw::Shape::new(Rc::clone(node.shape_definition()));
+        let shape_with_text = draw::ShapeWithText::new(shape, None);
+        Component::new(node, shape_with_text, position)
+    }
+
+    #[test]
+    fn test_line_segment_cubic_cps() {
+        let (cp1, cp2) = line_segment_cubic_cps(Point::new(0.0, 0.0), Point::new(30.0, 60.0));
+        assert_eq!(cp1, Point::new(10.0, 20.0));
+        assert_eq!(cp2, Point::new(20.0, 40.0));
+    }
+
+    #[test]
+    fn test_self_loop_with_content_min_arrow_size() {
+        let mut engine = Engine::new();
+        engine.set_self_loop_min_size(Size::new(30.0, 50.0));
+        // Short content: content_height (10) + 2 * radius (8) = 26 < min_height (50).
+        assert_eq!(
+            engine.self_loop_with_content_min_arrow_size(Size::new(20.0, 10.0)),
+            Size::new(30.0, 50.0),
+        );
+
+        // Tall content: content_height (40) + 16 = 56 > min_height (50).
+        assert_eq!(
+            engine.self_loop_with_content_min_arrow_size(Size::new(70.0, 40.0)),
+            Size::new(30.0, 56.0),
+        );
+    }
+
+    #[test]
+    fn test_message_min_size_cross() {
+        let a = Id::new("a");
+        let b = Id::new("b");
+        let relation = make_relation(a, b, None);
+        let msg = Message::from_relation(&relation, a, b);
+
+        let size = Engine::new().message_min_size(&msg);
+        assert_eq!(size, msg.min_size());
+    }
+
+    #[test]
+    fn test_message_min_size_self_loop() {
+        let id = Id::new("a");
+        let relation = make_relation(id, id, None);
+        let msg = Message::from_relation(&relation, id, id);
+
+        let mut engine = Engine::new();
+        engine.set_self_loop_min_size(Size::new(30.0, 20.0));
+        // Default corner_radius = 8. Content for an unlabeled `Forward` arrow is
+        // (MARKER_SIZE, MARKER_SIZE) = (6, 6).
+        // width  = self_loop_min_size.width() + SELF_LOOP_LABEL_GAP + content.width()
+        //        = 30 + 4 + 6 = 40
+        // height = max(content.height() + 2 * radius, self_loop_min_size.height())
+        //        = max(6 + 16, 20) = 22
+        assert_eq!(engine.message_min_size(&msg), Size::new(40.0, 22.0));
+    }
+
+    #[test]
+    fn test_cross_participant_path() {
+        let a_id = Id::new("a");
+        let b_id = Id::new("b");
+        let a_node = make_node("a");
+        let b_node = make_node("b");
+        let mut components = HashMap::new();
+        components.insert(a_id, make_component(&a_node, Point::new(50.0, 50.0)));
+        components.insert(b_id, make_component(&b_node, Point::new(150.0, 50.0)));
+
+        let relation = make_relation(a_id, b_id, None);
+        let mut msg = Message::from_relation(&relation, a_id, b_id);
+        msg.set_y_position(200.0);
+
+        let path = Engine::cross_participant_path(&msg, &[], &components);
+
+        assert_eq!(path.source(), Point::new(50.0, 200.0));
+        assert_eq!(path.destination(), Point::new(150.0, 200.0));
+        assert!(path.control_points().is_empty());
+    }
+
+    #[test]
+    fn test_self_loop_path_no_activation() {
+        let id = Id::new("a");
+        let node = make_node("a");
+        let component = make_component(&node, Point::new(100.0, 50.0));
+        let mut components = HashMap::new();
+        components.insert(id, component);
+
+        let relation = make_relation(id, id, None);
+        let mut msg = Message::from_relation(&relation, id, id);
+        msg.set_y_position(200.0);
+
+        let mut engine = Engine::new();
+        engine.set_self_loop_min_size(Size::new(40.0, 30.0));
+        let (path, _label) = engine.self_loop_path(&msg, &[], &components);
+
+        // Both endpoints sit on the lifeline X.
+        assert_eq!(path.source().x(), 100.0);
+        assert_eq!(path.destination().x(), 100.0);
+        // 5 cubic-Bézier segments → 14 control points (4 anchors + 5 * 2 cps).
+        assert_eq!(path.control_points().len(), 14);
+    }
+
+    #[test]
+    fn test_self_loop_path_with_activation() {
+        let id = Id::new("a");
+        let node = make_node("a");
+        let component = make_component(&node, Point::new(100.0, 50.0));
+        let mut components = HashMap::new();
+        components.insert(id, component);
+
+        // Default activation-box width = 8 → right edge sits at participant_x + 4.
+        let timing = ActivationTiming::new(
+            id,
+            180.0,
+            0,
+            Rc::new(draw::ActivationBoxDefinition::default()),
+        );
+        let activations = vec![timing.to_activation_box(220.0)];
+
+        let relation = make_relation(id, id, None);
+        let mut msg = Message::from_relation(&relation, id, id);
+        msg.set_y_position(200.0); // Inside the activation-box vertical range.
+
+        let engine = Engine::new();
+        let (path, _label) = engine.self_loop_path(&msg, &activations, &components);
+
+        assert_eq!(path.source().x(), 104.0);
+        assert_eq!(path.destination().x(), 104.0);
     }
 }
