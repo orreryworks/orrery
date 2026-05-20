@@ -822,6 +822,7 @@ dependencies = [
  "cosmic-text",
  "dot-generator",
  "dot-structures",
+ "float-cmp",
  "graphviz-rust",
  "indexmap",
  "layout-rs",

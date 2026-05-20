@@ -41,3 +41,4 @@ dot-structures = { version = "0.1.2", optional = true }
 dot-generator = { version = "0.2.0", optional = true }
 
 [dev-dependencies]
+float-cmp = "0.10"

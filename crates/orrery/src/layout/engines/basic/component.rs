@@ -18,7 +18,9 @@ use orrery_core::{
 use crate::{
     error::RenderError,
     layout::{
-        component::{self, Component, Layout, adjust_positioned_contents_offset},
+        component::{
+            ArrowPlacer, Component, CurvedArrowPlacer, Layout, adjust_positioned_contents_offset,
+        },
         engines::{ComponentEngine, EmbeddedLayouts},
         layer::{ContentStack, PositionedContent},
     },
@@ -39,6 +41,7 @@ pub struct Engine {
     text_padding: f32,
     /// Minimum spacing between adjacent components.
     min_spacing: f32,
+    arrow_placer: CurvedArrowPlacer,
 }
 
 impl Engine {
@@ -125,26 +128,12 @@ impl Engine {
                 .map(|(idx, component)| (component.node_id(), idx))
                 .collect();
 
-            // Build the list of relations between components
-            let relations: Vec<draw::PositionedArrowWithText> = graph
-                .scope_relations(containment_scope)
-                .filter_map(|relation| {
-                    // Only include relations between visible components
-                    // (not including relations within inner blocks)
-                    if let (Some(&source_index), Some(&target_index)) = (
-                        component_indices.get(&relation.source()),
-                        component_indices.get(&relation.target()),
-                    ) {
-                        Some(component::positioned_arrow_from_relation(
-                            relation,
-                            &components[source_index],
-                            &components[target_index],
-                        ))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
+            let relations = self.place_scope_relations(
+                graph,
+                containment_scope,
+                &components,
+                &component_indices,
+            );
 
             let positioned_content = PositionedContent::new(Layout::new(components, relations));
 
@@ -159,6 +148,49 @@ impl Engine {
         adjust_positioned_contents_offset(&mut content_stack, graph)?;
 
         Ok(content_stack)
+    }
+
+    /// Builds positioned arrows for all visible relations in a containment scope.
+    ///
+    /// Parallel/reverse relations between the same component pair are placed
+    /// together so the [`ArrowPlacer`] can offset them. Relations whose
+    /// endpoints are not visible at this scope are skipped.
+    fn place_scope_relations<'a>(
+        &self,
+        graph: &'a ComponentGraph<'a, '_>,
+        containment_scope: &ContainmentScope,
+        components: &[Component<'a>],
+        component_indices: &HashMap<Id, usize>,
+    ) -> Vec<draw::PositionedArrowWithText<'a>> {
+        let mut buckets: HashMap<(Id, Id), Vec<&'a semantic::Relation>> = HashMap::new();
+
+        for relation in graph.scope_relations(containment_scope) {
+            let source_id = relation.source();
+            let target_id = relation.target();
+
+            if !component_indices.contains_key(&source_id)
+                || !component_indices.contains_key(&target_id)
+            {
+                continue;
+            }
+
+            // Canonicalize the pair key so (a,b) and (b,a) land in the same bucket.
+            let key = if buckets.contains_key(&(target_id, source_id)) {
+                (target_id, source_id)
+            } else {
+                (source_id, target_id)
+            };
+            buckets.entry(key).or_default().push(relation);
+        }
+
+        buckets
+            .into_iter()
+            .flat_map(|((src_id, tgt_id), bucket)| {
+                let src = &components[component_indices[&src_id]];
+                let tgt = &components[component_indices[&tgt_id]];
+                self.arrow_placer.place(&bucket, src, tgt)
+            })
+            .collect()
     }
 
     /// Calculate component shapes with proper content size and padding.
