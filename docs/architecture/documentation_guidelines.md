@@ -1,112 +1,187 @@
 # Orrery Documentation Guidelines
 
+## Philosophy
+
+This guide extends the [Rust API Guidelines — Documentation](https://rust-lang.github.io/api-guidelines/documentation.html) with Orrery-specific style and a strong bias toward brevity.
+
+A doc comment that only restates the signature is noise. Public items always carry at least a one-line summary; depth scales with complexity, not with ceremony. The shape of a good comment is: one line of summary plus whatever the reader genuinely needs — errors, panics, invariants, a substantive example.
+
 ## Core Principles
 
-1. **Every public item MUST be documented** - No exceptions for mature crates
-2. **Explain WHY, not just WHAT** - Describe purpose and behavior, not how it's used elsewhere
-3. **Document dependencies, not dependents** - Reference upstream dependencies, never mention downstream consumers
-4. **Consistency is paramount** - Same patterns across all crates
-5. **Examples for complex APIs** - Show, don't just tell
-6. **Private code needs context** - Even internal modules should explain their purpose
+1. **Signal over volume.** Aim for the shortest comment a future contributor would still thank you for.
+2. **Document what the code cannot say.** Intent, invariants, edge cases, tradeoffs, surprising behavior. The signature speaks for itself about names and types.
+3. **Every public item is documented; depth scales with complexity.** A trivial accessor may carry only a one-line summary; a non-obvious API earns full prose, an `# Errors` section, and a substantive example.
+4. **Document dependencies, not dependents.** Reference upstream types; never mention downstream consumers — those relationships change and the comment will lie.
+5. **Examples show *why*, not just *how*.** Aim to include an example on public items where it adds value, per [C-EXAMPLE](https://rust-lang.github.io/api-guidelines/documentation.html#examples-use-error-not-tryunwrap-c-question-mark). A link to an example on a related item is an acceptable substitute.
+6. **Consistency in style, not in length.** The patterns are consistent; the lengths of real comments are not.
 
----
+## Anti-Patterns
+
+### Restating the signature
+
+```rust
+/// Returns the name.
+///
+/// # Returns
+///
+/// The name as a `String`.
+pub fn name(&self) -> String { ... }
+```
+
+Either omit the comment or surface something the signature doesn't:
+
+```rust
+/// Returns the display name, falling back to the login if unset.
+pub fn name(&self) -> String { ... }
+```
+
+### Narrating the obvious
+
+```rust
+/// This struct represents a user.
+///
+/// It has a name and an age.
+pub struct User {
+    /// The name of the user.
+    pub name: String,
+    /// The age of the user.
+    pub age: u32,
+}
+```
+
+One line for the type; field comments only when the name doesn't carry the meaning:
+
+```rust
+/// An authenticated end-user account.
+pub struct User {
+    pub name: String,
+    pub age: u32,
+}
+```
+
+### Ceremonial section headers with empty content
+
+```rust
+/// Adds two numbers.
+///
+/// # Arguments
+///
+/// * `a` - The first number.
+/// * `b` - The second number.
+///
+/// # Returns
+///
+/// The sum.
+pub fn add(a: i32, b: i32) -> i32 { a + b }
+```
+
+Use `# Arguments` / `# Returns` only when they carry meaning beyond the signature:
+
+```rust
+/// Returns `a + b`, wrapping on overflow.
+pub fn add(a: i32, b: i32) -> i32 { ... }
+```
+
+### Filler examples
+
+```rust
+/// # Examples
+///
+/// ```
+/// let x = MyStruct::new();
+/// ```
+```
+
+An example that only invokes the constructor adds no information.
+
+### "This function..." preambles
+
+Start summaries with the verb or noun directly.
+
+| Avoid                                          | Prefer                          |
+| ---------------------------------------------- | ------------------------------- |
+| `/// This function parses the input.`          | `/// Parses the input.`         |
+| `/// This struct represents a configuration.`  | `/// Runtime configuration.`    |
+| `/// The return value is the number of bytes.` | `/// Returns the byte count.`   |
+
+### Module docs that re-list every item
+
+Rustdoc already produces a per-kind index of every `pub` item. A module doc that flat-enumerates the same items with their first-line summaries duplicates that index and goes stale. Module docs are for purpose, conceptual groupings, and cross-cutting invariants — curated overviews like [`std::collections`](https://doc.rust-lang.org/std/collections/) are welcome; verbatim enumerations are not.
+
+## When a Doc Comment Is Not Needed
+
+Public items always carry at least a one-line doc. Doc comments are not needed for:
+
+- Derived trait impls (`Debug`, `Clone`, etc.).
+- Private fields with self-explanatory names.
+- Private enum variants with self-explanatory names.
+- Private helpers with short bodies and descriptive names.
+
+For a public trivial accessor or a public `new` whose fields are documented on the struct, a one-line summary suffices and the example may link to the parent type's.
 
 ## Documentation Syntax
 
-| Syntax | Purpose | Location |
-|--------|---------|----------|
-| `//!` | Module/crate-level docs | Top of file |
-| `///` | Item-level docs | Above items |
-| `//` | Implementation comments | Within code |
+| Syntax | Purpose                  | Location       |
+| ------ | ------------------------ | -------------- |
+| `//!`  | Module/crate-level docs  | Top of file    |
+| `///`  | Item-level docs          | Above items    |
+| `//`   | Implementation comments  | Within code    |
 
----
+## What to Document, by Item Type
 
-## Requirements by Item Type
+### Public items
 
-### Public Items
+| Item                | Summary  | Details when non-obvious                          | Example                                                      |
+| ------------------- | -------- | ------------------------------------------------- | ------------------------------------------------------------ |
+| Module / crate      | Required | Recommended                                       | Recommended for crate root and entry-point modules           |
+| Struct / Enum       | Required | When purpose isn't obvious from name              | Recommended (may link to an example on a constructor/method) |
+| Trait               | Required | Required (what it abstracts, invariants)          | Recommended (may link to an example on a method)             |
+| Function / Method   | Required | When behavior or errors aren't obvious            | Recommended where it adds value; may link to a related item  |
+| Public field        | Required | Only if the name doesn't fully explain it         | —                                                            |
+| Public enum variant | Required | Only when the variant carries non-obvious meaning | —                                                            |
 
-| Item | Summary | Details | Examples | Sections |
-|------|---------|---------|----------|----------|
-| Module | Required | Required | Recommended | N/A |
-| Struct/Enum | Required | Required | Required* | N/A |
-| Trait | Required | Required | Required* | N/A |
-| Trait Methods | Required | Required | Optional | Required |
-| Function | Required | Required | Required* | Required |
-| Method | Required | Required | Optional | Required |
+### Private items
 
-*Required for complex or non-obvious usage
-
-### Private Items
-
-| Item | Summary | Details | Examples |
-|------|---------|---------|----------|
-| Module | Required | Recommended | Optional |
-| Struct/Enum | Required | Optional | Optional |
-| Function | Required | Optional | Optional |
-| Complex Logic | Required | Required | Optional |
-
-### Field and Variant Documentation
-
-- **Struct fields**: Document only if `pub` OR purpose is not obvious from name
-- **Enum variants (public)**: All variants must be documented
-- **Enum variants (private)**: Document only if purpose is not obvious from name
-
----
-
-## Crate Maturity Levels
-
-### Mature/Stable Crates
-
-Full documentation required for all public items. Private items should have at least summary documentation.
-
-### Experimental/Unstable Crates
-
-Focus on public API entry points. Private modules need only brief purpose explanations.
-
----
+Documented when the *purpose* or *algorithm* isn't obvious from the code. A one-line comment is usually enough; short, well-named helpers need none.
 
 ## Standard Sections
 
-Use sections in this order:
+In order, included only when they have content:
 
-1. Summary (no header, always first)
-2. Extended description (no header)
-3. `# Arguments` - Required for functions with parameters
-4. `# Returns` - Required for non-obvious return values
-5. `# Errors` - Required for Result-returning functions
-6. `# Panics` - Required if function can panic
-7. `# Safety` - Required for unsafe code
-8. `# Examples` - Required for complex APIs
+1. Summary line (no header, always first).
+2. Extended description (no header).
+3. `# Arguments` — when an argument needs explanation beyond its name and type.
+4. `# Returns` — when the return needs explanation beyond its type.
+5. `# Errors` — required for `Result`-returning functions; list the conditions that produce each error variant.
+6. `# Panics` — required when the function can panic.
+7. `# Safety` — required for `unsafe` functions.
+8. `# Examples` — per C-EXAMPLE.
 
-### Section Formatting
+### Section formatting
 
 ```rust
 /// # Arguments
 ///
-/// * `param` - Description of parameter
-///
-/// # Returns
-///
-/// Description of return value.
+/// * `key` - The lookup key
+/// * `mode` - Open mode; `Write` truncates, `Append` does not.
 ///
 /// # Errors
 ///
-/// Returns an error if:
-/// - Condition A occurs
-/// - Condition B occurs
+/// - [`Error::NotFound`] if the key is absent.
+/// - [`Error::Io`] if the underlying read fails.
 ```
 
----
+## Examples: Best Practices
 
-## Example Best Practices
+1. **Show *why*, not just *how*.** Demonstrate a reason to reach for the item.
+2. **Keep examples minimal.** One concept per example.
+3. **Use domain-relevant names.** Prefer `tokens`, `config`, `node` over `foo`, `bar`, `baz`.
+4. **Hide boilerplate with `#`.** Hide `use` statements and `main` wrappers.
+5. **Use `?`, not `unwrap`** for fallible code, per [C-QUESTION-MARK](https://rust-lang.github.io/api-guidelines/documentation.html#examples-use-error-not-tryunwrap-c-question-mark).
+6. **Use assertions** to demonstrate expected behavior.
+7. **Link instead of duplicate.** Write the example once; link the rest to it.
 
-1. **Keep examples minimal** - Show the concept, not everything
-2. **Use meaningful values** - Use domain-relevant names instead of `foo`, `bar`, `test`
-3. **Use `?` for error handling** - Wrap in hidden `main` function
-4. **Use assertions** - `assert_eq!`, `assert!` demonstrate expected behavior
-5. **Hide boilerplate with `#`** - Hide obvious `use` statements and `main` wrapper
-
-### Example with Result
+### With `Result`
 
 ```rust
 /// # Examples
@@ -121,283 +196,177 @@ Use sections in this order:
 /// ```
 ```
 
-### Example without Result
+### Without `Result`
 
 ```rust
 /// # Examples
 ///
 /// ```
-/// # use crate::MyStruct;
-/// let instance = MyStruct::new("example");
-/// assert_eq!(instance.name(), "example");
+/// # use crate::Lexer;
+/// let tokens = Lexer::new("1 + 2").tokenize();
+/// assert_eq!(tokens.len(), 3);
 /// ```
 ```
 
----
+## ASCII Diagrams
 
-## ASCII Art Diagrams
-
-For complex concepts, include ASCII diagrams:
+Use diagrams for pipelines, state machines, and data flows when they convey structure better than prose.
 
 ```rust
-//! # Data Flow
-//!
 //! ```text
-//! Source Text
-//!     ↓ lexer
-//! Tokens
-//!     ↓ parser
-//! AST
-//!     ↓ transform
-//! Output
+//! Source ──► Lexer ──► Parser ──► AST ──► Codegen
 //! ```
 ```
 
----
-
 ## Templates
+
+Upper bounds, not minima. Drop sections that don't carry information.
 
 ### Module
 
 ```rust
-//! Brief one-line description.
+//! What this module is for, in one or two sentences.
 //!
-//! Longer explanation of what this module provides.
+//! Optional: a paragraph on the key concept or invariant the module enforces.
+```
+
+Entry-point module:
+
+```rust
+//! Tokenization for the Orrery query language.
 //!
-//! # Overview
+//! The lexer is single-pass and allocation-free for ASCII input.
 //!
-//! - [`MainType`] - Primary type description
-//! - [`helper_fn`] - Helper function description
-//!
-//! # Example
-//!
-//! ```
-//! # use crate::module::MainType;
-//! let instance = MainType::new();
-//! assert_eq!(instance.value(), 0);
+//! ```text
+//! &str ──► Lexer ──► Iterator<Token>
 //! ```
 ```
 
 ### Struct
 
 ```rust
-/// Brief one-line description.
-///
-/// Longer description explaining:
-/// - What this type represents
-/// - When to use it
-///
-/// # Examples
-///
-/// ```
-/// # use crate::MyStruct;
-/// let instance = MyStruct::new(42);
-/// assert_eq!(instance.value(), 42);
-/// ```
-pub struct MyStruct {
-    /// Document public fields.
-    pub value: i32,
-    // Private obvious fields need no docs
-    count: usize,
-}
-
-impl MyStruct {
-    /// Creates a new instance with the given value.
-    ///
-    /// # Arguments
-    ///
-    /// * `value` - The initial value
-    pub fn new(value: i32) -> Self {
-        Self { value, count: 0 }
-    }
-
-    /// Returns the current value.
-    pub fn value(&self) -> i32 {
-        self.value
-    }
+/// One-line description of what this represents.
+pub struct Config {
+    pub max_retries: u32,
+    /// Timeout per attempt; `None` disables the per-attempt deadline.
+    pub timeout: Option<Duration>,
 }
 ```
 
-### Enum (Public)
+Place the `# Examples` block on the type or on its primary constructor (with a link from the type).
+
+### Enum (public)
 
 ```rust
-/// Brief one-line description.
-///
-/// Explanation of what states this enum represents.
-pub enum Status {
-    /// Waiting for input.
-    Pending,
-    /// Currently processing with progress percentage.
-    Running(u8),
-    /// Completed successfully.
-    Done,
-    /// Failed with error message.
-    Failed(String),
+/// Result of a single parse attempt.
+pub enum ParseOutcome {
+    Success(Ast),
+    /// Parsing failed but recovery produced a partial AST usable for diagnostics.
+    Recovered(Ast, Vec<Diagnostic>),
+    Failed(Vec<Diagnostic>),
 }
 ```
 
-### Enum (Private)
-
-```rust
-/// Processing state machine.
-enum State {
-    Idle,
-    Running,
-    /// Waiting for external resource with timeout in milliseconds.
-    Waiting(u64),
-    Done,
-}
-```
+Document a variant only when its meaning isn't obvious from name and payload.
 
 ### Trait
 
 ```rust
-/// Brief one-line description.
-///
-/// Explanation of what this trait abstracts.
+/// One-line description of the abstraction.
 ///
 /// # Implementing
 ///
-/// Implementors must ensure:
-/// - Requirement 1
-/// - Requirement 2
-///
-/// # Example
-///
-/// ```
-/// # use crate::MyTrait;
-/// struct MyType;
-///
-/// impl MyTrait for MyType {
-///     fn process(&self) -> i32 {
-///         42
-///     }
-/// }
-///
-/// let instance = MyType;
-/// assert_eq!(instance.process(), 42);
-/// ```
-pub trait MyTrait {
-    /// Processes and returns a value.
-    ///
-    /// # Returns
-    ///
-    /// The computed value.
-    fn process(&self) -> i32;
-
-    /// Optional method with default implementation.
-    fn is_ready(&self) -> bool {
-        true
-    }
+/// Include this section when implementors must uphold non-obvious invariants
+/// or ordering guarantees.
+pub trait Sink {
+    /// Writes a chunk. Returns the number of bytes consumed; a short write
+    /// is permitted and the caller must retry the remainder.
+    fn write_chunk(&mut self, buf: &[u8]) -> Result<usize>;
 }
 ```
 
 ### Function
 
 ```rust
-/// Brief one-line description.
-///
-/// Longer description if needed.
-///
-/// # Arguments
-///
-/// * `input` - The data to process
-/// * `options` - Configuration options
-///
-/// # Returns
-///
-/// The processed output.
+/// Parses `input` into an [`Ast`].
 ///
 /// # Errors
 ///
-/// Returns an error if:
-/// - Input is invalid
-/// - Processing fails
+/// - [`ParseError::UnexpectedToken`] when a token doesn't match the grammar.
+/// - [`ParseError::Eof`] when input ends mid-expression.
 ///
 /// # Examples
 ///
 /// ```
-/// # use crate::{process, Options};
-/// # fn main() -> Result<(), Error> {
-/// let result = process("data", Options::default())?;
-/// assert!(result.is_valid());
-/// # Ok(())
-/// # }
+/// # use crate::parse;
+/// let ast = parse("1 + 2")?;
+/// assert_eq!(ast.root_kind(), NodeKind::BinaryOp);
+/// # Ok::<_, ParseError>(())
 /// ```
-pub fn process(input: &str, options: Options) -> Result<Output, Error> {
-    // implementation
-}
+pub fn parse(input: &str) -> Result<Ast, ParseError> { ... }
 ```
 
-### Private Complex Logic
+No `# Arguments` / `# Returns`: the signature conveys both. For a helper covered by another item's example, link instead of duplicating.
+
+### Private complex logic
+
+Explain *why* the code looks the way it does — reasoning, constraints, alternatives rejected — not what each line does:
 
 ```rust
-/// Calculates intersection point of a line with a rectangle boundary.
-///
-/// Uses parametric line equations to find where the line from `a` to `b`
-/// crosses the rectangle centered at `a` with the given `size`.
-///
-/// Algorithm:
-/// 1. Calculate parametric t values for each edge
-/// 2. Filter to valid intersections (0 < t < 1)
-/// 3. Return the closest intersection point
-fn find_intersection(a: Point, b: Point, size: Size) -> Point {
-    // implementation
-}
+/// Finds where the segment from `a` to `b` exits the rectangle centered at
+/// `a`. Used for edge routing — we need the boundary intersection, not the
+/// nearest grid point, so a parametric solve beats sampling.
+fn find_exit(a: Point, b: Point, size: Size) -> Point { ... }
 ```
-
----
 
 ## Consistency Rules
 
-### Rule 1: Every `.rs` file starts with module docs
+### Every `.rs` file starts with a module doc
+
+One line is fine:
 
 ```rust
-//! Brief description of the module.
+//! Token definitions for the lexer.
 ```
 
-### Rule 2: Every `pub` item has documentation
+### Every `pub` item has at least a one-line doc
+
+A short summary is enough.
+
+### Use intra-doc links
 
 ```rust
-/// Brief description.
-pub struct MyStruct { ... }
-
-/// Brief description.
-pub fn my_function() { ... }
+/// See [`Lexer`] for the token producer.
+/// Returns a [`Result`] containing an [`Ast`].
 ```
 
-### Rule 3: Use intra-doc links
+### Use backticks for code
 
 ```rust
-/// See [`OtherType`] for details.
-/// Returns a [`Result`] containing [`Output`].
+/// The `config` parameter controls retries.
+/// Returns `None` when the key is absent.
 ```
 
-### Rule 4: Use backticks for code
+### Punctuation
 
-Always wrap code snippets, variable names, and constants in backticks:
-
-```rust
-/// The `config` parameter controls behavior.
-/// Returns `None` if the key is not found.
-/// Set `MAX_RETRIES` to configure retry limit.
-```
-
-### Rule 5: Complete sentences end with `.`
-All documentation sentences must end with a period:
+Prose sentences end with `.`. Bullet items in `# Arguments`, `# Returns`, and `# Errors` end with `.` only when they're full sentences or clauses; short noun-phrase descriptions don't need one.
 
 ```rust
-/// Returns the current value.
-///
 /// # Arguments
 ///
-/// * `key` - The lookup key.
+/// * `path` - Filesystem path
+/// * `opts` - Open options; `read` and `write` may both be set.
+///
+/// # Errors
+///
+/// - [`io::Error`] if the path can't be opened.
 ```
 
-### Rule 6: Consistent terminology
+### Preferred terminology
 
-| Preferred | Avoid |
-|-----------|-------|
-| "Returns" | "Return value is" |
-| "Creates" | "This function creates" |
-| "Panics if" | "Will panic when" |
+| Preferred              | Avoid                          |
+| ---------------------- | ------------------------------ |
+| `Returns ...`          | `The return value is ...`      |
+| `Creates ...`          | `This function creates ...`    |
+| `Panics if ...`        | `Will panic when ...`          |
+| `Parses ...`           | `This method parses ...`       |
