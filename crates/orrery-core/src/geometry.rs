@@ -183,6 +183,12 @@ impl Point {
     }
 }
 
+impl From<(f32, f32)> for Point {
+    fn from((x, y): (f32, f32)) -> Self {
+        Self::new(x, y)
+    }
+}
+
 /// Width and height of a 2D element.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Size {
@@ -605,6 +611,16 @@ mod tests {
         assert_eq!(bounds.min_y(), 16.0); // 20 - 4
         assert_eq!(bounds.max_x(), 13.0); // 10 + 3
         assert_eq!(bounds.max_y(), 24.0); // 20 + 4
+    }
+
+    #[test]
+    fn test_point_from_tuple() {
+        let point: Point = (3.5, -2.0).into();
+        assert_eq!(point.x(), 3.5);
+        assert_eq!(point.y(), -2.0);
+
+        let point2 = Point::from((0.0, 0.0));
+        assert!(point2.is_zero());
     }
 
     #[test]

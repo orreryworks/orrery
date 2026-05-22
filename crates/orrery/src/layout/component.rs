@@ -90,37 +90,6 @@ impl<'a> Component<'a> {
     }
 }
 
-/// Creates a [`PositionedArrowWithText`](draw::PositionedArrowWithText) from a semantic relation
-/// and positioned source/target components.
-///
-/// Computes the arrow path by finding the intersection points between the
-/// line connecting the source and target centers and each component's shape boundary.
-///
-/// # Arguments
-///
-/// * `relation` - The semantic relation to extract arrow definition and text from.
-/// * `source` - The source component (for boundary intersection calculation).
-/// * `target` - The target component (for boundary intersection calculation).
-///
-/// # Returns
-///
-/// A fully positioned arrow ready for rendering.
-pub fn positioned_arrow_from_relation<'a>(
-    relation: &'a semantic::Relation,
-    source: &Component,
-    target: &Component,
-) -> draw::PositionedArrowWithText<'a> {
-    let arrow_def = Rc::clone(relation.arrow_definition());
-    let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
-    let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
-
-    let source_edge = source.find_intersection(target.position());
-    let target_edge = target.find_intersection(source.position());
-    let path = draw::ArrowPath::straight(source_edge, target_edge);
-
-    draw::PositionedArrowWithText::new(arrow_with_text, path)
-}
-
 /// Strategy for routing a bucket of relations between the same unordered
 /// component pair into positioned arrows.
 ///
@@ -149,6 +118,25 @@ pub trait ArrowPlacer {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct StraightArrowPlacer;
 
+impl StraightArrowPlacer {
+    /// Straight-line arrow from `source` boundary to `target` boundary.
+    fn place_one<'a>(
+        relation: &'a semantic::Relation,
+        source: &Component<'_>,
+        target: &Component<'_>,
+    ) -> draw::PositionedArrowWithText<'a> {
+        let arrow_def = Rc::clone(relation.arrow_definition());
+        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
+        let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
+
+        let source_edge = source.find_intersection(target.position());
+        let target_edge = target.find_intersection(source.position());
+        let path = draw::ArrowPath::straight(source_edge, target_edge);
+
+        draw::PositionedArrowWithText::new(arrow_with_text, path)
+    }
+}
+
 impl ArrowPlacer for StraightArrowPlacer {
     fn place<'a>(
         &self,
@@ -160,7 +148,7 @@ impl ArrowPlacer for StraightArrowPlacer {
             .iter()
             .map(|relation| {
                 let (rel_src, rel_tgt) = align_to_relation(relation, source, target);
-                positioned_arrow_from_relation(relation, rel_src, rel_tgt)
+                Self::place_one(relation, rel_src, rel_tgt)
             })
             .collect()
     }
@@ -176,19 +164,28 @@ impl ArrowPlacer for StraightArrowPlacer {
 /// Lane endpoints are found by aiming each shape's intersection ray at the
 /// offset center of the other shape; control points sit at 1/3 and 2/3 of
 /// the resulting lane line. For `N == 1` the offset is zero, producing a
-/// straight path identical to [`StraightArrowPlacer`]. Self-loop buckets
-/// currently fall back to straight lines.
+/// straight path identical to [`StraightArrowPlacer`].
+/// Self-loop buckets produce lobes distributed evenly around the component
+/// boundary (see [`Self::self_loop_angle`]).
 #[derive(Debug, Clone, Copy)]
 pub struct CurvedArrowPlacer {
     lane_spacing: f32,
+    self_loop_radius: f32,
+    /// Angular spread (radians) between self-loop source and destination
+    /// boundary points.
+    self_loop_spread: f32,
 }
 
 impl CurvedArrowPlacer {
     const DEFAULT_LANE_SPACING: f32 = 22.0;
+    const DEFAULT_SELF_LOOP_RADIUS: f32 = 35.0;
+    const DEFAULT_SELF_LOOP_SPREAD: f32 = std::f32::consts::FRAC_PI_6;
 
     pub fn new() -> Self {
         Self {
             lane_spacing: Self::DEFAULT_LANE_SPACING,
+            self_loop_radius: Self::DEFAULT_SELF_LOOP_RADIUS,
+            self_loop_spread: Self::DEFAULT_SELF_LOOP_SPREAD,
         }
     }
 
@@ -201,7 +198,7 @@ impl CurvedArrowPlacer {
     ) -> draw::PositionedArrowWithText<'a> {
         let Some((path, label_position)) = Self::lane_geometry(source, target, lane_offset) else {
             // Degenerate (zero-length centerline): fall back to straight.
-            return positioned_arrow_from_relation(relation, source, target);
+            return StraightArrowPlacer::place_one(relation, source, target);
         };
 
         let arrow_def = Rc::clone(relation.arrow_definition());
@@ -262,6 +259,68 @@ impl CurvedArrowPlacer {
             offset
         }
     }
+
+    /// Outward angle (radians) for the `k`-th self-loop out of `n` total.
+    fn self_loop_angle(k: usize, n: usize) -> f32 {
+        debug_assert_ne!(n, 0, "n must be greater than 0");
+        (k as f32) * std::f32::consts::TAU / (n as f32)
+    }
+
+    /// Teardrop-shaped Bézier lobe path for a self-loop at `angle`.
+    fn self_loop_geometry(
+        &self,
+        component: &Component<'_>,
+        angle: f32,
+    ) -> (draw::ArrowPath, Point) {
+        let center = component.position();
+        let direction = Point::new(angle.cos(), angle.sin());
+        let component_size = component.bounds().to_size();
+
+        // A large radius guarantees find_intersection hits the boundary.
+        let far = (component_size.height().abs() + component_size.width().abs()) * 2.0;
+
+        // Source exits above (clockwise-before) the lobe center;
+        // destination enters below (clockwise-after).
+        let half_spread = self.self_loop_spread / 2.0;
+        let src_angle = angle - half_spread;
+        let dst_angle = angle + half_spread;
+        let src_dir = Point::new(src_angle.cos(), src_angle.sin());
+        let dst_dir = Point::new(dst_angle.cos(), dst_angle.sin());
+
+        let src_far = center.add_point(src_dir.scale(far));
+        let dst_far = center.add_point(dst_dir.scale(far));
+
+        let src_edge = component.find_intersection(src_far);
+        let dst_edge = component.find_intersection(dst_far);
+
+        // Control points push outward by `self_loop_radius` from each exit
+        // point, in the lobe’s main direction.
+        let outward = direction.scale(self.self_loop_radius);
+        let cp1 = src_edge.add_point(outward);
+        let cp2 = dst_edge.add_point(outward);
+
+        let path = draw::ArrowPath::new(src_edge, dst_edge, vec![cp1, cp2]);
+        let label_position = cubic_bezier_midpoint(src_edge, cp1, cp2, dst_edge);
+
+        (path, label_position)
+    }
+
+    /// Positioned self-loop arrow at the given outward `angle`.
+    fn self_loop_arrow<'a>(
+        &self,
+        relation: &'a semantic::Relation,
+        component: &Component<'_>,
+        angle: f32,
+    ) -> draw::PositionedArrowWithText<'a> {
+        let (path, label_position) = self.self_loop_geometry(component, angle);
+
+        let arrow_def = Rc::clone(relation.arrow_definition());
+        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
+        let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
+
+        draw::PositionedArrowWithText::new(arrow_with_text, path)
+            .with_text_position(Some(label_position))
+    }
 }
 
 impl Default for CurvedArrowPlacer {
@@ -277,29 +336,34 @@ impl ArrowPlacer for CurvedArrowPlacer {
         source: &Component<'_>,
         target: &Component<'_>,
     ) -> Vec<draw::PositionedArrowWithText<'a>> {
-        // Self-loop bucket: fall back to straight lines until a dedicated
-        // self-loop router lands.
-        if source.node_id() == target.node_id() {
-            return StraightArrowPlacer.place(relations, source, target);
-        }
-
         let n = relations.len();
-        relations
-            .iter()
-            .enumerate()
-            .map(|(k, relation)| {
-                let (rel_src, rel_tgt) = align_to_relation(relation, source, target);
+        if source.node_id() == target.node_id() {
+            relations
+                .iter()
+                .enumerate()
+                .map(|(k, relation)| {
+                    let angle = Self::self_loop_angle(k, n);
+                    self.self_loop_arrow(relation, source, angle)
+                })
+                .collect()
+        } else {
+            relations
+                .iter()
+                .enumerate()
+                .map(|(k, relation)| {
+                    let (rel_src, rel_tgt) = align_to_relation(relation, source, target);
 
-                let lane_offset = self.lane_offset_at(k, n, relation, source.node_id());
+                    let lane_offset = self.lane_offset_at(k, n, relation, source.node_id());
 
-                if lane_offset == 0.0 {
-                    // Median lane (or N == 1): straight line.
-                    return positioned_arrow_from_relation(relation, rel_src, rel_tgt);
-                }
+                    if lane_offset == 0.0 {
+                        // Median lane (or N == 1): straight line.
+                        return StraightArrowPlacer::place_one(relation, rel_src, rel_tgt);
+                    }
 
-                Self::curved_arrow(relation, rel_src, rel_tgt, lane_offset)
-            })
-            .collect()
+                    Self::curved_arrow(relation, rel_src, rel_tgt, lane_offset)
+                })
+                .collect()
+        }
     }
 }
 
@@ -473,6 +537,8 @@ fn cubic_bezier_midpoint(start: Point, cp1: Point, cp2: Point, end: Point) -> Po
 
 #[cfg(test)]
 mod tests {
+    use std::f32::consts::{FRAC_PI_2, PI};
+
     use float_cmp::{approx_eq, assert_approx_eq};
 
     use super::*;
@@ -537,7 +603,10 @@ mod tests {
         let b_id = Id::new("b");
         let r0 = make_relation(a_id, b_id);
         let r1 = make_relation(a_id, b_id);
-        let router = CurvedArrowPlacer { lane_spacing: 10.0 };
+        let router = CurvedArrowPlacer {
+            lane_spacing: 10.0,
+            ..CurvedArrowPlacer::new()
+        };
 
         let off0 = router.lane_offset_at(0, 2, &r0, a_id);
         let off1 = router.lane_offset_at(1, 2, &r1, a_id);
@@ -550,7 +619,10 @@ mod tests {
         let a_id = Id::new("a");
         let b_id = Id::new("b");
         let r = make_relation(a_id, b_id);
-        let router = CurvedArrowPlacer { lane_spacing: 10.0 };
+        let router = CurvedArrowPlacer {
+            lane_spacing: 10.0,
+            ..CurvedArrowPlacer::new()
+        };
         assert_eq!(router.lane_offset_at(1, 3, &r, a_id), 0.0);
         assert_eq!(router.lane_offset_at(2, 3, &r, a_id), 10.0);
     }
@@ -626,6 +698,96 @@ mod tests {
         let a_node = make_node("a");
         let a = make_component(&a_node, Point::new(0.0, 0.0));
         assert!(CurvedArrowPlacer::lane_geometry(&a, &a, 18.0).is_none());
+    }
+
+    #[test]
+    fn self_loop_angle_distributes_evenly() {
+        // Single loop → 0° (right).
+        assert_approx_eq!(f32, CurvedArrowPlacer::self_loop_angle(0, 1), 0.0);
+
+        // Two loops → 0° and 180°.
+        assert_approx_eq!(f32, CurvedArrowPlacer::self_loop_angle(0, 2), 0.0);
+        assert_approx_eq!(f32, CurvedArrowPlacer::self_loop_angle(1, 2), PI);
+
+        // Four loops → 0°, 90°, 180°, 270°.
+        assert_approx_eq!(f32, CurvedArrowPlacer::self_loop_angle(0, 4), 0.0);
+        assert_approx_eq!(f32, CurvedArrowPlacer::self_loop_angle(1, 4), FRAC_PI_2);
+        assert_approx_eq!(f32, CurvedArrowPlacer::self_loop_angle(2, 4), PI);
+        assert_approx_eq!(
+            f32,
+            CurvedArrowPlacer::self_loop_angle(3, 4),
+            3.0 * FRAC_PI_2
+        );
+    }
+
+    #[test]
+    fn self_loop_geometry_source_and_dest_on_boundary() {
+        let node = make_node("a");
+        let comp = make_component(&node, Point::new(50.0, 50.0));
+        let router = CurvedArrowPlacer::new();
+
+        let (path, _) = router.self_loop_geometry(&comp, 0.0);
+
+        // Shape is 12x12 centered at (50,50). Source and dest should be on the
+        // right boundary (x ≈ 56) since angle=0 points right.
+        assert_approx_eq!(f32, path.source().x(), 56.0);
+        assert_approx_eq!(f32, path.destination().x(), 56.0);
+
+        // Source above center, destination below (spread pushes them apart).
+        assert!(path.source().y() < 50.0);
+        assert!(path.destination().y() > 50.0);
+    }
+
+    #[test]
+    fn self_loop_geometry_control_points_outside_bounds() {
+        let node = make_node("a");
+        let comp = make_component(&node, Point::new(50.0, 50.0));
+        let router = CurvedArrowPlacer::new();
+        let bounds = comp.bounds();
+
+        let (path, _) = router.self_loop_geometry(&comp, 0.0);
+
+        // Both control points should be to the right of the component bounds.
+        for cp in path.control_points() {
+            assert!(
+                cp.x() > bounds.max_x(),
+                "control point x={} should exceed bounds max_x={}",
+                cp.x(),
+                bounds.max_x()
+            );
+        }
+    }
+
+    #[test]
+    fn self_loop_geometry_label_outside_bounds() {
+        let node = make_node("a");
+        let comp = make_component(&node, Point::new(50.0, 50.0));
+        let router = CurvedArrowPlacer::new();
+        let bounds = comp.bounds();
+
+        let (_, label) = router.self_loop_geometry(&comp, 0.0);
+
+        // Label at angle=0 should be to the right of the boundary.
+        assert!(
+            label.x() > bounds.max_x(),
+            "label x={} should exceed bounds max_x={}",
+            label.x(),
+            bounds.max_x()
+        );
+    }
+
+    #[test]
+    fn self_loop_geometry_different_angles_produce_distinct_paths() {
+        let node = make_node("a");
+        let comp = make_component(&node, Point::new(50.0, 50.0));
+        let router = CurvedArrowPlacer::new();
+
+        let (path_right, _) = router.self_loop_geometry(&comp, 0.0);
+        let (path_left, _) = router.self_loop_geometry(&comp, PI);
+
+        // Angle=0 exits right (x > center), angle=π exits left (x < center).
+        assert!(path_right.source().x() > 50.0);
+        assert!(path_left.source().x() < 50.0);
     }
 
     #[test]
