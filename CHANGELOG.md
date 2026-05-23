@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-23
+
 ### Added
 
 - **Edge routing for parallel edges, reverse edges, and self-loops** — Multiple arrows between the same components now render as separate, visually distinguishable curves. Reverse arrows render on opposite sides, and self-referencing relations render as visible loops. ([#104](https://github.com/orreryworks/orrery/issues/104))
@@ -73,7 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration** — Layered configuration via CLI flags, project-local files, and platform-specific config directories.
 - **Dual licensing** — MIT OR Apache-2.0.
 
-[Unreleased]: https://github.com/orreryworks/orrery/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/orreryworks/orrery/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/orreryworks/orrery/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/orreryworks/orrery/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/orreryworks/orrery/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/orreryworks/orrery/compare/v0.1.0...v0.1.1
