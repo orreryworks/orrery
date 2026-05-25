@@ -8,27 +8,28 @@ use std::{collections::HashMap, rc::Rc};
 use log::warn;
 
 use orrery_core::{
-    draw,
+    draw::{
+        ActivationBox as DrawActivationBox, ActivationBoxDefinition, Fragment as DrawFragment,
+        FragmentSection as DrawFragmentSection, Lifeline, Note, PositionedArrowWithText,
+        PositionedDrawable,
+    },
     geometry::{Bounds, Point, Size},
     identifier::Id,
-    semantic,
+    semantic::{Fragment, FragmentSection},
 };
 
-use crate::layout::{component, positioning::LayoutBounds};
+use crate::layout::{component::Component, positioning::LayoutBounds};
 
 /// Sequence diagram participant that holds its drawable component and lifeline.
 #[derive(Debug, Clone)]
 pub struct Participant<'a> {
-    component: component::Component<'a>,
-    lifeline: draw::PositionedDrawable<draw::Lifeline>,
+    component: Component<'a>,
+    lifeline: PositionedDrawable<Lifeline>,
 }
 
 impl<'a> Participant<'a> {
     /// Create a participant from its component and lifeline.
-    pub fn new(
-        component: component::Component<'a>,
-        lifeline: draw::PositionedDrawable<draw::Lifeline>,
-    ) -> Self {
+    pub fn new(component: Component<'a>, lifeline: PositionedDrawable<Lifeline>) -> Self {
         Self {
             component,
             lifeline,
@@ -36,12 +37,12 @@ impl<'a> Participant<'a> {
     }
 
     /// Borrow the underlying component for this participant.
-    pub fn component(&self) -> &component::Component<'_> {
+    pub fn component(&self) -> &Component<'_> {
         &self.component
     }
 
     /// Borrow the positioned lifeline drawable.
-    pub fn lifeline(&self) -> &draw::PositionedDrawable<draw::Lifeline> {
+    pub fn lifeline(&self) -> &PositionedDrawable<Lifeline> {
         &self.lifeline
     }
 }
@@ -69,7 +70,7 @@ impl<'a> Participant<'a> {
 pub struct ActivationBox {
     participant_id: Id,
     center_y: f32,
-    drawable: draw::ActivationBox,
+    drawable: DrawActivationBox,
 }
 
 /// An activation period with precise timing information during processing.
@@ -89,7 +90,7 @@ pub struct ActivationTiming {
     participant_id: Id,
     start_y: f32,
     nesting_level: u32,
-    definition: Rc<draw::ActivationBoxDefinition>,
+    definition: Rc<ActivationBoxDefinition>,
 }
 
 impl ActivationTiming {
@@ -98,7 +99,7 @@ impl ActivationTiming {
         participant_id: Id,
         start_y: f32,
         nesting_level: u32,
-        definition: Rc<draw::ActivationBoxDefinition>,
+        definition: Rc<ActivationBoxDefinition>,
     ) -> Self {
         Self {
             participant_id,
@@ -121,7 +122,7 @@ impl ActivationTiming {
         let center_y = (self.start_y() + end_y) / 2.0;
         let height = end_y - self.start_y();
         let drawable =
-            draw::ActivationBox::new(Rc::clone(&self.definition), height, self.nesting_level());
+            DrawActivationBox::new(Rc::clone(&self.definition), height, self.nesting_level());
 
         ActivationBox {
             participant_id: self.participant_id(),
@@ -158,7 +159,7 @@ impl ActivationBox {
     }
 
     /// Returns a reference to the drawable activation box
-    pub fn drawable(&self) -> &draw::ActivationBox {
+    pub fn drawable(&self) -> &DrawActivationBox {
         &self.drawable
     }
 
@@ -199,7 +200,7 @@ impl ActivationBox {
 ///
 /// This struct accumulates information about a fragment as it's being processed during
 /// layout calculation, including its vertical position, horizontal bounds, and sections.
-/// It's converted to a [`Fragment`](draw::Fragment) once processing is complete.
+/// It's converted to a [`Fragment`](DrawFragment) once processing is complete.
 ///
 /// # Fields
 /// - `start_y`: The Y coordinate where this fragment begins
@@ -212,14 +213,14 @@ pub struct FragmentTiming<'a> {
     start_y: f32,
     min_x: f32,
     max_x: f32,
-    fragment: &'a semantic::Fragment,
-    active_section: Option<(&'a semantic::FragmentSection, f32)>,
-    sections: Vec<draw::FragmentSection>,
+    fragment: &'a Fragment,
+    active_section: Option<(&'a FragmentSection, f32)>,
+    sections: Vec<DrawFragmentSection>,
 }
 
 impl<'a> FragmentTiming<'a> {
     /// Creates a new `FragmentTiming` for the given fragment starting at the specified Y position.
-    pub fn new(fragment: &'a semantic::Fragment, start_y: f32) -> Self {
+    pub fn new(fragment: &'a Fragment, start_y: f32) -> Self {
         Self {
             start_y,
             min_x: f32::MAX,
@@ -234,7 +235,7 @@ impl<'a> FragmentTiming<'a> {
     ///
     /// # Panics
     /// Panics in debug builds if there's already an active section.
-    pub fn start_section(&mut self, section: &'a semantic::FragmentSection, start_y: f32) {
+    pub fn start_section(&mut self, section: &'a FragmentSection, start_y: f32) {
         #[cfg(debug_assertions)]
         assert!(self.active_section.is_none());
 
@@ -251,7 +252,7 @@ impl<'a> FragmentTiming<'a> {
             .active_section
             .take()
             .ok_or("There is no active fragment section")?;
-        let section = draw::FragmentSection::new(
+        let section = DrawFragmentSection::new(
             ast_section.title().map(|title| title.to_string()),
             end_y - start_y,
         );
@@ -281,7 +282,7 @@ impl<'a> FragmentTiming<'a> {
     /// # Arguments
     ///
     /// * `section` - The semantic fragment section to measure.
-    pub fn section_header_height(&self, section: &semantic::FragmentSection) -> f32 {
+    pub fn section_header_height(&self, section: &FragmentSection) -> f32 {
         let definition = self.fragment.definition();
         let section_header_height = definition.section_header_size(section.title()).height();
 
@@ -311,11 +312,11 @@ impl<'a> FragmentTiming<'a> {
     ///
     /// # Returns
     /// A positioned `Fragment` ready for rendering
-    pub fn into_fragment(self, end_y: f32) -> draw::PositionedDrawable<draw::Fragment> {
+    pub fn into_fragment(self, end_y: f32) -> PositionedDrawable<DrawFragment> {
         #[cfg(debug_assertions)]
         assert!(self.active_section.is_none());
 
-        let drawable = draw::Fragment::new(
+        let drawable = DrawFragment::new(
             Rc::clone(self.fragment.definition()),
             self.fragment.operation().to_string(),
             self.sections,
@@ -327,7 +328,7 @@ impl<'a> FragmentTiming<'a> {
         let center_y = (self.start_y + end_y) / 2.0;
         let position = Point::new(center_x, center_y);
 
-        draw::PositionedDrawable::new(drawable).with_position(position)
+        PositionedDrawable::new(drawable).with_position(position)
     }
 }
 
@@ -399,7 +400,7 @@ pub fn find_active_activation_box_for_participant(
 /// The X coordinate where the message should connect to this participant
 pub fn calculate_message_endpoint_x(
     activation_boxes: &[ActivationBox],
-    participant: &component::Component,
+    participant: &Component,
     participant_id: Id,
     message_y: f32,
     target_x: f32,
@@ -417,10 +418,10 @@ pub fn calculate_message_endpoint_x(
 #[derive(Debug, Clone)]
 pub struct Layout<'a> {
     participants: HashMap<Id, Participant<'a>>,
-    messages: Vec<draw::PositionedArrowWithText<'a>>,
+    messages: Vec<PositionedArrowWithText<'a>>,
     activations: Vec<ActivationBox>,
-    fragments: Vec<draw::PositionedDrawable<draw::Fragment>>,
-    notes: Vec<draw::PositionedDrawable<draw::Note>>,
+    fragments: Vec<PositionedDrawable<DrawFragment>>,
+    notes: Vec<PositionedDrawable<Note>>,
     max_lifeline_end: f32, // TODO: Consider calculating on the fly.
     bounds: Bounds,
 }
@@ -429,10 +430,10 @@ impl<'a> Layout<'a> {
     /// Construct a new sequence layout.
     pub fn new(
         participants: HashMap<Id, Participant<'a>>,
-        messages: Vec<draw::PositionedArrowWithText<'a>>,
+        messages: Vec<PositionedArrowWithText<'a>>,
         activations: Vec<ActivationBox>,
-        fragments: Vec<draw::PositionedDrawable<draw::Fragment>>,
-        notes: Vec<draw::PositionedDrawable<draw::Note>>,
+        fragments: Vec<PositionedDrawable<DrawFragment>>,
+        notes: Vec<PositionedDrawable<Note>>,
         max_lifeline_end: f32,
     ) -> Self {
         let bounds = participants
@@ -459,7 +460,7 @@ impl<'a> Layout<'a> {
     }
 
     /// Borrow all messages in this sequence layout.
-    pub fn messages(&self) -> &[draw::PositionedArrowWithText<'a>] {
+    pub fn messages(&self) -> &[PositionedArrowWithText<'a>] {
         &self.messages
     }
 
@@ -469,12 +470,12 @@ impl<'a> Layout<'a> {
     }
 
     /// Borrow all fragments in this sequence layout.
-    pub fn fragments(&self) -> &[draw::PositionedDrawable<draw::Fragment>] {
+    pub fn fragments(&self) -> &[PositionedDrawable<DrawFragment>] {
         &self.fragments
     }
 
     /// Borrow all notes in this sequence layout.
-    pub fn notes(&self) -> &[draw::PositionedDrawable<draw::Note>] {
+    pub fn notes(&self) -> &[PositionedDrawable<Note>] {
         &self.notes
     }
 
@@ -492,14 +493,15 @@ impl<'a> LayoutBounds for Layout<'a> {
 
 #[cfg(test)]
 mod tests {
+    use orrery_core::draw::{Drawable, FragmentDefinition};
+
     use super::*;
-    use orrery_core::draw::Drawable;
 
     #[test]
     fn test_activation_box_is_active_at_y() {
         // Create a test activation box with center_y=100.0 and height=20.0
-        let definition = draw::ActivationBoxDefinition::default();
-        let drawable = draw::ActivationBox::new(Rc::new(definition), 20.0, 0);
+        let definition = ActivationBoxDefinition::default();
+        let drawable = DrawActivationBox::new(Rc::new(definition), 20.0, 0);
         let activation_box = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 100.0,
@@ -519,8 +521,8 @@ mod tests {
     #[test]
     fn test_activation_box_get_intersection_x() {
         // Create a test activation box with nesting level 0
-        let definition = draw::ActivationBoxDefinition::default();
-        let drawable = draw::ActivationBox::new(Rc::new(definition), 20.0, 0);
+        let definition = ActivationBoxDefinition::default();
+        let drawable = DrawActivationBox::new(Rc::new(definition), 20.0, 0);
         let activation_box = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 100.0,
@@ -541,8 +543,8 @@ mod tests {
     #[test]
     fn test_activation_box_nesting_offset() {
         // Test activation box with nesting level 2
-        let definition = draw::ActivationBoxDefinition::default();
-        let drawable = draw::ActivationBox::new(Rc::new(definition), 20.0, 2);
+        let definition = ActivationBoxDefinition::default();
+        let drawable = DrawActivationBox::new(Rc::new(definition), 20.0, 2);
         let activation_box = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 100.0,
@@ -564,7 +566,7 @@ mod tests {
 
         // Activation box 1: participant 0, Y range [90-110], nesting level 0
         let drawable1 =
-            draw::ActivationBox::new(Rc::new(draw::ActivationBoxDefinition::default()), 20.0, 0);
+            DrawActivationBox::new(Rc::new(ActivationBoxDefinition::default()), 20.0, 0);
         let activation_box1 = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 100.0,
@@ -573,7 +575,7 @@ mod tests {
 
         // Activation box 2: participant 0, Y range [95-105], nesting level 1 (nested)
         let drawable2 =
-            draw::ActivationBox::new(Rc::new(draw::ActivationBoxDefinition::default()), 10.0, 1);
+            DrawActivationBox::new(Rc::new(ActivationBoxDefinition::default()), 10.0, 1);
         let activation_box2 = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 100.0,
@@ -582,7 +584,7 @@ mod tests {
 
         // Activation box 3: participant 1, Y range [120-140], nesting level 0
         let drawable3 =
-            draw::ActivationBox::new(Rc::new(draw::ActivationBoxDefinition::default()), 20.0, 0);
+            DrawActivationBox::new(Rc::new(ActivationBoxDefinition::default()), 20.0, 0);
         let activation_box3 = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 130.0,
@@ -632,8 +634,8 @@ mod tests {
         // Test with multiple boxes at different nesting levels
         let boxes: Vec<ActivationBox> = (0..5)
             .map(|i| {
-                let definition = draw::ActivationBoxDefinition::default();
-                let drawable = draw::ActivationBox::new(Rc::new(definition), 20.0, i);
+                let definition = ActivationBoxDefinition::default();
+                let drawable = DrawActivationBox::new(Rc::new(definition), 20.0, i);
                 ActivationBox {
                     participant_id: Id::new("test"),
                     center_y: 100.0,
@@ -651,8 +653,8 @@ mod tests {
     #[test]
     fn test_find_active_activation_box_error_handling() {
         // Create a test activation box for error handling tests
-        let definition = draw::ActivationBoxDefinition::default();
-        let drawable = draw::ActivationBox::new(Rc::new(definition), 20.0, 0);
+        let definition = ActivationBoxDefinition::default();
+        let drawable = DrawActivationBox::new(Rc::new(definition), 20.0, 0);
         let activation_box = ActivationBox {
             participant_id: Id::new("test"),
             center_y: 100.0,
@@ -699,8 +701,8 @@ mod tests {
         assert!(result.is_none());
 
         // Test with activation boxes for different participant (should fallback)
-        let definition = draw::ActivationBoxDefinition::default();
-        let drawable = draw::ActivationBox::new(Rc::new(definition), 20.0, 0);
+        let definition = ActivationBoxDefinition::default();
+        let drawable = DrawActivationBox::new(Rc::new(definition), 20.0, 0);
         let activation_box = ActivationBox {
             participant_id: Id::new("test_1"), // Different participant
             center_y: 100.0,
@@ -720,14 +722,13 @@ mod tests {
 
     #[test]
     fn test_fragment_timing_lifecycle() {
-        // Create a mock semantic::Fragment for testing
-        let fragment_def = Rc::new(draw::FragmentDefinition::default());
+        // Create a mock Fragment for testing
+        let fragment_def = Rc::new(FragmentDefinition::default());
 
-        let section1 = semantic::FragmentSection::new(Some("section 1".to_string()), vec![]);
-        let section2 = semantic::FragmentSection::new(Some("section 2".to_string()), vec![]);
+        let section1 = FragmentSection::new(Some("section 1".to_string()), vec![]);
+        let section2 = FragmentSection::new(Some("section 2".to_string()), vec![]);
 
-        let fragment =
-            semantic::Fragment::new("alt".to_string(), vec![section1, section2], fragment_def);
+        let fragment = Fragment::new("alt".to_string(), vec![section1, section2], fragment_def);
 
         // Create FragmentTiming
         let start_y = 100.0;
@@ -761,10 +762,10 @@ mod tests {
 
     #[test]
     fn test_fragment_timing_bounds_tracking() {
-        // Create a mock semantic::Fragment
-        let fragment_def = Rc::new(draw::FragmentDefinition::default());
+        // Create a mock Fragment
+        let fragment_def = Rc::new(FragmentDefinition::default());
 
-        let fragment = semantic::Fragment::new("opt".to_string(), vec![], fragment_def);
+        let fragment = Fragment::new("opt".to_string(), vec![], fragment_def);
 
         let mut fragment_timing = FragmentTiming::new(&fragment, 100.0);
 
@@ -796,10 +797,9 @@ mod tests {
     #[test]
     fn test_section_header_height_first_section_header_dominates() {
         // Use a short section title so the fragment header (pentagon) is taller.
-        let fragment_def = Rc::new(draw::FragmentDefinition::default());
-        let section = semantic::FragmentSection::new(Some("x".to_string()), vec![]);
-        let fragment =
-            semantic::Fragment::new("alt".to_string(), vec![section], fragment_def.clone());
+        let fragment_def = Rc::new(FragmentDefinition::default());
+        let section = FragmentSection::new(Some("x".to_string()), vec![]);
+        let fragment = Fragment::new("alt".to_string(), vec![section], fragment_def.clone());
 
         let fragment_timing = FragmentTiming::new(&fragment, 0.0);
 
@@ -812,11 +812,10 @@ mod tests {
     #[test]
     fn test_section_header_height_first_section_title_dominates() {
         // Use a multi-line section title so the title is taller than the header.
-        let fragment_def = Rc::new(draw::FragmentDefinition::default());
+        let fragment_def = Rc::new(FragmentDefinition::default());
         let tall_title = "line1\nline2\nline3\nline4\nline5";
-        let section = semantic::FragmentSection::new(Some(tall_title.to_string()), vec![]);
-        let fragment =
-            semantic::Fragment::new("alt".to_string(), vec![section], fragment_def.clone());
+        let section = FragmentSection::new(Some(tall_title.to_string()), vec![]);
+        let fragment = Fragment::new("alt".to_string(), vec![section], fragment_def.clone());
 
         let fragment_timing = FragmentTiming::new(&fragment, 0.0);
 
@@ -828,10 +827,10 @@ mod tests {
 
     #[test]
     fn test_section_header_height_subsequent_section() {
-        let fragment_def = Rc::new(draw::FragmentDefinition::default());
-        let section1 = semantic::FragmentSection::new(Some("guard1".to_string()), vec![]);
-        let section2 = semantic::FragmentSection::new(Some("guard2".to_string()), vec![]);
-        let fragment = semantic::Fragment::new(
+        let fragment_def = Rc::new(FragmentDefinition::default());
+        let section1 = FragmentSection::new(Some("guard1".to_string()), vec![]);
+        let section2 = FragmentSection::new(Some("guard2".to_string()), vec![]);
+        let fragment = Fragment::new(
             "alt".to_string(),
             vec![section1, section2],
             fragment_def.clone(),
@@ -852,10 +851,9 @@ mod tests {
 
     #[test]
     fn test_section_header_height_no_title() {
-        let fragment_def = Rc::new(draw::FragmentDefinition::default());
-        let section = semantic::FragmentSection::new(None, vec![]);
-        let fragment =
-            semantic::Fragment::new("opt".to_string(), vec![section], fragment_def.clone());
+        let fragment_def = Rc::new(FragmentDefinition::default());
+        let section = FragmentSection::new(None, vec![]);
+        let fragment = Fragment::new("opt".to_string(), vec![section], fragment_def.clone());
 
         let mut fragment_timing = FragmentTiming::new(&fragment, 0.0);
 
@@ -864,7 +862,7 @@ mod tests {
         fragment_timing.end_section(50.0).unwrap();
 
         // Subsequent section with no title: height should be 0.
-        let no_title_section = semantic::FragmentSection::new(None, vec![]);
+        let no_title_section = FragmentSection::new(None, vec![]);
         let height = fragment_timing.section_header_height(&no_title_section);
 
         assert_eq!(height, 0.0);
@@ -872,11 +870,11 @@ mod tests {
 
     #[test]
     fn test_bottom_padding_delegates_to_definition() {
-        let mut fragment_def = draw::FragmentDefinition::default();
+        let mut fragment_def = FragmentDefinition::default();
         fragment_def.set_bounds_padding(orrery_core::geometry::Insets::new(5.0, 10.0, 15.0, 20.0));
         let fragment_def = Rc::new(fragment_def);
 
-        let fragment = semantic::Fragment::new("loop".to_string(), vec![], fragment_def);
+        let fragment = Fragment::new("loop".to_string(), vec![], fragment_def);
 
         let fragment_timing = FragmentTiming::new(&fragment, 0.0);
 

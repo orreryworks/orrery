@@ -15,20 +15,23 @@
 use log::debug;
 
 use orrery_core::{
-    draw,
+    draw::{PositionedDrawable, ShapeWithText},
     geometry::{Bounds, Point, Size},
 };
 
 use crate::{
     error::RenderError,
-    layout::{component, positioning::LayoutBounds, sequence},
+    layout::{
+        component::Layout as ComponentLayout, positioning::LayoutBounds,
+        sequence::Layout as SequenceLayout,
+    },
 };
 
 /// Content types that can be laid out in a layer
 #[derive(Debug)]
 pub enum LayoutContent<'a> {
-    Component(ContentStack<component::Layout<'a>>),
-    Sequence(ContentStack<sequence::Layout<'a>>),
+    Component(ContentStack<ComponentLayout<'a>>),
+    Sequence(ContentStack<SequenceLayout<'a>>),
 }
 
 /// A rendering layer containing either component or sequence diagram content
@@ -125,7 +128,7 @@ impl<'a> LayeredLayout<'a> {
     pub fn adjust_relative_position(
         &mut self,
         container_idx: usize,
-        positioned_shape: &draw::PositionedDrawable<draw::ShapeWithText>,
+        positioned_shape: &PositionedDrawable<ShapeWithText>,
         embedded_idx: usize,
     ) -> Result<(), RenderError> {
         let [container_layer, embedded_layer] =

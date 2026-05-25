@@ -2,7 +2,14 @@
 
 use std::{fmt, rc::Rc, str::FromStr};
 
-use crate::{draw, identifier::Id, semantic::diagram::Block};
+use crate::{
+    draw::{
+        ActivationBoxDefinition, ArrowDefinition, ArrowDirection, FragmentDefinition,
+        NoteDefinition, ShapeDefinition, Text,
+    },
+    identifier::Id,
+    semantic::diagram::Block,
+};
 
 /// A diagram node (component/participant) with visual definition and nested content.
 #[derive(Debug, Clone)]
@@ -10,7 +17,7 @@ pub struct Node {
     id: Id,
     display_name: Option<String>,
     block: Block,
-    shape_definition: Rc<Box<dyn draw::ShapeDefinition>>,
+    shape_definition: Rc<Box<dyn ShapeDefinition>>,
 }
 
 impl Node {
@@ -19,7 +26,7 @@ impl Node {
         id: Id,
         display_name: Option<String>,
         block: Block,
-        shape_definition: Rc<Box<dyn draw::ShapeDefinition>>,
+        shape_definition: Rc<Box<dyn ShapeDefinition>>,
     ) -> Self {
         Self {
             id,
@@ -40,7 +47,7 @@ impl Node {
     }
 
     /// Borrow the node's shape definition.
-    pub fn shape_definition(&self) -> &Rc<Box<dyn draw::ShapeDefinition>> {
+    pub fn shape_definition(&self) -> &Rc<Box<dyn ShapeDefinition>> {
         &self.shape_definition
     }
 
@@ -67,9 +74,9 @@ impl fmt::Display for Node {
 pub struct Relation {
     source: Id,
     target: Id,
-    arrow_direction: draw::ArrowDirection,
+    arrow_direction: ArrowDirection,
     label: Option<String>,
-    arrow_definition: Rc<draw::ArrowDefinition>,
+    arrow_definition: Rc<ArrowDefinition>,
 }
 
 impl Relation {
@@ -78,9 +85,9 @@ impl Relation {
     pub fn new(
         source: Id,
         target: Id,
-        arrow_direction: draw::ArrowDirection,
+        arrow_direction: ArrowDirection,
         label: Option<String>,
-        arrow_definition: Rc<draw::ArrowDefinition>,
+        arrow_definition: Rc<ArrowDefinition>,
     ) -> Self {
         Self {
             source,
@@ -92,14 +99,14 @@ impl Relation {
     }
 
     /// Build a Text drawable for the relation's label using its text definition, if a label exists.
-    pub fn text(&self) -> Option<draw::Text<'_>> {
+    pub fn text(&self) -> Option<Text<'_>> {
         let label = self.label.as_ref()?;
         let text_def = self.arrow_definition.text();
-        Some(draw::Text::new(text_def, label))
+        Some(Text::new(text_def, label))
     }
 
     /// Get the underlying ArrowDefinition Rc for rendering this relation.
-    pub fn arrow_definition(&self) -> &Rc<draw::ArrowDefinition> {
+    pub fn arrow_definition(&self) -> &Rc<ArrowDefinition> {
         &self.arrow_definition
     }
 
@@ -120,7 +127,7 @@ impl Relation {
     }
 
     /// Get the arrow direction for this relation.
-    pub fn arrow_direction(&self) -> draw::ArrowDirection {
+    pub fn arrow_direction(&self) -> ArrowDirection {
         self.arrow_direction
     }
 }
@@ -195,7 +202,7 @@ pub struct Note {
     /// Text content of the note
     content: String,
     /// Styling definition for the note
-    definition: Rc<draw::NoteDefinition>,
+    definition: Rc<NoteDefinition>,
 }
 
 impl Note {
@@ -204,7 +211,7 @@ impl Note {
         on: Vec<Id>,
         align: NoteAlign,
         content: String,
-        definition: Rc<draw::NoteDefinition>,
+        definition: Rc<NoteDefinition>,
     ) -> Self {
         Self {
             on,
@@ -230,7 +237,7 @@ impl Note {
     }
 
     /// Borrow the note's styling definition.
-    pub fn definition(&self) -> &Rc<draw::NoteDefinition> {
+    pub fn definition(&self) -> &Rc<NoteDefinition> {
         &self.definition
     }
 }
@@ -241,12 +248,12 @@ pub struct Activate {
     /// Component ID being activated
     component: Id,
     /// Styling definition for the activation box
-    definition: Rc<draw::ActivationBoxDefinition>,
+    definition: Rc<ActivationBoxDefinition>,
 }
 
 impl Activate {
     /// Create a new Activate.
-    pub fn new(component: Id, definition: Rc<draw::ActivationBoxDefinition>) -> Self {
+    pub fn new(component: Id, definition: Rc<ActivationBoxDefinition>) -> Self {
         Self {
             component,
             definition,
@@ -259,7 +266,7 @@ impl Activate {
     }
 
     /// Borrow the activation box styling definition.
-    pub fn definition(&self) -> &Rc<draw::ActivationBoxDefinition> {
+    pub fn definition(&self) -> &Rc<ActivationBoxDefinition> {
         &self.definition
     }
 }
@@ -276,7 +283,7 @@ pub struct Fragment {
     /// The sections within this fragment
     sections: Vec<FragmentSection>,
     /// The fragment definition for this fragment's styling
-    definition: Rc<draw::FragmentDefinition>,
+    definition: Rc<FragmentDefinition>,
 }
 
 impl Fragment {
@@ -284,7 +291,7 @@ impl Fragment {
     pub fn new(
         operation: String,
         sections: Vec<FragmentSection>,
-        definition: Rc<draw::FragmentDefinition>,
+        definition: Rc<FragmentDefinition>,
     ) -> Self {
         Self {
             operation,
@@ -306,7 +313,7 @@ impl Fragment {
     /// Get the fragment definition for this fragment.
     ///
     /// Returns a reference to the `Rc<FragmentDefinition>` allowing shared ownership of the definition.
-    pub fn definition(&self) -> &Rc<draw::FragmentDefinition> {
+    pub fn definition(&self) -> &Rc<FragmentDefinition> {
         &self.definition
     }
 }

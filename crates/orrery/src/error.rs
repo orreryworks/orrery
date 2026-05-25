@@ -3,8 +3,6 @@
 //! This module provides the error type [`RenderError`] for the render pipeline
 //! (graph construction, layout, and export).
 
-use std::io;
-
 use thiserror::Error;
 
 /// The main error type for Orrery runtime operations.
@@ -14,7 +12,7 @@ use thiserror::Error;
 pub enum RenderError {
     /// An I/O error from file operations.
     #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
+    Io(#[from] std::io::Error),
 
     /// A graph construction error.
     #[error("Graph error: {0}")]

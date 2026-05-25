@@ -11,13 +11,11 @@ mod layout;
 mod structure;
 
 pub use orrery_core::{color, draw, identifier, semantic};
-pub use orrery_parser::error::ParseError;
+pub use orrery_parser::{InMemorySourceProvider, SourceProvider, error::ParseError};
 
 pub use error::RenderError;
 
 use std::{fs, path::Path};
-
-pub use orrery_parser::{InMemorySourceProvider, SourceProvider};
 
 use bumpalo::Bump;
 use log::{debug, info, trace};

@@ -6,10 +6,14 @@
 use std::{cmp::Ordering, collections::HashMap, rc::Rc};
 
 use orrery_core::{
-    draw::{self, Drawable as _},
+    draw::{
+        Arrow, ArrowPath, ArrowStyle, ArrowWithText, Drawable, Fragment, Lifeline,
+        LifelineDefinition, Note as DrawNote, PositionedArrowWithText, PositionedDrawable, Shape,
+        ShapeWithText, Text,
+    },
     geometry::{Insets, Point, Size},
     identifier::Id,
-    semantic,
+    semantic::{Block, Note, NoteAlign, Relation},
 };
 
 use crate::{
@@ -35,7 +39,7 @@ struct Message<'a> {
     source: Id,
     target: Id,
     y_position: f32,
-    arrow_with_text: draw::ArrowWithText<'a>,
+    arrow_with_text: ArrowWithText<'a>,
 }
 
 impl<'a> Message<'a> {
@@ -54,13 +58,13 @@ impl<'a> Message<'a> {
     ///
     /// A [`Message`] with `y_position` defaulted to `0.0`; callers should
     /// finalize the position with [`Self::set_y_position`].
-    fn from_relation(relation: &'a semantic::Relation, source: Id, target: Id) -> Self {
+    fn from_relation(relation: &'a Relation, source: Id, target: Id) -> Self {
         let mut arrow_def = Rc::clone(relation.arrow_definition());
-        if source == target && *arrow_def.style() != draw::ArrowStyle::Curved {
-            Rc::make_mut(&mut arrow_def).set_style(draw::ArrowStyle::Curved);
+        if source == target && *arrow_def.style() != ArrowStyle::Curved {
+            Rc::make_mut(&mut arrow_def).set_style(ArrowStyle::Curved);
         }
-        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
-        let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
+        let arrow = Arrow::new(arrow_def, relation.arrow_direction());
+        let arrow_with_text = ArrowWithText::new(arrow, relation.text());
         Self {
             source,
             target,
@@ -100,7 +104,7 @@ impl<'a> Message<'a> {
     }
 
     /// Consumes self and returns the inner [`ArrowWithText`](draw::ArrowWithText).
-    fn into_arrow_with_text(self) -> draw::ArrowWithText<'a> {
+    fn into_arrow_with_text(self) -> ArrowWithText<'a> {
         self.arrow_with_text
     }
 }
@@ -110,8 +114,8 @@ impl<'a> Message<'a> {
 type ProcessEventsResult<'a> = (
     Vec<Message<'a>>,
     Vec<ActivationBox>,
-    Vec<draw::PositionedDrawable<draw::Fragment>>,
-    Vec<draw::PositionedDrawable<draw::Note>>,
+    Vec<PositionedDrawable<Fragment>>,
+    Vec<PositionedDrawable<DrawNote>>,
     f32,
 );
 
@@ -267,12 +271,12 @@ impl Engine {
         // Create shapes with text for participants
         let mut participant_shapes: HashMap<_, _> = HashMap::new();
         for node in graph.nodes() {
-            let mut shape = draw::Shape::new(Rc::clone(node.shape_definition()));
+            let mut shape = Shape::new(Rc::clone(node.shape_definition()));
             shape.set_padding(self.padding);
-            let text = draw::Text::new(node.shape_definition().text(), node.display_text());
-            let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
+            let text = Text::new(node.shape_definition().text(), node.display_text());
+            let mut shape_with_text = ShapeWithText::new(shape, Some(text));
 
-            if let semantic::Block::Diagram(_) = node.block() {
+            if let Block::Diagram(_) = node.block() {
                 // If this participant has an embedded diagram, use its layout size
                 let content_size = if let Some(layout) = embedded_layouts.get(&node.id()) {
                     layout.calculate_size()
@@ -363,8 +367,8 @@ impl Engine {
                 let position = component.position();
                 let lifeline_start_y = component.bounds().max_y();
                 let height = (lifeline_end - lifeline_start_y).max(0.0);
-                let lifeline = draw::PositionedDrawable::new(draw::Lifeline::new(
-                    Rc::new(draw::LifelineDefinition::default()),
+                let lifeline = PositionedDrawable::new(Lifeline::new(
+                    Rc::new(LifelineDefinition::default()),
                     height,
                 ))
                 .with_position(Point::new(position.x(), lifeline_start_y));
@@ -406,7 +410,7 @@ impl Engine {
         &self,
         source_id: Id,
         target_id: Id,
-        messages: &[&semantic::Relation],
+        messages: &[&Relation],
     ) -> f32 {
         let relevant_messages = messages
             .iter()
@@ -416,9 +420,7 @@ impl Engine {
                     || (relation.source() == target_id && relation.target() == source_id)
             })
             .copied();
-        let has_self_loop = relevant_messages
-            .clone()
-            .any(semantic::Relation::is_self_loop);
+        let has_self_loop = relevant_messages.clone().any(Relation::is_self_loop);
         let mut max_size = relevant_messages
             .flat_map(|relation| relation.text().map(|t| t.calculate_size()))
             .fold(Size::zero(), Size::max);
@@ -442,17 +444,17 @@ impl Engine {
         messages: Vec<Message<'a>>,
         activations: &[ActivationBox],
         components: &HashMap<Id, Component<'a>>,
-    ) -> Vec<draw::PositionedArrowWithText<'a>> {
+    ) -> Vec<PositionedArrowWithText<'a>> {
         messages
             .into_iter()
             .map(|msg| {
                 if msg.is_self_loop() {
                     let (path, label_position) = self.self_loop_path(&msg, activations, components);
-                    draw::PositionedArrowWithText::new(msg.into_arrow_with_text(), path)
+                    PositionedArrowWithText::new(msg.into_arrow_with_text(), path)
                         .with_text_position(label_position)
                 } else {
                     let path = Self::cross_participant_path(&msg, activations, components);
-                    draw::PositionedArrowWithText::new(msg.into_arrow_with_text(), path)
+                    PositionedArrowWithText::new(msg.into_arrow_with_text(), path)
                 }
             })
             .collect()
@@ -476,7 +478,7 @@ impl Engine {
         msg: &Message<'_>,
         activations: &[ActivationBox],
         components: &HashMap<Id, Component<'_>>,
-    ) -> draw::ArrowPath {
+    ) -> ArrowPath {
         let source_participant = &components[&msg.source()];
         let target_participant = &components[&msg.target()];
 
@@ -497,7 +499,7 @@ impl Engine {
 
         let start_point = Point::new(source_x, msg.y_position());
         let end_point = Point::new(target_x, msg.y_position());
-        draw::ArrowPath::straight(start_point, end_point)
+        ArrowPath::straight(start_point, end_point)
     }
 
     /// Computes a rounded-rectangular [`draw::ArrowPath`] for a self-loop on a
@@ -540,7 +542,7 @@ impl Engine {
         msg: &Message<'_>,
         activations: &[ActivationBox],
         components: &HashMap<Id, Component<'_>>,
-    ) -> (draw::ArrowPath, Option<Point>) {
+    ) -> (ArrowPath, Option<Point>) {
         debug_assert!(msg.is_self_loop(), "expected self-loop message");
 
         // Geometry:
@@ -616,7 +618,7 @@ impl Engine {
             s5_cp2,
         ];
 
-        let path = draw::ArrowPath::new(a0, a5, control_points);
+        let path = ArrowPath::new(a0, a5, control_points);
 
         let label_position = if content_size.is_zero() {
             None
@@ -669,8 +671,8 @@ impl Engine {
     ) -> Result<ProcessEventsResult<'a>, RenderError> {
         let mut messages: Vec<Message<'a>> = Vec::new();
         let mut activation_boxes: Vec<ActivationBox> = Vec::new();
-        let mut fragments: Vec<draw::PositionedDrawable<draw::Fragment>> = Vec::new();
-        let mut notes: Vec<draw::PositionedDrawable<draw::Note>> = Vec::new();
+        let mut fragments: Vec<PositionedDrawable<Fragment>> = Vec::new();
+        let mut notes: Vec<PositionedDrawable<DrawNote>> = Vec::new();
 
         let mut activation_stack: HashMap<Id, Vec<ActivationTiming>> = HashMap::new();
         let mut fragment_stack: Vec<FragmentTiming> = Vec::new();
@@ -845,10 +847,10 @@ impl Engine {
     /// A `PositionedDrawable<Note>` ready to be added to the layout
     fn create_positioned_note<'a>(
         &self,
-        note: &semantic::Note,
+        note: &Note,
         components: &HashMap<Id, Component<'a>>,
         current_y: f32,
-    ) -> Result<draw::PositionedDrawable<draw::Note>, RenderError> {
+    ) -> Result<PositionedDrawable<DrawNote>, RenderError> {
         const NOTE_SPACING: f32 = 20.0; // Spacing between note and participant lifeline
 
         // Select appropriate components: all if on=[], otherwise specified ones
@@ -866,17 +868,17 @@ impl Engine {
         };
 
         let edge_map: fn(&Component) -> (f32, f32) = match note.align() {
-            semantic::NoteAlign::Over => |component| {
+            NoteAlign::Over => |component| {
                 let center_x = component.position().x();
                 let width = component.drawable().size().width();
                 let left_edge = center_x - width / 2.0;
                 let right_edge = center_x + width / 2.0;
                 (left_edge, right_edge)
             },
-            semantic::NoteAlign::Left | semantic::NoteAlign::Right => {
+            NoteAlign::Left | NoteAlign::Right => {
                 |component| (component.position().x(), component.position().x())
             }
-            semantic::NoteAlign::Top | semantic::NoteAlign::Bottom => {
+            NoteAlign::Top | NoteAlign::Bottom => {
                 unreachable!("Alignments is not supported for sequence diagrams")
             }
         };
@@ -890,25 +892,25 @@ impl Engine {
             })?;
 
         let mut new_note_def = Rc::clone(note.definition());
-        if note.align() == semantic::NoteAlign::Over {
+        if note.align() == NoteAlign::Over {
             let note_def_mut = Rc::make_mut(&mut new_note_def);
             note_def_mut.set_min_width(Some(max_x - min_x));
         }
 
-        let note_drawable = draw::Note::new(new_note_def, note.content().to_string());
+        let note_drawable = DrawNote::new(new_note_def, note.content().to_string());
 
         let note_size = note_drawable.size();
         let center_x = match note.align() {
-            semantic::NoteAlign::Over => (min_x + max_x) / 2.0,
-            semantic::NoteAlign::Left => min_x - (note_size.width() / 2.0) - NOTE_SPACING,
-            semantic::NoteAlign::Right => max_x + (note_size.width() / 2.0) + NOTE_SPACING,
-            semantic::NoteAlign::Top | semantic::NoteAlign::Bottom => {
+            NoteAlign::Over => (min_x + max_x) / 2.0,
+            NoteAlign::Left => min_x - (note_size.width() / 2.0) - NOTE_SPACING,
+            NoteAlign::Right => max_x + (note_size.width() / 2.0) + NOTE_SPACING,
+            NoteAlign::Top | NoteAlign::Bottom => {
                 unreachable!("Alignments is not supported for sequence diagrams")
             }
         };
         let position = Point::new(center_x, current_y + note_size.height() / 2.0);
 
-        Ok(draw::PositionedDrawable::new(note_drawable).with_position(position))
+        Ok(PositionedDrawable::new(note_drawable).with_position(position))
     }
 }
 
@@ -941,12 +943,15 @@ fn line_segment_cubic_cps(start: Point, end: Point) -> (Point, Point) {
 mod tests {
     use super::*;
 
-    use orrery_core::draw::{ArrowDefinition, ArrowDirection, ArrowStyle, RectangleDefinition};
+    use orrery_core::{
+        draw::{ActivationBoxDefinition, ArrowDefinition, ArrowDirection, RectangleDefinition},
+        semantic::Node,
+    };
 
-    fn make_relation(source: Id, target: Id, label: Option<&str>) -> semantic::Relation {
+    fn make_relation(source: Id, target: Id, label: Option<&str>) -> Relation {
         let mut def = ArrowDefinition::default();
         def.set_style(ArrowStyle::Straight);
-        semantic::Relation::new(
+        Relation::new(
             source,
             target,
             ArrowDirection::Forward,
@@ -955,17 +960,17 @@ mod tests {
         )
     }
 
-    fn make_node(name: &str) -> semantic::Node {
+    fn make_node(name: &str) -> Node {
         let id = Id::new(name);
         let shape_def = Rc::new(
             Box::new(RectangleDefinition::new()) as Box<dyn orrery_core::draw::ShapeDefinition>
         );
-        semantic::Node::new(id, None, semantic::Block::None, shape_def)
+        Node::new(id, None, Block::None, shape_def)
     }
 
-    fn make_component<'a>(node: &'a semantic::Node, position: Point) -> Component<'a> {
-        let shape = draw::Shape::new(Rc::clone(node.shape_definition()));
-        let shape_with_text = draw::ShapeWithText::new(shape, None);
+    fn make_component<'a>(node: &'a Node, position: Point) -> Component<'a> {
+        let shape = Shape::new(Rc::clone(node.shape_definition()));
+        let shape_with_text = ShapeWithText::new(shape, None);
         Component::new(node, shape_with_text, position)
     }
 
@@ -1074,12 +1079,8 @@ mod tests {
         components.insert(id, component);
 
         // Default activation-box width = 8 → right edge sits at participant_x + 4.
-        let timing = ActivationTiming::new(
-            id,
-            180.0,
-            0,
-            Rc::new(draw::ActivationBoxDefinition::default()),
-        );
+        let timing =
+            ActivationTiming::new(id, 180.0, 0, Rc::new(ActivationBoxDefinition::default()));
         let activations = vec![timing.to_activation_box(220.0)];
 
         let relation = make_relation(id, id, None);

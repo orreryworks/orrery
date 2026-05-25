@@ -17,16 +17,21 @@ use orrery_core::{
     color::Color,
     draw::ArrowWithTextDrawer,
     geometry::{Insets, Size},
-    semantic,
+    semantic::Diagram,
 };
 
-use crate::{config::StyleConfig, error::RenderError, export, layout::layer::LayeredLayout};
+use crate::{
+    config::StyleConfig,
+    error::RenderError,
+    export::{Error, Exporter},
+    layout::layer::LayeredLayout,
+};
 
 /// SVG exporter builder to configure and build the SVG exporter.
 pub struct SvgBuilder<'a> {
     file_name: String,
     style: Option<&'a StyleConfig>,
-    diagram: Option<&'a semantic::Diagram>,
+    diagram: Option<&'a Diagram>,
 }
 
 /// Base SVG exporter structure with common properties and methods.
@@ -65,7 +70,7 @@ impl<'a> SvgBuilder<'a> {
     /// # Arguments
     ///
     /// * `diagram` - The semantic diagram.
-    pub fn with_diagram(mut self, diagram: &'a semantic::Diagram) -> Self {
+    pub fn with_diagram(mut self, diagram: &'a Diagram) -> Self {
         self.diagram = Some(diagram);
         self
     }
@@ -157,21 +162,21 @@ impl Svg {
     /// # Errors
     ///
     /// Returns [`export::Error::Io`] if file creation or writing fails.
-    pub fn write_document(&self, doc: Document) -> Result<(), export::Error> {
+    pub fn write_document(&self, doc: Document) -> Result<(), Error> {
         info!(file_name = self.file_name; "Creating SVG file");
         // Create the output file
         let f = match File::create(&self.file_name) {
             Ok(file) => file,
             Err(err) => {
                 error!(file_name=self.file_name, err:err; "Failed to create SVG file");
-                return Err(export::Error::Io(err));
+                return Err(Error::Io(err));
             }
         };
 
         // Write the SVG content to the file
         if let Err(err) = write!(&f, "{doc}") {
             error!(file_name=self.file_name, err:err; "Failed to write SVG content");
-            return Err(export::Error::Io(err));
+            return Err(Error::Io(err));
         }
 
         Ok(())
@@ -179,8 +184,8 @@ impl Svg {
 }
 
 // Implementation of Exporter trait for SVG
-impl export::Exporter for Svg {
-    fn export_layered_layout(&mut self, layout: &LayeredLayout) -> Result<(), export::Error> {
+impl Exporter for Svg {
+    fn export_layered_layout(&mut self, layout: &LayeredLayout) -> Result<(), Error> {
         let doc = self.render_layered_layout(layout);
         debug!("SVG document rendered for layered layout");
 

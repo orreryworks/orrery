@@ -1,7 +1,7 @@
 //! SVG rendering for sequence diagrams.
 
 use orrery_core::{
-    draw::{self, Drawable as _, LayeredOutput},
+    draw::{Drawable, Fragment, LayeredOutput, Note, PositionedArrowWithText, PositionedDrawable},
     geometry::Bounds,
 };
 
@@ -26,7 +26,7 @@ impl Svg {
     }
 
     /// Renders a positioned message arrow to layered SVG output.
-    pub fn render_message(&mut self, message: &draw::PositionedArrowWithText) -> LayeredOutput {
+    pub fn render_message(&mut self, message: &PositionedArrowWithText) -> LayeredOutput {
         message.render_to_layers(&mut self.arrow_with_text_drawer)
     }
 
@@ -41,10 +41,7 @@ impl Svg {
     /// # Returns
     ///
     /// A [`LayeredOutput`] representing the fragment.
-    pub fn render_fragment(
-        &self,
-        fragment: &draw::PositionedDrawable<draw::Fragment>,
-    ) -> LayeredOutput {
+    pub fn render_fragment(&self, fragment: &PositionedDrawable<Fragment>) -> LayeredOutput {
         fragment.render_to_layers()
     }
 
@@ -59,7 +56,7 @@ impl Svg {
     /// # Returns
     ///
     /// A [`LayeredOutput`] representing the note.
-    pub fn render_note(&self, note: &draw::PositionedDrawable<draw::Note>) -> LayeredOutput {
+    pub fn render_note(&self, note: &PositionedDrawable<Note>) -> LayeredOutput {
         note.render_to_layers()
     }
 

@@ -18,7 +18,10 @@ use orrery_core::{identifier::Id, semantic::DiagramKind};
 
 use crate::{
     error::{Diagnostic, ErrorCode},
-    parser_types as types,
+    parser_types::{
+        Attribute, AttributeValue, ComponentContent, DiagramSource, Element, FileAst, FileHeader,
+        Fragment, FragmentSection, ImportDecl, ImportForm, Note, TypeDefinition, TypeSpec,
+    },
     span::{Span, Spanned},
     tokens::{PositionedToken, Token},
 };
@@ -280,26 +283,21 @@ fn empty_brackets<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<()> {
 /// 3. **TypeSpec** - `TypeName[attr=val]`, `TypeName`, or `[attr=val]`
 /// 4. **String** - `"value"` - Text values (colors, names, alignment)
 /// 5. **Float** - `2.5` or `10` - Numeric values (widths, sizes, dimensions)
-fn attribute_value<'tok, 'src>(
-    input: &mut Input<'tok, 'src>,
-) -> IResult<types::AttributeValue<'src>> {
+fn attribute_value<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<AttributeValue<'src>> {
     alt((
         // Parse empty brackets [] first - can be interpreted as either empty identifiers or empty attributes
-        empty_brackets.map(|_| types::AttributeValue::Empty),
+        empty_brackets.map(|_| AttributeValue::Empty),
         // Try identifiers: [id1, id2, ...]
         // This needs to be before attribute_type_spec since both start with '['
-        identifiers.map(types::AttributeValue::Identifiers),
+        identifiers.map(AttributeValue::Identifiers),
         // Parse type spec: TypeName[attrs], TypeName, or [attrs]
-        attribute_type_spec.map(types::AttributeValue::TypeSpec),
+        attribute_type_spec.map(AttributeValue::TypeSpec),
         // Parse string or float literals
         any.verify_map(|token: &PositionedToken<'_>| match &token.token {
-            Token::StringLiteral(s) => Some(types::AttributeValue::String(Spanned::new(
-                s.clone(),
-                token.span,
-            ))),
-            Token::FloatLiteral(f) => {
-                Some(types::AttributeValue::Float(Spanned::new(*f, token.span)))
+            Token::StringLiteral(s) => {
+                Some(AttributeValue::String(Spanned::new(s.clone(), token.span)))
             }
+            Token::FloatLiteral(f) => Some(AttributeValue::Float(Spanned::new(*f, token.span))),
             _ => None,
         }),
     ))
@@ -308,7 +306,7 @@ fn attribute_value<'tok, 'src>(
 }
 
 /// Parse a single attribute
-fn attribute<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Attribute<'src>> {
+fn attribute<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Attribute<'src>> {
     let name = raw_identifier.parse_next(input)?;
 
     preceded(
@@ -321,11 +319,11 @@ fn attribute<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Attrib
 
     let value = attribute_value.parse_next(input)?;
 
-    Ok(types::Attribute { name, value })
+    Ok(Attribute { name, value })
 }
 
 /// Parse comma-separated attributes
-fn attributes<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<types::Attribute<'src>>> {
+fn attributes<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Attribute<'src>>> {
     separated(
         0..,
         attribute,
@@ -340,9 +338,7 @@ fn attributes<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<types::A
 }
 
 /// Parse attributes wrapped in brackets
-fn wrapped_attributes<'tok, 'src>(
-    input: &mut Input<'tok, 'src>,
-) -> IResult<Vec<types::Attribute<'src>>> {
+fn wrapped_attributes<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Attribute<'src>>> {
     delimited(
         (
             any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBracket)),
@@ -370,16 +366,14 @@ fn wrapped_attributes<'tok, 'src>(
 /// - `TypeName[attrs]` → TypeSpec { type_name: Some(TypeName), attributes: [...] }
 /// - `TypeName` → TypeSpec { type_name: Some(TypeName), attributes: [] }
 /// - `[attrs]` → TypeSpec { type_name: None, attributes: [...] }
-fn attribute_type_spec<'tok, 'src>(
-    input: &mut Input<'tok, 'src>,
-) -> IResult<types::TypeSpec<'src>> {
+fn attribute_type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeSpec<'src>> {
     alt((
         // Try TypeName[attrs] or TypeName (reuse type_spec)
         type_spec,
         // Try [attrs] only (anonymous TypeSpec)
         |input: &mut Input<'tok, 'src>| {
             let attributes = wrapped_attributes.parse_next(input)?;
-            Ok(types::TypeSpec {
+            Ok(TypeSpec {
                 type_name: None,
                 attributes,
             })
@@ -394,7 +388,7 @@ fn attribute_type_spec<'tok, 'src>(
 /// Returns a TypeSpec with:
 /// - type_name: Always Some(id) - identifier is required
 /// - attributes: parsed attributes if present, empty vec otherwise
-fn type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::TypeSpec<'src>> {
+fn type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeSpec<'src>> {
     let type_name = nested_identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -403,7 +397,7 @@ fn type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::TypeSp
         .map(|attrs| attrs.unwrap_or_default())
         .parse_next(input)?;
 
-    Ok(types::TypeSpec {
+    Ok(TypeSpec {
         type_name: Some(type_name),
         attributes,
     })
@@ -419,9 +413,7 @@ fn type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::TypeSp
 /// - `@TypeName` → TypeSpec { type_name: Some(TypeName), attributes: [] }
 /// - `[attrs]` → TypeSpec { type_name: None, attributes: [...] }
 /// - (nothing) → TypeSpec::default() (sugar syntax)
-fn invocation_type_spec<'tok, 'src>(
-    input: &mut Input<'tok, 'src>,
-) -> IResult<types::TypeSpec<'src>> {
+fn invocation_type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeSpec<'src>> {
     // Parse optional @TypeName
     // If @ is present, identifier is REQUIRED (cut_err prevents backtracking)
     // If @ is absent, we can still parse [attributes] or nothing (sugar)
@@ -446,7 +438,7 @@ fn invocation_type_spec<'tok, 'src>(
         .map(|attrs| attrs.unwrap_or_default())
         .parse_next(input)?;
 
-    Ok(types::TypeSpec {
+    Ok(TypeSpec {
         type_name,
         attributes,
     })
@@ -459,9 +451,7 @@ fn invocation_type_spec<'tok, 'src>(
 /// Examples:
 /// - `type Button = Rectangle;`
 /// - `type StyledBox = Rectangle[fill_color="blue", border_width="2"];`
-fn type_definition<'tok, 'src>(
-    input: &mut Input<'tok, 'src>,
-) -> IResult<types::TypeDefinition<'src>> {
+fn type_definition<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeDefinition<'src>> {
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Type))
         .parse_next(input)?;
 
@@ -480,13 +470,13 @@ fn type_definition<'tok, 'src>(
 
     semicolon.parse_next(input)?;
 
-    Ok(types::TypeDefinition { name, type_spec })
+    Ok(TypeDefinition { name, type_spec })
 }
 
 /// Parse type definitions section
 fn type_definitions<'tok, 'src>(
     input: &mut Input<'tok, 'src>,
-) -> IResult<Vec<types::TypeDefinition<'src>>> {
+) -> IResult<Vec<TypeDefinition<'src>>> {
     repeat(0.., preceded(ws_comments0, type_definition)).parse_next(input)
 }
 
@@ -518,7 +508,7 @@ fn relation_type<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<&'src str
 /// - `container: Box { nested_component: Circle; };`
 /// - `panel: Box embed { diagram sequence; user -> server; };`
 /// - `panel: Box embed auth_flow;`
-fn component<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
+fn component<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
     let name = identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -546,7 +536,7 @@ fn component<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Elemen
     ws_comments0.parse_next(input)?;
     semicolon.parse_next(input)?;
 
-    Ok(types::Element::Component {
+    Ok(Element::Component {
         name,
         display_name,
         type_spec,
@@ -563,7 +553,7 @@ fn component<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Elemen
 /// - `user -> @AsyncCall server: "Request";`
 /// - `user -> @AsyncCall[color="blue"] server: "Request";`
 /// - `user -> [color="red"] server;` (anonymous TypeSpec)
-fn relation<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
+fn relation<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
     let source = nested_identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -595,7 +585,7 @@ fn relation<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element
             .context(Context::Label("semicolon after relation"))
             .parse_next(input)?;
 
-        Ok(types::Element::Relation {
+        Ok(Element::Relation {
             source,
             target,
             relation_type: make_spanned(relation_type, Span::new(0..0)), // TODO: track proper span
@@ -617,7 +607,7 @@ fn relation<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element
 ///   (consistent with `Element::span()` semantics using the inner `component` span).
 /// - Whitespace and line comments are allowed between tokens as handled by
 ///   `ws_comments0/1`.
-fn activate_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
+fn activate_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
     // Parse "activate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Activate))
         .context(Context::Label("activate keyword"))
@@ -666,7 +656,7 @@ fn activate_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::E
         .context(Context::Label("semicolon after activate block"))
         .parse_next(input)?;
 
-    Ok(types::Element::ActivateBlock {
+    Ok(Element::ActivateBlock {
         component,
         type_spec,
         elements: nested_elements,
@@ -674,9 +664,7 @@ fn activate_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::E
 }
 
 /// Parse a section block: `section "title" { elements };`
-fn section_block<'tok, 'src>(
-    input: &mut Input<'tok, 'src>,
-) -> IResult<types::FragmentSection<'src>> {
+fn section_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FragmentSection<'src>> {
     // Parse "section" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Section))
         .context(Context::Label("section keyword"))
@@ -718,7 +706,7 @@ fn section_block<'tok, 'src>(
             .context(Context::Label("semicolon after section"))
             .parse_next(input)?;
 
-        Ok(types::FragmentSection {
+        Ok(FragmentSection {
             title,
             elements: elems,
         })
@@ -730,7 +718,7 @@ fn section_block<'tok, 'src>(
 fn parse_section_content<'tok, 'src>(
     input: &mut Input<'tok, 'src>,
     title_context: &'static str,
-) -> IResult<types::FragmentSection<'src>> {
+) -> IResult<FragmentSection<'src>> {
     ws_comments0.parse_next(input)?;
 
     let title = opt(string_literal.context(Context::Label(title_context))).parse_next(input)?;
@@ -751,7 +739,7 @@ fn parse_section_content<'tok, 'src>(
         .context(Context::Label("closing brace '}'"))
         .parse_next(input)?;
 
-    Ok(types::FragmentSection {
+    Ok(FragmentSection {
         title,
         elements: elems,
     })
@@ -760,7 +748,7 @@ fn parse_section_content<'tok, 'src>(
 /// Macro for generating single-section fragment keyword parsers
 macro_rules! single_section_parser {
     ($fn_name:ident, $token:ident, $title_ctx:expr, $element_variant:ident) => {
-        fn $fn_name<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
+        fn $fn_name<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
             let keyword_token = any
                 .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::$token))
                 .context(Context::Label(concat!(stringify!($token), " keyword")))
@@ -785,7 +773,7 @@ macro_rules! single_section_parser {
                     )))
                     .parse_next(input)?;
 
-                Ok(types::Element::$element_variant {
+                Ok(Element::$element_variant {
                     keyword_span,
                     type_spec,
                     section,
@@ -798,7 +786,7 @@ macro_rules! single_section_parser {
 /// Macro for generating multi-section fragment keyword parsers
 macro_rules! multi_section_parser {
     ($fn_name:ident, $first_token:ident, $cont_token:ident, $first_ctx:expr, $cont_ctx:expr, $element_variant:ident) => {
-        fn $fn_name<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
+        fn $fn_name<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
             let keyword_token = any
                 .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::$first_token))
                 .context(Context::Label(concat!(
@@ -842,7 +830,7 @@ macro_rules! multi_section_parser {
                     )))
                     .parse_next(input)?;
 
-                Ok(types::Element::$element_variant {
+                Ok(Element::$element_variant {
                     keyword_span,
                     type_spec,
                     sections,
@@ -870,7 +858,7 @@ multi_section_parser!(
 multi_section_parser!(par_block, Par, Par, "par title", "par title", ParBlock);
 
 /// Parse a fragment block: `fragment @TypeSpec "operation" { section+ };`
-fn fragment_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
+fn fragment_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
     // Parse "fragment" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Fragment))
         .context(Context::Label("fragment keyword"))
@@ -918,7 +906,7 @@ fn fragment_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::E
             .context(Context::Label("semicolon after fragment"))
             .parse_next(input)?;
 
-        Ok(types::Element::Fragment(types::Fragment {
+        Ok(Element::Fragment(Fragment {
             operation,
             type_spec,
             sections,
@@ -935,7 +923,7 @@ fn fragment_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::E
 /// - `@TypeSpec` is optional invocation type spec: `@TypeName[attrs]`, `@TypeName`, or omitted (sugar)
 /// - `<nested_identifier>` supports `::`-qualified component names
 /// - Optional whitespace and line comments are permitted between tokens
-fn activate_statement<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
+fn activate_statement<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
     // Parse "activate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Activate))
         .context(Context::Label("activate keyword"))
@@ -961,16 +949,14 @@ fn activate_statement<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<type
         .context(Context::Label("semicolon after activate statement"))
         .parse_next(input)?;
 
-    Ok(types::Element::Activate {
+    Ok(Element::Activate {
         component,
         type_spec,
     })
 }
 
 /// Parse an explicit deactivate statement: `deactivate <nested_identifier>;`
-fn deactivate_statement<'tok, 'src>(
-    input: &mut Input<'tok, 'src>,
-) -> IResult<types::Element<'src>> {
+fn deactivate_statement<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
     // Parse "deactivate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Deactivate))
         .context(Context::Label("deactivate keyword"))
@@ -990,7 +976,7 @@ fn deactivate_statement<'tok, 'src>(
         .context(Context::Label("semicolon after deactivate statement"))
         .parse_next(input)?;
 
-    Ok(types::Element::Deactivate { component })
+    Ok(Element::Deactivate { component })
 }
 
 /// Parse an activate element (explicit statement or block) with checkpoint routing
@@ -998,7 +984,7 @@ fn deactivate_statement<'tok, 'src>(
 /// Behavior:
 /// - If an `activate {` block is present, parse the block
 /// - Otherwise, parse an explicit `activate <nested_identifier>;` statement
-fn activate_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
+fn activate_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
     // Try parsing an activate block first; if it fails, reset and parse explicit statement.
     let checkpoint = input.checkpoint();
     match activate_block.parse_next(input) {
@@ -1024,7 +1010,7 @@ fn activate_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types:
 /// - `note @NoteType: "Typed note";`
 /// - `note @NoteType[on=[component]]: "Note attached to component";`
 /// - `note [on=[a, b], align="left"]: "Note with anonymous TypeSpec";`
-fn note_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Element<'src>> {
+fn note_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
     // Parse 'note' keyword
     let _ = any
         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Note))
@@ -1053,13 +1039,13 @@ fn note_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::Ele
     // Parse semicolon
     semicolon.parse_next(input)?;
 
-    Ok(types::Element::Note(types::Note { type_spec, content }))
+    Ok(Element::Note(Note { type_spec, content }))
 }
 /// Parses zero or more diagram elements.
 ///
 /// An invalid-statement catch-all provides better error reporting when no
 /// valid parser matches.
-fn elements<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<types::Element<'src>>> {
+fn elements<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Element<'src>>> {
     repeat(
         0..,
         preceded(
@@ -1098,7 +1084,7 @@ fn elements<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<types::Ele
 /// Returns Cut error if semicolon found or if meaningful tokens consumed before delimiter.
 fn invalid_statement_with_semicolon<'tok, 'src>(
     input: &mut Input<'tok, 'src>,
-) -> IResult<types::Element<'src>> {
+) -> IResult<Element<'src>> {
     let mut consumed_meaningful_tokens = false;
     let start_offset = input.eof_offset();
 
@@ -1155,7 +1141,7 @@ fn diagram_type<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<Di
 ///
 /// Consumes the `diagram` keyword, a required [`DiagramKind`], and optional
 /// wrapped attributes.
-fn diagram_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::FileHeader<'src>> {
+fn diagram_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileHeader<'src>> {
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Diagram))
         .parse_next(input)?;
     ws_comments1.parse_next(input)?;
@@ -1164,24 +1150,24 @@ fn diagram_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::F
     let attributes = opt(wrapped_attributes)
         .map(|attrs| attrs.unwrap_or_default())
         .parse_next(input)?;
-    Ok(types::FileHeader::Diagram { kind, attributes })
+    Ok(FileHeader::Diagram { kind, attributes })
 }
 
 /// Parses a library header: the `library` keyword.
 ///
 /// Consumes only the `library` token itself.
-fn library_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::FileHeader<'src>> {
+fn library_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileHeader<'src>> {
     let token = any
         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Library))
         .parse_next(input)?;
-    Ok(types::FileHeader::Library { span: token.span })
+    Ok(FileHeader::Library { span: token.span })
 }
 
 /// Parses the file header that begins every `.orr` file.
 ///
 /// Dispatches to [`library_header`] or [`diagram_header`] based on the
 /// leading token, then consumes the required trailing semicolon.
-fn file_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::FileHeader<'src>> {
+fn file_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileHeader<'src>> {
     let header = alt((library_header, diagram_header))
         .context(Context::Label("file header"))
         .parse_next(input)?;
@@ -1197,7 +1183,7 @@ fn file_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::File
 /// - `import "path";` — namespaced import.
 /// - `import "path" as alias;` — aliased import.
 /// - `import "path"::*;` — glob import.
-fn import_decl<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<types::ImportDecl>> {
+fn import_decl<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<ImportDecl>> {
     let import_token = any
         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Import))
         .parse_next(input)?;
@@ -1220,7 +1206,7 @@ fn import_decl<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<typ
                         .context(Context::Label("alias identifier after 'as'"))
                         .parse_next(input)?;
                     let end = alias.span();
-                    Ok((types::ImportForm::Aliased(alias), end))
+                    Ok((ImportForm::Aliased(alias), end))
                 })
             },
             // `::*` → Glob
@@ -1232,24 +1218,22 @@ fn import_decl<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<typ
                         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Star))
                         .context(Context::Label("'*' after '::'"))
                         .parse_next(input)?;
-                    Ok((types::ImportForm::Glob, star.span))
+                    Ok((ImportForm::Glob, star.span))
                 })
             },
             // Nothing → Namespaced
-            |_input: &mut Input<'tok, 'src>| Ok((types::ImportForm::Namespaced, path.span())),
+            |_input: &mut Input<'tok, 'src>| Ok((ImportForm::Namespaced, path.span())),
         ))
         .parse_next(input)?;
 
         semicolon.parse_next(input)?;
         let span = import_token.span.union(end_span);
-        Ok(make_spanned(types::ImportDecl { path, form }, span))
+        Ok(make_spanned(ImportDecl { path, form }, span))
     })
 }
 
 /// Parses zero or more consecutive [`import_decl`] statements.
-fn import_decls<'tok, 'src>(
-    input: &mut Input<'tok, 'src>,
-) -> IResult<Vec<Spanned<types::ImportDecl>>> {
+fn import_decls<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Spanned<ImportDecl>>> {
     repeat(0.., preceded(ws_comments0, import_decl)).parse_next(input)
 }
 
@@ -1257,7 +1241,7 @@ fn import_decls<'tok, 'src>(
 ///
 /// Expects the sequence: file header → import declarations → type definitions
 /// → elements.
-fn file<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::FileAst<'src>> {
+fn file<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileAst<'src>> {
     ws_comments0.parse_next(input)?;
     let header = file_header.parse_next(input)?;
     let import_decls = import_decls.parse_next(input)?;
@@ -1265,7 +1249,7 @@ fn file<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::FileAst<'sr
     let elements = elements.parse_next(input)?;
     ws_comments0.parse_next(input)?;
 
-    Ok(types::FileAst {
+    Ok(FileAst {
         header,
         import_decls,
         type_definitions,
@@ -1284,9 +1268,7 @@ fn file<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<types::FileAst<'sr
 /// - `ComponentContent::Diagram(...)` — when an `embed` keyword is found.
 /// - `ComponentContent::Scope(...)` — when a `{` brace block is found.
 /// - `ComponentContent::None` — when neither is present.
-fn component_content<'tok, 'src>(
-    input: &mut Input<'tok, 'src>,
-) -> IResult<types::ComponentContent<'src>> {
+fn component_content<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<ComponentContent<'src>> {
     opt(alt((
         // Try parsing embedded diagram first (starts with 'embed' keyword)
         embedded_diagram,
@@ -1302,9 +1284,9 @@ fn component_content<'tok, 'src>(
                 any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace)),
             ),
         )
-        .map(types::ComponentContent::Scope),
+        .map(ComponentContent::Scope),
     )))
-    .map(|opt_content| opt_content.unwrap_or(types::ComponentContent::None))
+    .map(|opt_content| opt_content.unwrap_or(ComponentContent::None))
     .parse_next(input)
 }
 
@@ -1318,9 +1300,7 @@ fn component_content<'tok, 'src>(
 ///   → `ComponentContent::Diagram(DiagramSource::Inline(...))`
 /// - `embed auth_flow` — reference to an imported diagram
 ///   → `ComponentContent::Diagram(DiagramSource::Ref(...))`
-fn embedded_diagram<'tok, 'src>(
-    input: &mut Input<'tok, 'src>,
-) -> IResult<types::ComponentContent<'src>> {
+fn embedded_diagram<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<ComponentContent<'src>> {
     // Parse: embed
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Embed))
         .parse_next(input)?;
@@ -1336,12 +1316,10 @@ fn embedded_diagram<'tok, 'src>(
                 any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::RightBrace)),
             )
             .map(|file_ast| {
-                types::ComponentContent::Diagram(types::DiagramSource::Inline(Rc::new(
-                    RefCell::new(file_ast),
-                )))
+                ComponentContent::Diagram(DiagramSource::Inline(Rc::new(RefCell::new(file_ast))))
             }),
             // Ref: embed <identifier>
-            identifier.map(|id| types::ComponentContent::Diagram(types::DiagramSource::Ref(id))),
+            identifier.map(|id| ComponentContent::Diagram(DiagramSource::Ref(id))),
         ))
         .parse_next(input)
     })
@@ -1451,7 +1429,7 @@ fn convert_error(
     }
 }
 
-/// Parses a token stream into a [`FileAst`](types::FileAst).
+/// Parses a token stream into a [`FileAst`](FileAst).
 ///
 /// This is the public entry point for parsing a complete source file.
 /// After the inner [`file()`] combinator succeeds, this
@@ -1465,16 +1443,14 @@ fn convert_error(
 ///
 /// # Returns
 ///
-/// A [`FileAst`](types::FileAst) on success.
+/// A [`FileAst`](FileAst) on success.
 ///
 /// # Errors
 ///
 /// Returns a [`Diagnostic`] when:
 /// - The token stream does not match the expected Orrery grammar.
 /// - Tokens remain after parsing (unconsumed trailing input).
-pub fn build_file<'src>(
-    tokens: &[PositionedToken<'src>],
-) -> Result<types::FileAst<'src>, Diagnostic> {
+pub fn build_file<'src>(tokens: &[PositionedToken<'src>]) -> Result<FileAst<'src>, Diagnostic> {
     let mut token_slice = TokenSlice::new(tokens);
 
     match file.parse_next(&mut token_slice) {
@@ -1614,7 +1590,7 @@ mod tests {
         assert!(result.is_ok(), "Relation with @TypeName should parse");
 
         match result.unwrap() {
-            types::Element::Relation { type_spec, .. } => {
+            Element::Relation { type_spec, .. } => {
                 assert!(type_spec.type_name.is_some());
                 assert_eq!(*type_spec.type_name.unwrap().inner(), "Arrow");
                 assert!(type_spec.attributes.is_empty());
@@ -1636,7 +1612,7 @@ mod tests {
         );
 
         match result.unwrap() {
-            types::Element::Relation { type_spec, .. } => {
+            Element::Relation { type_spec, .. } => {
                 assert!(type_spec.type_name.is_some());
                 assert_eq!(*type_spec.type_name.unwrap().inner(), "Arrow");
                 assert_eq!(type_spec.attributes.len(), 2);
@@ -1657,7 +1633,7 @@ mod tests {
         assert!(result.is_ok(), "Relation with [attrs] should parse");
 
         match result.unwrap() {
-            types::Element::Relation { type_spec, .. } => {
+            Element::Relation { type_spec, .. } => {
                 assert!(type_spec.type_name.is_none(), "Anonymous type has no name");
                 assert_eq!(type_spec.attributes.len(), 2);
                 assert_eq!(*type_spec.attributes[0].name.inner(), "style");
@@ -1677,7 +1653,7 @@ mod tests {
         assert!(result.is_ok(), "Relation with sugar syntax should parse");
 
         match result.unwrap() {
-            types::Element::Relation { type_spec, .. } => {
+            Element::Relation { type_spec, .. } => {
                 assert!(type_spec.type_name.is_none());
                 assert!(type_spec.attributes.is_empty());
             }
@@ -1697,7 +1673,7 @@ mod tests {
         assert!(elem.is_ok(), "activate statement should parse");
 
         match elem.unwrap() {
-            types::Element::Activate { component, .. } => {
+            Element::Activate { component, .. } => {
                 assert_eq!(*component.inner(), "user");
                 let id_span = first_identifier_span(&tokens);
                 assert_eq!(
@@ -1720,7 +1696,7 @@ mod tests {
         assert!(elem.is_ok(), "deactivate statement should parse");
 
         match elem.unwrap() {
-            types::Element::Deactivate { component } => {
+            Element::Deactivate { component } => {
                 assert_eq!(*component.inner(), "server");
                 let id_span = first_identifier_span(&tokens);
                 assert_eq!(
@@ -1745,7 +1721,7 @@ mod tests {
             "activate with comments/whitespace should parse"
         );
         match elem.unwrap() {
-            types::Element::Activate { component, .. } => {
+            Element::Activate { component, .. } => {
                 assert_eq!(*component.inner(), "user");
             }
             other => panic!("expected Activate element, got {:?}", other),
@@ -1764,7 +1740,7 @@ mod tests {
             "deactivate with comments/whitespace should parse"
         );
         match elem.unwrap() {
-            types::Element::Deactivate { component } => {
+            Element::Deactivate { component } => {
                 assert_eq!(*component.inner(), "user");
             }
             other => panic!("expected Deactivate element, got {:?}", other),
@@ -1800,7 +1776,7 @@ mod tests {
         let elem = activate_statement.parse_next(&mut slice);
         assert!(elem.is_ok(), "activate with nested identifier should parse");
         match elem.unwrap() {
-            types::Element::Activate { component, .. } => {
+            Element::Activate { component, .. } => {
                 assert_eq!(*component.inner(), "parent::child");
                 let expected_span = nested_identifier_span(&tokens);
                 assert_eq!(
@@ -1823,7 +1799,7 @@ mod tests {
         assert!(elem.is_ok(), "activate with type_spec should parse");
 
         match elem.unwrap() {
-            types::Element::Activate {
+            Element::Activate {
                 component,
                 type_spec,
             } => {
@@ -1851,7 +1827,7 @@ mod tests {
         );
 
         match elem.unwrap() {
-            types::Element::Activate {
+            Element::Activate {
                 component,
                 type_spec,
             } => {
@@ -1877,7 +1853,7 @@ mod tests {
         assert!(elem.is_ok(), "activate without type_spec should parse");
 
         match elem.unwrap() {
-            types::Element::Activate {
+            Element::Activate {
                 component,
                 type_spec,
             } => {
@@ -1901,7 +1877,7 @@ mod tests {
             "deactivate with nested identifier should parse"
         );
         match elem.unwrap() {
-            types::Element::Deactivate { component } => {
+            Element::Deactivate { component } => {
                 assert_eq!(*component.inner(), "a::b::c");
                 let expected_span = nested_identifier_span(&tokens);
                 assert_eq!(
@@ -1932,7 +1908,7 @@ mod tests {
         );
 
         let element = result.unwrap();
-        if let types::Element::ActivateBlock {
+        if let Element::ActivateBlock {
             component,
             elements,
             type_spec: _type_spec,
@@ -2127,7 +2103,7 @@ mod tests {
         assert!(result.is_ok());
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "color");
-        assert!(matches!(&attr.value, types::AttributeValue::String(s) if s.inner() == "red"));
+        assert!(matches!(&attr.value, AttributeValue::String(s) if s.inner() == "red"));
 
         // Test that unquoted identifiers are now valid as TypeSpec names
         let tokens = parse_tokens("stroke=RedStroke");
@@ -2136,7 +2112,7 @@ mod tests {
         assert!(result.is_ok());
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "stroke");
-        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+        if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             assert_eq!(*type_spec.type_name.as_ref().unwrap().inner(), "RedStroke");
             assert_eq!(type_spec.attributes.len(), 0);
         } else {
@@ -2150,7 +2126,7 @@ mod tests {
         assert!(result.is_ok());
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "width");
-        assert!(matches!(&attr.value, types::AttributeValue::Float(f) if *f.inner() == 2.5));
+        assert!(matches!(&attr.value, AttributeValue::Float(f) if *f.inner() == 2.5));
     }
 
     #[test]
@@ -2163,16 +2139,16 @@ mod tests {
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "text");
 
-        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+        if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 2);
             assert_eq!(*nested_attrs[0].name.inner(), "font_size");
             assert!(
-                matches!(&nested_attrs[0].value, types::AttributeValue::Float(f) if *f.inner() == 12.0)
+                matches!(&nested_attrs[0].value, AttributeValue::Float(f) if *f.inner() == 12.0)
             );
             assert_eq!(*nested_attrs[1].name.inner(), "padding");
             assert!(
-                matches!(&nested_attrs[1].value, types::AttributeValue::Float(f) if *f.inner() == 6.5)
+                matches!(&nested_attrs[1].value, AttributeValue::Float(f) if *f.inner() == 6.5)
             );
         } else {
             panic!("Expected nested attributes");
@@ -2186,7 +2162,7 @@ mod tests {
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "text");
         // Empty brackets [] are parsed as Empty variant
-        if let types::AttributeValue::Empty = &attr.value {
+        if let AttributeValue::Empty = &attr.value {
             // Verify it can be interpreted as empty attributes
             assert_eq!(attr.value.as_type_spec().unwrap().attributes.len(), 0);
         } else {
@@ -2199,12 +2175,12 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+        if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 1);
             assert_eq!(*nested_attrs[0].name.inner(), "font_size");
             assert!(
-                matches!(&nested_attrs[0].value, types::AttributeValue::Float(f) if *f.inner() == 16.0)
+                matches!(&nested_attrs[0].value, AttributeValue::Float(f) if *f.inner() == 16.0)
             );
         } else {
             panic!("Expected nested attributes");
@@ -2216,16 +2192,16 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+        if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 2);
             assert_eq!(*nested_attrs[0].name.inner(), "font_family");
             assert!(
-                matches!(&nested_attrs[0].value, types::AttributeValue::String(s) if s.inner() == "Arial")
+                matches!(&nested_attrs[0].value, AttributeValue::String(s) if s.inner() == "Arial")
             );
             assert_eq!(*nested_attrs[1].name.inner(), "font_size");
             assert!(
-                matches!(&nested_attrs[1].value, types::AttributeValue::Float(f) if *f.inner() == 14.0)
+                matches!(&nested_attrs[1].value, AttributeValue::Float(f) if *f.inner() == 14.0)
             );
         } else {
             panic!("Expected nested attributes");
@@ -2240,16 +2216,16 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+        if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 2);
             assert_eq!(*nested_attrs[0].name.inner(), "font_size");
             assert!(
-                matches!(&nested_attrs[0].value, types::AttributeValue::Float(f) if *f.inner() == 12.0)
+                matches!(&nested_attrs[0].value, AttributeValue::Float(f) if *f.inner() == 12.0)
             );
             assert_eq!(*nested_attrs[1].name.inner(), "padding");
             assert!(
-                matches!(&nested_attrs[1].value, types::AttributeValue::Float(f) if *f.inner() == 6.5)
+                matches!(&nested_attrs[1].value, AttributeValue::Float(f) if *f.inner() == 6.5)
             );
         } else {
             panic!("Expected nested attributes");
@@ -2307,32 +2283,32 @@ mod tests {
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "text");
 
-        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+        if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 4);
 
             // Check font_size
             assert_eq!(*nested_attrs[0].name.inner(), "font_size");
             assert!(
-                matches!(&nested_attrs[0].value, types::AttributeValue::Float(f) if *f.inner() == 16.0)
+                matches!(&nested_attrs[0].value, AttributeValue::Float(f) if *f.inner() == 16.0)
             );
 
             // Check font_family
             assert_eq!(*nested_attrs[1].name.inner(), "font_family");
             assert!(
-                matches!(&nested_attrs[1].value, types::AttributeValue::String(s) if s.inner() == "Arial")
+                matches!(&nested_attrs[1].value, AttributeValue::String(s) if s.inner() == "Arial")
             );
 
             // Check background_color (simplified name)
             assert_eq!(*nested_attrs[2].name.inner(), "background_color");
             assert!(
-                matches!(&nested_attrs[2].value, types::AttributeValue::String(s) if s.inner() == "white")
+                matches!(&nested_attrs[2].value, AttributeValue::String(s) if s.inner() == "white")
             );
 
             // Check padding (simplified name)
             assert_eq!(*nested_attrs[3].name.inner(), "padding");
             assert!(
-                matches!(&nested_attrs[3].value, types::AttributeValue::Float(f) if *f.inner() == 8.0)
+                matches!(&nested_attrs[3].value, AttributeValue::Float(f) if *f.inner() == 8.0)
             );
         } else {
             panic!("Expected nested text attributes");
@@ -2350,7 +2326,7 @@ mod tests {
         let attr = result.unwrap();
         assert_eq!(*attr.name.inner(), "text");
         // Empty brackets [] are parsed as Empty variant
-        if let types::AttributeValue::Empty = &attr.value {
+        if let AttributeValue::Empty = &attr.value {
             // Verify it can be interpreted as empty attributes
             assert_eq!(attr.value.as_type_spec().unwrap().attributes.len(), 0);
         } else {
@@ -2363,12 +2339,12 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+        if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 1);
             assert_eq!(*nested_attrs[0].name.inner(), "font_size");
             assert!(
-                matches!(&nested_attrs[0].value, types::AttributeValue::Float(f) if *f.inner() == 20.0)
+                matches!(&nested_attrs[0].value, AttributeValue::Float(f) if *f.inner() == 20.0)
             );
         } else {
             panic!("Expected single text attribute");
@@ -2380,7 +2356,7 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+        if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 2);
             assert_eq!(*nested_attrs[0].name.inner(), "font_size");
@@ -2401,39 +2377,27 @@ mod tests {
         assert!(result.is_ok());
         let attr = result.unwrap();
 
-        if let types::AttributeValue::TypeSpec(type_spec) = &attr.value {
+        if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 4);
 
             // Verify each attribute type
-            assert!(matches!(
-                &nested_attrs[0].value,
-                types::AttributeValue::Float(_)
-            )); // font_size
-            assert!(matches!(
-                &nested_attrs[1].value,
-                types::AttributeValue::String(_)
-            )); // font_family
-            assert!(matches!(
-                &nested_attrs[2].value,
-                types::AttributeValue::String(_)
-            )); // background_color
-            assert!(matches!(
-                &nested_attrs[3].value,
-                types::AttributeValue::Float(_)
-            )); // padding
+            assert!(matches!(&nested_attrs[0].value, AttributeValue::Float(_))); // font_size
+            assert!(matches!(&nested_attrs[1].value, AttributeValue::String(_))); // font_family
+            assert!(matches!(&nested_attrs[2].value, AttributeValue::String(_))); // background_color
+            assert!(matches!(&nested_attrs[3].value, AttributeValue::Float(_))); // padding
 
             // Verify specific values
-            if let types::AttributeValue::Float(f) = &nested_attrs[0].value {
+            if let AttributeValue::Float(f) = &nested_attrs[0].value {
                 assert_eq!(*f.inner(), 12.0);
             }
-            if let types::AttributeValue::String(s) = &nested_attrs[1].value {
+            if let AttributeValue::String(s) = &nested_attrs[1].value {
                 assert_eq!(s.inner(), "Courier");
             }
-            if let types::AttributeValue::String(s) = &nested_attrs[2].value {
+            if let AttributeValue::String(s) = &nested_attrs[2].value {
                 assert_eq!(s.inner(), "#ff0000");
             }
-            if let types::AttributeValue::Float(f) = &nested_attrs[3].value {
+            if let AttributeValue::Float(f) = &nested_attrs[3].value {
                 assert_eq!(*f.inner(), 5.5);
             }
         } else {
@@ -2527,7 +2491,7 @@ mod tests {
         assert_eq!(spec.attributes.len(), 1);
         assert_eq!(*spec.attributes[0].name.inner(), "text");
         match &spec.attributes[0].value {
-            types::AttributeValue::TypeSpec(type_spec) => {
+            AttributeValue::TypeSpec(type_spec) => {
                 let nested = &type_spec.attributes;
                 assert_eq!(nested.len(), 2);
                 assert_eq!(*nested[0].name.inner(), "font");
@@ -2606,7 +2570,7 @@ mod tests {
         assert_eq!(spec.attributes.len(), 1);
         assert_eq!(*spec.attributes[0].name.inner(), "stroke");
         match &spec.attributes[0].value {
-            types::AttributeValue::TypeSpec(type_spec) => {
+            AttributeValue::TypeSpec(type_spec) => {
                 let nested = &type_spec.attributes;
                 assert_eq!(nested.len(), 2);
                 assert_eq!(*nested[0].name.inner(), "color");
@@ -2652,7 +2616,7 @@ mod tests {
         assert!(spec.type_name.is_none());
         assert_eq!(spec.attributes.len(), 1);
         match &spec.attributes[0].value {
-            types::AttributeValue::TypeSpec(type_spec) => {
+            AttributeValue::TypeSpec(type_spec) => {
                 let nested = &type_spec.attributes;
                 assert_eq!(nested.len(), 2);
             }
@@ -2788,7 +2752,7 @@ mod tests {
         assert!(result.is_ok(), "Empty activate block should be valid");
 
         let element = result.unwrap();
-        if let types::Element::ActivateBlock {
+        if let Element::ActivateBlock {
             component,
             elements,
             type_spec: _type_spec,
@@ -2816,7 +2780,7 @@ mod tests {
         assert!(result.is_ok(), "Nested activate blocks should be valid");
 
         let element = result.unwrap();
-        if let types::Element::ActivateBlock {
+        if let Element::ActivateBlock {
             component,
             elements,
             type_spec: _type_spec,
@@ -2828,7 +2792,7 @@ mod tests {
             // Verify nested activate block exists
             let has_nested_activate = elements
                 .iter()
-                .any(|el| matches!(el, types::Element::ActivateBlock { .. }));
+                .any(|el| matches!(el, Element::ActivateBlock { .. }));
             assert!(has_nested_activate, "Should contain nested activate block");
         } else {
             panic!("Expected ActivateBlock element");
@@ -2851,7 +2815,7 @@ mod tests {
         );
 
         let element = result.unwrap();
-        if let types::Element::ActivateBlock {
+        if let Element::ActivateBlock {
             component,
             elements,
             type_spec: _type_spec,
@@ -2878,7 +2842,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse opt block: {:?}", result);
 
         let element = result.unwrap();
-        if let types::Element::OptBlock {
+        if let Element::OptBlock {
             keyword_span,
             section,
             type_spec,
@@ -2908,7 +2872,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse opt block with attributes");
 
         let element = result.unwrap();
-        if let types::Element::OptBlock { type_spec, .. } = element {
+        if let Element::OptBlock { type_spec, .. } = element {
             assert_eq!(type_spec.attributes.len(), 2);
         } else {
             panic!("Expected OptBlock element");
@@ -2927,7 +2891,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse opt block without title");
 
         let element = result.unwrap();
-        if let types::Element::OptBlock { section, .. } = element {
+        if let Element::OptBlock { section, .. } = element {
             assert!(section.title.is_none());
         } else {
             panic!("Expected OptBlock element");
@@ -2946,7 +2910,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse loop block: {:?}", result);
 
         let element = result.unwrap();
-        if let types::Element::LoopBlock {
+        if let Element::LoopBlock {
             keyword_span,
             section,
             ..
@@ -2972,7 +2936,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse break block: {:?}", result);
 
         let element = result.unwrap();
-        if let types::Element::BreakBlock {
+        if let Element::BreakBlock {
             keyword_span,
             section,
             ..
@@ -3001,7 +2965,7 @@ mod tests {
         );
 
         let element = result.unwrap();
-        if let types::Element::CriticalBlock {
+        if let Element::CriticalBlock {
             keyword_span,
             section,
             ..
@@ -3034,7 +2998,7 @@ mod tests {
         );
 
         let element = result.unwrap();
-        if let types::Element::AltElseBlock {
+        if let Element::AltElseBlock {
             keyword_span,
             sections,
             ..
@@ -3065,7 +3029,7 @@ mod tests {
         );
 
         let element = result.unwrap();
-        if let types::Element::AltElseBlock { sections, .. } = element {
+        if let Element::AltElseBlock { sections, .. } = element {
             assert_eq!(sections.len(), 1);
         } else {
             panic!("Expected AltElseBlock element");
@@ -3086,7 +3050,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse par block: {:?}", result);
 
         let element = result.unwrap();
-        if let types::Element::ParBlock {
+        if let Element::ParBlock {
             keyword_span,
             sections,
             ..
@@ -3116,7 +3080,7 @@ mod tests {
         );
 
         let element = result.unwrap();
-        if let types::Element::ParBlock { sections, .. } = element {
+        if let Element::ParBlock { sections, .. } = element {
             assert_eq!(sections.len(), 1);
         } else {
             panic!("Expected ParBlock element");
@@ -3139,10 +3103,10 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse nested fragment keywords");
 
         let element = result.unwrap();
-        if let types::Element::OptBlock { section, .. } = element {
+        if let Element::OptBlock { section, .. } = element {
             assert_eq!(section.elements.len(), 1);
             // Inner element should be an AltElseBlock
-            if let types::Element::AltElseBlock { .. } = &section.elements[0] {
+            if let Element::AltElseBlock { .. } = &section.elements[0] {
                 // Success
             } else {
                 panic!("Expected nested AltElseBlock");
@@ -3163,7 +3127,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse opt block with empty body");
 
         let element = result.unwrap();
-        if let types::Element::OptBlock { section, .. } = element {
+        if let Element::OptBlock { section, .. } = element {
             assert_eq!(section.elements.len(), 0);
         } else {
             panic!("Expected OptBlock element");
@@ -3180,7 +3144,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse simple note element");
 
         let element = result.unwrap();
-        if let types::Element::Note(note) = element {
+        if let Element::Note(note) = element {
             assert_eq!(note.type_spec.attributes.len(), 0);
             assert_eq!(note.content.inner(), "This is a simple note");
         } else {
@@ -3198,7 +3162,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse note with attributes");
 
         let element = result.unwrap();
-        if let types::Element::Note(note) = element {
+        if let Element::Note(note) = element {
             assert_eq!(note.type_spec.attributes.len(), 1);
             assert_eq!(*note.type_spec.attributes[0].name.inner(), "align");
             assert_eq!(note.content.inner(), "Note with attributes");
@@ -3217,7 +3181,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse note with @TypeName");
 
         let element = result.unwrap();
-        if let types::Element::Note(note) = element {
+        if let Element::Note(note) = element {
             assert!(note.type_spec.type_name.is_some());
             assert_eq!(*note.type_spec.type_name.unwrap().inner(), "WarningNote");
             assert!(note.type_spec.attributes.is_empty());
@@ -3237,7 +3201,7 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse note with @TypeName[attrs]");
 
         let element = result.unwrap();
-        if let types::Element::Note(note) = element {
+        if let Element::Note(note) = element {
             assert!(note.type_spec.type_name.is_some());
             assert_eq!(*note.type_spec.type_name.unwrap().inner(), "InfoNote");
             assert_eq!(note.type_spec.attributes.len(), 2);
@@ -3286,7 +3250,7 @@ mod tests {
         );
 
         let element = result.unwrap();
-        if let types::Element::Note(note) = &element {
+        if let Element::Note(note) = &element {
             assert_eq!(note.type_spec.attributes.len(), 1);
             assert_eq!(*note.type_spec.attributes[0].name.inner(), "align");
             assert_eq!(note.content.inner(), "Content with spacing");
@@ -3509,15 +3473,15 @@ mod tests {
         let note_count = file_ast
             .elements
             .iter()
-            .filter(|e| matches!(e, types::Element::Note(_)))
+            .filter(|e| matches!(e, Element::Note(_)))
             .count();
         assert_eq!(note_count, 4, "Expected 4 notes in diagram");
 
         // Verify first note is a margin note with no attributes
-        if let Some(types::Element::Note(note)) = file_ast
+        if let Some(Element::Note(note)) = file_ast
             .elements
             .iter()
-            .find(|e| matches!(e, types::Element::Note(_)))
+            .find(|e| matches!(e, Element::Note(_)))
         {
             assert_eq!(note.content.inner(), "This is a margin note");
             assert_eq!(
@@ -3534,7 +3498,7 @@ mod tests {
             .elements
             .iter()
             .filter_map(|e| match e {
-                types::Element::Note(note) => Some(note),
+                Element::Note(note) => Some(note),
                 _ => None,
             })
             .filter(|note| {
@@ -3561,7 +3525,7 @@ mod tests {
         let result = attribute_value(&mut token_slice);
         assert!(result.is_ok(), "Failed to parse empty brackets");
 
-        if let types::AttributeValue::Empty = result.unwrap() {
+        if let AttributeValue::Empty = result.unwrap() {
             // Success
         } else {
             panic!("Expected Empty attribute value");
@@ -3642,10 +3606,10 @@ mod tests {
             assert!(result.is_ok(), "Failed for {input}: {:?}", result.err());
             let file_ast = result.unwrap();
             match &file_ast.header {
-                types::FileHeader::Diagram { kind, .. } => {
+                FileHeader::Diagram { kind, .. } => {
                     assert_eq!(*kind.inner(), expected_kind, "Wrong kind for {input}");
                 }
-                types::FileHeader::Library { .. } => {
+                FileHeader::Library { .. } => {
                     panic!("Expected Diagram header for {input}")
                 }
             }
@@ -3664,12 +3628,12 @@ mod tests {
         assert!(result.is_ok(), "Failed: {:?}", result.err());
         let file_ast = result.unwrap();
         match &file_ast.header {
-            types::FileHeader::Diagram { kind, attributes } => {
+            FileHeader::Diagram { kind, attributes } => {
                 assert_eq!(*kind.inner(), DiagramKind::Component);
                 assert_eq!(attributes.len(), 1);
                 assert_eq!(*attributes[0].name.inner(), "layout_engine");
             }
-            types::FileHeader::Library { .. } => panic!("Expected Diagram header"),
+            FileHeader::Library { .. } => panic!("Expected Diagram header"),
         }
     }
 
@@ -3680,7 +3644,7 @@ mod tests {
         let result = build_file(&tokens);
         assert!(result.is_ok(), "Failed: {:?}", result.err());
         let file_ast = result.unwrap();
-        assert!(matches!(file_ast.header, types::FileHeader::Library { .. }));
+        assert!(matches!(file_ast.header, FileHeader::Library { .. }));
         assert!(file_ast.import_decls.is_empty());
         assert!(file_ast.type_definitions.is_empty());
         assert!(file_ast.elements.is_empty());
@@ -3696,7 +3660,7 @@ type Database = Rectangle;"#;
         let result = build_file(&tokens);
         assert!(result.is_ok(), "Failed: {:?}", result.err());
         let file_ast = result.unwrap();
-        assert!(matches!(file_ast.header, types::FileHeader::Library { .. }));
+        assert!(matches!(file_ast.header, FileHeader::Library { .. }));
         assert_eq!(file_ast.type_definitions.len(), 2);
         assert!(file_ast.elements.is_empty());
     }
@@ -3712,7 +3676,7 @@ type Database = Rectangle;"#;
         let result = build_file(&tokens);
         assert!(result.is_ok(), "Failed: {:?}", result.err());
         let file_ast = result.unwrap();
-        assert!(matches!(file_ast.header, types::FileHeader::Library { .. }));
+        assert!(matches!(file_ast.header, FileHeader::Library { .. }));
         assert_eq!(file_ast.import_decls.len(), 2);
         assert_eq!(
             *file_ast.import_decls[0].inner().path.inner(),
@@ -3741,7 +3705,7 @@ import "shared/styles";"#;
         );
         assert_eq!(
             file_ast.import_decls[0].inner().form,
-            types::ImportForm::Namespaced
+            ImportForm::Namespaced
         );
     }
 
@@ -3825,7 +3789,7 @@ import "path/to/file";"#;
         assert_eq!(file_ast.import_decls.len(), 1);
         assert_eq!(
             file_ast.import_decls[0].inner().form,
-            types::ImportForm::Namespaced
+            ImportForm::Namespaced
         );
         // import(19..25) union "path/to/file"(26..40) = 19..40
         assert_eq!(file_ast.import_decls[0].span(), Span::from(19..40));
@@ -3842,7 +3806,7 @@ import "shared/styles"::*;"#;
         assert_eq!(file_ast.import_decls.len(), 1);
         let import = file_ast.import_decls[0].inner();
         assert_eq!(*import.path.inner(), "shared/styles");
-        assert_eq!(import.form, types::ImportForm::Glob);
+        assert_eq!(import.form, ImportForm::Glob);
         // import(19..25) union *(43..44) = 19..44
         assert_eq!(file_ast.import_decls[0].span(), Span::from(19..44));
     }
@@ -3857,14 +3821,8 @@ import "common/types"::*;"#;
         assert!(result.is_ok(), "Failed: {:?}", result.err());
         let file_ast = result.unwrap();
         assert_eq!(file_ast.import_decls.len(), 2);
-        assert_eq!(
-            file_ast.import_decls[0].inner().form,
-            types::ImportForm::Glob
-        );
-        assert_eq!(
-            file_ast.import_decls[1].inner().form,
-            types::ImportForm::Glob
-        );
+        assert_eq!(file_ast.import_decls[0].inner().form, ImportForm::Glob);
+        assert_eq!(file_ast.import_decls[1].inner().form, ImportForm::Glob);
     }
 
     #[test]
@@ -3877,10 +3835,7 @@ type Service = Rectangle;"#;
         assert!(result.is_ok(), "Failed: {:?}", result.err());
         let file_ast = result.unwrap();
         assert_eq!(file_ast.import_decls.len(), 1);
-        assert_eq!(
-            file_ast.import_decls[0].inner().form,
-            types::ImportForm::Glob
-        );
+        assert_eq!(file_ast.import_decls[0].inner().form, ImportForm::Glob);
         assert_eq!(file_ast.type_definitions.len(), 1);
     }
 
@@ -3898,7 +3853,7 @@ import "shared/styles" as theme;"#;
         // import(19..25) union theme(45..50) = 19..50
         assert_eq!(import.span(), Span::from(19..50));
         match &import.inner().form {
-            types::ImportForm::Aliased(alias) => {
+            ImportForm::Aliased(alias) => {
                 assert_eq!(*alias.inner(), Id::new("theme"));
                 assert_eq!(alias.span(), Span::from(45..50));
             }
@@ -3919,18 +3874,15 @@ import "base/utils"::*;"#;
         assert_eq!(file_ast.import_decls.len(), 3);
         assert_eq!(
             file_ast.import_decls[0].inner().form,
-            types::ImportForm::Namespaced
+            ImportForm::Namespaced
         );
         match &file_ast.import_decls[1].inner().form {
-            types::ImportForm::Aliased(alias) => {
+            ImportForm::Aliased(alias) => {
                 assert_eq!(*alias.inner(), Id::new("ct"));
             }
             other => panic!("Expected Aliased, got {:?}", other),
         }
-        assert_eq!(
-            file_ast.import_decls[2].inner().form,
-            types::ImportForm::Glob
-        );
+        assert_eq!(file_ast.import_decls[2].inner().form, ImportForm::Glob);
     }
 
     #[test]
@@ -3982,8 +3934,8 @@ a: Rectangle embed {
         let outer_elements = &file_ast.elements;
         assert_eq!(outer_elements.len(), 1);
         match &outer_elements[0] {
-            types::Element::Component { content, .. } => match &content {
-                types::ComponentContent::Diagram(types::DiagramSource::Inline(rc)) => {
+            Element::Component { content, .. } => match &content {
+                ComponentContent::Diagram(DiagramSource::Inline(rc)) => {
                     let inner_file = rc.borrow();
                     assert_eq!(inner_file.import_decls.len(), 1);
                     assert_eq!(
@@ -4008,10 +3960,10 @@ a: Rectangle embed {
         let file_ast = result.unwrap();
         assert_eq!(file_ast.elements.len(), 1);
         match &file_ast.elements[0] {
-            types::Element::Component { name, content, .. } => {
+            Element::Component { name, content, .. } => {
                 assert_eq!(*name.inner(), "auth_box");
                 match content {
-                    types::ComponentContent::Diagram(types::DiagramSource::Ref(id)) => {
+                    ComponentContent::Diagram(DiagramSource::Ref(id)) => {
                         assert_eq!(*id.inner(), "auth_flow");
                     }
                     other => panic!("Expected DiagramSource::Ref, got: {:?}", other),
@@ -4035,12 +3987,9 @@ a: Rectangle embed {
 
         // First element: embed ref
         match &file_ast.elements[0] {
-            types::Element::Component { content, .. } => {
+            Element::Component { content, .. } => {
                 assert!(
-                    matches!(
-                        content,
-                        types::ComponentContent::Diagram(types::DiagramSource::Ref(_))
-                    ),
+                    matches!(content, ComponentContent::Diagram(DiagramSource::Ref(_))),
                     "Expected DiagramSource::Ref for box1"
                 );
             }
@@ -4049,12 +3998,9 @@ a: Rectangle embed {
 
         // Second element: embed inline
         match &file_ast.elements[1] {
-            types::Element::Component { content, .. } => {
+            Element::Component { content, .. } => {
                 assert!(
-                    matches!(
-                        content,
-                        types::ComponentContent::Diagram(types::DiagramSource::Inline(_))
-                    ),
+                    matches!(content, ComponentContent::Diagram(DiagramSource::Inline(_))),
                     "Expected DiagramSource::Inline for box2"
                 );
             }
@@ -4152,7 +4098,7 @@ api -> db;"#;
         let file_ast = result.unwrap();
         assert!(matches!(
             file_ast.header,
-            types::FileHeader::Diagram { ref kind, .. } if *kind.inner() == DiagramKind::Component
+            FileHeader::Diagram { ref kind, .. } if *kind.inner() == DiagramKind::Component
         ));
         assert_eq!(file_ast.import_decls.len(), 2);
         assert_eq!(file_ast.type_definitions.len(), 2);
@@ -4170,7 +4116,7 @@ type Cache = Rectangle;"#;
         let result = build_file(&tokens);
         assert!(result.is_ok(), "Failed: {:?}", result.err());
         let file_ast = result.unwrap();
-        assert!(matches!(file_ast.header, types::FileHeader::Library { .. }));
+        assert!(matches!(file_ast.header, FileHeader::Library { .. }));
         assert_eq!(file_ast.import_decls.len(), 1);
         assert_eq!(file_ast.type_definitions.len(), 3);
         assert!(file_ast.elements.is_empty());

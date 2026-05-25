@@ -10,16 +10,18 @@ use std::{collections::HashMap, rc::Rc};
 use log::{debug, error};
 
 use orrery_core::{
-    draw,
+    draw::{
+        Arrow, ArrowPath, ArrowWithText, PositionedArrowWithText, PositionedDrawable, ShapeWithText,
+    },
     geometry::{Bounds, Point},
     identifier::Id,
-    semantic,
+    semantic::{Node, Relation},
 };
 
 use crate::{
     error::RenderError,
-    layout::{layer, positioning::LayoutBounds},
-    structure,
+    layout::{layer::ContentStack, positioning::LayoutBounds},
+    structure::ComponentGraph,
 };
 
 // TODO: Do I need Clone?!
@@ -27,19 +29,14 @@ use crate::{
 /// A positioned diagram component linking a semantic node to its rendered shape and location.
 #[derive(Debug, Clone)]
 pub struct Component<'a> {
-    node_id: Id, // TODO: Can I get rid of this?
-    drawable: Rc<draw::PositionedDrawable<draw::ShapeWithText<'a>>>, // TODO: Consider removing Rc.
+    node_id: Id,                                         // TODO: Can I get rid of this?
+    drawable: Rc<PositionedDrawable<ShapeWithText<'a>>>, // TODO: Consider removing Rc.
 }
 
 impl<'a> Component<'a> {
     /// Creates a new component with the specified properties.
-    pub fn new(
-        node: &semantic::Node,
-        shape_with_text: draw::ShapeWithText<'a>,
-        position: Point,
-    ) -> Component<'a> {
-        let drawable =
-            Rc::new(draw::PositionedDrawable::new(shape_with_text).with_position(position));
+    pub fn new(node: &Node, shape_with_text: ShapeWithText<'a>, position: Point) -> Component<'a> {
+        let drawable = Rc::new(PositionedDrawable::new(shape_with_text).with_position(position));
         Component {
             node_id: node.id(),
             drawable,
@@ -47,7 +44,7 @@ impl<'a> Component<'a> {
     }
 
     /// Returns a reference to the component's shape.
-    pub fn drawable(&self) -> &draw::PositionedDrawable<draw::ShapeWithText<'_>> {
+    pub fn drawable(&self) -> &PositionedDrawable<ShapeWithText<'_>> {
         &self.drawable
     }
 
@@ -105,10 +102,10 @@ pub trait ArrowPlacer {
     /// Places a bucket of relations between the same component pair.
     fn place<'a>(
         &self,
-        relations: &[&'a semantic::Relation],
+        relations: &[&'a Relation],
         source: &Component<'_>,
         target: &Component<'_>,
-    ) -> Vec<draw::PositionedArrowWithText<'a>>;
+    ) -> Vec<PositionedArrowWithText<'a>>;
 }
 
 /// [`ArrowPlacer`] that emits a straight centerline path for every relation.
@@ -121,29 +118,29 @@ pub struct StraightArrowPlacer;
 impl StraightArrowPlacer {
     /// Straight-line arrow from `source` boundary to `target` boundary.
     fn place_one<'a>(
-        relation: &'a semantic::Relation,
+        relation: &'a Relation,
         source: &Component<'_>,
         target: &Component<'_>,
-    ) -> draw::PositionedArrowWithText<'a> {
+    ) -> PositionedArrowWithText<'a> {
         let arrow_def = Rc::clone(relation.arrow_definition());
-        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
-        let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
+        let arrow = Arrow::new(arrow_def, relation.arrow_direction());
+        let arrow_with_text = ArrowWithText::new(arrow, relation.text());
 
         let source_edge = source.find_intersection(target.position());
         let target_edge = target.find_intersection(source.position());
-        let path = draw::ArrowPath::straight(source_edge, target_edge);
+        let path = ArrowPath::straight(source_edge, target_edge);
 
-        draw::PositionedArrowWithText::new(arrow_with_text, path)
+        PositionedArrowWithText::new(arrow_with_text, path)
     }
 }
 
 impl ArrowPlacer for StraightArrowPlacer {
     fn place<'a>(
         &self,
-        relations: &[&'a semantic::Relation],
+        relations: &[&'a Relation],
         source: &Component<'_>,
         target: &Component<'_>,
-    ) -> Vec<draw::PositionedArrowWithText<'a>> {
+    ) -> Vec<PositionedArrowWithText<'a>> {
         relations
             .iter()
             .map(|relation| {
@@ -189,24 +186,23 @@ impl CurvedArrowPlacer {
         }
     }
 
-    /// Packages `lane_geometry` output into a [`PositionedArrowWithText`](draw::PositionedArrowWithText).
+    /// Packages `lane_geometry` output into a [`PositionedArrowWithText`](PositionedArrowWithText).
     fn curved_arrow<'a>(
-        relation: &'a semantic::Relation,
+        relation: &'a Relation,
         source: &Component<'_>,
         target: &Component<'_>,
         lane_offset: f32,
-    ) -> draw::PositionedArrowWithText<'a> {
+    ) -> PositionedArrowWithText<'a> {
         let Some((path, label_position)) = Self::lane_geometry(source, target, lane_offset) else {
             // Degenerate (zero-length centerline): fall back to straight.
             return StraightArrowPlacer::place_one(relation, source, target);
         };
 
         let arrow_def = Rc::clone(relation.arrow_definition());
-        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
-        let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
+        let arrow = Arrow::new(arrow_def, relation.arrow_direction());
+        let arrow_with_text = ArrowWithText::new(arrow, relation.text());
 
-        draw::PositionedArrowWithText::new(arrow_with_text, path)
-            .with_text_position(Some(label_position))
+        PositionedArrowWithText::new(arrow_with_text, path).with_text_position(Some(label_position))
     }
 
     /// Computes the cubic-Bézier path and label position for a lane offset.
@@ -216,7 +212,7 @@ impl CurvedArrowPlacer {
         source: &Component<'_>,
         target: &Component<'_>,
         lane_offset: f32,
-    ) -> Option<(draw::ArrowPath, Point)> {
+    ) -> Option<(ArrowPath, Point)> {
         let src_center = source.position();
         let tgt_center = target.position();
 
@@ -239,19 +235,13 @@ impl CurvedArrowPlacer {
         let cp1 = third.add_point(perp);
         let cp2 = two_thirds.add_point(perp);
 
-        let path = draw::ArrowPath::new(src_edge, tgt_edge, vec![cp1, cp2]);
+        let path = ArrowPath::new(src_edge, tgt_edge, vec![cp1, cp2]);
         let label_position = cubic_bezier_midpoint(src_edge, cp1, cp2, tgt_edge);
         Some((path, label_position))
     }
 
     /// Lane offset for position `k` of `n`, sign-flipped for reverse relations.
-    fn lane_offset_at(
-        &self,
-        k: usize,
-        n: usize,
-        relation: &semantic::Relation,
-        source_id: Id,
-    ) -> f32 {
+    fn lane_offset_at(&self, k: usize, n: usize, relation: &Relation, source_id: Id) -> f32 {
         let offset = ((k as f32) - ((n - 1) as f32) / 2.0) * self.lane_spacing;
         if relation.source() != source_id {
             -offset
@@ -267,11 +257,7 @@ impl CurvedArrowPlacer {
     }
 
     /// Teardrop-shaped Bézier lobe path for a self-loop at `angle`.
-    fn self_loop_geometry(
-        &self,
-        component: &Component<'_>,
-        angle: f32,
-    ) -> (draw::ArrowPath, Point) {
+    fn self_loop_geometry(&self, component: &Component<'_>, angle: f32) -> (ArrowPath, Point) {
         let center = component.position();
         let direction = Point::new(angle.cos(), angle.sin());
         let component_size = component.bounds().to_size();
@@ -299,7 +285,7 @@ impl CurvedArrowPlacer {
         let cp1 = src_edge.add_point(outward);
         let cp2 = dst_edge.add_point(outward);
 
-        let path = draw::ArrowPath::new(src_edge, dst_edge, vec![cp1, cp2]);
+        let path = ArrowPath::new(src_edge, dst_edge, vec![cp1, cp2]);
         let label_position = cubic_bezier_midpoint(src_edge, cp1, cp2, dst_edge);
 
         (path, label_position)
@@ -308,18 +294,17 @@ impl CurvedArrowPlacer {
     /// Positioned self-loop arrow at the given outward `angle`.
     fn self_loop_arrow<'a>(
         &self,
-        relation: &'a semantic::Relation,
+        relation: &'a Relation,
         component: &Component<'_>,
         angle: f32,
-    ) -> draw::PositionedArrowWithText<'a> {
+    ) -> PositionedArrowWithText<'a> {
         let (path, label_position) = self.self_loop_geometry(component, angle);
 
         let arrow_def = Rc::clone(relation.arrow_definition());
-        let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
-        let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
+        let arrow = Arrow::new(arrow_def, relation.arrow_direction());
+        let arrow_with_text = ArrowWithText::new(arrow, relation.text());
 
-        draw::PositionedArrowWithText::new(arrow_with_text, path)
-            .with_text_position(Some(label_position))
+        PositionedArrowWithText::new(arrow_with_text, path).with_text_position(Some(label_position))
     }
 }
 
@@ -332,10 +317,10 @@ impl Default for CurvedArrowPlacer {
 impl ArrowPlacer for CurvedArrowPlacer {
     fn place<'a>(
         &self,
-        relations: &[&'a semantic::Relation],
+        relations: &[&'a Relation],
         source: &Component<'_>,
         target: &Component<'_>,
-    ) -> Vec<draw::PositionedArrowWithText<'a>> {
+    ) -> Vec<PositionedArrowWithText<'a>> {
         let n = relations.len();
         if source.node_id() == target.node_id() {
             relations
@@ -375,7 +360,7 @@ impl ArrowPlacer for CurvedArrowPlacer {
 #[derive(Debug, Clone)]
 pub struct Layout<'a> {
     components: Vec<Component<'a>>,
-    relations: Vec<draw::PositionedArrowWithText<'a>>,
+    relations: Vec<PositionedArrowWithText<'a>>,
     bounds: Bounds,
 }
 
@@ -383,7 +368,7 @@ impl<'a> Layout<'a> {
     /// Creates a new layout with the given components and relations.
     pub fn new(
         components: Vec<Component<'a>>,
-        relations: Vec<draw::PositionedArrowWithText<'a>>,
+        relations: Vec<PositionedArrowWithText<'a>>,
     ) -> Self {
         let bounds = if components.is_empty() {
             Bounds::default()
@@ -409,7 +394,7 @@ impl<'a> Layout<'a> {
     }
 
     /// Returns a reference to the relations in this layout.
-    pub fn relations(&self) -> &[draw::PositionedArrowWithText<'a>] {
+    pub fn relations(&self) -> &[PositionedArrowWithText<'a>] {
         &self.relations
     }
 }
@@ -440,8 +425,8 @@ impl<'a> LayoutBounds for Layout<'a> {
 /// is not found in its corresponding layout layer.
 // TODO: Once added enough abstractions, make this a method on ContentStack.
 pub fn adjust_positioned_contents_offset<'a>(
-    content_stack: &mut layer::ContentStack<Layout>,
-    graph: &'a structure::ComponentGraph<'a, '_>,
+    content_stack: &mut ContentStack<Layout>,
+    graph: &'a ComponentGraph<'a, '_>,
 ) -> Result<(), RenderError> {
     let container_indices: HashMap<_, _> = graph
         .containment_scopes()
@@ -508,7 +493,7 @@ pub fn adjust_positioned_contents_offset<'a>(
 /// Returns `(source, target)` or `(target, source)` depending on which
 /// component matches `relation.source()`.
 fn align_to_relation<'a, 'b>(
-    relation: &semantic::Relation,
+    relation: &Relation,
     source: &'b Component<'a>,
     target: &'b Component<'a>,
 ) -> (&'b Component<'a>, &'b Component<'a>) {
@@ -541,6 +526,11 @@ mod tests {
 
     use float_cmp::{approx_eq, assert_approx_eq};
 
+    use orrery_core::{
+        draw::{ArrowDefinition, ArrowDirection, RectangleDefinition, Shape, ShapeDefinition},
+        semantic::Block,
+    };
+
     use super::*;
 
     fn assert_point_approx_eq(actual: Point, expected: Point) {
@@ -555,26 +545,25 @@ mod tests {
         );
     }
 
-    fn make_relation(source: Id, target: Id) -> semantic::Relation {
-        semantic::Relation::new(
+    fn make_relation(source: Id, target: Id) -> Relation {
+        Relation::new(
             source,
             target,
-            draw::ArrowDirection::Forward,
+            ArrowDirection::Forward,
             None,
-            Rc::new(draw::ArrowDefinition::default()),
+            Rc::new(ArrowDefinition::default()),
         )
     }
 
-    fn make_node(name: &str) -> semantic::Node {
+    fn make_node(name: &str) -> Node {
         let id = Id::new(name);
-        let shape_def =
-            Rc::new(Box::new(draw::RectangleDefinition::new()) as Box<dyn draw::ShapeDefinition>);
-        semantic::Node::new(id, None, semantic::Block::None, shape_def)
+        let shape_def = Rc::new(Box::new(RectangleDefinition::new()) as Box<dyn ShapeDefinition>);
+        Node::new(id, None, Block::None, shape_def)
     }
 
-    fn make_component<'a>(node: &'a semantic::Node, position: Point) -> Component<'a> {
-        let shape = draw::Shape::new(Rc::clone(node.shape_definition()));
-        let shape_with_text = draw::ShapeWithText::new(shape, None);
+    fn make_component<'a>(node: &'a Node, position: Point) -> Component<'a> {
+        let shape = Shape::new(Rc::clone(node.shape_definition()));
+        let shape_with_text = ShapeWithText::new(shape, None);
         Component::new(node, shape_with_text, position)
     }
 

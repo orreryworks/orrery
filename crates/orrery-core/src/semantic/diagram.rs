@@ -7,15 +7,11 @@
 //! - [`Block`] - Represents nested content (none, scope, or embedded diagram)
 //! - [`LayoutEngine`] - Enumeration of available layout algorithms
 
-use std::{
-    fmt::{self, Display},
-    rc::Rc,
-    str::FromStr,
-};
+use std::{fmt, rc::Rc, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{color::Color, draw, semantic::element::Element};
+use crate::{color::Color, draw::LifelineDefinition, semantic::element::Element};
 
 /// The kind of a diagram: component or sequence.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -26,7 +22,7 @@ pub enum DiagramKind {
     Sequence,
 }
 
-impl Display for DiagramKind {
+impl fmt::Display for DiagramKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DiagramKind::Component => write!(f, "component"),
@@ -110,7 +106,7 @@ impl From<LayoutEngine> for &'static str {
     }
 }
 
-impl Display for LayoutEngine {
+impl fmt::Display for LayoutEngine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s: &'static str = (*self).into();
         write!(f, "{s}")
@@ -137,7 +133,7 @@ pub struct Diagram {
     scope: Scope,
     layout_engine: LayoutEngine,
     background_color: Option<Color>,
-    lifeline_definition: Option<Rc<draw::LifelineDefinition>>,
+    lifeline_definition: Option<Rc<LifelineDefinition>>,
 }
 
 impl Diagram {
@@ -147,7 +143,7 @@ impl Diagram {
         scope: Scope,
         layout_engine: LayoutEngine,
         background_color: Option<Color>,
-        lifeline_definition: Option<Rc<draw::LifelineDefinition>>,
+        lifeline_definition: Option<Rc<LifelineDefinition>>,
     ) -> Self {
         Self {
             kind,
@@ -179,7 +175,7 @@ impl Diagram {
     }
 
     /// Get the lifeline definition if specified (for sequence diagrams).
-    pub fn lifeline_definition(&self) -> Option<&Rc<draw::LifelineDefinition>> {
+    pub fn lifeline_definition(&self) -> Option<&Rc<LifelineDefinition>> {
         self.lifeline_definition.as_ref()
     }
 }

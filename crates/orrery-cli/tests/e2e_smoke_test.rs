@@ -8,7 +8,7 @@ use std::{fs, path::PathBuf};
 use bumpalo::Bump;
 use tempfile::tempdir;
 
-use orrery_cli::{Args, run};
+use orrery_cli::Args;
 
 /// Collects all `.orr` files from a directory.
 fn collect_orr_files(dir: PathBuf) -> Vec<PathBuf> {
@@ -71,7 +71,7 @@ fn e2e_smoke_test_valid_examples() {
         };
 
         let arena = Bump::new();
-        if let Err(e) = run(&args, &arena) {
+        if let Err(e) = orrery_cli::run(&args, &arena) {
             failed_examples.push((example_path.clone(), e.to_string()));
         }
     }
@@ -127,7 +127,7 @@ fn e2e_smoke_test_error_examples() {
         };
 
         let arena = Bump::new();
-        if run(&args, &arena).is_ok() {
+        if orrery_cli::run(&args, &arena).is_ok() {
             unexpectedly_succeeded.push(example_path.clone());
         }
     }

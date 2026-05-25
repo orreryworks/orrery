@@ -9,18 +9,16 @@ use std::{
 };
 
 use orrery_core::{
-    draw::{self, Drawable},
+    draw::{Drawable, PositionedArrowWithText, Shape, ShapeWithText, Text},
     geometry::{Insets, Point, Size},
     identifier::Id,
-    semantic,
+    semantic::{Block, Relation},
 };
 
 use crate::{
     error::RenderError,
     layout::{
-        component::{
-            ArrowPlacer, Component, CurvedArrowPlacer, Layout, adjust_positioned_contents_offset,
-        },
+        component::{self, ArrowPlacer, Component, CurvedArrowPlacer, Layout},
         engines::{ComponentEngine, EmbeddedLayouts},
         layer::{ContentStack, PositionedContent},
     },
@@ -145,7 +143,7 @@ impl Engine {
             content_stack.push(positioned_content);
         }
 
-        adjust_positioned_contents_offset(&mut content_stack, graph)?;
+        component::adjust_positioned_contents_offset(&mut content_stack, graph)?;
 
         Ok(content_stack)
     }
@@ -161,8 +159,8 @@ impl Engine {
         containment_scope: &ContainmentScope,
         components: &[Component<'a>],
         component_indices: &HashMap<Id, usize>,
-    ) -> Vec<draw::PositionedArrowWithText<'a>> {
-        let mut buckets: HashMap<(Id, Id), Vec<&'a semantic::Relation>> = HashMap::new();
+    ) -> Vec<PositionedArrowWithText<'a>> {
+        let mut buckets: HashMap<(Id, Id), Vec<&'a Relation>> = HashMap::new();
 
         for relation in graph.scope_relations(containment_scope) {
             let source_id = relation.source();
@@ -200,18 +198,18 @@ impl Engine {
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<Id, Size>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<HashMap<Id, draw::ShapeWithText<'a>>, RenderError> {
-        let mut component_shapes: HashMap<Id, draw::ShapeWithText<'a>> = HashMap::new();
+    ) -> Result<HashMap<Id, ShapeWithText<'a>>, RenderError> {
+        let mut component_shapes: HashMap<Id, ShapeWithText<'a>> = HashMap::new();
 
         // TODO: move it to the best place.
         for node in graph.scope_nodes(containment_scope) {
-            let mut shape = draw::Shape::new(Rc::clone(node.shape_definition()));
+            let mut shape = Shape::new(Rc::clone(node.shape_definition()));
             shape.set_padding(self.padding);
-            let text = draw::Text::new(node.shape_definition().text(), node.display_text());
-            let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
+            let text = Text::new(node.shape_definition().text(), node.display_text());
+            let mut shape_with_text = ShapeWithText::new(shape, Some(text));
 
             match node.block() {
-                semantic::Block::Diagram(_) => {
+                Block::Diagram(_) => {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
                     let layout = embedded_layouts.get(&node.id()).ok_or_else(|| {
@@ -229,7 +227,7 @@ impl Engine {
                             ))
                         })?;
                 }
-                semantic::Block::Scope(_) => {
+                Block::Scope(_) => {
                     let content_size =
                         *positioned_content_sizes.get(&node.id()).ok_or_else(|| {
                             RenderError::Layout(format!("Scope size not found for node '{node}'"))
@@ -242,7 +240,7 @@ impl Engine {
                             ))
                         })?;
                 }
-                semantic::Block::None => {
+                Block::None => {
                     // No content to size, so don't call set_inner_content_size
                 }
             };
@@ -257,7 +255,7 @@ impl Engine {
         &self,
         graph: &'a ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
-        component_shapes: &HashMap<Id, draw::ShapeWithText<'a>>,
+        component_shapes: &HashMap<Id, ShapeWithText<'a>>,
     ) -> Result<HashMap<Id, Point>, RenderError> {
         // Step 1: Assign layers for the top-level nodes
         let layers = Self::assign_layers_for_containment_scope_graph(graph, containment_scope)?;
@@ -276,7 +274,7 @@ impl Engine {
         graph: &'a ComponentGraph<'a, '_>,
         containment_scope: &ContainmentScope,
         layers: &[Vec<Id>],
-        component_shapes: &HashMap<Id, draw::ShapeWithText<'a>>,
+        component_shapes: &HashMap<Id, ShapeWithText<'a>>,
     ) -> Result<(Vec<f32>, Vec<f32>), RenderError> {
         // Calculate max width for each layer
         let layer_widths: Vec<f32> = layers
@@ -331,7 +329,7 @@ impl Engine {
     // PERF: Deprecate this method in favor of a more efficient approach.
     fn find_node_layers(
         &self,
-        relation: &semantic::Relation,
+        relation: &Relation,
         layers: &[Vec<Id>],
     ) -> (Option<usize>, Option<usize>) {
         let mut source_layer = None;
@@ -378,7 +376,7 @@ impl Engine {
         &self,
         layers: &[Vec<Id>],
         layer_x_positions: &[f32],
-        component_shapes: &HashMap<Id, draw::ShapeWithText<'a>>,
+        component_shapes: &HashMap<Id, ShapeWithText<'a>>,
     ) -> Result<HashMap<Id, Point>, RenderError> {
         let mut positions = HashMap::new();
 

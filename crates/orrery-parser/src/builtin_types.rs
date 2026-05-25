@@ -15,7 +15,15 @@
 
 use std::rc::Rc;
 
-use orrery_core::{draw, identifier::Id};
+use orrery_core::{
+    draw::{
+        ActivationBoxDefinition, ActorDefinition, ArrowDefinition, BoundaryDefinition,
+        ComponentDefinition, ControlDefinition, EntityDefinition, FragmentDefinition,
+        InterfaceDefinition, NoteDefinition, OvalDefinition, RectangleDefinition, ShapeDefinition,
+        StrokeDefinition, TextDefinition,
+    },
+    identifier::Id,
+};
 
 use crate::elaborate_utils::TypeDefinition;
 
@@ -101,7 +109,7 @@ impl BuiltinTypeBuilder {
     pub fn add_shape(
         mut self,
         name: &str,
-        shape_definition: impl draw::ShapeDefinition + 'static,
+        shape_definition: impl ShapeDefinition + 'static,
     ) -> Self {
         self.types.push(TypeDefinition::new_shape(
             Id::new(name),
@@ -113,7 +121,7 @@ impl BuiltinTypeBuilder {
     /// Add an arrow type definition with default text styling
     ///
     /// Returns `self` for method chaining.
-    pub fn add_arrow(mut self, name: &str, arrow_definition: draw::ArrowDefinition) -> Self {
+    pub fn add_arrow(mut self, name: &str, arrow_definition: ArrowDefinition) -> Self {
         self.types.push(TypeDefinition::new_arrow(
             Id::new(name),
             Rc::new(arrow_definition),
@@ -124,11 +132,7 @@ impl BuiltinTypeBuilder {
     /// Add a fragment type definition with default text styling
     ///
     /// Returns `self` for method chaining.
-    pub fn add_fragment(
-        mut self,
-        name: &str,
-        fragment_definition: draw::FragmentDefinition,
-    ) -> Self {
+    pub fn add_fragment(mut self, name: &str, fragment_definition: FragmentDefinition) -> Self {
         self.types.push(TypeDefinition::new_fragment(
             Id::new(name),
             Rc::new(fragment_definition),
@@ -139,7 +143,7 @@ impl BuiltinTypeBuilder {
     /// Add a note type definition
     ///
     /// Returns `self` for method chaining.
-    pub fn add_note(mut self, name: &str, note_definition: draw::NoteDefinition) -> Self {
+    pub fn add_note(mut self, name: &str, note_definition: NoteDefinition) -> Self {
         self.types.push(TypeDefinition::new_note(
             Id::new(name),
             Rc::new(note_definition),
@@ -153,7 +157,7 @@ impl BuiltinTypeBuilder {
     pub fn add_activation_box(
         mut self,
         name: &str,
-        activation_box_definition: draw::ActivationBoxDefinition,
+        activation_box_definition: ActivationBoxDefinition,
     ) -> Self {
         self.types.push(TypeDefinition::new_activation_box(
             Id::new(name),
@@ -165,7 +169,7 @@ impl BuiltinTypeBuilder {
     /// Add a stroke type definition
     ///
     /// Returns `self` for method chaining.
-    pub fn add_stroke(mut self, name: &str, stroke_definition: draw::StrokeDefinition) -> Self {
+    pub fn add_stroke(mut self, name: &str, stroke_definition: StrokeDefinition) -> Self {
         self.types
             .push(TypeDefinition::new_stroke(Id::new(name), stroke_definition));
         self
@@ -174,7 +178,7 @@ impl BuiltinTypeBuilder {
     /// Add a text type definition
     ///
     /// Returns `self` for method chaining.
-    pub fn add_text(mut self, name: &str, text_definition: draw::TextDefinition) -> Self {
+    pub fn add_text(mut self, name: &str, text_definition: TextDefinition) -> Self {
         self.types
             .push(TypeDefinition::new_text(Id::new(name), text_definition));
         self
@@ -196,29 +200,29 @@ impl BuiltinTypeBuilder {
 pub fn defaults() -> Vec<TypeDefinition> {
     BuiltinTypeBuilder::new()
         // Attribute group types
-        .add_stroke(STROKE, draw::StrokeDefinition::default())
-        .add_text(TEXT, draw::TextDefinition::default())
+        .add_stroke(STROKE, StrokeDefinition::default())
+        .add_text(TEXT, TextDefinition::default())
         // Shape types
-        .add_shape(RECTANGLE, draw::RectangleDefinition::new())
-        .add_shape(OVAL, draw::OvalDefinition::new())
-        .add_shape(COMPONENT, draw::ComponentDefinition::new())
-        .add_shape(BOUNDARY, draw::BoundaryDefinition::new())
-        .add_shape(ACTOR, draw::ActorDefinition::new())
-        .add_shape(ENTITY, draw::EntityDefinition::new())
-        .add_shape(CONTROL, draw::ControlDefinition::new())
-        .add_shape(INTERFACE, draw::InterfaceDefinition::new())
+        .add_shape(RECTANGLE, RectangleDefinition::new())
+        .add_shape(OVAL, OvalDefinition::new())
+        .add_shape(COMPONENT, ComponentDefinition::new())
+        .add_shape(BOUNDARY, BoundaryDefinition::new())
+        .add_shape(ACTOR, ActorDefinition::new())
+        .add_shape(ENTITY, EntityDefinition::new())
+        .add_shape(CONTROL, ControlDefinition::new())
+        .add_shape(INTERFACE, InterfaceDefinition::new())
         // Relation type
-        .add_arrow(ARROW, draw::ArrowDefinition::default())
+        .add_arrow(ARROW, ArrowDefinition::default())
         // Fragment type definitions for common operations
-        .add_fragment(FRAGMENT_ALT, draw::FragmentDefinition::new())
-        .add_fragment(FRAGMENT_OPT, draw::FragmentDefinition::new())
-        .add_fragment(FRAGMENT_LOOP, draw::FragmentDefinition::new())
-        .add_fragment(FRAGMENT_PAR, draw::FragmentDefinition::new())
-        .add_fragment(FRAGMENT, draw::FragmentDefinition::new())
+        .add_fragment(FRAGMENT_ALT, FragmentDefinition::new())
+        .add_fragment(FRAGMENT_OPT, FragmentDefinition::new())
+        .add_fragment(FRAGMENT_LOOP, FragmentDefinition::new())
+        .add_fragment(FRAGMENT_PAR, FragmentDefinition::new())
+        .add_fragment(FRAGMENT, FragmentDefinition::new())
         // Annotation type
-        .add_note(NOTE, draw::NoteDefinition::new())
+        .add_note(NOTE, NoteDefinition::new())
         // Activation type
-        .add_activation_box(ACTIVATE, draw::ActivationBoxDefinition::new())
+        .add_activation_box(ACTIVATE, ActivationBoxDefinition::new())
         .build()
 }
 
@@ -236,9 +240,9 @@ mod tests {
     #[test]
     fn test_builder_chaining() {
         let types = BuiltinTypeBuilder::new()
-            .add_shape(RECTANGLE, draw::RectangleDefinition::new())
-            .add_arrow(ARROW, draw::ArrowDefinition::default())
-            .add_note(NOTE, draw::NoteDefinition::new())
+            .add_shape(RECTANGLE, RectangleDefinition::new())
+            .add_arrow(ARROW, ArrowDefinition::default())
+            .add_note(NOTE, NoteDefinition::new())
             .build();
 
         assert_eq!(types.len(), 3);
