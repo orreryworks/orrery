@@ -332,26 +332,10 @@ impl<'a> FragmentTiming<'a> {
     }
 }
 
-/// Find the active activation box for a given participant at a specific Y coordinate.
+/// Finds the most-nested active [`ActivationBox`] for a participant at a given Y coordinate.
 ///
-/// This function searches through all activation boxes to find ones that:
-/// 1. Belong to the specified participant (by participant_index)
-/// 2. Are active at the given Y coordinate (message_y falls within their vertical range)
-///
-/// If multiple activation boxes are nested and active at the same Y coordinate,
-/// returns the most nested one (highest nesting level) to ensure messages connect
-/// to the outermost active activation box.
-///
-/// # Arguments
-///
-/// * `activation_boxes` - Slice of all activation boxes in the sequence diagram
-/// * `participant_index` - Index of the participant to search for (0-based)
-/// * `message_y` - Y coordinate where the message appears
-///
-/// # Returns
-///
-/// * `Some(&ActivationBox)` - Reference to the most nested active activation box
-/// * `None` - If no activation boxes are active for this participant at this Y coordinate
+/// When multiple nested boxes are active at `message_y`, returns the deepest one
+/// so messages attach to the innermost active scope.
 pub fn find_active_activation_box_for_participant(
     activation_boxes: &[ActivationBox],
     participant_id: Id,
@@ -380,34 +364,28 @@ pub fn find_active_activation_box_for_participant(
     active_boxes.last().copied()
 }
 
-/// Calculate the X coordinate for a message endpoint, considering activation box intersections.
+/// Calculates the X coordinate where a message connects to a participant.
 ///
-/// This function encapsulates the logic for determining where a message should start or end
-/// by checking if there's an active activation box at the message Y coordinate. If an active
-/// activation box is found, it calculates the appropriate edge intersection. Otherwise, it
-/// falls back to using the participant's center X coordinate.
+/// If an active [`ActivationBox`] exists at `message_y`, returns the box edge
+/// facing `target_x`; otherwise falls back to the participant's center X.
 ///
 /// # Arguments
 ///
-/// * `activation_boxes` - Slice of all activation boxes in the sequence diagram
-/// * `participant` - The participant component for this endpoint
-/// * `participant_index` - Index of the participant (0-based)
-/// * `message_y` - Y coordinate where the message appears
-/// * `target_x` - X coordinate of the target endpoint (used for direction detection)
-///
-/// # Returns
-///
-/// The X coordinate where the message should connect to this participant
+/// * `activation_boxes` - All activation boxes in the diagram.
+/// * `participant` - The participant at this endpoint.
+/// * `message_y` - Y coordinate of the message line.
+/// * `target_x` - X of the opposite endpoint; used only for direction detection.
 pub fn calculate_message_endpoint_x(
     activation_boxes: &[ActivationBox],
     participant: &Component,
-    participant_id: Id,
     message_y: f32,
     target_x: f32,
 ) -> f32 {
-    if let Some(activation_box) =
-        find_active_activation_box_for_participant(activation_boxes, participant_id, message_y)
-    {
+    if let Some(activation_box) = find_active_activation_box_for_participant(
+        activation_boxes,
+        participant.node_id(),
+        message_y,
+    ) {
         activation_box.intersection_x(participant.position(), target_x)
     } else {
         participant.position().x()

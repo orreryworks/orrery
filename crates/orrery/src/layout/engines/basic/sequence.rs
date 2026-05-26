@@ -485,14 +485,12 @@ impl Engine {
         let source_x = sequence::calculate_message_endpoint_x(
             activations,
             source_participant,
-            msg.source(),
             msg.y_position(),
             target_participant.position().x(),
         );
         let target_x = sequence::calculate_message_endpoint_x(
             activations,
             target_participant,
-            msg.target(),
             msg.y_position(),
             source_participant.position().x(),
         );
@@ -561,7 +559,6 @@ impl Engine {
         let x_anchor = sequence::calculate_message_endpoint_x(
             activations,
             participant,
-            msg.source(),
             msg.y_position(),
             f32::INFINITY,
         );
