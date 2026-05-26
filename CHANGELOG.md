@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Simplified qualified import paths across workspace** — Replaced verbose `module::Type` qualified paths with direct imports, reordered module declarations before use statements per style conventions. ([#129](https://github.com/orreryworks/orrery/pull/129))
+- **Simplified `calculate_message_endpoint_x` signature** — Removed the redundant `participant_id` parameter; the function now derives it internally from the participant component. ([#130](https://github.com/orreryworks/orrery/pull/130))
 
 ## [0.4.0] - 2026-05-23
 
