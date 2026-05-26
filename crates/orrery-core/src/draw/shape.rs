@@ -3,17 +3,6 @@
 //! This module provides the [`ShapeDefinition`] trait and [`Shape`] wrapper
 //! for rendering diagram node shapes (rectangles, ovals, actors, etc.).
 
-use std::rc::Rc;
-
-use crate::{
-    color::Color,
-    draw::{
-        Drawable, LayeredOutput, RenderLayer, StrokeDefinition, TextDefinition,
-        text_positioning::TextPositioningStrategy,
-    },
-    geometry::{Insets, Point, Size},
-};
-
 mod actor;
 mod boundary;
 mod component;
@@ -31,6 +20,17 @@ pub use entity::EntityDefinition;
 pub use interface::InterfaceDefinition;
 pub use oval::OvalDefinition;
 pub use rectangle::RectangleDefinition;
+
+use std::rc::Rc;
+
+use crate::{
+    color::Color,
+    draw::{
+        Drawable, LayeredOutput, RenderLayer, StrokeDefinition, TextDefinition,
+        text_positioning::TextPositioningStrategy,
+    },
+    geometry::{Insets, Point, Size},
+};
 
 /// A trait for shape definitions that provide stateless calculations.
 pub trait ShapeDefinition: std::fmt::Debug {

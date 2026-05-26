@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Simplified qualified import paths across workspace** — Replaced verbose `module::Type` qualified paths with direct imports, reordered module declarations before use statements per style conventions. ([#129](https://github.com/orreryworks/orrery/pull/129))
+
 ## [0.4.0] - 2026-05-23
 
 ### Added

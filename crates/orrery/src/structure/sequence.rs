@@ -18,7 +18,10 @@
 use indexmap::IndexMap;
 use log::debug;
 
-use orrery_core::{identifier::Id, semantic};
+use orrery_core::{
+    identifier::Id,
+    semantic::{Activate, Block, Element, Fragment, FragmentSection, Node, Note, Relation},
+};
 
 use crate::RenderError;
 
@@ -43,14 +46,14 @@ pub enum SequenceEvent<'a> {
     ///
     /// Contains a reference to the AST relation which includes source, target,
     /// and any label or styling information.
-    Relation(&'a semantic::Relation),
+    Relation(&'a Relation),
 
     /// Start of an activation period for a participant.
     ///
     /// Activation represents a period when a participant has focus of control,
     /// typically shown as a white rectangle on the participant's lifeline.
     /// Contains a reference to the AST activate which includes participant ID and styling.
-    Activate(&'a semantic::Activate),
+    Activate(&'a Activate),
 
     /// End of an activation period for a participant.
     ///
@@ -62,13 +65,13 @@ pub enum SequenceEvent<'a> {
     ///
     /// Fragments group related interactions with an operation type (e.g., "alt", "loop").
     /// This event marks the beginning of a fragment's scope.
-    FragmentStart(&'a semantic::Fragment),
+    FragmentStart(&'a Fragment),
 
     /// Start of a section within a fragment.
     ///
     /// Sections divide a fragment into parts (e.g., different cases in an "alt" fragment).
     /// Each section may have an optional title describing its condition or purpose.
-    FragmentSectionStart(&'a semantic::FragmentSection),
+    FragmentSectionStart(&'a FragmentSection),
 
     /// End of a section within a fragment.
     ///
@@ -84,7 +87,7 @@ pub enum SequenceEvent<'a> {
     ///
     /// Notes provide additional context or documentation without participating
     /// in the diagram's structural relationships.
-    Note(&'a semantic::Note),
+    Note(&'a Note),
 }
 
 /// Main graph structure for sequence diagrams.
@@ -95,7 +98,7 @@ pub enum SequenceEvent<'a> {
 /// which is critical for correct temporal visualization in sequence diagrams.
 #[derive(Debug)]
 pub struct SequenceGraph<'a> {
-    nodes: IndexMap<Id, &'a semantic::Node>,
+    nodes: IndexMap<Id, &'a Node>,
     events: Vec<SequenceEvent<'a>>,
 }
 
@@ -118,8 +121,8 @@ impl<'a> SequenceGraph<'a> {
     /// without activation/deactivation events.
     ///
     /// # Returns
-    /// An iterator yielding [`semantic::Relation`] items for message events only, in temporal order.
-    pub fn relations(&self) -> impl Iterator<Item = &semantic::Relation> {
+    /// An iterator yielding [`Relation`] items for message events only, in temporal order.
+    pub fn relations(&self) -> impl Iterator<Item = &Relation> {
         self.events().filter_map(|event| match event {
             SequenceEvent::Relation(relation) => Some(*relation),
             _ => None,
@@ -127,7 +130,7 @@ impl<'a> SequenceGraph<'a> {
     }
 
     /// Returns an iterator over all participant nodes in the sequence diagram.
-    pub fn nodes(&self) -> impl Iterator<Item = &semantic::Node> {
+    pub fn nodes(&self) -> impl Iterator<Item = &Node> {
         self.nodes.values().cloned()
     }
 
@@ -146,7 +149,7 @@ impl<'a> SequenceGraph<'a> {
     /// A tuple containing the constructed sequence graph and a vector of any embedded
     /// diagrams found during processing.
     pub(super) fn new_from_elements<'idx>(
-        elements: &'a [semantic::Element],
+        elements: &'a [Element],
     ) -> Result<(Self, Vec<super::HierarchyNode<'a, 'idx>>), RenderError> {
         let mut graph = Self::new();
 
@@ -167,7 +170,7 @@ impl<'a> SequenceGraph<'a> {
     ///
     /// Registers the participant in the graph's node map, making it available
     /// for use in relations and activation events.
-    fn add_node(&mut self, node: &'a semantic::Node) {
+    fn add_node(&mut self, node: &'a Node) {
         self.nodes.insert(node.id(), node);
     }
 
@@ -184,18 +187,18 @@ impl<'a> SequenceGraph<'a> {
     /// This helper method processes elements, adding events to the graph and returning
     /// any child diagrams found.
     fn process_elements<'idx>(
-        elements: &'a [semantic::Element],
+        elements: &'a [Element],
         graph: &mut SequenceGraph<'a>,
     ) -> Result<Vec<super::HierarchyNode<'a, 'idx>>, RenderError> {
         let mut child_diagrams = Vec::new();
         for element in elements {
             match element {
-                semantic::Element::Node(node) => {
+                Element::Node(node) => {
                     graph.add_node(node);
 
                     // Process the node's inner block recursively
                     match node.block() {
-                        semantic::Block::Diagram(inner_diagram) => {
+                        Block::Diagram(inner_diagram) => {
                             debug!(
                                 "Processing nested diagram of kind {:?}",
                                 inner_diagram.kind()
@@ -207,22 +210,22 @@ impl<'a> SequenceGraph<'a> {
                                 )?;
                             child_diagrams.push(inner_hierarchy_child);
                         }
-                        semantic::Block::None => {}
-                        semantic::Block::Scope(..) => {
+                        Block::None => {}
+                        Block::Scope(..) => {
                             unreachable!("Unexpected scope block in sequence diagram")
                         }
                     }
                 }
-                semantic::Element::Relation(relation) => {
+                Element::Relation(relation) => {
                     graph.add_event(SequenceEvent::Relation(relation));
                 }
-                semantic::Element::Activate(activate) => {
+                Element::Activate(activate) => {
                     graph.add_event(SequenceEvent::Activate(activate));
                 }
-                semantic::Element::Deactivate(id) => {
+                Element::Deactivate(id) => {
                     graph.add_event(SequenceEvent::Deactivate(*id));
                 }
-                semantic::Element::Fragment(fragment) => {
+                Element::Fragment(fragment) => {
                     // Emit FragmentStart event
                     graph.add_event(SequenceEvent::FragmentStart(fragment));
 
@@ -243,7 +246,7 @@ impl<'a> SequenceGraph<'a> {
                     // Emit FragmentEnd event
                     graph.add_event(SequenceEvent::FragmentEnd);
                 }
-                semantic::Element::Note(note) => {
+                Element::Note(note) => {
                     graph.add_event(SequenceEvent::Note(note));
                 }
             }
@@ -255,20 +258,16 @@ impl<'a> SequenceGraph<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::rc::Rc;
 
-    use orrery_core::{
-        draw,
-        semantic::{Block, Node},
-    };
+    use orrery_core::draw::{RectangleDefinition, ShapeDefinition};
+
+    use super::*;
 
     /// Helper function to create a minimal mock node for testing
     fn create_test_node(id_str: &str) -> Node {
         let id = Id::new(id_str);
-        let shape_def =
-            Rc::new(Box::new(draw::RectangleDefinition::new()) as Box<dyn draw::ShapeDefinition>);
+        let shape_def = Rc::new(Box::new(RectangleDefinition::new()) as Box<dyn ShapeDefinition>);
 
         Node::new(id, None, Block::None, shape_def)
     }

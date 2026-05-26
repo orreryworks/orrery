@@ -1,27 +1,30 @@
 //! SVG rendering for component diagrams.
 
 use orrery_core::{
-    draw::{self, LayeredOutput},
+    draw::{LayeredOutput, PositionedArrowWithText},
     geometry::Bounds,
 };
 
 use super::Svg;
-use crate::{layout::component, layout::layer::ContentStack};
+use crate::layout::{
+    component::{Component, Layout},
+    layer::ContentStack,
+};
 
 impl Svg {
     /// Renders a positioned component to layered SVG output.
-    pub fn render_component(&self, component: &component::Component) -> LayeredOutput {
+    pub fn render_component(&self, component: &Component) -> LayeredOutput {
         component.drawable().render_to_layers()
     }
 
     /// Renders a positioned relation arrow to layered SVG output.
-    pub fn render_relation(&mut self, relation: &draw::PositionedArrowWithText) -> LayeredOutput {
+    pub fn render_relation(&mut self, relation: &PositionedArrowWithText) -> LayeredOutput {
         relation.render_to_layers(&mut self.arrow_with_text_drawer)
     }
 
     pub fn calculate_component_diagram_bounds(
         &self,
-        content_stack: &ContentStack<component::Layout>,
+        content_stack: &ContentStack<Layout>,
     ) -> Bounds {
         let last_positioned_content = content_stack.iter().last();
         last_positioned_content

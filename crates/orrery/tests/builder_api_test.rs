@@ -5,6 +5,7 @@
 use std::path::Path;
 
 use bumpalo::Bump;
+
 use orrery::{DiagramBuilder, InMemorySourceProvider, config::AppConfig};
 
 #[test]

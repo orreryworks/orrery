@@ -3,7 +3,7 @@
 //! This module provides types for defining and rendering arrows in diagrams,
 //! including stroke styling, path shapes, direction markers, and SVG output.
 
-use std::{collections::HashMap, fmt, rc::Rc, str};
+use std::{collections::HashMap, fmt, rc::Rc, str::FromStr};
 
 use svg::{self, node::element as svg_element};
 
@@ -28,7 +28,7 @@ pub enum ArrowStyle {
     Orthogonal,
 }
 
-impl str::FromStr for ArrowStyle {
+impl FromStr for ArrowStyle {
     type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -133,7 +133,7 @@ impl ArrowDirection {
     }
 }
 
-impl str::FromStr for ArrowDirection {
+impl FromStr for ArrowDirection {
     type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {

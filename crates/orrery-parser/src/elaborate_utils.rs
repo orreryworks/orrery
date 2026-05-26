@@ -6,7 +6,15 @@
 
 use std::{rc::Rc, str::FromStr};
 
-use orrery_core::{color::Color, draw, geometry::Insets, identifier::Id};
+use orrery_core::{
+    color::Color,
+    draw::{
+        ActivationBoxDefinition, ArrowDefinition, FragmentDefinition, NoteDefinition,
+        ShapeDefinition, StrokeCap, StrokeDefinition, StrokeJoin, StrokeStyle, TextDefinition,
+    },
+    geometry::Insets,
+    identifier::Id,
+};
 
 use crate::{
     error::{Diagnostic, ErrorCode, Result as DiagnosticResult},
@@ -16,13 +24,13 @@ use crate::{
 /// Unified drawing definition for types: either a shape or an arrow.
 #[derive(Debug, Clone)]
 pub enum DrawDefinition {
-    Shape(Rc<Box<dyn draw::ShapeDefinition>>),
-    Arrow(Rc<draw::ArrowDefinition>),
-    Fragment(Rc<draw::FragmentDefinition>),
-    Note(Rc<draw::NoteDefinition>),
-    ActivationBox(Rc<draw::ActivationBoxDefinition>),
-    Stroke(Rc<draw::StrokeDefinition>),
-    Text(Rc<draw::TextDefinition>),
+    Shape(Rc<Box<dyn ShapeDefinition>>),
+    Arrow(Rc<ArrowDefinition>),
+    Fragment(Rc<FragmentDefinition>),
+    Note(Rc<NoteDefinition>),
+    ActivationBox(Rc<ActivationBoxDefinition>),
+    Stroke(Rc<StrokeDefinition>),
+    Text(Rc<TextDefinition>),
 }
 
 /// A concrete, elaborated type with text styling and drawing definition.
@@ -41,40 +49,40 @@ impl TypeDefinition {
     }
 
     /// Construct a concrete shape type definition from a shape definition.
-    pub fn new_shape(id: Id, shape_definition: Rc<Box<dyn draw::ShapeDefinition>>) -> Self {
+    pub fn new_shape(id: Id, shape_definition: Rc<Box<dyn ShapeDefinition>>) -> Self {
         Self::new(id, DrawDefinition::Shape(shape_definition))
     }
 
     /// Construct a concrete arrow type definition from an arrow definition.
-    pub fn new_arrow(id: Id, arrow_definition: Rc<draw::ArrowDefinition>) -> Self {
+    pub fn new_arrow(id: Id, arrow_definition: Rc<ArrowDefinition>) -> Self {
         Self::new(id, DrawDefinition::Arrow(arrow_definition))
     }
 
     /// Construct a concrete fragment type definition from a fragment definition.
-    pub fn new_fragment(id: Id, fragment_definition: Rc<draw::FragmentDefinition>) -> Self {
+    pub fn new_fragment(id: Id, fragment_definition: Rc<FragmentDefinition>) -> Self {
         Self::new(id, DrawDefinition::Fragment(fragment_definition))
     }
 
     /// Construct a concrete note type definition from a note definition.
-    pub fn new_note(id: Id, note_definition: Rc<draw::NoteDefinition>) -> Self {
+    pub fn new_note(id: Id, note_definition: Rc<NoteDefinition>) -> Self {
         Self::new(id, DrawDefinition::Note(note_definition))
     }
 
     /// Construct a concrete activation box type definition from a activation box definition.
     pub fn new_activation_box(
         id: Id,
-        activation_box_definition: Rc<draw::ActivationBoxDefinition>,
+        activation_box_definition: Rc<ActivationBoxDefinition>,
     ) -> Self {
         Self::new(id, DrawDefinition::ActivationBox(activation_box_definition))
     }
 
     /// Construct a concrete stroke type definition from a stroke definition.
-    pub fn new_stroke(id: Id, stroke_definition: draw::StrokeDefinition) -> Self {
+    pub fn new_stroke(id: Id, stroke_definition: StrokeDefinition) -> Self {
         Self::new(id, DrawDefinition::Stroke(Rc::new(stroke_definition)))
     }
 
     /// Construct a concrete text type definition from a text definition.
-    pub fn new_text(id: Id, text_definition: draw::TextDefinition) -> Self {
+    pub fn new_text(id: Id, text_definition: TextDefinition) -> Self {
         Self::new(id, DrawDefinition::Text(Rc::new(text_definition)))
     }
 
@@ -89,7 +97,7 @@ impl TypeDefinition {
     }
 
     /// Borrow the shape definition if this type is a shape; otherwise returns an error.
-    pub fn shape_definition(&self) -> Result<&Rc<Box<dyn draw::ShapeDefinition>>, String> {
+    pub fn shape_definition(&self) -> Result<&Rc<Box<dyn ShapeDefinition>>, String> {
         match &self.draw_definition {
             DrawDefinition::Shape(shape) => Ok(shape),
             _ => Err(format!("Type '{}' is not a shape type", self.id)),
@@ -97,7 +105,7 @@ impl TypeDefinition {
     }
 
     /// Borrow the arrow definition if this type is an arrow; otherwise returns an error.
-    pub fn arrow_definition(&self) -> Result<&Rc<draw::ArrowDefinition>, String> {
+    pub fn arrow_definition(&self) -> Result<&Rc<ArrowDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Arrow(arrow) => Ok(arrow),
             _ => Err(format!("Type '{}' is not an arrow type", self.id)),
@@ -105,7 +113,7 @@ impl TypeDefinition {
     }
 
     /// Borrow the fragment definition if this type is a fragment; otherwise returns an error.
-    pub fn fragment_definition(&self) -> Result<&Rc<draw::FragmentDefinition>, String> {
+    pub fn fragment_definition(&self) -> Result<&Rc<FragmentDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Fragment(fragment) => Ok(fragment),
             _ => Err(format!("Type '{}' is not a fragment type", self.id)),
@@ -113,7 +121,7 @@ impl TypeDefinition {
     }
 
     /// Borrow the note definition if this type is a note; otherwise returns an error.
-    pub fn note_definition(&self) -> Result<&Rc<draw::NoteDefinition>, String> {
+    pub fn note_definition(&self) -> Result<&Rc<NoteDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Note(note) => Ok(note),
             _ => Err(format!("Type '{}' is not a note type", self.id)),
@@ -121,7 +129,7 @@ impl TypeDefinition {
     }
 
     /// Borrow the activation box definition if this type is an activation box; otherwise returns an error.
-    pub fn activation_box_definition(&self) -> Result<&Rc<draw::ActivationBoxDefinition>, String> {
+    pub fn activation_box_definition(&self) -> Result<&Rc<ActivationBoxDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::ActivationBox(activation_box) => Ok(activation_box),
             _ => Err(format!("Type '{}' is not an activation box type", self.id)),
@@ -129,7 +137,7 @@ impl TypeDefinition {
     }
 
     /// Get the stroke definition Rc if this type is a stroke; otherwise returns an error.
-    pub fn stroke_definition(&self) -> Result<&Rc<draw::StrokeDefinition>, String> {
+    pub fn stroke_definition(&self) -> Result<&Rc<StrokeDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Stroke(stroke) => Ok(stroke),
             _ => Err(format!("Type '{}' is not a stroke type", self.id)),
@@ -137,7 +145,7 @@ impl TypeDefinition {
     }
 
     /// Get the text definition Rc if this type is a text; otherwise returns an error.
-    pub fn text_definition_from_draw(&self) -> Result<&Rc<draw::TextDefinition>, String> {
+    pub fn text_definition_from_draw(&self) -> Result<&Rc<TextDefinition>, String> {
         match &self.draw_definition {
             DrawDefinition::Text(text) => Ok(text),
             _ => Err(format!("Type '{}' is not a text type", self.id)),
@@ -154,7 +162,7 @@ impl TextAttributeExtractor {
     /// Returns `Ok(())` if all attributes were processed successfully,
     /// `Err(...)` if any attribute has an invalid value or is not a valid text attribute.
     pub fn extract_text_attributes(
-        text_def: &mut draw::TextDefinition,
+        text_def: &mut TextDefinition,
         attrs: &[parser_types::Attribute],
     ) -> DiagnosticResult<()> {
         for attr in attrs {
@@ -168,7 +176,7 @@ impl TextAttributeExtractor {
     /// Returns `Ok(())` if the attribute was processed successfully,
     /// `Err(...)` if the attribute has an invalid value or is not a valid text attribute.
     fn extract_single_attribute(
-        text_def: &mut draw::TextDefinition,
+        text_def: &mut TextDefinition,
         attr: &parser_types::Attribute,
     ) -> DiagnosticResult<()> {
         let name = attr.name.inner();
@@ -252,7 +260,7 @@ pub struct StrokeAttributeExtractor;
 impl StrokeAttributeExtractor {
     /// Extract and apply stroke-related attributes to a StrokeDefinition from a group of nested attributes.
     pub fn extract_stroke_attributes(
-        stroke_def: &mut draw::StrokeDefinition,
+        stroke_def: &mut StrokeDefinition,
         attrs: &[parser_types::Attribute],
     ) -> DiagnosticResult<()> {
         for attr in attrs {
@@ -263,7 +271,7 @@ impl StrokeAttributeExtractor {
 
     /// Extract and apply a single stroke-related attribute to a StrokeDefinition.
     fn extract_single_attribute(
-        stroke_def: &mut draw::StrokeDefinition,
+        stroke_def: &mut StrokeDefinition,
         attr: &parser_types::Attribute,
     ) -> DiagnosticResult<()> {
         let name = *attr.name.inner();
@@ -304,7 +312,7 @@ impl StrokeAttributeExtractor {
                         .with_help("stroke style must be a string")
                 })?;
 
-                let style = draw::StrokeStyle::from_str(style_str).map_err(|err| {
+                let style = StrokeStyle::from_str(style_str).map_err(|err| {
                     Diagnostic::error(err)
                         .with_code(ErrorCode::E302)
                         .with_label(attr.span(), "invalid stroke style")
@@ -321,7 +329,7 @@ impl StrokeAttributeExtractor {
                         .with_label(attr.span(), "invalid stroke cap value")
                         .with_help("stroke cap must be a string")
                 })?;
-                let cap = draw::StrokeCap::from_str(cap_str).map_err(|err| {
+                let cap = StrokeCap::from_str(cap_str).map_err(|err| {
                     Diagnostic::error(err)
                         .with_code(ErrorCode::E302)
                         .with_label(attr.span(), "invalid stroke cap")
@@ -337,7 +345,7 @@ impl StrokeAttributeExtractor {
                         .with_label(attr.span(), "invalid stroke join value")
                         .with_help("stroke join must be a string")
                 })?;
-                let join = draw::StrokeJoin::from_str(join_str).map_err(|err| {
+                let join = StrokeJoin::from_str(join_str).map_err(|err| {
                     Diagnostic::error(err)
                         .with_code(ErrorCode::E302)
                         .with_label(attr.span(), "invalid stroke join")
@@ -360,12 +368,14 @@ impl StrokeAttributeExtractor {
 
 #[cfg(test)]
 mod elaborate_tests {
+    use orrery_core::draw::RectangleDefinition;
+
     use super::*;
     use crate::span::{Span, Spanned};
 
     #[test]
     fn test_new_stroke_type() {
-        let stroke = draw::StrokeDefinition::default();
+        let stroke = StrokeDefinition::default();
         let type_def = TypeDefinition::new_stroke(Id::new("TestStroke"), stroke);
         assert_eq!(type_def.id(), "TestStroke");
         assert!(type_def.stroke_definition().is_ok());
@@ -374,7 +384,7 @@ mod elaborate_tests {
 
     #[test]
     fn test_new_text_type() {
-        let text = draw::TextDefinition::default();
+        let text = TextDefinition::default();
         let type_def = TypeDefinition::new_text(Id::new("TestText"), text);
         assert_eq!(type_def.id(), "TestText");
         assert!(type_def.text_definition_from_draw().is_ok());
@@ -385,7 +395,7 @@ mod elaborate_tests {
     fn test_shape_type_has_text_definition() {
         let type_def = TypeDefinition::new_shape(
             Id::new("Rect"),
-            Rc::new(Box::new(draw::RectangleDefinition::new())),
+            Rc::new(Box::new(RectangleDefinition::new())),
         );
         // Verify shape has embedded text
         assert!(type_def.shape_definition().is_ok());
@@ -414,7 +424,7 @@ mod elaborate_tests {
 
     #[test]
     fn test_text_attribute_extractor_all_attributes() {
-        let mut text_def = draw::TextDefinition::new();
+        let mut text_def = TextDefinition::new();
         let attributes = vec![
             create_test_attribute("font_size", create_float_value(16.0)),
             create_test_attribute("font_family", create_string_value("Helvetica")),
@@ -428,13 +438,13 @@ mod elaborate_tests {
 
     #[test]
     fn test_text_attribute_extractor_color_attribute() {
-        let mut text_def = draw::TextDefinition::new();
+        let mut text_def = TextDefinition::new();
         let attributes = vec![create_test_attribute("color", create_string_value("red"))];
         let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
         assert!(result.is_ok());
 
         // Test with invalid color value (should be string)
-        let mut text_def = draw::TextDefinition::new();
+        let mut text_def = TextDefinition::new();
         let attributes = vec![create_test_attribute("color", create_float_value(255.0))];
         let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
         assert!(result.is_err());
@@ -442,7 +452,7 @@ mod elaborate_tests {
 
     #[test]
     fn test_text_attribute_extractor_empty_attributes() {
-        let mut text_def = draw::TextDefinition::new();
+        let mut text_def = TextDefinition::new();
         let attributes = vec![];
 
         let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
@@ -451,7 +461,7 @@ mod elaborate_tests {
 
     #[test]
     fn test_text_attribute_extractor_invalid_attribute_name() {
-        let mut text_def = draw::TextDefinition::new();
+        let mut text_def = TextDefinition::new();
         let attributes = vec![
             create_test_attribute("font_size", create_float_value(16.0)),
             create_test_attribute("invalid_attribute", create_string_value("test")),
@@ -469,7 +479,7 @@ mod elaborate_tests {
     #[test]
     fn test_text_attribute_extractor_invalid_value_types() {
         // Test font_size with string value (should be float)
-        let mut text_def = draw::TextDefinition::new();
+        let mut text_def = TextDefinition::new();
         let attributes = vec![create_test_attribute(
             "font_size",
             create_string_value("not_a_number"),
@@ -478,7 +488,7 @@ mod elaborate_tests {
         assert!(result.is_err());
 
         // Test font_family with float value (should be string)
-        let mut text_def = draw::TextDefinition::new();
+        let mut text_def = TextDefinition::new();
         let attributes = vec![create_test_attribute(
             "font_family",
             create_float_value(123.0),
@@ -497,22 +507,22 @@ mod elaborate_tests {
             create_test_attribute("join", create_string_value("bevel")),
         ];
 
-        let mut stroke_def = draw::StrokeDefinition::default();
+        let mut stroke_def = StrokeDefinition::default();
         let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
 
         assert!(result.is_ok());
         assert_eq!(stroke_def.color().to_string(), "blue");
         assert_eq!(stroke_def.width(), 2.5);
-        assert_eq!(*stroke_def.style(), draw::StrokeStyle::Dashed);
-        assert_eq!(stroke_def.cap(), draw::StrokeCap::Round);
-        assert_eq!(stroke_def.join(), draw::StrokeJoin::Bevel);
+        assert_eq!(*stroke_def.style(), StrokeStyle::Dashed);
+        assert_eq!(stroke_def.cap(), StrokeCap::Round);
+        assert_eq!(stroke_def.join(), StrokeJoin::Bevel);
     }
 
     #[test]
     fn test_stroke_attribute_extractor_color_only() {
         let attrs = vec![create_test_attribute("color", create_string_value("red"))];
 
-        let mut stroke_def = draw::StrokeDefinition::default();
+        let mut stroke_def = StrokeDefinition::default();
         let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
 
         assert!(result.is_ok());
@@ -526,7 +536,7 @@ mod elaborate_tests {
             create_string_value("value"),
         )];
 
-        let mut stroke_def = draw::StrokeDefinition::default();
+        let mut stroke_def = StrokeDefinition::default();
         let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
 
         assert!(result.is_err());
@@ -544,7 +554,7 @@ mod elaborate_tests {
             create_string_value("not-a-valid-color-12345"),
         )];
 
-        let mut stroke_def = draw::StrokeDefinition::default();
+        let mut stroke_def = StrokeDefinition::default();
         let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
 
         assert!(result.is_err());
@@ -558,7 +568,7 @@ mod elaborate_tests {
     fn test_stroke_attribute_extractor_invalid_cap() {
         let attrs = vec![create_test_attribute("cap", create_string_value("invalid"))];
 
-        let mut stroke_def = draw::StrokeDefinition::default();
+        let mut stroke_def = StrokeDefinition::default();
         let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
 
         assert!(result.is_err());
@@ -575,7 +585,7 @@ mod elaborate_tests {
             create_string_value("invalid"),
         )];
 
-        let mut stroke_def = draw::StrokeDefinition::default();
+        let mut stroke_def = StrokeDefinition::default();
         let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
 
         assert!(result.is_err());
@@ -588,11 +598,11 @@ mod elaborate_tests {
     #[test]
     fn test_stroke_attribute_extractor_all_predefined_styles() {
         let styles = vec![
-            ("solid", draw::StrokeStyle::Solid),
-            ("dashed", draw::StrokeStyle::Dashed),
-            ("dotted", draw::StrokeStyle::Dotted),
-            ("dash-dot", draw::StrokeStyle::DashDot),
-            ("dash-dot-dot", draw::StrokeStyle::DashDotDot),
+            ("solid", StrokeStyle::Solid),
+            ("dashed", StrokeStyle::Dashed),
+            ("dotted", StrokeStyle::Dotted),
+            ("dash-dot", StrokeStyle::DashDot),
+            ("dash-dot-dot", StrokeStyle::DashDotDot),
         ];
 
         for (style_str, expected_style) in styles {
@@ -600,7 +610,7 @@ mod elaborate_tests {
                 "style",
                 create_string_value(style_str),
             )];
-            let mut stroke_def = draw::StrokeDefinition::default();
+            let mut stroke_def = StrokeDefinition::default();
             let result =
                 StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
 

@@ -8,16 +8,16 @@
 use std::{collections::HashMap, rc::Rc};
 
 use orrery_core::{
-    draw::{self, Drawable},
+    draw::{Arrow, ArrowWithText, Drawable, PositionedArrowWithText, Shape, ShapeWithText, Text},
     geometry::{Insets, Size},
     identifier::Id,
-    semantic,
+    semantic::Block,
 };
 
 use crate::{
     error::RenderError,
     layout::{
-        component::{Component, Layout, adjust_positioned_contents_offset},
+        component::{self, Component, Layout},
         engines::{ComponentEngine, EmbeddedLayouts, graphviz::dot_bridge::DotBridge},
         layer::{ContentStack, PositionedContent},
     },
@@ -100,7 +100,7 @@ impl Engine {
             content_stack.push(positioned_content);
         }
 
-        adjust_positioned_contents_offset(&mut content_stack, graph)?;
+        component::adjust_positioned_contents_offset(&mut content_stack, graph)?;
 
         Ok(content_stack)
     }
@@ -172,14 +172,14 @@ impl Engine {
             .collect::<Result<_, RenderError>>()?;
 
         // Build relations from the Graphviz edge paths
-        let relations: Vec<draw::PositionedArrowWithText> = layout_result
+        let relations: Vec<PositionedArrowWithText> = layout_result
             .into_edge_paths()
             .into_iter()
             .map(|(relation, path)| {
                 let arrow_def = Rc::clone(relation.arrow_definition());
-                let arrow = draw::Arrow::new(arrow_def, relation.arrow_direction());
-                let arrow_with_text = draw::ArrowWithText::new(arrow, relation.text());
-                draw::PositionedArrowWithText::new(arrow_with_text, path)
+                let arrow = Arrow::new(arrow_def, relation.arrow_direction());
+                let arrow_with_text = ArrowWithText::new(arrow, relation.text());
+                PositionedArrowWithText::new(arrow_with_text, path)
             })
             .collect();
 
@@ -196,17 +196,17 @@ impl Engine {
         containment_scope: &ContainmentScope,
         positioned_content_sizes: &HashMap<Id, Size>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<HashMap<Id, draw::ShapeWithText<'a>>, RenderError> {
-        let mut component_shapes: HashMap<Id, draw::ShapeWithText<'a>> = HashMap::new();
+    ) -> Result<HashMap<Id, ShapeWithText<'a>>, RenderError> {
+        let mut component_shapes: HashMap<Id, ShapeWithText<'a>> = HashMap::new();
 
         for node in graph.scope_nodes(containment_scope) {
-            let mut shape = draw::Shape::new(Rc::clone(node.shape_definition()));
+            let mut shape = Shape::new(Rc::clone(node.shape_definition()));
             shape.set_padding(self.container_padding);
-            let text = draw::Text::new(node.shape_definition().text(), node.display_text());
-            let mut shape_with_text = draw::ShapeWithText::new(shape, Some(text));
+            let text = Text::new(node.shape_definition().text(), node.display_text());
+            let mut shape_with_text = ShapeWithText::new(shape, Some(text));
 
             match node.block() {
-                semantic::Block::Diagram(_) => {
+                Block::Diagram(_) => {
                     // Since we process in post-order (innermost to outermost),
                     // embedded diagram layouts should already be calculated and available
                     let layout = embedded_layouts.get(&node.id()).ok_or_else(|| {
@@ -222,7 +222,7 @@ impl Engine {
                             ))
                         })?;
                 }
-                semantic::Block::Scope(_) => {
+                Block::Scope(_) => {
                     let content_size =
                         *positioned_content_sizes.get(&node.id()).ok_or_else(|| {
                             RenderError::Layout(format!("scope size not found for `{node}`"))
@@ -235,7 +235,7 @@ impl Engine {
                             ))
                         })?;
                 }
-                semantic::Block::None => {
+                Block::None => {
                     // No content to size, so don't call set_inner_content_size
                 }
             };

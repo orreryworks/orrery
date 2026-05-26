@@ -18,17 +18,21 @@ use std::collections::HashMap;
 
 use log::trace;
 
-use orrery_core::{geometry, identifier::Id, semantic::LayoutEngine};
+use orrery_core::{
+    geometry::{Insets, Size},
+    identifier::Id,
+    semantic::LayoutEngine,
+};
 
 use super::layer::ContentStack;
 use crate::{
     error::RenderError,
     layout::{
-        component,
+        component::Layout as ComponentLayout,
         layer::{LayeredLayout, LayoutContent},
-        sequence,
+        sequence::Layout as SequenceLayout,
     },
-    structure,
+    structure::{ComponentGraph, DiagramHierarchy, GraphKind, SequenceGraph},
 };
 
 /// Enum to store different layout results based on diagram type.
@@ -37,13 +41,13 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum LayoutResult<'a> {
     // TODO: Do I need this?
-    Component(ContentStack<component::Layout<'a>>),
-    Sequence(ContentStack<sequence::Layout<'a>>),
+    Component(ContentStack<ComponentLayout<'a>>),
+    Sequence(ContentStack<SequenceLayout<'a>>),
 }
 
 impl<'a> LayoutResult<'a> {
     /// Calculate the size of this layout, using the appropriate sizing implementation
-    fn calculate_size(&self) -> geometry::Size {
+    fn calculate_size(&self) -> Size {
         match self {
             LayoutResult::Component(layout) => layout.layout_size(),
             LayoutResult::Sequence(layout) => layout.layout_size(),
@@ -75,9 +79,9 @@ pub trait ComponentEngine {
     /// Returns [`RenderError::Layout`] if the layout engine fails to calculate positions.
     fn calculate<'a>(
         &self,
-        graph: &'a structure::ComponentGraph<'a, '_>,
+        graph: &'a ComponentGraph<'a, '_>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<ContentStack<component::Layout<'a>>, RenderError>;
+    ) -> Result<ContentStack<ComponentLayout<'a>>, RenderError>;
 }
 
 /// Layout engine for sequence diagrams.
@@ -100,9 +104,9 @@ pub trait SequenceEngine {
     /// Returns [`RenderError::Layout`] if the layout engine fails to calculate positions.
     fn calculate<'a>(
         &self,
-        graph: &'a structure::SequenceGraph<'a>,
+        graph: &'a SequenceGraph<'a>,
         embedded_layouts: &EmbeddedLayouts<'a>,
-    ) -> Result<ContentStack<sequence::Layout<'a>>, RenderError>;
+    ) -> Result<ContentStack<SequenceLayout<'a>>, RenderError>;
 }
 
 /// Builder for creating and configuring layout engines.
@@ -115,7 +119,7 @@ pub struct EngineBuilder {
     sequence_engines: HashMap<LayoutEngine, Box<dyn SequenceEngine>>,
 
     // Configuration options
-    padding: geometry::Insets,
+    padding: Insets,
     min_spacing: f32,
     horizontal_spacing: f32,
     vertical_spacing: f32,
@@ -129,7 +133,7 @@ impl EngineBuilder {
     }
 
     /// Set the padding inside all shapes (components, participants, containers).
-    pub fn with_padding(mut self, padding: geometry::Insets) -> Self {
+    pub fn with_padding(mut self, padding: Insets) -> Self {
         self.padding = padding;
         self
     }
@@ -219,7 +223,7 @@ impl EngineBuilder {
     /// Returns `RenderError::Layout` if any layout engine fails to calculate positions.
     pub fn build<'a>(
         mut self,
-        collection: &'a structure::DiagramHierarchy<'a, '_>,
+        collection: &'a DiagramHierarchy<'a, '_>,
     ) -> Result<LayeredLayout<'a>, RenderError> {
         let mut layered_layout = LayeredLayout::new();
 
@@ -241,13 +245,13 @@ impl EngineBuilder {
             // Calculate the layout for this diagram using the appropriate engine
             let diagram = graphed_diagram.ast_diagram();
             let layout_result = match graphed_diagram.graph_kind() {
-                structure::GraphKind::ComponentGraph(graph) => {
+                GraphKind::ComponentGraph(graph) => {
                     let engine = self.component_engine(diagram.layout_engine());
 
                     let layout = engine.calculate(graph, &layout_info)?;
                     LayoutResult::Component(layout)
                 }
-                structure::GraphKind::SequenceGraph(graph) => {
+                GraphKind::SequenceGraph(graph) => {
                     let engine = self.sequence_engine(diagram.layout_engine());
 
                     let layout = engine.calculate(graph, &layout_info)?;

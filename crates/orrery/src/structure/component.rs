@@ -21,7 +21,10 @@
 
 use log::debug;
 
-use orrery_core::{identifier::Id, semantic};
+use orrery_core::{
+    identifier::Id,
+    semantic::{Block, Element, Node, Relation},
+};
 
 use super::{
     HierarchyNode,
@@ -74,7 +77,7 @@ impl<'a, 'idx> ContainmentScope<'a, 'idx> {
     }
 
     /// Adds a component node to this containment scope.
-    fn add_node(&mut self, node: &semantic::Node) {
+    fn add_node(&mut self, node: &Node) {
         let id = node.id();
         self.graph.add_node(id, id);
     }
@@ -119,7 +122,7 @@ impl<'a, 'idx> ContainmentScope<'a, 'idx> {
     /// A vector of `HierarchyNode`s representing any embedded diagrams found during processing.
     fn populate_component_graph(
         graph: &mut ComponentGraph<'a, '_>,
-        elements: &'a [semantic::Element],
+        elements: &'a [Element],
         container: Option<Id>,
     ) -> Result<Vec<HierarchyNode<'a, 'idx>>, RenderError> {
         let mut child_diagrams = vec![];
@@ -128,12 +131,12 @@ impl<'a, 'idx> ContainmentScope<'a, 'idx> {
 
         // First pass: add all nodes to the graph
         for element in elements {
-            if let semantic::Element::Node(node) = element {
+            if let Element::Node(node) = element {
                 graph.add_node(&mut containment_scope, node);
 
                 // Process the node's inner block recursively
                 match node.block() {
-                    semantic::Block::Scope(scope) => {
+                    Block::Scope(scope) => {
                         debug!(
                             "Processing nested scope with {} elements",
                             scope.elements().len()
@@ -145,7 +148,7 @@ impl<'a, 'idx> ContainmentScope<'a, 'idx> {
                         )?;
                         child_diagrams.append(&mut inner_child_diagrams);
                     }
-                    semantic::Block::Diagram(inner_diagram) => {
+                    Block::Diagram(inner_diagram) => {
                         debug!(
                             "Processing nested diagram of kind {:?}",
                             inner_diagram.kind()
@@ -154,7 +157,7 @@ impl<'a, 'idx> ContainmentScope<'a, 'idx> {
                             HierarchyNode::build_from_ast_diagram(inner_diagram, Some(node.id()))?;
                         child_diagrams.push(inner_hierarchy_child);
                     }
-                    semantic::Block::None => {}
+                    Block::None => {}
                 }
             }
         }
@@ -162,14 +165,14 @@ impl<'a, 'idx> ContainmentScope<'a, 'idx> {
         // Second pass: add all relations and activation statements to the graph
         for element in elements {
             match element {
-                semantic::Element::Relation(relation) => {
+                Element::Relation(relation) => {
                     graph.add_relation(&mut containment_scope, relation);
                 }
-                semantic::Element::Node(..) => {}
-                semantic::Element::Activate(..)
-                | semantic::Element::Deactivate(..)
-                | semantic::Element::Fragment(..)
-                | semantic::Element::Note(..) => {
+                Element::Node(..) => {}
+                Element::Activate(..)
+                | Element::Deactivate(..)
+                | Element::Fragment(..)
+                | Element::Note(..) => {
                     unreachable!("Unexpected element type")
                 }
             }
@@ -193,13 +196,13 @@ impl<'a, 'idx> ContainmentScope<'a, 'idx> {
 /// 2. Containment scopes that organize nodes by their hierarchical level
 #[derive(Debug)]
 pub struct ComponentGraph<'a, 'idx> {
-    graph: GraphInternal<'idx, &'a semantic::Node, &'a semantic::Relation>,
+    graph: GraphInternal<'idx, &'a Node, &'a Relation>,
     containment_scopes: Vec<ContainmentScope<'a, 'idx>>,
 }
 
 impl<'a, 'idx> ComponentGraph<'a, 'idx> {
     /// Returns the AST node for a component with the given ID, if it exists.
-    pub fn node_by_id(&self, id: Id) -> Option<&semantic::Node> {
+    pub fn node_by_id(&self, id: Id) -> Option<&Node> {
         self.graph.node(id)
     }
 
@@ -214,10 +217,7 @@ impl<'a, 'idx> ComponentGraph<'a, 'idx> {
     ///
     /// This provides access to the AST nodes for all components at a particular
     /// hierarchical level in the diagram.
-    pub fn scope_nodes(
-        &self,
-        containment_scope: &ContainmentScope,
-    ) -> impl Iterator<Item = &semantic::Node> {
+    pub fn scope_nodes(&self, containment_scope: &ContainmentScope) -> impl Iterator<Item = &Node> {
         containment_scope
             .node_ids()
             .map(|id| self.graph.node_unchecked(id))
@@ -230,7 +230,7 @@ impl<'a, 'idx> ComponentGraph<'a, 'idx> {
     pub fn scope_relations(
         &self,
         containment_scope: &ContainmentScope,
-    ) -> impl Iterator<Item = &semantic::Relation> {
+    ) -> impl Iterator<Item = &Relation> {
         containment_scope
             .relation_indices()
             .map(|idx| self.graph.edge_unchecked(idx))
@@ -240,10 +240,7 @@ impl<'a, 'idx> ComponentGraph<'a, 'idx> {
     ///
     /// Root nodes are components that have no incoming relations within the scope,
     /// typically representing top-level components in the hierarchy.
-    pub fn scope_roots(
-        &self,
-        containment_scope: &ContainmentScope,
-    ) -> impl Iterator<Item = &semantic::Node> {
+    pub fn scope_roots(&self, containment_scope: &ContainmentScope) -> impl Iterator<Item = &Node> {
         containment_scope
             .root_ids()
             .map(|id| self.graph.node_unchecked(id))
@@ -257,7 +254,7 @@ impl<'a, 'idx> ComponentGraph<'a, 'idx> {
         &self,
         containment_scope: &ContainmentScope,
         source_id: Id,
-    ) -> impl Iterator<Item = &semantic::Node> {
+    ) -> impl Iterator<Item = &Node> {
         containment_scope
             .outgoing_node_ids(source_id)
             .map(|id| self.graph.node_unchecked(id))
@@ -268,7 +265,7 @@ impl<'a, 'idx> ComponentGraph<'a, 'idx> {
     /// Processes the elements to build the graph structure and identify any
     /// embedded diagrams that need separate processing.
     pub(super) fn new_from_elements(
-        elements: &'a [semantic::Element],
+        elements: &'a [Element],
     ) -> Result<(Self, Vec<HierarchyNode<'a, 'idx>>), RenderError> {
         let mut graph = Self::new();
         let children = ContainmentScope::populate_component_graph(&mut graph, elements, None)?;
@@ -284,11 +281,7 @@ impl<'a, 'idx> ComponentGraph<'a, 'idx> {
     }
 
     /// Adds a component node to the graph and its containment scope.
-    fn add_node(
-        &mut self,
-        containment_scope: &mut ContainmentScope<'a, 'idx>,
-        node: &'a semantic::Node,
-    ) {
+    fn add_node(&mut self, containment_scope: &mut ContainmentScope<'a, 'idx>, node: &'a Node) {
         self.graph.add_node(node.id(), node);
         containment_scope.add_node(node);
     }
@@ -302,7 +295,7 @@ impl<'a, 'idx> ComponentGraph<'a, 'idx> {
     fn add_relation(
         &mut self,
         containment_scope: &mut ContainmentScope<'a, 'idx>,
-        relation: &'a semantic::Relation,
+        relation: &'a Relation,
     ) {
         let source_id = relation.source();
         let target_id = relation.target();
