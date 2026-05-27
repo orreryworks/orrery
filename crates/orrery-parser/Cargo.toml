@@ -22,10 +22,10 @@ graphviz = ["orrery-core/graphviz"]
 
 [dependencies]
 orrery-core.workspace = true
-bumpalo = "3.20.2"
+bumpalo = "3.20.3"
 indexmap = "2.14"
 winnow = "1.0.3"
-log = { version = "0.4.29", features = ["kv", "kv_std"] }
+log = { version = "0.4.30", features = ["kv", "kv_std"] }
 thiserror = "2.0.18"
 
 [dev-dependencies]
