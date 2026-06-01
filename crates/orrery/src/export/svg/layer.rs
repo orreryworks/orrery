@@ -269,7 +269,7 @@ impl Svg {
         sorted_activations.sort_by_key(|activation_box| activation_box.drawable().nesting_level());
 
         for activation_box in sorted_activations {
-            let activation_output = self.render_activation_box(activation_box, content);
+            let activation_output = self.render_activation_box(activation_box);
             output.merge(activation_output);
         }
 

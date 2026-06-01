@@ -2,7 +2,7 @@
 
 use orrery_core::{
     draw::{Drawable, Fragment, LayeredOutput, Note, PositionedArrowWithText, PositionedDrawable},
-    geometry::Bounds,
+    geometry::{Bounds, Point},
 };
 
 use super::Svg;
@@ -60,18 +60,10 @@ impl Svg {
         note.render_to_layers()
     }
 
-    pub fn render_activation_box(
-        &self,
-        activation_box: &sequence::ActivationBox,
-        layout: &sequence::Layout,
-    ) -> LayeredOutput {
-        // Calculate the center position for the activation box
-        let participant = &layout.participants()[&activation_box.participant_id()];
-        let participant_position = participant.component().position();
-        let center_y = activation_box.center_y();
-        let position = participant_position.with_y(center_y);
+    /// Renders an activation box at its stored participant X and center Y.
+    pub fn render_activation_box(&self, activation_box: &sequence::ActivationBox) -> LayeredOutput {
+        let position = Point::new(activation_box.participant_x(), activation_box.center_y());
 
-        // Use the drawable to render the activation box
         activation_box.drawable().render_to_layers(position)
     }
 

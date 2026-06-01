@@ -1,9 +1,8 @@
 //! Basic sequence layout engine.
 //!
-//! This module provides a layout engine for sequence diagrams
-//! using a simple, deterministic algorithm.
+//! Lays out sequence diagrams with a simple, deterministic algorithm.
 
-use std::{cmp::Ordering, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, cmp::Ordering, collections::HashMap, f32, rc::Rc};
 
 use orrery_core::{
     draw::{
@@ -22,7 +21,7 @@ use crate::{
         component::Component,
         engines::{EmbeddedLayouts, SequenceEngine},
         layer::{ContentStack, PositionedContent},
-        sequence::{self, ActivationBox, ActivationTiming, FragmentTiming, Layout, Participant},
+        sequence::{ActivationBox, ActivationTiming, FragmentTiming, Layout, Participant},
     },
     structure::{SequenceEvent, SequenceGraph},
 };
@@ -31,36 +30,35 @@ use crate::{
 /// edge of its label.
 const SELF_LOOP_LABEL_GAP: f32 = 4.0;
 
-/// A message between two participants during event processing.
+/// A message being positioned during sequence-event processing.
 ///
-/// Holds the arrow definition and vertical position before the full path can be
-/// computed (activation boxes may not be finalized yet during event processing).
-struct Message<'a> {
-    source: Id,
-    target: Id,
+/// Stores the participant components and the active activation timings captured
+/// at the message event, so later path construction attaches to the correct box
+/// edges even before activation boxes are finalized.
+struct Message<'a, 'b> {
+    source: &'b Component<'a>,
+    target: &'b Component<'a>,
+    source_activation: Option<Rc<RefCell<ActivationTiming>>>,
+    target_activation: Option<Rc<RefCell<ActivationTiming>>>,
     y_position: f32,
     arrow_with_text: ArrowWithText<'a>,
 }
 
-impl<'a> Message<'a> {
-    /// Creates a message from a semantic relation and participant IDs.
+impl<'a, 'b> Message<'a, 'b> {
+    /// Creates a message from a semantic relation and its endpoint components.
     ///
-    /// When a self-loop, the underlying [`draw::ArrowDefinition`] is
-    /// cloned and its style is forced to [`draw::ArrowStyle::Curved`].
-    ///
-    /// # Arguments
-    ///
-    /// * `relation` - The semantic relation backing this message.
-    /// * `source` - ID of the source participant.
-    /// * `target` - ID of the target participant.
-    ///
-    /// # Returns
-    ///
-    /// A [`Message`] with `y_position` defaulted to `0.0`; callers should
-    /// finalize the position with [`Self::set_y_position`].
-    fn from_relation(relation: &'a Relation, source: Id, target: Id) -> Self {
+    /// Self-loops clone the relation's arrow definition and force
+    /// [`ArrowStyle::Curved`] so they render as loops even when the source style
+    /// was straight.
+    fn from_relation(
+        relation: &'a Relation,
+        source: &'b Component<'a>,
+        target: &'b Component<'a>,
+        source_activation: Option<Rc<RefCell<ActivationTiming>>>,
+        target_activation: Option<Rc<RefCell<ActivationTiming>>>,
+    ) -> Self {
         let mut arrow_def = Rc::clone(relation.arrow_definition());
-        if source == target && *arrow_def.style() != ArrowStyle::Curved {
+        if source.node_id() == target.node_id() && *arrow_def.style() != ArrowStyle::Curved {
             Rc::make_mut(&mut arrow_def).set_style(ArrowStyle::Curved);
         }
         let arrow = Arrow::new(arrow_def, relation.arrow_direction());
@@ -68,6 +66,8 @@ impl<'a> Message<'a> {
         Self {
             source,
             target,
+            source_activation,
+            target_activation,
             y_position: 0.0,
             arrow_with_text,
         }
@@ -78,41 +78,70 @@ impl<'a> Message<'a> {
         self.arrow_with_text.min_size()
     }
 
-    /// Sets the vertical center position for this message.
+    /// Sets the center Y coordinate for this message.
     fn set_y_position(&mut self, y_position: f32) {
         self.y_position = y_position;
     }
 
-    /// Returns the source participant ID.
-    fn source(&self) -> Id {
-        self.source
-    }
-
-    /// Returns the target participant ID.
-    fn target(&self) -> Id {
-        self.target
-    }
-
-    /// Returns the vertical center position of this message.
+    /// Returns the center Y coordinate of this message.
     fn y_position(&self) -> f32 {
         self.y_position
     }
 
     /// Returns `true` if this message renders as a self-loop on a single participant.
     fn is_self_loop(&self) -> bool {
-        self.source == self.target
+        self.source.node_id() == self.target.node_id()
     }
 
-    /// Consumes self and returns the inner [`ArrowWithText`](draw::ArrowWithText).
+    /// Consumes self and returns the inner [`ArrowWithText`].
     fn into_arrow_with_text(self) -> ArrowWithText<'a> {
         self.arrow_with_text
     }
+
+    /// Returns the source X coordinate, shifted to an active activation edge when present.
+    fn calculate_message_source_endpoint_x(&self) -> f32 {
+        self.calculate_message_endpoint_x(
+            &self.source_activation,
+            self.source,
+            self.target.position().x(),
+        )
+    }
+
+    /// Returns the target X coordinate, shifted to an active activation edge when present.
+    fn calculate_message_target_endpoint_x(&self) -> f32 {
+        self.calculate_message_endpoint_x(
+            &self.target_activation,
+            self.target,
+            self.source.position().x(),
+        )
+    }
+
+    /// Uses an activation edge for this endpoint when the message was emitted inside one.
+    fn calculate_message_endpoint_x(
+        &self,
+        activation_timing: &Option<Rc<RefCell<ActivationTiming>>>,
+        participant: &'b Component<'a>,
+        mut target_x: f32,
+    ) -> f32 {
+        if self.is_self_loop() {
+            target_x = f32::INFINITY;
+        }
+
+        if let Some(activation_timing) = activation_timing {
+            activation_timing
+                .borrow()
+                .to_activation_box(0.0)
+                .intersection_x(participant.position(), target_x)
+        } else {
+            participant.position().x()
+        }
+    }
 }
 
-/// Collected output from [`Engine::process_events`]: messages, activation boxes,
-/// fragments, notes, and the final Y coordinate.
+/// Collected output from [`Engine::process_events`]: positioned arrows,
+/// activation boxes, fragments, notes, and the final lifeline Y coordinate.
 type ProcessEventsResult<'a> = (
-    Vec<Message<'a>>,
+    Vec<PositionedArrowWithText<'a>>,
     Vec<ActivationBox>,
     Vec<PositionedDrawable<Fragment>>,
     Vec<PositionedDrawable<DrawNote>>,
@@ -353,11 +382,8 @@ impl Engine {
             .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
             .unwrap_or_default();
 
-        let (messages, activations, fragments, notes, lifeline_end) =
+        let (arrows, activations, fragments, notes, lifeline_end) =
             self.process_events(graph, participants_height, &components)?;
-
-        // Compute full arrow paths now that activation boxes are known.
-        let positioned_messages = self.position_messages(messages, &activations, &components);
 
         // Update lifeline ends to match diagram height and finalize lifelines
         let participants: HashMap<Id, Participant<'a>> = components
@@ -379,7 +405,7 @@ impl Engine {
 
         let layout = Layout::new(
             participants,
-            positioned_messages,
+            arrows,
             activations,
             fragments,
             notes,
@@ -435,73 +461,48 @@ impl Engine {
         }
     }
 
-    /// Computes arrow paths for messages using finalized activation boxes.
+    /// Converts intermediate messages into positioned arrows.
     ///
-    /// Converts intermediate [`Message`] data into positioned arrows by calculating
-    /// the X endpoints based on active activation boxes at each message's Y position.
-    fn position_messages<'a>(
+    /// Endpoint X coordinates come from each [`Message`]'s activation timing
+    /// snapshots, so paths attach to activation-box edges captured at the
+    /// message's event.
+    fn position_messages<'a, 'b>(
         &self,
-        messages: Vec<Message<'a>>,
-        activations: &[ActivationBox],
-        components: &HashMap<Id, Component<'a>>,
+        messages: Vec<Message<'a, 'b>>,
     ) -> Vec<PositionedArrowWithText<'a>> {
         messages
             .into_iter()
-            .map(|msg| {
-                if msg.is_self_loop() {
-                    let (path, label_position) = self.self_loop_path(&msg, activations, components);
-                    PositionedArrowWithText::new(msg.into_arrow_with_text(), path)
-                        .with_text_position(label_position)
-                } else {
-                    let path = Self::cross_participant_path(&msg, activations, components);
-                    PositionedArrowWithText::new(msg.into_arrow_with_text(), path)
-                }
-            })
+            .map(|msg| self.position_message(msg))
             .collect()
     }
 
-    /// Computes a straight-line [`draw::ArrowPath`] between two distinct
-    /// participants, accounting for the right/left edges of any active
-    /// activation boxes at the message's Y position.
-    ///
-    /// # Arguments
-    ///
-    /// * `msg` - The cross-participant message to position.
-    /// * `activations` - All activation boxes in the diagram.
-    /// * `components` - Map of participant IDs to their positioned components.
-    ///
-    /// # Returns
-    ///
-    /// A straight [`draw::ArrowPath`] from the source endpoint to the target
-    /// endpoint at `msg.y_position()`.
-    fn cross_participant_path(
-        msg: &Message<'_>,
-        activations: &[ActivationBox],
-        components: &HashMap<Id, Component<'_>>,
-    ) -> ArrowPath {
-        let source_participant = &components[&msg.source()];
-        let target_participant = &components[&msg.target()];
+    /// Positions one message using either the self-loop or cross-participant path builder.
+    fn position_message<'a, 'b>(&self, msg: Message<'a, 'b>) -> PositionedArrowWithText<'a> {
+        if msg.is_self_loop() {
+            let (path, label_position) = self.self_loop_path(&msg);
+            PositionedArrowWithText::new(msg.into_arrow_with_text(), path)
+                .with_text_position(label_position)
+        } else {
+            let path = Self::cross_participant_path(&msg);
+            PositionedArrowWithText::new(msg.into_arrow_with_text(), path)
+        }
+    }
 
-        let source_x = sequence::calculate_message_endpoint_x(
-            activations,
-            source_participant,
-            msg.y_position(),
-            target_participant.position().x(),
-        );
-        let target_x = sequence::calculate_message_endpoint_x(
-            activations,
-            target_participant,
-            msg.y_position(),
-            source_participant.position().x(),
-        );
+    /// Computes a straight-line [`ArrowPath`] between two distinct participants.
+    ///
+    /// Endpoint X coordinates attach to the active activation-box edge when the
+    /// message snapshot includes an activation timing; otherwise they use the
+    /// participant center.
+    fn cross_participant_path(msg: &Message<'_, '_>) -> ArrowPath {
+        let source_x = msg.calculate_message_source_endpoint_x();
+        let target_x = msg.calculate_message_target_endpoint_x();
 
         let start_point = Point::new(source_x, msg.y_position());
         let end_point = Point::new(target_x, msg.y_position());
         ArrowPath::straight(start_point, end_point)
     }
 
-    /// Computes a rounded-rectangular [`draw::ArrowPath`] for a self-loop on a
-    /// single participant.
+    /// Computes a rounded-rectangular [`ArrowPath`] for a self-loop on a single participant.
     ///
     /// ```text
     ///       lifeline
@@ -514,33 +515,18 @@ impl Engine {
     /// ```
     ///
     /// The path is a five-segment chain (line, arc, line, arc, line) encoded
-    /// as a chain of cubic Béziers in the [`draw::ArrowPath`]'s control
-    /// points. The two arcs approximate the quarter-circles at the top-right
-    /// and bottom-right corners.
+    /// as a chain of cubic Béziers in the [`ArrowPath`]'s control points. The
+    /// two arcs approximate the quarter-circles at the top-right and
+    /// bottom-right corners.
     ///
-    /// [`ArrowDirection::Forward`](draw::ArrowDirection::Forward) keeps the
-    /// arrowhead at the destination (the returning bottom point), where SVG
-    /// `marker-end` with `orient="auto"` rotates it to point back into the
-    /// lifeline along the curve's tangent. Other directions are honored
-    /// verbatim by the SVG marker dispatch in `Arrow`.
-    ///
-    /// # Arguments
-    ///
-    /// * `msg` - The self-loop message to position. Must satisfy
-    ///   [`Message::is_self_loop`].
-    /// * `activations` - All activation boxes in the diagram.
-    /// * `components` - Map of participant IDs to their positioned components.
+    /// Forward arrows terminate at the returning bottom point, so the arrowhead
+    /// points back into the lifeline along the curve tangent.
     ///
     /// # Returns
     ///
-    /// A tuple `(path, label_position)`, where `path` is the rounded-rectangle
-    /// arrow path and `label_position` is the explicit position of the text.
-    fn self_loop_path(
-        &self,
-        msg: &Message<'_>,
-        activations: &[ActivationBox],
-        components: &HashMap<Id, Component<'_>>,
-    ) -> (ArrowPath, Option<Point>) {
+    /// `(path, label_position)` — the loop's arrow path and an explicit label
+    /// position, or `None` when the message has no label.
+    fn self_loop_path(&self, msg: &Message<'_, '_>) -> (ArrowPath, Option<Point>) {
         debug_assert!(msg.is_self_loop(), "expected self-loop message");
 
         // Geometry:
@@ -554,14 +540,7 @@ impl Engine {
         // - The label is positioned to the right of the loop's hook, offset by
         //   [`SELF_LOOP_LABEL_GAP`].
 
-        let participant = &components[&msg.source()];
-
-        let x_anchor = sequence::calculate_message_endpoint_x(
-            activations,
-            participant,
-            msg.y_position(),
-            f32::INFINITY,
-        );
+        let x_anchor = msg.calculate_message_source_endpoint_x();
 
         let content_size = msg.min_size();
         let arrow_size = self.self_loop_with_content_min_arrow_size(content_size);
@@ -630,48 +609,47 @@ impl Engine {
         (path, label_position)
     }
 
-    /// Process all sequence diagram events to create layout components.
+    /// Walks the ordered events and produces positioned arrows, activation
+    /// boxes, fragments, and notes, advancing `current_y` for each event.
     ///
-    /// This method processes ordered events sequentially to create messages, activation boxes,
-    /// and fragments with precise timing and positioning. It uses a HashMap-based stack approach
-    /// (Id -> [`Vec<ActivationTiming>`]) to track activation periods per participant and converts
-    /// them to ActivationBox objects when deactivation occurs.
+    /// Per event:
+    /// - Relation: builds a [`Message`] centered in its slot, snapshots the
+    ///   currently active source/target activation timings, and updates the
+    ///   enclosing fragment's X bounds.
+    /// - Activate: pushes an [`ActivationTiming`] onto the participant's stack
+    ///   at the last relation's Y, with nesting equal to the existing depth.
+    /// - Deactivate: pops the top timing for the participant and finalizes it
+    ///   into an [`ActivationBox`] ending at the last relation's Y.
+    /// - FragmentStart / FragmentSectionStart / FragmentSectionEnd /
+    ///   FragmentEnd: maintain a [`FragmentTiming`] stack; the closing event
+    ///   emits a positioned [`Fragment`].
+    /// - Note: emits a positioned [`DrawNote`] at `current_y`.
     ///
-    /// # Algorithm
-    /// 1. Iterate through ordered events sequentially
-    /// 2. For `SequenceEvent::Relation`: Create [`Message`] centered at `current_y + height/2`, update fragment bounds if inside a fragment, record last relation Y, then advance Y by message size + `event_padding`
-    /// 3. For `SequenceEvent::Activate`: Create ActivationTiming at last relation Y position (aligning with the triggering message), push to participant's stack
-    /// 4. For `SequenceEvent::Deactivate`: Pop activation, convert to ActivationBox ending at last relation Y position
-    /// 5. For `SequenceEvent::FragmentStart`: Create FragmentTiming at `current_y` and push to fragment stack
-    /// 6. For `SequenceEvent::FragmentSectionStart`: Start new section in current fragment, then advance Y by header height + `event_padding`
-    /// 7. For `SequenceEvent::FragmentSectionEnd`: End current section
-    /// 8. For `SequenceEvent::FragmentEnd`: Pop fragment, convert to Fragment with final bounds, then advance Y by bottom padding + `event_padding`
-    /// 9. For `SequenceEvent::Note`: Create positioned [`Note`](draw::Note) at `current_y`, then advance Y by note size + `event_padding`
+    /// After all events are processed, queued messages are converted into
+    /// [`PositionedArrowWithText`] using the activation snapshots taken at
+    /// emission time.
     ///
-    /// # Parameters
-    /// * `graph` - The sequence diagram graph containing ordered events
-    /// * `participants_height` - Height of the participant boxes for calculating initial Y position
-    /// * `components` - Map of participant IDs to their positioned components, used for fragment bounds tracking
+    /// # Errors
     ///
-    /// # Returns
-    /// A tuple containing:
-    /// * `Vec<Message<'a>>` - Intermediate messages (to be finalized with computed paths).
-    /// * `Vec<ActivationBox>` - All activation boxes with precise positioning and nesting levels
-    /// * `Vec<draw::PositionedDrawable<draw::Fragment>>` - All fragments with their sections and bounds
-    /// * `Vec<draw::PositionedDrawable<draw::Note>>` - All notes with their positions and content
-    /// * `f32` - The final Y coordinate (lifeline end position)
+    /// Returns [`RenderError::Layout`] when a note references a participant
+    /// that is absent from `components`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a relation or activate event references a participant absent
+    /// from `components`, or if fragment section/end events are unbalanced.
     fn process_events<'a>(
         &self,
         graph: &SequenceGraph<'a>,
         participants_height: f32,
         components: &HashMap<Id, Component<'a>>,
     ) -> Result<ProcessEventsResult<'a>, RenderError> {
-        let mut messages: Vec<Message<'a>> = Vec::new();
+        let mut messages: Vec<Message<'a, '_>> = Vec::new();
         let mut activation_boxes: Vec<ActivationBox> = Vec::new();
         let mut fragments: Vec<PositionedDrawable<Fragment>> = Vec::new();
         let mut notes: Vec<PositionedDrawable<DrawNote>> = Vec::new();
 
-        let mut activation_stack: HashMap<Id, Vec<ActivationTiming>> = HashMap::new();
+        let mut activation_stack: HashMap<Id, Vec<Rc<RefCell<ActivationTiming>>>> = HashMap::new();
         let mut fragment_stack: Vec<FragmentTiming> = Vec::new();
 
         // Initial Y is the top edge of the first event area.
@@ -682,23 +660,39 @@ impl Engine {
         for event in graph.events() {
             match event {
                 SequenceEvent::Relation(relation) => {
-                    let mut message =
-                        Message::from_relation(relation, relation.source(), relation.target());
-                    let message_height = self.message_min_size(&message).height();
+                    let source = &components[&relation.source()];
+                    let target = &components[&relation.target()];
+                    let source_activation = activation_stack
+                        .get(&source.node_id())
+                        .and_then(|activation_timings| activation_timings.last())
+                        .cloned();
+                    let target_activation = activation_stack
+                        .get(&target.node_id())
+                        .and_then(|activation_timings| activation_timings.last())
+                        .cloned();
+
+                    let mut ir_message = Message::from_relation(
+                        relation,
+                        source,
+                        target,
+                        source_activation,
+                        target_activation,
+                    );
+
+                    let message_height = self.message_min_size(&ir_message).height();
 
                     // Center the arrow line within the message's vertical extent.
                     let center_y = current_y + message_height / 2.0;
-                    message.set_y_position(center_y);
-                    messages.push(message);
+                    ir_message.set_y_position(center_y);
+
+                    messages.push(ir_message);
 
                     // Update fragment bounds if we're inside a fragment
                     // NOTE: For perfectly accurate bounds, this should use calculate_message_endpoint_x()
                     // to account for activation box offsets. Currently using participant center positions
                     // as a simpler approximation that is adequate for most cases.
                     if let Some(fragment_timing) = fragment_stack.last_mut() {
-                        let source_x = components[&relation.source()].position().x();
-                        let target_x = components[&relation.target()].position().x();
-                        fragment_timing.update_x(source_x, target_x);
+                        fragment_timing.update_x(source.position().x(), target.position().x());
                     }
 
                     last_relation_y = center_y;
@@ -706,6 +700,7 @@ impl Engine {
                 }
                 SequenceEvent::Activate(activate) => {
                     let node_id = activate.component();
+                    let participant_x = components[&node_id].position().x();
                     // Calculate nesting level for this node
                     let nesting_level = activation_stack
                         .get(&node_id)
@@ -713,7 +708,7 @@ impl Engine {
                         .unwrap_or(0);
 
                     let new_timing = ActivationTiming::new(
-                        node_id,
+                        participant_x,
                         last_relation_y,
                         nesting_level,
                         Rc::clone(activate.definition()),
@@ -723,14 +718,14 @@ impl Engine {
                     activation_stack
                         .entry(node_id)
                         .or_default()
-                        .push(new_timing);
+                        .push(Rc::new(RefCell::new(new_timing)));
                 }
                 SequenceEvent::Deactivate(node_id) => {
                     // Pop the most recent activation for this node
                     if let Some(node_stack) = activation_stack.get_mut(node_id) {
                         if let Some(completed_timing) = node_stack.pop() {
                             let activation_box =
-                                completed_timing.to_activation_box(last_relation_y);
+                                completed_timing.borrow().to_activation_box(last_relation_y);
                             activation_boxes.push(activation_box);
                         }
 
@@ -778,8 +773,9 @@ impl Engine {
                 }
             }
         }
+        let arrows = self.position_messages(messages);
 
-        Ok((messages, activation_boxes, fragments, notes, current_y))
+        Ok((arrows, activation_boxes, fragments, notes, current_y))
     }
 
     /// Computes the minimum bounding [`Size`] for a message slot.
@@ -972,10 +968,242 @@ mod tests {
     }
 
     #[test]
-    fn test_line_segment_cubic_cps() {
-        let (cp1, cp2) = line_segment_cubic_cps(Point::new(0.0, 0.0), Point::new(30.0, 60.0));
-        assert_eq!(cp1, Point::new(10.0, 20.0));
-        assert_eq!(cp2, Point::new(20.0, 40.0));
+    fn test_position_messages_multiple() {
+        let a_id = Id::new("a");
+        let b_id = Id::new("b");
+        let a_node = make_node("a");
+        let b_node = make_node("b");
+        let a_comp = make_component(&a_node, Point::new(50.0, 50.0));
+        let b_comp = make_component(&b_node, Point::new(150.0, 50.0));
+
+        let relation1 = make_relation(a_id, b_id, None);
+        let mut msg1 = Message::from_relation(&relation1, &a_comp, &b_comp, None, None);
+        msg1.set_y_position(100.0);
+
+        let relation2 = make_relation(a_id, a_id, None);
+        let mut msg2 = Message::from_relation(&relation2, &a_comp, &a_comp, None, None);
+        msg2.set_y_position(200.0);
+
+        let engine = Engine::new();
+        let results = engine.position_messages(vec![msg1, msg2]);
+
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_position_message_dispatches_self_loop() {
+        let id = Id::new("a");
+        let node = make_node("a");
+        let component = make_component(&node, Point::new(100.0, 50.0));
+
+        let relation = make_relation(id, id, None);
+        let mut msg = Message::from_relation(&relation, &component, &component, None, None);
+        msg.set_y_position(200.0);
+
+        let engine = Engine::new();
+        // Should not panic; dispatches to self_loop_path
+        let _positioned = engine.position_message(msg);
+    }
+
+    #[test]
+    fn test_position_message_dispatches_cross_participant() {
+        let a_id = Id::new("a");
+        let b_id = Id::new("b");
+        let a_node = make_node("a");
+        let b_node = make_node("b");
+        let a_comp = make_component(&a_node, Point::new(50.0, 50.0));
+        let b_comp = make_component(&b_node, Point::new(150.0, 50.0));
+
+        let relation = make_relation(a_id, b_id, None);
+        let mut msg = Message::from_relation(&relation, &a_comp, &b_comp, None, None);
+        msg.set_y_position(200.0);
+
+        let engine = Engine::new();
+        // Should not panic; dispatches to cross_participant_path
+        let _positioned = engine.position_message(msg);
+    }
+
+    #[test]
+    fn test_cross_participant_path() {
+        let a_id = Id::new("a");
+        let b_id = Id::new("b");
+        let a_node = make_node("a");
+        let b_node = make_node("b");
+        let a_comp = make_component(&a_node, Point::new(50.0, 50.0));
+        let b_comp = make_component(&b_node, Point::new(150.0, 50.0));
+
+        let relation = make_relation(a_id, b_id, None);
+        let mut msg = Message::from_relation(&relation, &a_comp, &b_comp, None, None);
+        msg.set_y_position(200.0);
+
+        let path = Engine::cross_participant_path(&msg);
+
+        assert_eq!(path.source(), Point::new(50.0, 200.0));
+        assert_eq!(path.destination(), Point::new(150.0, 200.0));
+        assert!(path.control_points().is_empty());
+    }
+
+    #[test]
+    fn test_cross_participant_path_with_activations() {
+        let a_id = Id::new("a");
+        let b_id = Id::new("b");
+        let a_node = make_node("a");
+        let b_node = make_node("b");
+        let a_comp = make_component(&a_node, Point::new(50.0, 50.0));
+        let b_comp = make_component(&b_node, Point::new(150.0, 50.0));
+
+        // Default activation-box width = 8 → half-width = 4.
+        let source_timing = Rc::new(RefCell::new(ActivationTiming::new(
+            50.0,
+            180.0,
+            0,
+            Rc::new(ActivationBoxDefinition::default()),
+        )));
+        let target_timing = Rc::new(RefCell::new(ActivationTiming::new(
+            150.0,
+            180.0,
+            0,
+            Rc::new(ActivationBoxDefinition::default()),
+        )));
+
+        let relation = make_relation(a_id, b_id, None);
+        let mut msg = Message::from_relation(
+            &relation,
+            &a_comp,
+            &b_comp,
+            Some(Rc::clone(&source_timing)),
+            Some(Rc::clone(&target_timing)),
+        );
+        msg.set_y_position(200.0);
+
+        let path = Engine::cross_participant_path(&msg);
+
+        // Source (a at x=50) sending rightward → right edge = 50 + 4 = 54
+        assert_eq!(path.source(), Point::new(54.0, 200.0));
+        // Target (b at x=150) receiving from left → left edge = 150 - 4 = 146
+        assert_eq!(path.destination(), Point::new(146.0, 200.0));
+    }
+
+    #[test]
+    fn test_cross_participant_path_nested_activation() {
+        let a_id = Id::new("a");
+        let b_id = Id::new("b");
+        let a_node = make_node("a");
+        let b_node = make_node("b");
+        let a_comp = make_component(&a_node, Point::new(50.0, 50.0));
+        let b_comp = make_component(&b_node, Point::new(150.0, 50.0));
+
+        // Nesting level 1 → offset by nesting_offset (default 4.0)
+        // Position shifts right: center_x = 50 + 4 (nesting offset)
+        // Right edge = 50 + 4 + 4 (half-width) = 58
+        let source_timing = Rc::new(RefCell::new(ActivationTiming::new(
+            50.0,
+            180.0,
+            1,
+            Rc::new(ActivationBoxDefinition::default()),
+        )));
+
+        let relation = make_relation(a_id, b_id, None);
+        let mut msg = Message::from_relation(
+            &relation,
+            &a_comp,
+            &b_comp,
+            Some(Rc::clone(&source_timing)),
+            None,
+        );
+        msg.set_y_position(200.0);
+
+        let path = Engine::cross_participant_path(&msg);
+
+        // Source nesting level 1: right edge = 50 + 4 (nesting) + 4 (half-width) = 58
+        assert_eq!(path.source(), Point::new(58.0, 200.0));
+        assert_eq!(path.destination(), Point::new(150.0, 200.0));
+    }
+
+    #[test]
+    fn test_self_loop_path_no_activation() {
+        let id = Id::new("a");
+        let node = make_node("a");
+        let component = make_component(&node, Point::new(100.0, 50.0));
+
+        let relation = make_relation(id, id, None);
+        let mut msg = Message::from_relation(&relation, &component, &component, None, None);
+        msg.set_y_position(200.0);
+
+        let mut engine = Engine::new();
+        engine.set_self_loop_min_size(Size::new(40.0, 30.0));
+        let (path, _label) = engine.self_loop_path(&msg);
+
+        // Both endpoints sit on the lifeline X.
+        assert_eq!(path.source().x(), 100.0);
+        assert_eq!(path.destination().x(), 100.0);
+        // 5 cubic-Bézier segments → 14 control points (4 anchors + 5 * 2 cps).
+        assert_eq!(path.control_points().len(), 14);
+    }
+
+    #[test]
+    fn test_self_loop_path_with_activation() {
+        let id = Id::new("a");
+        let node = make_node("a");
+        let component = make_component(&node, Point::new(100.0, 50.0));
+
+        // Default activation-box width = 8 → right edge sits at participant_x + 4.
+        let timing = Rc::new(RefCell::new(ActivationTiming::new(
+            100.0,
+            180.0,
+            0,
+            Rc::new(ActivationBoxDefinition::default()),
+        )));
+
+        let relation = make_relation(id, id, None);
+        let mut msg = Message::from_relation(
+            &relation,
+            &component,
+            &component,
+            Some(Rc::clone(&timing)),
+            Some(Rc::clone(&timing)),
+        );
+        msg.set_y_position(200.0); // Inside the activation-box vertical range.
+
+        let engine = Engine::new();
+        let (path, _label) = engine.self_loop_path(&msg);
+
+        assert_eq!(path.source().x(), 104.0);
+        assert_eq!(path.destination().x(), 104.0);
+    }
+
+    #[test]
+    fn test_message_min_size_cross() {
+        let a = Id::new("a");
+        let b = Id::new("b");
+        let a_node = make_node("a");
+        let b_node = make_node("b");
+        let a_comp = make_component(&a_node, Point::new(50.0, 50.0));
+        let b_comp = make_component(&b_node, Point::new(150.0, 50.0));
+        let relation = make_relation(a, b, None);
+        let msg = Message::from_relation(&relation, &a_comp, &b_comp, None, None);
+
+        let size = Engine::new().message_min_size(&msg);
+        assert_eq!(size, msg.min_size());
+    }
+
+    #[test]
+    fn test_message_min_size_self_loop() {
+        let id = Id::new("a");
+        let node = make_node("a");
+        let component = make_component(&node, Point::new(100.0, 50.0));
+        let relation = make_relation(id, id, None);
+        let msg = Message::from_relation(&relation, &component, &component, None, None);
+
+        let mut engine = Engine::new();
+        engine.set_self_loop_min_size(Size::new(30.0, 20.0));
+        // Default corner_radius = 8. Content for an unlabeled `Forward` arrow is
+        // (MARKER_SIZE, MARKER_SIZE) = (6, 6).
+        // width  = self_loop_min_size.width() + SELF_LOOP_LABEL_GAP + content.width()
+        //        = 30 + 4 + 6 = 40
+        // height = max(content.height() + 2 * radius, self_loop_min_size.height())
+        //        = max(6 + 16, 20) = 22
+        assert_eq!(engine.message_min_size(&msg), Size::new(40.0, 22.0));
     }
 
     #[test]
@@ -996,98 +1224,9 @@ mod tests {
     }
 
     #[test]
-    fn test_message_min_size_cross() {
-        let a = Id::new("a");
-        let b = Id::new("b");
-        let relation = make_relation(a, b, None);
-        let msg = Message::from_relation(&relation, a, b);
-
-        let size = Engine::new().message_min_size(&msg);
-        assert_eq!(size, msg.min_size());
-    }
-
-    #[test]
-    fn test_message_min_size_self_loop() {
-        let id = Id::new("a");
-        let relation = make_relation(id, id, None);
-        let msg = Message::from_relation(&relation, id, id);
-
-        let mut engine = Engine::new();
-        engine.set_self_loop_min_size(Size::new(30.0, 20.0));
-        // Default corner_radius = 8. Content for an unlabeled `Forward` arrow is
-        // (MARKER_SIZE, MARKER_SIZE) = (6, 6).
-        // width  = self_loop_min_size.width() + SELF_LOOP_LABEL_GAP + content.width()
-        //        = 30 + 4 + 6 = 40
-        // height = max(content.height() + 2 * radius, self_loop_min_size.height())
-        //        = max(6 + 16, 20) = 22
-        assert_eq!(engine.message_min_size(&msg), Size::new(40.0, 22.0));
-    }
-
-    #[test]
-    fn test_cross_participant_path() {
-        let a_id = Id::new("a");
-        let b_id = Id::new("b");
-        let a_node = make_node("a");
-        let b_node = make_node("b");
-        let mut components = HashMap::new();
-        components.insert(a_id, make_component(&a_node, Point::new(50.0, 50.0)));
-        components.insert(b_id, make_component(&b_node, Point::new(150.0, 50.0)));
-
-        let relation = make_relation(a_id, b_id, None);
-        let mut msg = Message::from_relation(&relation, a_id, b_id);
-        msg.set_y_position(200.0);
-
-        let path = Engine::cross_participant_path(&msg, &[], &components);
-
-        assert_eq!(path.source(), Point::new(50.0, 200.0));
-        assert_eq!(path.destination(), Point::new(150.0, 200.0));
-        assert!(path.control_points().is_empty());
-    }
-
-    #[test]
-    fn test_self_loop_path_no_activation() {
-        let id = Id::new("a");
-        let node = make_node("a");
-        let component = make_component(&node, Point::new(100.0, 50.0));
-        let mut components = HashMap::new();
-        components.insert(id, component);
-
-        let relation = make_relation(id, id, None);
-        let mut msg = Message::from_relation(&relation, id, id);
-        msg.set_y_position(200.0);
-
-        let mut engine = Engine::new();
-        engine.set_self_loop_min_size(Size::new(40.0, 30.0));
-        let (path, _label) = engine.self_loop_path(&msg, &[], &components);
-
-        // Both endpoints sit on the lifeline X.
-        assert_eq!(path.source().x(), 100.0);
-        assert_eq!(path.destination().x(), 100.0);
-        // 5 cubic-Bézier segments → 14 control points (4 anchors + 5 * 2 cps).
-        assert_eq!(path.control_points().len(), 14);
-    }
-
-    #[test]
-    fn test_self_loop_path_with_activation() {
-        let id = Id::new("a");
-        let node = make_node("a");
-        let component = make_component(&node, Point::new(100.0, 50.0));
-        let mut components = HashMap::new();
-        components.insert(id, component);
-
-        // Default activation-box width = 8 → right edge sits at participant_x + 4.
-        let timing =
-            ActivationTiming::new(id, 180.0, 0, Rc::new(ActivationBoxDefinition::default()));
-        let activations = vec![timing.to_activation_box(220.0)];
-
-        let relation = make_relation(id, id, None);
-        let mut msg = Message::from_relation(&relation, id, id);
-        msg.set_y_position(200.0); // Inside the activation-box vertical range.
-
-        let engine = Engine::new();
-        let (path, _label) = engine.self_loop_path(&msg, &activations, &components);
-
-        assert_eq!(path.source().x(), 104.0);
-        assert_eq!(path.destination().x(), 104.0);
+    fn test_line_segment_cubic_cps() {
+        let (cp1, cp2) = line_segment_cubic_cps(Point::new(0.0, 0.0), Point::new(30.0, 60.0));
+        assert_eq!(cp1, Point::new(10.0, 20.0));
+        assert_eq!(cp2, Point::new(20.0, 40.0));
     }
 }
