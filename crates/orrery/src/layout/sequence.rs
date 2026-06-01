@@ -5,8 +5,6 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use log::warn;
-
 use orrery_core::{
     draw::{
         ActivationBox as DrawActivationBox, ActivationBoxDefinition, Fragment as DrawFragment,
@@ -47,69 +45,46 @@ impl<'a> Participant<'a> {
     }
 }
 
-/// A rendered activation box in a sequence diagram.
+/// A finalized activation box on a sequence participant's lifeline.
 ///
-/// An [`ActivationBox`] is the final result of activation timing calculations, containing
-/// all the information needed to render an activation period on a participant's lifeline.
-/// It represents the visual rectangle that appears on the lifeline to indicate when
-/// a participant is active (has control focus).
-///
-/// # Key Features
-///
-/// - **Precise Positioning**: Contains exact center Y coordinate for rendering
-/// - **Proper Encapsulation**: Private fields with controlled access through methods
-/// - **Ready for Rendering**: Contains drawable object with styling and dimensions
-/// - **Participant Association**: Tracks which participant this activation belongs to
-///
-/// # Creation
-///
-/// `ActivationBox` objects are created directly from [`ActivationTiming`] objects
-/// during the ordered events processing using the [`ActivationTiming::to_activation_box`] method.
-/// This conversion happens at the exact moment of deactivation with the precise end position.
+/// Carries the participant's lifeline X and the box's center Y so it can be
+/// positioned independently of the participant map.
 #[derive(Debug, Clone)]
 pub struct ActivationBox {
-    participant_id: Id,
     center_y: f32,
+    participant_x: f32,
     drawable: DrawActivationBox,
 }
 
-/// An activation period with precise timing information during processing.
-///
-/// [`ActivationTiming`] is a lightweight processing object used by the ordered events
-/// system to track activation periods as they are being built. It contains the minimal
-/// information needed during event processing and converts to an [`ActivationBox`]
-/// when the activation period is complete.
-///
-/// # Lifecycle
-///
-/// 1. **Creation**: Created immediately when [`SequenceEvent::Activate`](crate::structure::SequenceEvent::Activate) occurs with exact start position
-/// 2. **Stack Management**: Stored in participant-specific activation stacks
-/// 3. **Conversion**: Converted to [`ActivationBox`] when [`SequenceEvent::Deactivate`](crate::structure::SequenceEvent::Deactivate) occurs
+/// Start-side record of an activation, paired with an end Y to produce an [`ActivationBox`].
 #[derive(Debug, Clone)]
 pub struct ActivationTiming {
-    participant_id: Id,
+    participant_x: f32,
     start_y: f32,
     nesting_level: u32,
     definition: Rc<ActivationBoxDefinition>,
 }
 
 impl ActivationTiming {
-    /// Creates a new ActivationTiming with the given participant ID, start position, nesting level, and definition
+    /// Creates an activation timing from a participant X coordinate and start Y.
     pub fn new(
-        participant_id: Id,
+        participant_x: f32,
         start_y: f32,
         nesting_level: u32,
         definition: Rc<ActivationBoxDefinition>,
     ) -> Self {
         Self {
-            participant_id,
+            participant_x,
             start_y,
             nesting_level,
             definition,
         }
     }
 
-    /// Converts this ActivationTiming to an ActivationBox with the given end_y position
+    /// Converts this timing into a finalized [`ActivationBox`].
+    ///
+    /// If `end_y <= start_y`, a small buffer gives same-line activations a
+    /// visible height.
     pub fn to_activation_box(&self, end_y: f32) -> ActivationBox {
         const EDGE_CASE_BUFFER: f32 = 15.0;
 
@@ -125,65 +100,41 @@ impl ActivationTiming {
             DrawActivationBox::new(Rc::clone(&self.definition), height, self.nesting_level());
 
         ActivationBox {
-            participant_id: self.participant_id(),
+            participant_x: self.participant_x,
             center_y,
             drawable,
         }
     }
 
-    /// Returns the participant Id
-    fn participant_id(&self) -> Id {
-        self.participant_id
-    }
-
-    /// Returns the start Y coordinate
+    /// Returns the start Y coordinate.
     fn start_y(&self) -> f32 {
         self.start_y
     }
 
-    /// Returns the nesting level
+    /// Returns the activation nesting level.
     fn nesting_level(&self) -> u32 {
         self.nesting_level
     }
 }
 
 impl ActivationBox {
-    /// Returns the participant Id for this activation box
-    pub fn participant_id(&self) -> Id {
-        self.participant_id
+    /// Returns the participant lifeline X coordinate used to place this box.
+    pub fn participant_x(&self) -> f32 {
+        self.participant_x
     }
 
-    /// Returns the center Y coordinate for this activation box
+    /// Returns the center Y coordinate of this activation box.
     pub fn center_y(&self) -> f32 {
         self.center_y
     }
 
-    /// Returns a reference to the drawable activation box
+    /// Returns the drawable activation box.
     pub fn drawable(&self) -> &DrawActivationBox {
         &self.drawable
     }
 
-    /// Calculate the bounds of this activation box when positioned at the given participant position.
-    fn calculate_bounds(&self, participant_position: Point) -> Bounds {
-        // Use the participant position but with the activation box's center_y
-        let position_with_center_y = participant_position.with_y(self.center_y);
-
-        self.drawable.calculate_bounds(position_with_center_y)
-    }
-
-    /// Check if this activation box is active at the given Y coordinate.
-    /// An activation box is active if the Y coordinate falls within its vertical range.
-    fn is_active_at_y(&self, y: f32) -> bool {
-        let half_height = self.drawable.height() / 2.0;
-        let min_y = self.center_y - half_height;
-        let max_y = self.center_y + half_height;
-        y >= min_y && y <= max_y
-    }
-
-    /// Get the X coordinate for the appropriate edge of this activation box based on message direction.
-    /// For rightward messages (target_x > participant_x), returns the right edge.
-    /// For leftward messages (target_x < participant_x), returns the left edge.
-    fn intersection_x(&self, participant_position: Point, target_x: f32) -> f32 {
+    /// Returns the activation edge facing a message endpoint at `target_x`.
+    pub fn intersection_x(&self, participant_position: Point, target_x: f32) -> f32 {
         let bounds = self.calculate_bounds(participant_position);
 
         if target_x > participant_position.x() {
@@ -193,6 +144,13 @@ impl ActivationBox {
             // Message going left, use left edge
             bounds.min_x()
         }
+    }
+
+    /// Calculates bounds at `participant_position.x()` and this box's center Y.
+    fn calculate_bounds(&self, participant_position: Point) -> Bounds {
+        let position_with_center_y = participant_position.with_y(self.center_y);
+
+        self.drawable.calculate_bounds(position_with_center_y)
     }
 }
 
@@ -332,66 +290,6 @@ impl<'a> FragmentTiming<'a> {
     }
 }
 
-/// Finds the most-nested active [`ActivationBox`] for a participant at a given Y coordinate.
-///
-/// When multiple nested boxes are active at `message_y`, returns the deepest one
-/// so messages attach to the innermost active scope.
-pub fn find_active_activation_box_for_participant(
-    activation_boxes: &[ActivationBox],
-    participant_id: Id,
-    message_y: f32,
-) -> Option<&ActivationBox> {
-    if activation_boxes.is_empty() {
-        return None;
-    }
-
-    if !message_y.is_finite() {
-        warn!("Invalid message_y coordinate: {message_y}. Skipping activation box search.");
-        return None;
-    }
-
-    let mut active_boxes: Vec<&ActivationBox> = activation_boxes
-        .iter()
-        .filter(|activation_box| activation_box.participant_id() == participant_id)
-        .filter(|activation_box| activation_box.is_active_at_y(message_y))
-        .collect();
-
-    if active_boxes.is_empty() {
-        return None;
-    }
-
-    active_boxes.sort_by_key(|activation_box| activation_box.drawable().nesting_level());
-    active_boxes.last().copied()
-}
-
-/// Calculates the X coordinate where a message connects to a participant.
-///
-/// If an active [`ActivationBox`] exists at `message_y`, returns the box edge
-/// facing `target_x`; otherwise falls back to the participant's center X.
-///
-/// # Arguments
-///
-/// * `activation_boxes` - All activation boxes in the diagram.
-/// * `participant` - The participant at this endpoint.
-/// * `message_y` - Y coordinate of the message line.
-/// * `target_x` - X of the opposite endpoint; used only for direction detection.
-pub fn calculate_message_endpoint_x(
-    activation_boxes: &[ActivationBox],
-    participant: &Component,
-    message_y: f32,
-    target_x: f32,
-) -> f32 {
-    if let Some(activation_box) = find_active_activation_box_for_participant(
-        activation_boxes,
-        participant.node_id(),
-        message_y,
-    ) {
-        activation_box.intersection_x(participant.position(), target_x)
-    } else {
-        participant.position().x()
-    }
-}
-
 /// Sequence layout containing participants, messages, activation boxes, notes and metrics.
 #[derive(Debug, Clone)]
 pub struct Layout<'a> {
@@ -476,34 +374,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_activation_box_is_active_at_y() {
-        // Create a test activation box with center_y=100.0 and height=20.0
-        let definition = ActivationBoxDefinition::default();
-        let drawable = DrawActivationBox::new(Rc::new(definition), 20.0, 0);
-        let activation_box = ActivationBox {
-            participant_id: Id::new("test"),
-            center_y: 100.0,
-            drawable,
-        };
-
-        // Should be active within the range [90.0, 110.0]
-        assert!(activation_box.is_active_at_y(90.0)); // Bottom edge
-        assert!(activation_box.is_active_at_y(100.0)); // Center
-        assert!(activation_box.is_active_at_y(110.0)); // Top edge
-
-        // Should not be active outside the range
-        assert!(!activation_box.is_active_at_y(89.9));
-        assert!(!activation_box.is_active_at_y(110.1));
-    }
-
-    #[test]
     fn test_activation_box_get_intersection_x() {
         // Create a test activation box with nesting level 0
         let definition = ActivationBoxDefinition::default();
         let drawable = DrawActivationBox::new(Rc::new(definition), 20.0, 0);
         let activation_box = ActivationBox {
-            participant_id: Id::new("test"),
             center_y: 100.0,
+            participant_x: 50.0,
             drawable,
         };
 
@@ -524,8 +401,8 @@ mod tests {
         let definition = ActivationBoxDefinition::default();
         let drawable = DrawActivationBox::new(Rc::new(definition), 20.0, 2);
         let activation_box = ActivationBox {
-            participant_id: Id::new("test"),
             center_y: 100.0,
+            participant_x: 50.0,
             drawable,
         };
 
@@ -536,166 +413,6 @@ mod tests {
         // So bounds should span from 50.0 + 8.0 - 4.0 = 54.0 to 50.0 + 8.0 + 4.0 = 62.0
         assert_eq!(bounds.min_x(), 54.0);
         assert_eq!(bounds.max_x(), 62.0);
-    }
-
-    #[test]
-    fn test_find_active_activation_box_for_participant() {
-        // Create test activation boxes
-
-        // Activation box 1: participant 0, Y range [90-110], nesting level 0
-        let drawable1 =
-            DrawActivationBox::new(Rc::new(ActivationBoxDefinition::default()), 20.0, 0);
-        let activation_box1 = ActivationBox {
-            participant_id: Id::new("test"),
-            center_y: 100.0,
-            drawable: drawable1,
-        };
-
-        // Activation box 2: participant 0, Y range [95-105], nesting level 1 (nested)
-        let drawable2 =
-            DrawActivationBox::new(Rc::new(ActivationBoxDefinition::default()), 10.0, 1);
-        let activation_box2 = ActivationBox {
-            participant_id: Id::new("test"),
-            center_y: 100.0,
-            drawable: drawable2,
-        };
-
-        // Activation box 3: participant 1, Y range [120-140], nesting level 0
-        let drawable3 =
-            DrawActivationBox::new(Rc::new(ActivationBoxDefinition::default()), 20.0, 0);
-        let activation_box3 = ActivationBox {
-            participant_id: Id::new("test"),
-            center_y: 130.0,
-            drawable: drawable3,
-        };
-
-        let activation_boxes = vec![activation_box1, activation_box2, activation_box3];
-
-        // Test finding activation box for participant 0 at Y=100 (both boxes active, should return nested one)
-        let result =
-            find_active_activation_box_for_participant(&activation_boxes, Id::new("test"), 100.0);
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().drawable().nesting_level(), 1); // Should return the more nested box
-
-        // Test finding activation box for participant 0 at Y=92 (only first box active)
-        let result =
-            find_active_activation_box_for_participant(&activation_boxes, Id::new("test"), 92.0);
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().drawable().nesting_level(), 0);
-
-        // Test finding activation box for participant 0 at Y=80 (no boxes active)
-        let result =
-            find_active_activation_box_for_participant(&activation_boxes, Id::new("test"), 80.0);
-        assert!(result.is_none());
-
-        // Test finding activation box for participant 1 at Y=130 (different participant)
-        let result =
-            find_active_activation_box_for_participant(&activation_boxes, Id::new("test"), 130.0);
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().participant_id(), "test");
-
-        // Test finding activation box for non-existent participant
-        let result = find_active_activation_box_for_participant(
-            &activation_boxes,
-            Id::new("invalid"),
-            100.0,
-        );
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_find_active_activation_box_edge_cases() {
-        // Test with empty activation boxes list
-        let result = find_active_activation_box_for_participant(&[], Id::new("test"), 100.0);
-        assert!(result.is_none());
-
-        // Test with multiple boxes at different nesting levels
-        let boxes: Vec<ActivationBox> = (0..5)
-            .map(|i| {
-                let definition = ActivationBoxDefinition::default();
-                let drawable = DrawActivationBox::new(Rc::new(definition), 20.0, i);
-                ActivationBox {
-                    participant_id: Id::new("test"),
-                    center_y: 100.0,
-                    drawable,
-                }
-            })
-            .collect();
-
-        // Should return the highest nesting level (4)
-        let result = find_active_activation_box_for_participant(&boxes, Id::new("test"), 100.0);
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().drawable().nesting_level(), 4);
-    }
-
-    #[test]
-    fn test_find_active_activation_box_error_handling() {
-        // Create a test activation box for error handling tests
-        let definition = ActivationBoxDefinition::default();
-        let drawable = DrawActivationBox::new(Rc::new(definition), 20.0, 0);
-        let activation_box = ActivationBox {
-            participant_id: Id::new("test"),
-            center_y: 100.0,
-            drawable,
-        };
-        let activation_boxes = vec![activation_box];
-
-        // Test with NaN Y coordinate
-        let result = find_active_activation_box_for_participant(
-            &activation_boxes,
-            Id::new("test"),
-            f32::NAN,
-        );
-        assert!(result.is_none());
-
-        // Test with infinite Y coordinate
-        let result = find_active_activation_box_for_participant(
-            &activation_boxes,
-            Id::new("test"),
-            f32::INFINITY,
-        );
-        assert!(result.is_none());
-
-        // Test with negative infinite Y coordinate
-        let result = find_active_activation_box_for_participant(
-            &activation_boxes,
-            Id::new("test"),
-            f32::NEG_INFINITY,
-        );
-        assert!(result.is_none());
-
-        // Test with valid Y coordinate (should work normally)
-        let result =
-            find_active_activation_box_for_participant(&activation_boxes, Id::new("test"), 100.0);
-        assert!(result.is_some());
-    }
-
-    #[test]
-    fn test_message_endpoint_fallback_behavior() {
-        // Test with empty activation boxes (should fallback)
-        let empty_boxes: Vec<ActivationBox> = vec![];
-        let result =
-            find_active_activation_box_for_participant(&empty_boxes, Id::new("test_0"), 100.0);
-        assert!(result.is_none());
-
-        // Test with activation boxes for different participant (should fallback)
-        let definition = ActivationBoxDefinition::default();
-        let drawable = DrawActivationBox::new(Rc::new(definition), 20.0, 0);
-        let activation_box = ActivationBox {
-            participant_id: Id::new("test_1"), // Different participant
-            center_y: 100.0,
-            drawable,
-        };
-        let activation_boxes = vec![activation_box];
-
-        let result =
-            find_active_activation_box_for_participant(&activation_boxes, Id::new("test_0"), 100.0);
-        assert!(result.is_none());
-
-        // Test with activation box not active at Y coordinate (should fallback)
-        let result =
-            find_active_activation_box_for_participant(&activation_boxes, Id::new("test_1"), 200.0);
-        assert!(result.is_none());
     }
 
     #[test]
