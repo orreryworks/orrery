@@ -74,7 +74,7 @@ static DEFAULT_TEXT: OnceLock<TextDefinition> = OnceLock::new();
 /// | Property | Default |
 /// |----------|---------|
 /// | Font family | `"Arial"` |
-/// | Font size | `15` |
+/// | Font size | `11` |
 /// | Background color | `None` |
 /// | Text color | `None` (SVG default, typically black) |
 /// | Padding | Zero on all sides |
@@ -104,15 +104,12 @@ pub struct TextDefinition {
 impl TextDefinition {
     /// Returns a reference to the default text definition (borrowed from static).
     ///
-    /// - Font family: "sans-serif"
-    /// - Font size: 12
-    /// - Background color: None
-    /// - Text color: None
-    /// - Padding: 4px on all sides
+    /// Differs from [`Self::default`] in font family (`sans-serif`), font
+    /// size (`9`), and 4 px uniform padding.
     pub fn default_borrowed() -> &'static Self {
         DEFAULT_TEXT.get_or_init(|| TextDefinition {
             font_family: String::from("sans-serif"),
-            font_size: 12,
+            font_size: 9,
             background_color: None,
             color: None,
             padding: Insets::uniform(4.0),
@@ -183,6 +180,13 @@ impl TextDefinition {
         self.font_size
     }
 
+    /// Returns the font size in CSS pixels (1 pt = 96/72 px at 96 dpi).
+    ///
+    /// The size is stored in points (see [`Self::set_font_size`]).
+    fn font_size_px(&self) -> f32 {
+        f32::from(self.font_size) * (96.0 / 72.0)
+    }
+
     fn font_family(&self) -> &str {
         &self.font_family
     }
@@ -206,7 +210,7 @@ impl TextDefinition {
 impl Default for TextDefinition {
     fn default() -> Self {
         Self {
-            font_size: 15,
+            font_size: 11,
             background_color: None,
             color: None,
             padding: Insets::default(),
@@ -299,7 +303,7 @@ impl<'a> Drawable for Text<'a> {
             .set("text-anchor", "middle")
             .set("dominant-baseline", "central")
             .set("font-family", self.definition.font_family())
-            .set("font-size", self.definition.font_size());
+            .set("font-size", format!("{}pt", self.definition.font_size()));
 
         // Set text color if specified
         if let Some(color) = self.definition.color() {
@@ -364,19 +368,14 @@ impl TextManager {
         }
     }
 
-    /// Calculate the actual size of text in pixels using cosmic-text.
+    /// Measures the actual size of text in pixels.
     ///
     /// This provides an accurate measurement based on real font metrics and shaping,
     /// including proper handling of ligatures, kerning, and other advanced typography features.
     ///
-    /// # Arguments
-    ///
-    /// * `text` - The text content to measure
-    /// * `text_def` - Text definition containing font family, size, and other styling
-    ///
     /// # Returns
     ///
-    /// The calculated size in pixels, or default size if measurement fails
+    /// The calculated size in pixels, or [`Size::zero`] for empty input.
     fn calculate_text_size(&self, text: &str, text_def: &TextDefinition) -> Size {
         if text.is_empty() {
             return Size::zero();
@@ -385,8 +384,7 @@ impl TextManager {
         // Lock the FontSystem for use
         let mut font_system = self.font_system.lock().expect("failed to lock FontSystem");
 
-        // Convert font size from points to pixels (roughly 1.33x multiplier for standard DPI)
-        let font_size_px = text_def.font_size() as f32 * 1.33;
+        let font_size_px = text_def.font_size_px();
 
         // Create metrics with font size and approximate line height
         let line_height = font_size_px * 1.15;
@@ -458,7 +456,7 @@ mod tests {
     fn test_text_definition_default_borrowed_values() {
         let borrowed = TextDefinition::default_borrowed();
         // Static default has different values than Default trait
-        assert_eq!(borrowed.font_size(), 12);
+        assert_eq!(borrowed.font_size(), 9);
         assert_eq!(borrowed.font_family(), "sans-serif");
         assert!(borrowed.background_color().is_none());
         assert!(borrowed.color().is_none());
@@ -472,7 +470,7 @@ mod tests {
     #[test]
     fn test_text_definition_set_font_size() {
         let mut def = TextDefinition::new();
-        assert_eq!(def.font_size(), 15); // default
+        assert_eq!(def.font_size(), 11); // default
 
         def.set_font_size(24);
         assert_eq!(def.font_size(), 24);

@@ -231,13 +231,13 @@ impl Default for FragmentDefinition {
     fn default() -> Self {
         // Create default text definition for operation label
         let mut operation_label_text_definition = TextDefinition::new();
-        operation_label_text_definition.set_font_size(12);
+        operation_label_text_definition.set_font_size(9);
         operation_label_text_definition.set_color(Some(Color::default()));
         operation_label_text_definition.set_padding(Insets::new(4.0, 8.0, 4.0, 8.0));
 
         // Create default text definition for section titles
         let mut section_title_text_definition = TextDefinition::new();
-        section_title_text_definition.set_font_size(11);
+        section_title_text_definition.set_font_size(8);
         section_title_text_definition
             .set_color(Some(Color::new("#666666").expect("Invalid color")));
         section_title_text_definition.set_padding(Insets::new(2.0, 4.0, 2.0, 20.0));

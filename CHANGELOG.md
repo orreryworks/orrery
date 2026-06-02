@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Text label background no longer double-padded** — The configured padding was applied twice, leaving the background visibly larger than the text it wraps. ([#133](https://github.com/orreryworks/orrery/pull/133))
 - **Narrow shape labels now correctly identified as having no inner content** — Previously they were treated as embedded content, pushing the text to the top of the shape instead of its center. ([#134](https://github.com/orreryworks/orrery/pull/134))
+- **Font sizes now rendered in points** — Glyphs were drawn about 25% smaller than the configured size, leaving label backgrounds visibly larger than the rendered text. Default sizes were lowered to preserve the previous visual sizing. ([#135](https://github.com/orreryworks/orrery/pull/135))
 
 ## [0.4.0] - 2026-05-23
 
