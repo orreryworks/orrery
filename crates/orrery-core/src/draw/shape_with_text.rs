@@ -130,7 +130,7 @@ impl<'a> ShapeWithText<'a> {
 
         let shape_size = self.shape.inner_size();
         let text_size = self.text_size();
-        let has_inner_content = text_size != self.shape.content_size();
+        let has_inner_content = self.inner_content_size.is_some_and(|s| !s.is_zero());
 
         self.text_positioning_strategy.calculate_text_position(
             total_position,
