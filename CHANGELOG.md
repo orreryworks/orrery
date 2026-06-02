@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Simplified `calculate_message_endpoint_x` signature** — Removed the redundant `participant_id` parameter; the function now derives it internally from the participant component. ([#130](https://github.com/orreryworks/orrery/pull/130))
 - **Sequence message endpoints use activation snapshots** — Messages capture each side's active `ActivationTiming` at event time and compute endpoint X from the snapshot, replacing the Y-range scan over activation boxes. ([#132](https://github.com/orreryworks/orrery/pull/132))
 
+### Fixed
+
+- **Text label background no longer double-padded** — The configured padding was applied twice, leaving the background visibly larger than the text it wraps. ([#133](https://github.com/orreryworks/orrery/pull/133))
+
 ## [0.4.0] - 2026-05-23
 
 ### Added
