@@ -279,7 +279,6 @@ impl<'a> Drawable for Text<'a> {
     fn render_to_layers(&self, position: Point) -> LayeredOutput {
         let mut output = LayeredOutput::new();
         let text_size = self.calculate_size();
-        let padding = self.definition.padding();
 
         let lines: Vec<&str> = self.content.lines().collect();
 
@@ -319,7 +318,7 @@ impl<'a> Drawable for Text<'a> {
 
         // Add background rectangle if color is specified
         if let Some(bg_color) = self.definition.background_color() {
-            let bg_bounds = position.to_bounds(text_size).add_padding(padding);
+            let bg_bounds = position.to_bounds(text_size);
             let bg_size = bg_bounds.to_size();
             let bg_min_point = bg_bounds.min_point();
 
