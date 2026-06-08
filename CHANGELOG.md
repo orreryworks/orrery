@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-08
+
 ### Changed
 
 - **Arrow routing moved from SVG export into layout engines** — Engines now compute path geometry and produce control points; the core draw layer only renders them. A new `SmartArrowPlacer` routes each relation by its `style`. ([#137](https://github.com/orreryworks/orrery/pull/137))
@@ -88,7 +90,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration** — Layered configuration via CLI flags, project-local files, and platform-specific config directories.
 - **Dual licensing** — MIT OR Apache-2.0.
 
-[Unreleased]: https://github.com/orreryworks/orrery/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/orreryworks/orrery/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/orreryworks/orrery/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/orreryworks/orrery/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/orreryworks/orrery/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/orreryworks/orrery/compare/v0.1.1...v0.2.0
