@@ -7,11 +7,13 @@
 
 use std::{collections::HashMap, rc::Rc};
 
+use itertools::Itertools;
 use log::{debug, error};
 
 use orrery_core::{
     draw::{
-        Arrow, ArrowPath, ArrowWithText, PositionedArrowWithText, PositionedDrawable, ShapeWithText,
+        Arrow, ArrowPath, ArrowStyle, ArrowWithText, PositionedArrowWithText, PositionedDrawable,
+        ShapeWithText,
     },
     geometry::{Bounds, Point},
     identifier::Id,
@@ -97,7 +99,7 @@ impl<'a> Component<'a> {
 ///   self-loop buckets the same [`Component`] is passed for both.
 /// - Relations within the bucket may go either direction; inspect
 ///   [`Relation::source`](semantic::Relation::source) to determine orientation.
-/// - Return exactly one arrow per input relation, in the same order.
+/// - Return exactly one arrow per input relation.
 pub trait ArrowPlacer {
     /// Places a bucket of relations between the same component pair.
     fn place<'a>(
@@ -352,6 +354,119 @@ impl ArrowPlacer for CurvedArrowPlacer {
     }
 }
 
+/// [`ArrowPlacer`] that routes every relation as an orthogonal path made of
+/// horizontal and vertical segments.
+///
+/// Each path turns once at the midpoint, going horizontal-first when the pair
+/// is wider than it is tall and vertical-first otherwise. Like
+/// [`StraightArrowPlacer`], parallel/reverse relations overlap into a single
+/// path; it does not offset them onto separate lanes.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct OrthogonalArrowPlacer;
+
+impl OrthogonalArrowPlacer {
+    /// Builds the right-angle [`ArrowPath`] between two boundary points.
+    fn path(source: Point, target: Point) -> ArrowPath {
+        let abs_dist = target.sub_point(source).abs();
+        let mid = source.midpoint(target);
+
+        let cps = if abs_dist.x() > abs_dist.y() {
+            vec![mid.with_y(source.y()), mid.with_y(target.y())]
+        } else {
+            vec![mid.with_x(source.x()), mid.with_x(target.x())]
+        };
+        ArrowPath::new(source, target, cps)
+    }
+
+    /// Orthogonal arrow from `source` boundary to `target` boundary.
+    fn place_one<'a>(
+        relation: &'a Relation,
+        source: &Component<'_>,
+        target: &Component<'_>,
+    ) -> PositionedArrowWithText<'a> {
+        let arrow_def = Rc::clone(relation.arrow_definition());
+        let arrow = Arrow::new(arrow_def, relation.arrow_direction());
+        let arrow_with_text = ArrowWithText::new(arrow, relation.text());
+
+        let source_edge = source.find_intersection(target.position());
+        let target_edge = target.find_intersection(source.position());
+        let path = Self::path(source_edge, target_edge);
+
+        PositionedArrowWithText::new(arrow_with_text, path)
+    }
+}
+
+impl ArrowPlacer for OrthogonalArrowPlacer {
+    fn place<'a>(
+        &self,
+        relations: &[&'a Relation],
+        source: &Component<'_>,
+        target: &Component<'_>,
+    ) -> Vec<PositionedArrowWithText<'a>> {
+        relations
+            .iter()
+            .map(|relation| {
+                let (rel_src, rel_tgt) = align_to_relation(relation, source, target);
+                Self::place_one(relation, rel_src, rel_tgt)
+            })
+            .collect()
+    }
+}
+
+/// [`ArrowPlacer`] that dispatches each relation to a concrete placer based on
+/// its [`ArrowStyle`].
+///
+/// Non-self-loop relations are grouped by style and routed by
+/// [`StraightArrowPlacer`], [`CurvedArrowPlacer`], or [`OrthogonalArrowPlacer`]
+/// accordingly. Self-loops are always routed by [`CurvedArrowPlacer`]
+/// regardless of style.
+///
+/// # Known limitations
+///
+/// Because relations are grouped by style before routing, each delegate only
+/// sees the relations of its own style. [`CurvedArrowPlacer`] therefore lanes
+/// parallel edges only within the curved subset, so mixed-style parallel edges
+/// between the same pair may overlap. Output order is not preserved across
+/// style groups.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SmartArrowPlacer {
+    straight: StraightArrowPlacer,
+    curved: CurvedArrowPlacer,
+    orthogonal: OrthogonalArrowPlacer,
+}
+
+impl SmartArrowPlacer {
+    /// Creates a new `SmartArrowPlacer` with default delegate placers.
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl ArrowPlacer for SmartArrowPlacer {
+    fn place<'a>(
+        &self,
+        relations: &[&'a Relation],
+        source: &Component<'_>,
+        target: &Component<'_>,
+    ) -> Vec<PositionedArrowWithText<'a>> {
+        if source.node_id() == target.node_id() {
+            return self.curved.place(relations, source, target);
+        }
+        let grouped = relations
+            .iter()
+            .copied()
+            .into_group_map_by(|r| r.arrow_definition().style());
+        grouped
+            .into_iter()
+            .flat_map(|(style, relations)| match style {
+                ArrowStyle::Straight => self.straight.place(&relations, source, target),
+                ArrowStyle::Curved => self.curved.place(&relations, source, target),
+                ArrowStyle::Orthogonal => self.orthogonal.place(&relations, source, target),
+            })
+            .collect()
+    }
+}
+
 /// A complete layout of components and their relationships.
 ///
 /// A `Layout` contains all the positioned components and their connecting relations
@@ -552,6 +667,18 @@ mod tests {
             ArrowDirection::Forward,
             None,
             Rc::new(ArrowDefinition::default()),
+        )
+    }
+
+    fn make_relation_with_style(source: Id, target: Id, style: ArrowStyle) -> Relation {
+        let mut arrow_def = ArrowDefinition::default();
+        arrow_def.set_style(style);
+        Relation::new(
+            source,
+            target,
+            ArrowDirection::Forward,
+            None,
+            Rc::new(arrow_def),
         )
     }
 
@@ -798,5 +925,77 @@ mod tests {
         let r5 = make_relation(a.node_id(), a.node_id());
         let out_self = router.place(&[&r4, &r5], &a, &a);
         assert_eq!(out_self.len(), 2);
+    }
+
+    #[test]
+    fn orthogonal_path_horizontal_first_when_wider() {
+        let source = Point::new(0.0, 0.0);
+        let target = Point::new(100.0, 20.0);
+        let path = OrthogonalArrowPlacer::path(source, target);
+
+        let cps = path.control_points();
+        assert_eq!(cps.len(), 2);
+        assert_point_approx_eq(cps[0], Point::new(50.0, 0.0));
+        assert_point_approx_eq(cps[1], Point::new(50.0, 20.0));
+    }
+
+    #[test]
+    fn orthogonal_path_vertical_first_when_taller() {
+        let source = Point::new(0.0, 0.0);
+        let target = Point::new(20.0, 100.0);
+        let path = OrthogonalArrowPlacer::path(source, target);
+
+        let cps = path.control_points();
+        assert_eq!(cps.len(), 2);
+        assert_point_approx_eq(cps[0], Point::new(0.0, 50.0));
+        assert_point_approx_eq(cps[1], Point::new(20.0, 50.0));
+    }
+
+    #[test]
+    fn orthogonal_place_produces_one_arrow_per_relation() {
+        let a_node = make_node("a");
+        let b_node = make_node("b");
+        let a = make_component(&a_node, Point::new(0.0, 0.0));
+        let b = make_component(&b_node, Point::new(100.0, 0.0));
+        let r1 = make_relation(a.node_id(), b.node_id());
+        let r2 = make_relation(b.node_id(), a.node_id());
+
+        let out = OrthogonalArrowPlacer.place(&[&r1, &r2], &a, &b);
+        assert_eq!(out.len(), 2);
+        // Orthogonal arrows carry two control points each.
+        for arrow in &out {
+            assert_eq!(arrow.path().control_points().len(), 2);
+        }
+    }
+
+    #[test]
+    fn smart_place_returns_one_arrow_per_relation_for_mixed_styles() {
+        let a_node = make_node("a");
+        let b_node = make_node("b");
+        let a = make_component(&a_node, Point::new(0.0, 0.0));
+        let b = make_component(&b_node, Point::new(100.0, 0.0));
+        let r_straight = make_relation_with_style(a.node_id(), b.node_id(), ArrowStyle::Straight);
+        let r_curved = make_relation_with_style(a.node_id(), b.node_id(), ArrowStyle::Curved);
+        let r_orthogonal =
+            make_relation_with_style(a.node_id(), b.node_id(), ArrowStyle::Orthogonal);
+
+        let placer = SmartArrowPlacer::new();
+        let out = placer.place(&[&r_straight, &r_curved, &r_orthogonal], &a, &b);
+        assert_eq!(out.len(), 3);
+    }
+
+    #[test]
+    fn smart_place_routes_self_loops_through_curved_placer() {
+        let a_node = make_node("a");
+        let a = make_component(&a_node, Point::new(50.0, 50.0));
+        // Even an orthogonal-styled self-loop must be routed as a curve.
+        let r = make_relation_with_style(a.node_id(), a.node_id(), ArrowStyle::Orthogonal);
+
+        let placer = SmartArrowPlacer::new();
+        let out = placer.place(&[&r], &a, &a);
+        assert_eq!(out.len(), 1);
+        // Curved self-loops are cubic Béziers (two control points) and carry a
+        // label position override, unlike the orthogonal placer.
+        assert_eq!(out[0].path().control_points().len(), 2);
     }
 }

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Arrow routing moved from SVG export into layout engines** — Engines now compute path geometry and produce control points; the core draw layer only renders them. A new `SmartArrowPlacer` routes each relation by its `style`. ([#137](https://github.com/orreryworks/orrery/pull/137))
 - **Simplified qualified import paths across workspace** — Replaced verbose `module::Type` qualified paths with direct imports, reordered module declarations before use statements per style conventions. ([#129](https://github.com/orreryworks/orrery/pull/129))
 - **Simplified `calculate_message_endpoint_x` signature** — Removed the redundant `participant_id` parameter; the function now derives it internally from the participant component. ([#130](https://github.com/orreryworks/orrery/pull/130))
 - **Sequence message endpoints use activation snapshots** — Messages capture each side's active `ActivationTiming` at event time and compute endpoint X from the snapshot, replacing the Y-range scan over activation boxes. ([#132](https://github.com/orreryworks/orrery/pull/132))

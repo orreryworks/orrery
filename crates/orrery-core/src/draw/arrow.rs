@@ -3,8 +3,9 @@
 //! This module provides types for defining and rendering arrows in diagrams,
 //! including stroke styling, path shapes, direction markers, and SVG output.
 
-use std::{collections::HashMap, fmt, rc::Rc, str::FromStr};
+use std::{collections::HashMap, fmt, iter, rc::Rc, str::FromStr};
 
+use itertools::Itertools;
 use svg::{self, node::element as svg_element};
 
 use crate::{
@@ -20,7 +21,7 @@ use crate::{
 /// - `Straight`: Creates direct line segments between points
 /// - `Curved`: Creates smooth bezier curves between points
 /// - `Orthogonal`: Creates only horizontal and vertical line segments
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ArrowStyle {
     Straight,
     #[default]
@@ -325,8 +326,7 @@ impl Arrow {
     fn render_to_svg(&self, path: &ArrowPath) -> Box<dyn svg::Node> {
         let path_data = match self.definition.style {
             ArrowStyle::Curved => Self::curved_path_data(path),
-            ArrowStyle::Straight => Self::straight_path_data(path.source(), path.destination()),
-            ArrowStyle::Orthogonal => Self::orthogonal_path_data(path.source(), path.destination()),
+            ArrowStyle::Straight | ArrowStyle::Orthogonal => Self::polyline_path_data(path),
         };
 
         let color = self.definition.stroke().color();
@@ -381,7 +381,7 @@ impl Arrow {
 
     /// Creates an SVG path data string for an [`ArrowPath`].
     ///
-    /// Returns a straight line via [`Self::straight_path_data`] when
+    /// Returns a straight line via [`Self::polyline_path_data`] when
     /// [`control_points`](ArrowPath::control_points) is empty. Otherwise,
     /// control points are consumed from the front in cubic Bézier groups
     /// of three, and the tail is resolved based on how many remain:
@@ -406,7 +406,7 @@ impl Arrow {
     /// An SVG path data string (`d` attribute) for a `<path>` element.
     fn curved_path_data(path: &ArrowPath) -> String {
         if path.control_points().is_empty() {
-            return Self::straight_path_data(path.source(), path.destination());
+            return Self::polyline_path_data(path);
         }
 
         let control_points = path.control_points();
@@ -479,47 +479,38 @@ impl Arrow {
         d
     }
 
-    /// Creates a straight-line path data string from two points.
-    pub fn straight_path_data(start: Point, end: Point) -> String {
-        format!("M {} {} L {} {}", start.x(), start.y(), end.x(), end.y())
-    }
-
-    /// Creates an orthogonal path data string from two points.
+    /// Creates a polyline path data string from an [`ArrowPath`].
     ///
-    /// Produces a path with only horizontal and vertical line segments.
-    fn orthogonal_path_data(start: Point, end: Point) -> String {
-        // Determine whether to go horizontal first then vertical, or vertical first then horizontal
-        // This decision is based on the relative positions of the start and end points
+    /// The path runs from [`source`](ArrowPath::source) through each
+    /// [`control point`](ArrowPath::control_points) to
+    /// [`destination`](ArrowPath::destination) as straight `L` segments. With
+    /// no control points this is a single straight line; with them it produces
+    /// a multi-segment polyline.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use orrery_core::draw::{Arrow, ArrowPath};
+    /// # use orrery_core::geometry::Point;
+    /// // A right-angle route turning at a single corner.
+    /// let path = ArrowPath::new(
+    ///     Point::new(0.0, 0.0),
+    ///     Point::new(10.0, 10.0),
+    ///     vec![Point::new(10.0, 0.0)],
+    /// );
+    /// assert_eq!(Arrow::polyline_path_data(&path), "M 0 0 L 10 0 L 10 10");
+    /// ```
+    pub fn polyline_path_data(path: &ArrowPath) -> String {
+        let l_parts = path
+            .control_points()
+            .iter()
+            .copied()
+            .chain(iter::once(path.destination()))
+            .map(|p| format!("L {} {}", p.x(), p.y()));
 
-        let abs_dist = end.sub_point(start).abs();
-        let mid = start.midpoint(end);
-
-        // If we're more horizontal than vertical, go horizontal first
-        if abs_dist.x() > abs_dist.y() {
-            format!(
-                "M {} {} L {} {} L {} {} L {} {}",
-                start.x(),
-                start.y(),
-                mid.x(),
-                start.y(),
-                mid.x(),
-                end.y(),
-                end.x(),
-                end.y()
-            )
-        } else {
-            format!(
-                "M {} {} L {} {} L {} {} L {} {}",
-                start.x(),
-                start.y(),
-                start.x(),
-                mid.y(),
-                end.x(),
-                mid.y(),
-                end.x(),
-                end.y()
-            )
-        }
+        iter::once(format!("M {} {}", path.source().x(), path.source().y()))
+            .chain(l_parts)
+            .join(" ")
     }
 
     fn create_arrow_right(color: Color) -> svg_element::Marker {
@@ -662,13 +653,26 @@ mod tests {
     }
 
     #[test]
-    fn test_straight_path_data() {
-        let start = Point::new(10.0, 20.0);
-        let end = Point::new(100.0, 50.0);
+    fn test_polyline_path_data_without_control_points() {
+        let path = ArrowPath::straight(Point::new(10.0, 20.0), Point::new(100.0, 50.0));
 
-        let path = Arrow::straight_path_data(start, end);
+        let path = Arrow::polyline_path_data(&path);
 
         assert_eq!(path, "M 10 20 L 100 50");
+    }
+
+    #[test]
+    fn test_polyline_path_data_with_control_points() {
+        // Control points produce additional `L` segments (e.g. orthogonal routing).
+        let path = ArrowPath::new(
+            Point::new(0.0, 0.0),
+            Point::new(100.0, 20.0),
+            vec![Point::new(50.0, 0.0), Point::new(50.0, 20.0)],
+        );
+
+        let data = Arrow::polyline_path_data(&path);
+
+        assert_eq!(data, "M 0 0 L 50 0 L 50 20 L 100 20");
     }
 
     #[test]

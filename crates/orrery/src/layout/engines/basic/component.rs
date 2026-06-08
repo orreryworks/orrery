@@ -18,7 +18,7 @@ use orrery_core::{
 use crate::{
     error::RenderError,
     layout::{
-        component::{self, ArrowPlacer, Component, CurvedArrowPlacer, Layout},
+        component::{self, ArrowPlacer, Component, Layout, SmartArrowPlacer},
         engines::{ComponentEngine, EmbeddedLayouts},
         layer::{ContentStack, PositionedContent},
     },
@@ -39,7 +39,7 @@ pub struct Engine {
     text_padding: f32,
     /// Minimum spacing between adjacent components.
     min_spacing: f32,
-    arrow_placer: CurvedArrowPlacer,
+    arrow_placer: SmartArrowPlacer,
 }
 
 impl Engine {

@@ -212,6 +212,11 @@ impl<'a> PositionedArrowWithText<'a> {
         self
     }
 
+    /// Returns the geometric path of this arrow.
+    pub fn path(&self) -> &ArrowPath {
+        &self.path
+    }
+
     /// Renders this positioned arrow to layered SVG output.
     ///
     /// # Arguments
