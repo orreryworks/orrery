@@ -15,7 +15,7 @@ use orrery_core::{
 use crate::{
     error::RenderError,
     layout::{
-        component::{self, ArrowPlacer, Component, CurvedArrowPlacer, Layout},
+        component::{self, ArrowPlacer, Component, Layout, SmartArrowPlacer},
         engines::{ComponentEngine, EmbeddedLayouts},
         layer::{ContentStack, PositionedContent},
     },
@@ -36,7 +36,7 @@ pub struct Engine {
     vertical_spacing: f32,
     /// Container padding for nested components.
     container_padding: Insets,
-    arrow_placer: CurvedArrowPlacer,
+    arrow_placer: SmartArrowPlacer,
 }
 
 impl Engine {
@@ -47,7 +47,7 @@ impl Engine {
             horizontal_spacing: 50.0,
             vertical_spacing: 80.0,
             container_padding: Insets::uniform(20.0),
-            arrow_placer: CurvedArrowPlacer::new(),
+            arrow_placer: SmartArrowPlacer::new(),
         }
     }
 

@@ -39,6 +39,7 @@ tempfile = "3.27.0"
 graphviz-rust = { version = "0.9.8", optional = true }
 dot-structures = { version = "0.1.2", optional = true }
 dot-generator = { version = "0.2.0", optional = true }
+itertools = "0.14.0"
 
 [dev-dependencies]
 float-cmp = "0.10"
