@@ -31,7 +31,7 @@ orrery-parser.workspace = true
 bumpalo = "3.20.3"
 clap = { version = "4.6.1", features = ["derive"] }
 env_logger = { version = "0.11.10", features = ["kv"] }
-log = { version = "0.4.30", features = ["kv", "kv_std"] }
+log = { version = "0.4.31", features = ["kv", "kv_std"] }
 miette = { version = "7.6.0", features = ["fancy"] }
 thiserror = "2.0.18"
 toml = "1.1.2"
