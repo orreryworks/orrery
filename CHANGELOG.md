@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **BREAKING: Self-referencing type overrides** — A type can now refine itself under the same name by referencing itself in its own definition (`type WarnArrow = WarnArrow[stroke=[color="red"]];`), layering new styling on top of its previous definition instead of forcing a new name for every tweak. ([#138](https://github.com/orreryworks/orrery/issues/138))
+
 ## [0.4.1] - 2026-06-08
 
 ### Changed
