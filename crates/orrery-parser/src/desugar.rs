@@ -592,26 +592,53 @@ impl<'a> Desugar<'a> {
         })
     }
 
-    /// Merges imported and local [`TypeDefinition`]s, deduplicating by name.
+    /// Merges imported and local [`TypeDefinition`]s into one ordered list,
+    /// resolving same-name collisions.
     ///
-    /// Chains imported definitions before local ones and collects into an
-    /// [`IndexMap`] keyed by type name. On duplicate keys `IndexMap` overwrites
-    /// the value but preserves the original insertion order, giving "first
-    /// position, last value" semantics:
+    /// Imported definitions precede local ones, and a name keeps the position
+    /// of its first occurrence. Collisions resolve in one of two ways:
     ///
-    /// - **Position**: the earliest import determines where a name appears.
-    /// - **Value**: the last definition (local > later import > earlier import)
-    ///   wins, matching the "last writer wins" rule from the spec.
+    /// - **Self-reference** (`type X = X[...]`): the new attributes chain onto
+    ///   the previous `X`, accumulating in declaration order so later
+    ///   attributes override earlier ones during elaboration.
+    /// - **Otherwise**: last writer wins (local > later import > earlier
+    ///   import), fully replacing the earlier definition.
+    ///
+    /// A self-reference with no previous definition is dangling and kept as-is
+    /// rather than dropped, so validation can report a precise error at the
+    /// definition site.
     fn merge_with_import_type_definitions(
         &self,
         type_defs: Vec<TypeDefinition<'a>>,
         imports: Vec<Import<'a>>,
     ) -> Vec<TypeDefinition<'a>> {
-        let dedup: IndexMap<_, _> = self
+        let mut dedup = IndexMap::<Id, TypeDefinition>::new();
+        for type_def in self
             .extract_type_definitions_from_imports(imports)
             .chain(type_defs)
-            .map(|type_def| (*type_def.name.inner(), type_def))
-            .collect();
+        {
+            let id = type_def.name.inner();
+            let is_self_ref = type_def
+                .type_spec
+                .type_name
+                .as_ref()
+                .is_some_and(|name| name.inner() == id);
+
+            if is_self_ref && let Some(existing) = dedup.get_mut(id) {
+                // Chain onto the previous definition. Appending is enough
+                // because elaboration applies attributes in order with
+                // last-writer-wins, so duplicate keys resolve there.
+                existing
+                    .type_spec
+                    .attributes
+                    .extend(type_def.type_spec.attributes);
+            } else {
+                // Last writer wins; a dangling self-reference is kept for
+                // validation to diagnose.
+                dedup.insert(*id, type_def);
+            }
+        }
+
         dedup.into_values().collect()
     }
 }
@@ -3011,5 +3038,198 @@ mod tests {
         // Service must come first (Critical depends on it).
         assert_eq!(*result.type_definitions[0].name.inner(), "Service");
         assert_eq!(*result.type_definitions[1].name.inner(), "Critical");
+    }
+
+    #[test]
+    fn test_self_ref_chain_accumulates_in_order() {
+        // type Service = Rectangle[fill_color="blue"];
+        // type Service = Service[rounded="5"];   // self-reference
+        // type Service = Service[text="white"];  // self-reference
+        //
+        // Each self-reference resolves to the previous definition and chains
+        // onto it: attributes accumulate in declaration order while the base
+        // type stays the original (`Rectangle`), never the self-reference.
+        let main_ast = make_diagram_ast(
+            vec![
+                TypeDefinition {
+                    name: spanned(Id::new("Service")),
+                    type_spec: TypeSpec {
+                        type_name: Some(spanned(Id::new("Rectangle"))),
+                        attributes: vec![Attribute {
+                            name: spanned("fill_color"),
+                            value: AttributeValue::String(spanned("blue".to_string())),
+                        }],
+                    },
+                },
+                TypeDefinition {
+                    name: spanned(Id::new("Service")),
+                    type_spec: TypeSpec {
+                        type_name: Some(spanned(Id::new("Service"))),
+                        attributes: vec![Attribute {
+                            name: spanned("rounded"),
+                            value: AttributeValue::String(spanned("5".to_string())),
+                        }],
+                    },
+                },
+                TypeDefinition {
+                    name: spanned(Id::new("Service")),
+                    type_spec: TypeSpec {
+                        type_name: Some(spanned(Id::new("Service"))),
+                        attributes: vec![Attribute {
+                            name: spanned("text"),
+                            value: AttributeValue::String(spanned("white".to_string())),
+                        }],
+                    },
+                },
+            ],
+            vec![],
+        );
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        // Chaining merges into a single definition.
+        assert_eq!(result.type_definitions.len(), 1);
+        let def = &result.type_definitions[0];
+
+        // The base type stays `Rectangle`, not the self-reference `Service`.
+        assert_eq!(
+            *def.type_spec.type_name.as_ref().unwrap().inner(),
+            "Rectangle"
+        );
+
+        let names: Vec<&str> = def
+            .type_spec
+            .attributes
+            .iter()
+            .map(|attr| *attr.name.inner())
+            .collect();
+        assert_eq!(names, vec!["fill_color", "rounded", "text"]);
+    }
+
+    #[test]
+    fn test_self_ref_repeated_attribute_preserves_override_order() {
+        // When the same attribute is set twice, both entries are kept in order
+        // so that elaboration's last-writer-wins applies the chained value.
+        let main_ast = make_diagram_ast(
+            vec![
+                TypeDefinition {
+                    name: spanned(Id::new("Service")),
+                    type_spec: TypeSpec {
+                        type_name: Some(spanned(Id::new("Rectangle"))),
+                        attributes: vec![Attribute {
+                            name: spanned("fill_color"),
+                            value: AttributeValue::String(spanned("blue".to_string())),
+                        }],
+                    },
+                },
+                TypeDefinition {
+                    name: spanned(Id::new("Service")),
+                    type_spec: TypeSpec {
+                        type_name: Some(spanned(Id::new("Service"))),
+                        attributes: vec![Attribute {
+                            name: spanned("fill_color"),
+                            value: AttributeValue::String(spanned("red".to_string())),
+                        }],
+                    },
+                },
+            ],
+            vec![],
+        );
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        assert_eq!(result.type_definitions.len(), 1);
+        let attributes = &result.type_definitions[0].type_spec.attributes;
+        assert_eq!(attributes.len(), 2);
+        assert_eq!(
+            attributes[0].value.as_str().expect("String"),
+            "blue",
+            "earlier value must come first"
+        );
+        assert_eq!(
+            attributes[1].value.as_str().expect("String"),
+            "red",
+            "chained value must come last so it wins"
+        );
+    }
+
+    #[test]
+    fn test_self_ref_without_previous_definition_is_kept() {
+        // A dangling self-reference (no previous definition) must NOT be
+        // silently dropped. It is kept verbatim so a later stage can emit a
+        // precise "base type not found" diagnostic at the definition site.
+        let main_ast = make_diagram_ast(
+            vec![TypeDefinition {
+                name: spanned(Id::new("WarnArrow")),
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("WarnArrow"))),
+                    attributes: vec![Attribute {
+                        name: spanned("color"),
+                        value: AttributeValue::String(spanned("red".to_string())),
+                    }],
+                },
+            }],
+            vec![],
+        );
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        assert_eq!(result.type_definitions.len(), 1);
+        let def = &result.type_definitions[0];
+        assert_eq!(*def.name.inner(), "WarnArrow");
+        // The dangling self-reference is preserved as-is.
+        assert_eq!(
+            *def.type_spec.type_name.as_ref().unwrap().inner(),
+            "WarnArrow"
+        );
+        assert_eq!(def.type_spec.attributes.len(), 1);
+    }
+
+    #[test]
+    fn test_self_ref_chains_onto_imported_definition() {
+        // A local self-reference chains onto a glob-imported definition of the
+        // same name, accumulating attributes across the import boundary.
+        let lib_ast = make_library_ast(vec![TypeDefinition {
+            name: spanned(Id::new("Service")),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![Attribute {
+                    name: spanned("fill_color"),
+                    value: AttributeValue::String(spanned("blue".to_string())),
+                }],
+            },
+        }]);
+
+        let mut main_ast = make_diagram_ast(
+            vec![TypeDefinition {
+                name: spanned(Id::new("Service")),
+                type_spec: TypeSpec {
+                    type_name: Some(spanned(Id::new("Service"))),
+                    attributes: vec![Attribute {
+                        name: spanned("rounded"),
+                        value: AttributeValue::String(spanned("5".to_string())),
+                    }],
+                },
+            }],
+            vec![],
+        );
+        main_ast.imports = vec![make_import(None, lib_ast)];
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        assert_eq!(result.type_definitions.len(), 1);
+        let def = &result.type_definitions[0];
+        // Base type comes from the imported definition.
+        assert_eq!(
+            *def.type_spec.type_name.as_ref().unwrap().inner(),
+            "Rectangle"
+        );
+        assert_eq!(def.type_spec.attributes.len(), 2);
+        assert_eq!(*def.type_spec.attributes[0].name.inner(), "fill_color");
+        assert_eq!(*def.type_spec.attributes[1].name.inner(), "rounded");
     }
 }
