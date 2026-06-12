@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **BREAKING: Self-referencing type overrides** — A type can now refine itself under the same name by referencing itself in its own definition (`type WarnArrow = WarnArrow[stroke=[color="red"]];`), layering new styling on top of its previous definition instead of forcing a new name for every tweak. ([#138](https://github.com/orreryworks/orrery/issues/138))
+- **Unknown base types caught during validation** — Referencing a base type that is neither a built-in nor a previously defined `type` is now reported as `E205` during validation instead of elaboration. ([#141](https://github.com/orreryworks/orrery/issues/141))
 
 ## [0.4.1] - 2026-06-08
 
