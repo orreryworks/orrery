@@ -14,11 +14,15 @@
 //! - **Embed Reference Resolution**: Validates that all `DiagramSource::Ref` nodes were resolved
 //!   during desugaring. Surviving refs indicate an unknown embed reference.
 
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, HashSet},
+    mem,
+};
 
 use orrery_core::{identifier::Id, semantic::DiagramKind};
 
 use crate::{
+    builtin_types,
     error::{Diagnostic, DiagnosticCollector, ErrorCode},
     parser_types::{
         Attribute, AttributeValue, ComponentContent, DiagramSource, Element, FileAst, FileHeader,
@@ -114,8 +118,8 @@ trait Visitor<'a> {
 
     /// Visits a single type definition.
     fn visit_type_definition(&mut self, type_def: &TypeDefinition<'a>) {
-        self.visit_type_name(&type_def.name);
         self.visit_type_spec(&type_def.type_spec);
+        self.visit_type_name(&type_def.name);
     }
 
     /// Visits a type name.
@@ -356,6 +360,29 @@ fn visit_file_ast<'a, V: Visitor<'a>>(visitor: &mut V, file_ast: &FileAst<'a>) {
     visitor.visit_file_ast(file_ast)
 }
 
+struct FileAstState {
+    type_registry: HashSet<Id>,
+    activation_stack: HashMap<Id, Vec<Span>>,
+    component_registry: HashMap<Id, Span>,
+    diagram_kind: Option<DiagramKind>,
+}
+
+impl FileAstState {
+    fn new() -> Self {
+        let type_registry = builtin_types::defaults()
+            .into_iter()
+            .map(|type_def| type_def.id())
+            .collect();
+
+        Self {
+            type_registry,
+            activation_stack: HashMap::new(),
+            component_registry: HashMap::new(),
+            diagram_kind: None,
+        }
+    }
+}
+
 /// Validator that checks all file AST semantic constraints.
 ///
 /// Uses a visitor-based traversal to validate:
@@ -374,16 +401,7 @@ fn visit_file_ast<'a, V: Visitor<'a>>(visitor: &mut V, file_ast: &FileAst<'a>) {
 /// registry. Since identifiers are fully qualified after desugaring, all components in a
 /// diagram are accessible regardless of nesting depth.
 pub struct Validator {
-    // Activation validation state
-    activation_stack: Vec<HashMap<Id, Vec<Span>>>,
-
-    // Component identifier registry for validation
-    component_registry: Vec<HashMap<Id, Span>>,
-
-    // Note validation state
-    diagram_kind: Option<DiagramKind>,
-
-    // Shared error collection
+    state: FileAstState,
     diagnostics: DiagnosticCollector,
 }
 
@@ -391,20 +409,9 @@ impl Validator {
     /// Creates a new [`Validator`] with empty state.
     pub fn new() -> Self {
         Self {
-            activation_stack: Vec::new(),
-            component_registry: Vec::new(),
-            diagram_kind: None,
+            state: FileAstState::new(),
             diagnostics: DiagnosticCollector::new(),
         }
-    }
-
-    /// Returns a mutable reference to the current activation scope.
-    ///
-    /// Panics if the activation stack is empty.
-    fn activation_state_mut(&mut self) -> &mut HashMap<Id, Vec<Span>> {
-        self.activation_stack
-            .last_mut()
-            .expect("activation scope not initialized")
     }
 
     /// Validates that an `align` value is appropriate for the current diagram type.
@@ -416,7 +423,7 @@ impl Validator {
     /// The parser enforces valid diagram types, but we handle these cases
     /// to fail gracefully if the validation is called incorrectly.
     fn validate_align_for_diagram_type(&mut self, align_value: &str, span: Span) {
-        match self.diagram_kind {
+        match self.state.diagram_kind {
             Some(DiagramKind::Sequence) => {
                 if !matches!(align_value, "over" | "left" | "right") {
                     self.diagnostics.emit(
@@ -450,13 +457,35 @@ impl Validator {
             }
         }
     }
+
+    fn validate_file_ast_state(&mut self) {
+        self.validate_activation_stack_pairs();
+    }
+
+    // Validate any remaining unpaired activations.
+    fn validate_activation_stack_pairs(&mut self) {
+        for (component_id, spans) in self.state.activation_stack.iter() {
+            if !spans.is_empty() {
+                let span = spans.last().cloned().unwrap_or_default();
+                self.diagnostics.emit(
+                    Diagnostic::error(format!(
+                        "component `{component_id}` was activated but never deactivated"
+                    ))
+                    .with_code(ErrorCode::E201)
+                    .with_label(span, "unpaired activate")
+                    .with_help(
+                        "every activate statement must have a corresponding deactivate statement",
+                    ),
+                );
+            }
+        }
+    }
 }
 
 impl<'a> Visitor<'a> for Validator {
     /// Pushes a fresh component registry scope before visiting the file's children.
     fn visit_file_ast(&mut self, file_ast: &FileAst<'a>) {
-        // Begin component registry for this diagram
-        self.component_registry.push(HashMap::new());
+        let last_state = mem::replace(&mut self.state, FileAstState::new());
 
         // Call default traversal
         self.visit_header(&file_ast.header);
@@ -464,51 +493,42 @@ impl<'a> Visitor<'a> for Validator {
         self.visit_type_definitions(&file_ast.type_definitions);
         self.visit_elements(&file_ast.elements);
 
-        // End component registry scope
-        self.component_registry.pop();
+        self.validate_file_ast_state();
+
+        // Restore the previous state
+        self.state = last_state;
     }
 
     /// Records the current diagram kind for later validation.
     fn visit_diagram_kind(&mut self, kind: &Spanned<DiagramKind>) {
-        self.diagram_kind = Some(**kind);
+        self.state.diagram_kind = Some(**kind);
     }
 
-    /// Pushes an activation scope, visits child elements, then validates unpaired activations (`E201`).
-    fn visit_elements(&mut self, elements: &[Element<'a>]) {
-        // Begin new activation scope
-        self.activation_stack.push(HashMap::new());
+    /// Visits a type name.
+    fn visit_type_name(&mut self, name: &Spanned<Id>) {
+        self.state.type_registry.insert(*name.inner());
+    }
 
-        // Traverse elements
-        for elem in elements {
-            self.visit_element(elem);
-        }
-
-        // End scope
-        // Validate any remaining unpaired activations in this scope
-        if let Some(state) = self.activation_stack.pop() {
-            for (component_id, spans) in state.iter() {
-                if !spans.is_empty() {
-                    let span = spans.last().cloned().unwrap_or_default();
-                    self.diagnostics.emit(
-                        Diagnostic::error(format!(
-                            "component `{component_id}` was activated but never deactivated"
-                        ))
-                        .with_code(ErrorCode::E201)
-                        .with_label(span, "unpaired activate")
-                        .with_help("every activate statement must have a corresponding deactivate statement"),
-                    );
-                }
-            }
+    /// Checks that the base type is a registered built-in or user-defined type,
+    /// emitting `E205` if it is unknown.
+    fn visit_base_type(&mut self, base_type: &Spanned<Id>) {
+        if !self.state.type_registry.contains(base_type.inner()) {
+            self.diagnostics.emit(
+                Diagnostic::error(format!("unknown base type `{base_type}`"))
+                    .with_code(ErrorCode::E205)
+                    .with_label(base_type.span(), "unknown base type")
+                    .with_help(format!(
+                        "type `{base_type}` must be a built-in type or defined with a `type` statement before it can be used as a base type"
+                    )),
+            );
         }
     }
 
     /// Registers the component name in the current diagram's component registry.
     fn visit_component_name(&mut self, name: &Spanned<Id>) {
-        let registry = self
+        self.state
             .component_registry
-            .last_mut()
-            .expect("component registry not initialized");
-        registry.insert(*name.inner(), name.span());
+            .insert(*name.inner(), name.span());
     }
 
     /// Validates the activation target and pushes it onto the activation stack.
@@ -519,8 +539,8 @@ impl<'a> Visitor<'a> for Validator {
         self.visit_type_spec(type_spec);
 
         // Then handle activation stack logic
-        let state = self.activation_state_mut();
-        state
+        self.state
+            .activation_stack
             .entry(*component.inner())
             .or_default()
             .push(component.span());
@@ -532,8 +552,7 @@ impl<'a> Visitor<'a> for Validator {
         self.visit_identifier(component);
 
         // Then handle activation stack logic
-        let state = self.activation_state_mut();
-        match state.get_mut(component.inner()) {
+        match self.state.activation_stack.get_mut(component.inner()) {
             Some(spans) if !spans.is_empty() => {
                 // Remove the most recent activation span (LIFO)
                 let _ = spans.pop();
@@ -604,12 +623,11 @@ impl<'a> Visitor<'a> for Validator {
 
     /// Checks that the referenced component exists in the registry, emitting `E200` if not found.
     fn visit_identifier(&mut self, identifier: &Spanned<Id>) {
-        let registry = self
+        if !self
+            .state
             .component_registry
-            .last()
-            .expect("component registry not initialized");
-
-        if !registry.contains_key(identifier.inner()) {
+            .contains_key(identifier.inner())
+        {
             self.diagnostics.emit(
                 Diagnostic::error(format!("component `{}` not found", identifier.inner()))
                     .with_code(ErrorCode::E200)
@@ -1062,6 +1080,26 @@ mod note_validation_tests {
             "Empty on attribute should be valid (margin note)"
         );
     }
+
+    #[test]
+    fn test_align_validation_without_diagram_kind() {
+        // Defensive case: align validation when no diagram kind has been set.
+        // The parser enforces a diagram kind, so this exercises the graceful
+        // fallback path directly.
+        let mut validator = Validator::new();
+        assert!(validator.state.diagram_kind.is_none());
+
+        validator.validate_align_for_diagram_type("left", Span::new(0..4));
+
+        let err = validator.diagnostics.finish().unwrap_err();
+        assert_eq!(err.len(), 1);
+        assert_eq!(err[0].code(), Some(ErrorCode::E203));
+        assert!(
+            err[0].to_string().contains("diagram type not set"),
+            "unexpected message: {}",
+            err[0]
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1151,11 +1189,10 @@ mod identifier_validation_tests {
         let mut validator = Validator::new();
 
         // Set up registry with a component
-        validator.component_registry.push(
-            vec![(Id::new("app"), Span::new(0..3))]
-                .into_iter()
-                .collect(),
-        );
+        validator
+            .state
+            .component_registry
+            .insert(Id::new("app"), Span::new(0..3));
 
         // Test visit_identifier with a non-existent component
         validator.visit_identifier(&Spanned::new(Id::new("unknown"), Span::new(10..17)));
@@ -1171,14 +1208,10 @@ mod identifier_validation_tests {
         let mut validator = Validator::new();
 
         // Set up registry with multiple components
-        validator.component_registry.push(
-            vec![
-                (Id::new("client"), Span::new(0..6)),
-                (Id::new("server"), Span::new(18..24)),
-            ]
-            .into_iter()
-            .collect(),
-        );
+        validator.state.component_registry.extend(vec![
+            (Id::new("client"), Span::new(0..6)),
+            (Id::new("server"), Span::new(18..24)),
+        ]);
 
         // Test visit_identifier with multiple components
         validator.visit_identifier(&Spanned::new(Id::new("client"), Span::new(40..46)));
@@ -1193,11 +1226,10 @@ mod identifier_validation_tests {
         let mut validator = Validator::new();
 
         // Set up registry with one component
-        validator.component_registry.push(
-            vec![(Id::new("client"), Span::new(0..6))]
-                .into_iter()
-                .collect(),
-        );
+        validator
+            .state
+            .component_registry
+            .insert(Id::new("client"), Span::new(0..6));
 
         // Test visit_identifier with one valid and one invalid component
         validator.visit_identifier(&Spanned::new(Id::new("client"), Span::new(40..46)));
@@ -1603,7 +1635,7 @@ mod identifier_validation_tests {
                 Element::Activate {
                     component: Spanned::new(Id::new("server"), Span::new(110..116)),
                     type_spec: TypeSpec {
-                        type_name: Some(Spanned::new(Id::new("Activation"), Span::new(118..128))),
+                        type_name: Some(Spanned::new(Id::new("Activate"), Span::new(118..128))),
                         attributes: vec![Attribute {
                             name: Spanned::new("fill", Span::new(129..133)),
                             value: AttributeValue::String(Spanned::new(
@@ -1732,5 +1764,232 @@ mod embed_ref_validation_tests {
         assert_eq!(err.len(), 2, "Expected two E204 errors, got: {:?}", err);
         assert_eq!(err[0].code(), Some(ErrorCode::E204));
         assert_eq!(err[1].code(), Some(ErrorCode::E204));
+    }
+}
+
+#[cfg(test)]
+mod base_type_validation_tests {
+    use super::*;
+
+    #[test]
+    fn test_unknown_base_type_produces_e205() {
+        // A component whose type name is neither a built-in nor a user-defined
+        // type should produce an E205 "unknown base type" diagnostic.
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: vec![],
+            elements: vec![Element::Component {
+                name: Spanned::new(Id::new("box"), Span::new(10..13)),
+                display_name: None,
+                type_spec: TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("UnknownShape"), Span::new(15..27))),
+                    attributes: vec![],
+                },
+                content: ComponentContent::None,
+            }],
+            imports: vec![],
+        };
+
+        let result = validate(&diagram);
+        assert!(result.is_err(), "Unknown base type should fail validation");
+
+        let err = result.unwrap_err();
+        assert_eq!(err.len(), 1);
+        assert_eq!(err[0].code(), Some(ErrorCode::E205));
+        assert!(
+            err[0].to_string().contains("unknown base type"),
+            "unexpected message: {}",
+            err[0]
+        );
+    }
+
+    #[test]
+    fn test_unknown_base_type_in_type_definition_produces_e205() {
+        // A `type` definition whose base type is unknown should also produce E205.
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: vec![TypeDefinition {
+                name: Spanned::new(Id::new("MyType"), Span::new(15..21)),
+                type_spec: TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("DoesNotExist"), Span::new(24..36))),
+                    attributes: vec![],
+                },
+            }],
+            elements: vec![],
+            imports: vec![],
+        };
+
+        let result = validate(&diagram);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert_eq!(err.len(), 1);
+        assert_eq!(err[0].code(), Some(ErrorCode::E205));
+    }
+
+    #[test]
+    fn test_builtin_base_type_ok() {
+        // A component using a built-in type (`Rectangle`) should pass validation.
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: vec![],
+            elements: vec![Element::Component {
+                name: Spanned::new(Id::new("box"), Span::new(10..13)),
+                display_name: None,
+                type_spec: TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(15..24))),
+                    attributes: vec![],
+                },
+                content: ComponentContent::None,
+            }],
+            imports: vec![],
+        };
+
+        let result = validate(&diagram);
+        assert!(
+            result.is_ok(),
+            "Built-in base type should pass: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_user_defined_type_as_base_type_ok() {
+        // A user-defined type registered via `visit_type_name` should be usable
+        // as the base type of both a later type definition and a component.
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: vec![
+                // type MyBase : Rectangle;
+                TypeDefinition {
+                    name: Spanned::new(Id::new("MyBase"), Span::new(15..21)),
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(24..33))),
+                        attributes: vec![],
+                    },
+                },
+                // type Derived : MyBase;
+                TypeDefinition {
+                    name: Spanned::new(Id::new("Derived"), Span::new(40..47)),
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("MyBase"), Span::new(50..56))),
+                        attributes: vec![],
+                    },
+                },
+            ],
+            elements: vec![Element::Component {
+                name: Spanned::new(Id::new("box"), Span::new(60..63)),
+                display_name: None,
+                type_spec: TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("Derived"), Span::new(65..72))),
+                    attributes: vec![],
+                },
+                content: ComponentContent::None,
+            }],
+            imports: vec![],
+        };
+
+        let result = validate(&diagram);
+        assert!(
+            result.is_ok(),
+            "User-defined types used as base types should pass: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_self_reference_without_prior_definition_produces_e205() {
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: vec![TypeDefinition {
+                name: Spanned::new(Id::new("MyType"), Span::new(15..21)),
+                type_spec: TypeSpec {
+                    type_name: Some(Spanned::new(Id::new("MyType"), Span::new(24..30))),
+                    attributes: vec![Attribute {
+                        name: Spanned::new("fill_color", Span::new(31..41)),
+                        value: AttributeValue::String(Spanned::new(
+                            "red".to_string(),
+                            Span::new(43..48),
+                        )),
+                    }],
+                },
+            }],
+            elements: vec![],
+            imports: vec![],
+        };
+
+        let result = validate(&diagram);
+        assert!(
+            result.is_err(),
+            "Self-reference without a prior definition should fail validation"
+        );
+
+        let err = result.unwrap_err();
+        assert_eq!(err.len(), 1);
+        assert_eq!(err[0].code(), Some(ErrorCode::E205));
+    }
+
+    #[test]
+    fn test_self_reference_on_previously_defined_type_ok() {
+        let diagram = FileAst {
+            header: FileHeader::Diagram {
+                kind: Spanned::new(DiagramKind::Component, Span::new(0..9)),
+                attributes: vec![],
+            },
+            import_decls: vec![],
+            type_definitions: vec![
+                // type MyType = Rectangle;
+                TypeDefinition {
+                    name: Spanned::new(Id::new("MyType"), Span::new(15..21)),
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(24..33))),
+                        attributes: vec![],
+                    },
+                },
+                // type MyType = MyType[fill_color="red"];
+                TypeDefinition {
+                    name: Spanned::new(Id::new("MyType"), Span::new(40..46)),
+                    type_spec: TypeSpec {
+                        type_name: Some(Spanned::new(Id::new("MyType"), Span::new(49..55))),
+                        attributes: vec![Attribute {
+                            name: Spanned::new("fill_color", Span::new(56..66)),
+                            value: AttributeValue::String(Spanned::new(
+                                "red".to_string(),
+                                Span::new(68..73),
+                            )),
+                        }],
+                    },
+                },
+            ],
+            elements: vec![],
+            imports: vec![],
+        };
+
+        let result = validate(&diagram);
+        assert!(
+            result.is_ok(),
+            "Self-reference on a previously defined type should pass validation: {:?}",
+            result.err()
+        );
     }
 }

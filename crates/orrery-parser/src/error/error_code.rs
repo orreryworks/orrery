@@ -90,6 +90,12 @@ pub enum ErrorCode {
     /// namespaced import in the current file.
     E204,
 
+    /// Unknown base type.
+    ///
+    /// A `type` definition or element references a base type that is neither a
+    /// built-in type nor a previously defined `type`.
+    E205,
+
     // =========================================================================
     // Elaboration Errors (E3xx)
     // =========================================================================
@@ -191,6 +197,7 @@ impl ErrorCode {
             ErrorCode::E202 => "E202",
             ErrorCode::E203 => "E203",
             ErrorCode::E204 => "E204",
+            ErrorCode::E205 => "E205",
             // Elaboration errors
             ErrorCode::E300 => "E300",
             ErrorCode::E301 => "E301",
@@ -229,6 +236,7 @@ impl ErrorCode {
             ErrorCode::E202 => "unpaired deactivate",
             ErrorCode::E203 => "invalid align value",
             ErrorCode::E204 => "unknown embed reference",
+            ErrorCode::E205 => "unknown base type",
             // Elaboration errors
             ErrorCode::E300 => "undefined type",
             ErrorCode::E301 => "type override not supported",
