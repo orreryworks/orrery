@@ -158,7 +158,7 @@ impl From<std::ops::Range<usize>> for Span {
 /// // Deref lets you call methods on the inner value directly
 /// assert!(name.starts_with("ser"));
 /// ```
-#[derive(Debug, Default, Clone, Eq)]
+#[derive(Debug, Default, Clone, Copy, Eq)]
 pub struct Spanned<T> {
     /// The wrapped value.
     value: T,

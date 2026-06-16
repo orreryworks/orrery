@@ -33,7 +33,7 @@ use crate::interner::{self, Symbol};
 /// assert_eq!(nested.name(), "database");
 /// assert_eq!(nested.namespace(), Some("user_service"));
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Id {
     /// Final path segment (e.g., `"backend"` in `"system::backend"`).
     name: Symbol,
@@ -218,6 +218,12 @@ impl Id {
 impl fmt::Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.full_path())
+    }
+}
+
+impl fmt::Debug for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Id({})", self.full_path())
     }
 }
 

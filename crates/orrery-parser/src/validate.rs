@@ -369,10 +369,7 @@ struct FileAstState {
 
 impl FileAstState {
     fn new() -> Self {
-        let type_registry = builtin_types::defaults()
-            .into_iter()
-            .map(|type_def| type_def.id())
-            .collect();
+        let type_registry = builtin_types::defaults().into_ids().into_iter().collect();
 
         Self {
             type_registry,

@@ -104,9 +104,9 @@ pub enum ErrorCode {
     /// A type was referenced that has not been defined.
     E300,
 
-    /// Type override not supported.
+    /// Unresolved embed reference.
     ///
-    /// Overriding is not supported for this type.
+    /// An `embed <name>` references a diagram that could not be resolved.
     E301,
 
     /// Invalid attribute value.
@@ -145,11 +145,6 @@ pub enum ErrorCode {
     /// An attempt was made to add nested content to a shape type that
     /// does not support it.
     E308,
-
-    /// Unresolved embed reference.
-    ///
-    /// An `embed <name>` references a diagram that could not be resolved.
-    E309,
 
     // =========================================================================
     // Resolver Errors (E4xx)
@@ -208,7 +203,6 @@ impl ErrorCode {
             ErrorCode::E306 => "E306",
             ErrorCode::E307 => "E307",
             ErrorCode::E308 => "E308",
-            ErrorCode::E309 => "E309",
             // Resolver errors
             ErrorCode::E400 => "E400",
             ErrorCode::E401 => "E401",
@@ -239,7 +233,7 @@ impl ErrorCode {
             ErrorCode::E205 => "unknown base type",
             // Elaboration errors
             ErrorCode::E300 => "undefined type",
-            ErrorCode::E301 => "type override not supported",
+            ErrorCode::E301 => "unresolved embed reference",
             ErrorCode::E302 => "invalid attribute value",
             ErrorCode::E303 => "unknown attribute",
             ErrorCode::E304 => "unsupported attribute",
@@ -247,7 +241,6 @@ impl ErrorCode {
             ErrorCode::E306 => "invalid diagram structure",
             ErrorCode::E307 => "type mismatch",
             ErrorCode::E308 => "shape does not support nested content",
-            ErrorCode::E309 => "unresolved embed reference",
             // Resolver errors
             ErrorCode::E400 => "file not found",
             ErrorCode::E401 => "circular dependency",
@@ -286,7 +279,7 @@ mod tests {
     fn test_error_code_description() {
         assert_eq!(ErrorCode::E001.description(), "unterminated string literal");
         assert_eq!(ErrorCode::E200.description(), "undefined component");
-        assert_eq!(ErrorCode::E301.description(), "type override not supported");
+        assert_eq!(ErrorCode::E301.description(), "unresolved embed reference");
         assert_eq!(ErrorCode::E400.description(), "file not found");
     }
 }

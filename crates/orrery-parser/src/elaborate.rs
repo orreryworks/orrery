@@ -23,7 +23,7 @@ use crate::{
     elaborate_utils::{self, StrokeAttributeExtractor, TextAttributeExtractor},
     error::{Diagnostic, ErrorCode, Result},
     parser_types,
-    span::{Span, Spanned},
+    span::Spanned,
 };
 
 /// Configuration for the elaboration phase.
@@ -197,11 +197,11 @@ impl Builder {
     ///   [`build_diagram_from_file_ast`](Self::build_diagram_from_file_ast).
     /// - [`Ref`](parser_types::DiagramSource::Ref) — a defensive guard. The desugar
     ///   phase must resolve all `Ref` variants before elaboration runs; reaching
-    ///   this branch indicates a compiler bug and produces `E309`.
+    ///   this branch indicates a compiler bug and produces `E301`.
     ///
     /// # Errors
     ///
-    /// Returns `E309` if a `DiagramSource::Ref` is encountered, or propagates any
+    /// Returns `E301` if a `DiagramSource::Ref` is encountered, or propagates any
     /// error from [`build_diagram_from_file_ast`](Self::build_diagram_from_file_ast).
     fn build_diagram_from_diagram_source(
         &mut self,
@@ -217,7 +217,7 @@ impl Builder {
             parser_types::DiagramSource::Ref(id) => Err(Diagnostic::error(format!(
                 "unresolved embed reference `{id}`",
             ))
-            .with_code(ErrorCode::E309)
+            .with_code(ErrorCode::E301)
             .with_label(id.span(), "expected inlined embedded diagram")),
         }
     }
@@ -319,28 +319,23 @@ impl Builder {
     /// Returns the built-in type definitions as an id-keyed map.
     fn builtin_type_definitions_map() -> HashMap<Id, elaborate_utils::TypeDefinition> {
         builtin_types::defaults()
+            .into_elaborate_type_definitions()
             .into_iter()
             .map(|def| (def.id(), def))
             .collect()
     }
 
-    // TODO: Change error type so it would not accept a span.
+    /// Inserts a type definition, overriding any existing definition with the
+    /// same id (last writer wins).
     fn insert_type_definition(
         &mut self,
         type_def: elaborate_utils::TypeDefinition,
-        span: Span,
-    ) -> Result<elaborate_utils::TypeDefinition> {
+    ) -> elaborate_utils::TypeDefinition {
         let id = type_def.id();
-
-        // Check if the type already exists
-        if self.type_definitions.insert(id, type_def.clone()).is_none() {
-            Ok(type_def)
-        } else {
-            Err(Diagnostic::error(format!("cannot override type `{id}`"))
-                .with_code(ErrorCode::E301)
-                .with_label(span, "type override not supported")
-                .with_help("built-in types cannot be redefined"))
+        if self.type_definitions.insert(id, type_def.clone()).is_some() {
+            debug!("type `{id}` already exists, overriding");
         }
+        type_def
     }
 
     fn update_type_direct_definitions(
@@ -371,7 +366,7 @@ impl Builder {
                 base,
                 &type_def.type_spec.attributes,
             )?;
-            self.insert_type_definition(new_type_def, type_def.span())?;
+            self.insert_type_definition(new_type_def);
         }
         Ok(())
     }
@@ -745,7 +740,7 @@ impl Builder {
         // Otherwise, create a new anonymous type based on the base type
         let id = Id::from_anonymous();
         let new_type = self.build_type_from_base(id, base, attributes)?;
-        self.insert_type_definition(new_type, type_name.span())
+        Ok(self.insert_type_definition(new_type))
     }
 
     /// Resolve a text type reference and apply inline attribute overrides.
@@ -1336,6 +1331,7 @@ mod tests {
     use std::cell::RefCell;
 
     use super::*;
+    use crate::span::Span;
 
     /// Creates a [`Builder`] pre-populated with the built-in type definitions.
     fn builder_with_builtins() -> Builder {
