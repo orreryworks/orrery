@@ -527,10 +527,7 @@ impl<'a> Desugar<'a> {
     /// Initializes the built-in type set from [`builtin_types::defaults`] and
     /// starts with an empty `embed_refs` map and root-level path stack.
     fn new() -> Self {
-        let type_ids = builtin_types::defaults()
-            .into_iter()
-            .map(|type_def| type_def.id())
-            .collect();
+        let type_ids = builtin_types::defaults().into_ids().into_iter().collect();
         Self {
             path_stack: PathStack::new(),
             builtin_types: type_ids,
@@ -568,6 +565,13 @@ impl<'a> Desugar<'a> {
         self.qualify_type_spec(&mut type_def.type_spec, namespace);
     }
 
+    /// Yields the built-in prelude as parser-level [`TypeDefinition`]s.
+    fn prelude_type_definitions() -> impl DoubleEndedIterator<Item = TypeDefinition<'a>> {
+        builtin_types::defaults()
+            .into_parser_type_definitions()
+            .into_iter()
+    }
+
     /// Extracts [`TypeDefinition`]s from resolved imports, qualifying each with
     /// its namespace prefix when present.
     ///
@@ -592,29 +596,36 @@ impl<'a> Desugar<'a> {
         })
     }
 
-    /// Merges imported and local [`TypeDefinition`]s into one ordered list,
-    /// resolving same-name collisions.
+    /// Assembles the built-in prelude, imported, and local [`TypeDefinition`]s
+    /// into one ordered list, resolving same-name collisions.
     ///
-    /// Imported definitions precede local ones, and a name keeps the position
-    /// of its first occurrence. Collisions resolve in one of two ways:
+    /// Prelude definitions come first, then imported, then local; a name keeps
+    /// the position of its first occurrence. Collisions resolve in one of two
+    /// ways:
     ///
     /// - **Self-reference** (`type X = X[...]`): the new attributes chain onto
     ///   the previous `X`, accumulating in declaration order so later
     ///   attributes override earlier ones during elaboration.
     /// - **Otherwise**: last writer wins (local > later import > earlier
-    ///   import), fully replacing the earlier definition.
+    ///   import > prelude), fully replacing the earlier definition.
     ///
     /// A self-reference with no previous definition is dangling and kept as-is
     /// rather than dropped, so validation can report a precise error at the
     /// definition site.
-    fn merge_with_import_type_definitions(
+    fn assemble_type_definitions(
         &self,
         type_defs: Vec<TypeDefinition<'a>>,
         imports: Vec<Import<'a>>,
+        inject_prelude: bool,
     ) -> Vec<TypeDefinition<'a>> {
+        let prelude = inject_prelude
+            .then(Self::prelude_type_definitions)
+            .into_iter()
+            .flatten();
+
         let mut dedup = IndexMap::<Id, TypeDefinition>::new();
-        for type_def in self
-            .extract_type_definitions_from_imports(imports)
+        for type_def in prelude
+            .chain(self.extract_type_definitions_from_imports(imports))
             .chain(type_defs)
         {
             let id = type_def.name.inner();
@@ -671,10 +682,14 @@ impl<'a> Folder<'a> for Desugar<'a> {
         }
 
         // Merge must happen before fold_type_definitions so that imported types
-        // are visible during any subsequent elaboration.
-        let type_defs = self.merge_with_import_type_definitions(
+        // are visible during any subsequent elaboration. The built-in prelude is
+        // injected only for diagram files; library files are extracted and
+        // namespace-qualified by their importer, so they must stay prelude-free.
+        let inject_prelude = !file_ast.header.is_library();
+        let type_defs = self.assemble_type_definitions(
             mem::take(&mut file_ast.type_definitions),
             lib_imports,
+            inject_prelude,
         );
 
         let header = self.fold_header(file_ast.header);
@@ -760,14 +775,14 @@ impl<'a> Folder<'a> for Desugar<'a> {
                     elements: inner,
                     type_spec,
                 } => {
-                    let comp = self.fold_activate_component(component);
+                    let component = self.fold_activate_component(component);
                     out.push(Element::Activate {
-                        component: comp.clone(),
+                        component,
                         type_spec: self.fold_activate_type_spec(type_spec),
                     });
                     let inner_folded = self.fold_elements(inner);
                     out.extend(inner_folded);
-                    out.push(Element::Deactivate { component: comp });
+                    out.push(Element::Deactivate { component });
                 }
                 _ => out.push(self.fold_element(elem)),
             }
@@ -1037,6 +1052,17 @@ mod tests {
             namespace,
             file_ast: Rc::new(RefCell::new(file_ast)),
         }
+    }
+
+    /// Helper: strip the leading built-in prelude from a desugared
+    /// `type_definitions` list, returning only the user/import definitions.
+    ///
+    /// The desugar phase prepends [`builtin_types::defaults`] as a prelude, so
+    /// tests asserting on user/import definitions skip those leading built-ins.
+    fn user_type_definitions<'a, 'b>(
+        type_defs: &'b [TypeDefinition<'a>],
+    ) -> &'b [TypeDefinition<'a>] {
+        &type_defs[builtin_types::defaults().into_ids().len()..]
     }
 
     #[test]
@@ -2430,12 +2456,48 @@ mod tests {
         let mut folder = Desugar::new();
         let result = folder.fold_file_ast(main_ast);
 
-        let names: Vec<String> = result
-            .type_definitions
+        let names: Vec<String> = user_type_definitions(&result.type_definitions)
             .iter()
             .map(|td| td.name.inner().to_string())
             .collect();
         assert_eq!(names, ["styles::Service", "styles::Database"]);
+    }
+
+    #[test]
+    fn test_prelude_not_injected_into_imported_library() {
+        let lib_ast = make_library_ast(vec![TypeDefinition {
+            name: spanned(Id::new("Service")),
+            type_spec: TypeSpec {
+                type_name: Some(spanned(Id::new("Rectangle"))),
+                attributes: vec![],
+            },
+        }]);
+
+        let mut main_ast = make_diagram_ast(vec![], vec![]);
+        main_ast.imports = vec![make_import(Some(Id::new("styles")), lib_ast)];
+
+        let mut folder = Desugar::new();
+        let result = folder.fold_file_ast(main_ast);
+
+        let qualified: Vec<String> = result
+            .type_definitions
+            .iter()
+            .filter(|td| td.name.inner().namespace().is_some())
+            .map(|td| td.name.inner().to_string())
+            .collect();
+        assert_eq!(qualified, ["styles::Service"]);
+
+        // The diagram still receives the built-in prelude exactly once, and
+        // every prelude entry stays unqualified.
+        let unqualified_count = result
+            .type_definitions
+            .iter()
+            .filter(|td| td.name.inner().namespace().is_none())
+            .count();
+        assert_eq!(
+            unqualified_count,
+            builtin_types::defaults().into_ids().len()
+        );
     }
 
     #[test]
@@ -2606,12 +2668,13 @@ mod tests {
         let mut folder = Desugar::new();
         let result = folder.fold_file_ast(main_ast);
 
+        let type_defs = user_type_definitions(&result.type_definitions);
         // Only one type definition should remain (dedup).
-        assert_eq!(result.type_definitions.len(), 1);
+        assert_eq!(type_defs.len(), 1);
 
         // Last writer wins → fill_color = "red".
         assert_eq!(
-            result.type_definitions[0].type_spec.attributes[0]
+            type_defs[0].type_spec.attributes[0]
                 .value
                 .as_str()
                 .expect("attribute should be String"),
@@ -2650,11 +2713,12 @@ mod tests {
         let mut folder = Desugar::new();
         let result = folder.fold_file_ast(main_ast);
 
-        assert_eq!(result.type_definitions.len(), 1);
+        let type_defs = user_type_definitions(&result.type_definitions);
+        assert_eq!(type_defs.len(), 1);
 
         // Local wins → fill_color = "custom".
         assert_eq!(
-            result.type_definitions[0].type_spec.attributes[0]
+            type_defs[0].type_spec.attributes[0]
                 .value
                 .as_str()
                 .expect("attribute should be String"),
@@ -2775,13 +2839,14 @@ mod tests {
         let mut folder = Desugar::new();
         let result = folder.fold_file_ast(main_ast);
 
-        assert_eq!(result.type_definitions.len(), 1);
+        let type_defs = user_type_definitions(&result.type_definitions);
+        assert_eq!(type_defs.len(), 1);
 
         // With namespace: None, the type name stays bare "Service" (no prefix).
-        assert_eq!(*result.type_definitions[0].name.inner(), "Service");
+        assert_eq!(*type_defs[0].name.inner(), "Service");
 
         // Built-in type_name stays as-is.
-        let type_name = result.type_definitions[0]
+        let type_name = type_defs[0]
             .type_spec
             .type_name
             .as_ref()
@@ -2825,8 +2890,26 @@ mod tests {
         match &result.elements[0] {
             Element::Component { content, .. } => match content {
                 ComponentContent::Diagram(DiagramSource::Inline(rc)) => {
+                    let embedded = rc.borrow();
                     // Verify it's a diagram (not a library)
-                    assert!(matches!(rc.borrow().header, FileHeader::Diagram { .. }));
+                    assert!(matches!(embedded.header, FileHeader::Diagram { .. }));
+
+                    // The embedded diagram is folded as a diagram, so it also
+                    // receives the built-in prelude — injected exactly once and
+                    // left unqualified, even though it was reached through the
+                    // namespaced `auth_flow` import.
+                    assert_eq!(
+                        embedded.type_definitions.len(),
+                        builtin_types::defaults().into_ids().len()
+                    );
+                    assert!(
+                        embedded.type_definitions.iter().all(|td| td
+                            .name
+                            .inner()
+                            .namespace()
+                            .is_none()),
+                        "embedded diagram prelude must stay unqualified"
+                    );
                 }
                 other => panic!("Expected DiagramSource::Inline, got: {:?}", other),
             },
@@ -3032,12 +3115,13 @@ mod tests {
         let mut folder = Desugar::new();
         let result = folder.fold_file_ast(main_ast);
 
+        let type_defs = user_type_definitions(&result.type_definitions);
         // Should have exactly two types after dedup.
-        assert_eq!(result.type_definitions.len(), 2);
+        assert_eq!(type_defs.len(), 2);
 
         // Service must come first (Critical depends on it).
-        assert_eq!(*result.type_definitions[0].name.inner(), "Service");
-        assert_eq!(*result.type_definitions[1].name.inner(), "Critical");
+        assert_eq!(*type_defs[0].name.inner(), "Service");
+        assert_eq!(*type_defs[1].name.inner(), "Critical");
     }
 
     #[test]
@@ -3089,8 +3173,8 @@ mod tests {
         let result = folder.fold_file_ast(main_ast);
 
         // Chaining merges into a single definition.
-        assert_eq!(result.type_definitions.len(), 1);
-        let def = &result.type_definitions[0];
+        assert_eq!(user_type_definitions(&result.type_definitions).len(), 1);
+        let def = &user_type_definitions(&result.type_definitions)[0];
 
         // The base type stays `Rectangle`, not the self-reference `Service`.
         assert_eq!(
@@ -3140,8 +3224,9 @@ mod tests {
         let mut folder = Desugar::new();
         let result = folder.fold_file_ast(main_ast);
 
-        assert_eq!(result.type_definitions.len(), 1);
-        let attributes = &result.type_definitions[0].type_spec.attributes;
+        let type_defs = user_type_definitions(&result.type_definitions);
+        assert_eq!(type_defs.len(), 1);
+        let attributes = &type_defs[0].type_spec.attributes;
         assert_eq!(attributes.len(), 2);
         assert_eq!(
             attributes[0].value.as_str().expect("String"),
@@ -3177,8 +3262,9 @@ mod tests {
         let mut folder = Desugar::new();
         let result = folder.fold_file_ast(main_ast);
 
-        assert_eq!(result.type_definitions.len(), 1);
-        let def = &result.type_definitions[0];
+        let type_defs = user_type_definitions(&result.type_definitions);
+        assert_eq!(type_defs.len(), 1);
+        let def = &type_defs[0];
         assert_eq!(*def.name.inner(), "WarnArrow");
         // The dangling self-reference is preserved as-is.
         assert_eq!(
@@ -3221,8 +3307,9 @@ mod tests {
         let mut folder = Desugar::new();
         let result = folder.fold_file_ast(main_ast);
 
-        assert_eq!(result.type_definitions.len(), 1);
-        let def = &result.type_definitions[0];
+        let type_defs = user_type_definitions(&result.type_definitions);
+        assert_eq!(type_defs.len(), 1);
+        let def = &type_defs[0];
         // Base type comes from the imported definition.
         assert_eq!(
             *def.type_spec.type_name.as_ref().unwrap().inner(),
