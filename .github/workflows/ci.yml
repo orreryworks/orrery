@@ -20,7 +20,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: cargo fmt --all -- --check
 
   clippy:
@@ -32,7 +32,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-hack
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: cargo hack clippy --workspace --all-targets --feature-powerset -- -D warnings
 
   docs:
@@ -44,7 +44,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-hack
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: cargo hack doc --workspace --no-deps --feature-powerset
 
   test:
@@ -63,5 +63,5 @@ jobs:
         with:
           key: ${{ matrix.toolchain }}
       - uses: taiki-e/install-action@cargo-hack
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: cargo hack test --workspace --feature-powerset
