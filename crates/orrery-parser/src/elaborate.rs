@@ -10,7 +10,10 @@ use log::{debug, info, trace};
 
 use orrery_core::{
     color::Color,
-    draw::{ArrowDirection, ArrowStyle, LifelineDefinition, StrokeDefinition, TextDefinition},
+    draw::{
+        ArrowDirection, ArrowStyle, DiagramDefinition, LifelineDefinition, StrokeDefinition,
+        TextDefinition,
+    },
     identifier::Id,
     semantic::{
         Activate, Block, Diagram, DiagramKind, Element, Fragment, FragmentSection, LayoutEngine,
@@ -19,7 +22,7 @@ use orrery_core::{
 };
 
 use crate::{
-    builtin_types,
+    Span, builtin_types,
     elaborate_utils::{self, StrokeAttributeExtractor, TextAttributeExtractor},
     error::{Diagnostic, ErrorCode, Result},
     parser_types,
@@ -172,21 +175,15 @@ impl Builder {
             }
         };
 
-        let (layout_engine, background_color, lifeline_definition) =
-            self.extract_diagram_attributes(kind, attributes)?;
+        let (layout_engine, diagram_definition) =
+            self.resolve_diagram_header(kind, attributes, kind_spanned.span())?;
 
         info!(kind:?; "Diagram elaboration completed successfully");
 
         // Restore parent type definitions.
         self.type_definitions = saved_type_defs;
 
-        Ok(Diagram::new(
-            kind,
-            scope,
-            layout_engine,
-            background_color,
-            lifeline_definition,
-        ))
+        Ok(Diagram::new(kind, scope, layout_engine, diagram_definition))
     }
 
     /// Builds a semantic diagram from a [`DiagramSource`](parser_types::DiagramSource).
@@ -747,7 +744,7 @@ impl Builder {
     ///
     /// # Arguments
     /// * `type_spec` - The type specification with optional type name and attributes
-    /// * `current_text` - The current text definition reference from the host shape
+    /// * `current_text_rc` - The current text definition reference from the host shape
     fn resolve_text_type_reference(
         &self,
         type_spec: &parser_types::TypeSpec,
@@ -794,7 +791,7 @@ impl Builder {
     ///
     /// # Arguments
     /// * `type_spec` - The type specification with optional type name and attributes
-    /// * `current_stroke` - The current stroke definition reference from the host shape
+    /// * `current_stroke_rc` - The current stroke definition reference from the host shape
     fn resolve_stroke_type_reference(
         &self,
         type_spec: &parser_types::TypeSpec,
@@ -838,6 +835,82 @@ impl Builder {
         }
 
         Ok(stroke_rc)
+    }
+
+    /// Applies lifeline attribute overrides onto a [`LifelineDefinition`].
+    fn apply_lifeline_attributes(
+        &self,
+        lifeline_def: &mut LifelineDefinition,
+        attributes: &[parser_types::Attribute],
+    ) -> Result<()> {
+        for attr in attributes {
+            let name = attr.name.inner();
+
+            match *name {
+                "stroke" => {
+                    let type_spec = Self::extract_type_spec(attr, "stroke")?;
+                    let stroke_rc =
+                        self.resolve_stroke_type_reference(type_spec, lifeline_def.stroke())?;
+                    lifeline_def.set_stroke(stroke_rc);
+                }
+                name => {
+                    return Err(
+                        Diagnostic::error(format!("unknown lifeline attribute `{name}`"))
+                            .with_code(ErrorCode::E303)
+                            .with_label(attr.span(), "unknown attribute")
+                            .with_help("valid lifeline attributes are: `stroke`=[...]"),
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Resolve a lifeline type reference and apply inline attribute overrides.
+    ///
+    /// # Arguments
+    /// * `type_spec` - The type specification with optional type name and attributes
+    /// * `current_stroke_rc` - The current stroke definition reference from the host lifeline
+    fn resolve_lifeline_type_reference(
+        &self,
+        type_spec: &parser_types::TypeSpec,
+        current_lifeline_rc: &Rc<LifelineDefinition>,
+    ) -> Result<Rc<LifelineDefinition>> {
+        // Step 1: Determine which Rc to use (current or resolved)
+        let mut lifeline_rc = if let Some(type_name) = &type_spec.type_name {
+            let base_type = self
+                .type_definitions
+                .get(type_name.inner())
+                .ok_or_else(|| {
+                    Diagnostic::error(format!("undefined lifeline type `{}`", type_name.inner()))
+                        .with_code(ErrorCode::E300)
+                        .with_label(type_spec.span(), "undefined type")
+                        .with_help("type must be defined with `type` statement before use")
+                })?;
+
+            let base_lifeline_rc = base_type.lifeline_definition().map_err(|err| {
+                Diagnostic::error(format!(
+                    "type `{}` is not a lifeline type: {}",
+                    type_name.inner(),
+                    err
+                ))
+                .with_code(ErrorCode::E307)
+                .with_label(type_spec.span(), "invalid type reference")
+                .with_help("only `Lifeline` types can be used for lifeline attributes")
+            })?;
+
+            Rc::clone(base_lifeline_rc)
+        } else {
+            Rc::clone(current_lifeline_rc)
+        };
+
+        // Step 2: If attributes exist, make mutable and apply them
+        if !type_spec.attributes.is_empty() {
+            self.apply_lifeline_attributes(Rc::make_mut(&mut lifeline_rc), &type_spec.attributes)?;
+        }
+
+        Ok(lifeline_rc)
     }
 
     /// Build a new type definition from a base type with additional attributes.
@@ -1102,6 +1175,53 @@ impl Builder {
                     new_activation_box_def,
                 ))
             }
+            elaborate_utils::DrawDefinition::Lifeline(lifeline_def) => {
+                let mut new_lifeline_def = Rc::clone(lifeline_def);
+                self.apply_lifeline_attributes(Rc::make_mut(&mut new_lifeline_def), attributes)?;
+
+                Ok(elaborate_utils::TypeDefinition::new_lifeline(
+                    id,
+                    new_lifeline_def,
+                ))
+            }
+            elaborate_utils::DrawDefinition::Diagram(diagram_def) => {
+                let mut new_diagram_def = Rc::clone(diagram_def);
+                let diagram_def_mut = Rc::make_mut(&mut new_diagram_def);
+
+                for attr in attributes {
+                    let name = attr.name.inner();
+
+                    match *name {
+                        "canvas_color" => {
+                            let color = Self::extract_color(attr, "canvas_color")?;
+                            diagram_def_mut.set_canvas_color(Some(color));
+                        }
+                        "lifeline" => {
+                            let type_spec = Self::extract_type_spec(attr, "lifeline")?;
+                            let lifeline_rc = self.resolve_lifeline_type_reference(
+                                type_spec,
+                                diagram_def_mut.lifeline(),
+                            )?;
+                            diagram_def_mut.set_lifeline(lifeline_rc);
+                        }
+                        name => {
+                            return Err(Diagnostic::error(format!(
+                                "unknown diagram attribute `{name}`"
+                            ))
+                            .with_code(ErrorCode::E303)
+                            .with_label(attr.span(), "unknown attribute")
+                            .with_help(
+                                "valid diagram attributes are: `canvas_color`, `lifeline`=[...]",
+                            ));
+                        }
+                    }
+                }
+
+                Ok(elaborate_utils::TypeDefinition::new_diagram(
+                    id,
+                    new_diagram_def,
+                ))
+            }
             elaborate_utils::DrawDefinition::Stroke(stroke_def) => {
                 let mut new_stroke = (**stroke_def).clone();
                 StrokeAttributeExtractor::extract_stroke_attributes(&mut new_stroke, attributes)?;
@@ -1126,42 +1246,54 @@ impl Builder {
             ))
     }
 
-    /// Extract diagram attributes (layout engine, background color, and lifeline definition).
-    fn extract_diagram_attributes(
+    /// Builds the diagram header: resolves the diagram type binding and layers
+    /// the header attributes on top.
+    ///
+    /// Header attributes are applied last.
+    fn resolve_diagram_header(
         &self,
         kind: DiagramKind,
-        attrs: &Vec<parser_types::Attribute<'_>>,
-    ) -> Result<(LayoutEngine, Option<Color>, Option<Rc<LifelineDefinition>>)> {
-        // Set the default layout engine based on the diagram kind and config
+        attrs: &[parser_types::Attribute<'_>],
+        span: Span,
+    ) -> Result<(LayoutEngine, Rc<DiagramDefinition>)> {
+        // Resolve the current `Diagram` type binding into a draw definition.
+        let diagram_id = Id::new(builtin_types::DIAGRAM);
+        let type_def = self.type_definitions.get(&diagram_id).ok_or_else(|| {
+            Diagnostic::error(format!("built-in `{diagram_id}` type is not registered"))
+                .with_code(ErrorCode::E300)
+                .with_label(span, "missing built-in type")
+        })?;
+        let diagram_definition = type_def.diagram_definition().map_err(|err| {
+            Diagnostic::error(format!("`{diagram_id}` must be a diagram type: {err}"))
+                .with_code(ErrorCode::E307)
+                .with_label(span, format!("invalid `{diagram_id}` redefinition"))
+                .with_help(format!(
+                    "`{diagram_id}` may only be redefined as `{diagram_id}[...]`"
+                ))
+        })?;
+
+        let mut diagram_definition = Rc::clone(diagram_definition);
+        let definition = Rc::make_mut(&mut diagram_definition);
+
+        // Layer the header attributes on top so they override the type binding.
         let mut layout_engine = match kind {
             DiagramKind::Component => self.cfg.component_layout,
             DiagramKind::Sequence => self.cfg.sequence_layout,
         };
-
-        let mut background_color = None;
-        let mut lifeline_definition = None;
-
-        // Single pass through the attributes to extract both values
         for attr in attrs {
             match *attr.name {
                 "layout_engine" => {
                     layout_engine = Self::determine_layout_engine(attr)?;
                 }
-                "background_color" => {
-                    let color = Self::extract_background_color(attr)?;
-                    background_color = Some(color);
+                "canvas_color" => {
+                    let color = Self::extract_color(attr, "canvas_color")?;
+                    definition.set_canvas_color(Some(color));
                 }
                 "lifeline" => {
-                    // Only valid for sequence diagrams
-                    if kind != DiagramKind::Sequence {
-                        return Err(Diagnostic::error(
-                            "`lifeline` attribute is only valid for sequence diagrams",
-                        )
-                        .with_code(ErrorCode::E304)
-                        .with_label(attr.span(), "invalid attribute"));
-                    }
-                    let definition = self.extract_lifeline_definition(attr)?;
-                    lifeline_definition = Some(Rc::new(definition));
+                    let type_spec = Self::extract_type_spec(attr, "lifeline")?;
+                    let lifeline =
+                        self.resolve_lifeline_type_reference(type_spec, definition.lifeline())?;
+                    definition.set_lifeline(lifeline);
                 }
                 _ => {
                     return Err(Diagnostic::error(format!(
@@ -1174,43 +1306,7 @@ impl Builder {
             }
         }
 
-        Ok((layout_engine, background_color, lifeline_definition))
-    }
-
-    /// Extract background color from an attribute.
-    fn extract_background_color(color_attr: &parser_types::Attribute<'_>) -> Result<Color> {
-        Self::extract_color(color_attr, "background_color")
-    }
-
-    /// Extract lifeline definition from an attribute.
-    fn extract_lifeline_definition(
-        &self,
-        lifeline_attr: &parser_types::Attribute<'_>,
-    ) -> Result<LifelineDefinition> {
-        let type_spec = Self::extract_type_spec(lifeline_attr, "lifeline")?;
-
-        // Start with default lifeline stroke
-        let default_stroke_rc = Rc::new(StrokeDefinition::dashed(Color::default(), 1.0));
-
-        // Look for stroke attribute
-        let stroke_rc =
-            if let Some(stroke_attr) = type_spec.attributes.iter().find(|a| *a.name == "stroke") {
-                let stroke_type_spec = Self::extract_type_spec(stroke_attr, "stroke")?;
-
-                self.resolve_stroke_type_reference(stroke_type_spec, &default_stroke_rc)?
-            } else if !type_spec.attributes.is_empty() {
-                return Err(Diagnostic::error(format!(
-                    "unknown lifeline attribute `{}`",
-                    type_spec.attributes[0].name
-                ))
-                .with_code(ErrorCode::E303)
-                .with_label(type_spec.attributes[0].span(), "unknown attribute")
-                .with_help("valid lifeline attributes are: `stroke`=[...]"));
-            } else {
-                default_stroke_rc
-            };
-
-        Ok(LifelineDefinition::new(stroke_rc))
+        Ok((layout_engine, diagram_definition))
     }
 
     /// Determines the layout engine from an attribute.

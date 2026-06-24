@@ -154,7 +154,7 @@ impl<'a, 'idx> ContainmentScope<'a, 'idx> {
                             inner_diagram.kind()
                         );
                         let inner_hierarchy_child =
-                            HierarchyNode::build_from_ast_diagram(inner_diagram, Some(node.id()))?;
+                            HierarchyNode::build_from_diagram(inner_diagram, Some(node.id()))?;
                         child_diagrams.push(inner_hierarchy_child);
                     }
                     Block::None => {}

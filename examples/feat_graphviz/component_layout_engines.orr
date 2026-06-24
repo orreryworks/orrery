@@ -7,12 +7,12 @@
 //   - Layout engine attribute on diagram declarations
 //   - Same graph rendered with different engines for comparison
 
-diagram component [background_color="#f5f5f5"];
+diagram component [canvas_color="#f5f5f5"];
 
 // --- Embedded: Basic Engine ---
 
 basic_system as "Basic Engine": Rectangle embed {
-    diagram component [layout_engine="basic", background_color="#ffffff"];
+    diagram component [layout_engine="basic", canvas_color="#ffffff"];
     type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
     type Database = Rectangle [fill_color="#e0f0e0", rounded=10];
     gateway as "API Gateway": Service;
@@ -34,7 +34,7 @@ basic_system as "Basic Engine": Rectangle embed {
 // --- Embedded: Sugiyama Engine ---
 
 sugiyama_system as "Sugiyama Engine": Rectangle embed {
-    diagram component [layout_engine="sugiyama", background_color="#ffffff"];
+    diagram component [layout_engine="sugiyama", canvas_color="#ffffff"];
     type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
     type Database = Rectangle [fill_color="#e0f0e0", rounded=10];
     gateway as "API Gateway": Service;
@@ -56,7 +56,7 @@ sugiyama_system as "Sugiyama Engine": Rectangle embed {
 // --- Embedded: Graphviz Engine ---
 
 graphviz_system as "Graphviz Engine": Rectangle embed {
-    diagram component [layout_engine="graphviz", background_color="#ffffff"];
+    diagram component [layout_engine="graphviz", canvas_color="#ffffff"];
     type Service = Rectangle [fill_color="#e6f3ff", rounded=5];
     type Database = Rectangle [fill_color="#e0f0e0", rounded=10];
     gateway as "API Gateway": Service;

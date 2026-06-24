@@ -18,9 +18,9 @@ use std::rc::Rc;
 use orrery_core::{
     draw::{
         ActivationBoxDefinition, ActorDefinition, ArrowDefinition, BoundaryDefinition,
-        ComponentDefinition, ControlDefinition, EntityDefinition, FragmentDefinition,
-        InterfaceDefinition, NoteDefinition, OvalDefinition, RectangleDefinition, ShapeDefinition,
-        StrokeDefinition, TextDefinition,
+        ComponentDefinition, ControlDefinition, DiagramDefinition, EntityDefinition,
+        FragmentDefinition, InterfaceDefinition, LifelineDefinition, NoteDefinition,
+        OvalDefinition, RectangleDefinition, ShapeDefinition, StrokeDefinition, TextDefinition,
     },
     identifier::Id,
 };
@@ -80,6 +80,12 @@ pub const NOTE: &str = "Note";
 /// Built-in base type for activations
 pub const ACTIVATE: &str = "Activate";
 
+/// Built-in base type for sequence-diagram lifelines
+pub const LIFELINE: &str = "Lifeline";
+
+/// Built-in configuration type for diagram-wide styling
+pub const DIAGRAM: &str = "Diagram";
+
 /// Built-in base type for stroke attribute groups
 pub const STROKE: &str = "Stroke";
 
@@ -109,6 +115,7 @@ pub const TEXT: &str = "Text";
 pub struct BuiltinTypeBuilder {
     stroke_id: Option<Spanned<Id>>,
     text_id: Option<Spanned<Id>>,
+    lifeline_id: Option<Spanned<Id>>,
     parser_types: Vec<ParserTypeDefinition<'static>>,
     elaborate_types: Vec<ElaborateTypeDefinition>,
 }
@@ -141,6 +148,47 @@ impl BuiltinTypeBuilder {
 
         self.elaborate_types
             .push(ElaborateTypeDefinition::new_text(id, text_definition));
+
+        self
+    }
+
+    /// Adds the lifeline type, wiring its `stroke` to the `Stroke` type with a
+    /// dashed-style variation (`Lifeline[stroke=Stroke[style="dashed"]]`).
+    pub fn add_lifeline(mut self, lifeline_definition: LifelineDefinition) -> Self {
+        let stroke_id = self
+            .stroke_id
+            .expect("`Stroke` must be registered before `Lifeline`");
+
+        let id = Id::new(LIFELINE);
+        let spanned_id = Spanned::new(id, Span::empty());
+        let attributes = vec![Attribute {
+            name: Spanned::new("stroke", Span::empty()),
+            value: AttributeValue::TypeSpec(TypeSpec {
+                type_name: Some(stroke_id),
+                attributes: vec![Attribute {
+                    name: Spanned::new("style", Span::empty()),
+                    value: AttributeValue::String(Spanned::new(
+                        "dashed".to_string(),
+                        Span::empty(),
+                    )),
+                }],
+            }),
+        }];
+
+        self.parser_types.push(ParserTypeDefinition {
+            name: spanned_id,
+            type_spec: TypeSpec {
+                type_name: Some(spanned_id),
+                attributes,
+            },
+        });
+        self.lifeline_id = Some(spanned_id);
+
+        self.elaborate_types
+            .push(ElaborateTypeDefinition::new_lifeline(
+                id,
+                Rc::new(lifeline_definition),
+            ));
 
         self
     }
@@ -215,6 +263,39 @@ impl BuiltinTypeBuilder {
             .push(ElaborateTypeDefinition::new_shape(
                 id,
                 Rc::new(Box::new(shape_definition)),
+            ));
+
+        self
+    }
+
+    /// Adds the diagram-wide configuration type.
+    pub fn add_diagram(mut self, diagram_definition: DiagramDefinition) -> Self {
+        let lifeline_id = self
+            .lifeline_id
+            .expect("`Lifeline` must be registered before `Diagram`");
+
+        let id = Id::new(DIAGRAM);
+        let spanned_id = Spanned::new(id, Span::empty());
+        let attributes = vec![Attribute {
+            name: Spanned::new("lifeline", Span::empty()),
+            value: AttributeValue::TypeSpec(TypeSpec {
+                type_name: Some(lifeline_id),
+                attributes: vec![],
+            }),
+        }];
+
+        self.parser_types.push(ParserTypeDefinition {
+            name: spanned_id,
+            type_spec: TypeSpec {
+                type_name: Some(spanned_id),
+                attributes,
+            },
+        });
+
+        self.elaborate_types
+            .push(ElaborateTypeDefinition::new_diagram(
+                id,
+                Rc::new(diagram_definition),
             ));
 
         self
@@ -323,6 +404,8 @@ pub fn defaults() -> BuiltinTypeBuilder {
         // Attribute group types — must come first; later types reference these.
         .add_stroke(StrokeDefinition::default())
         .add_text(TextDefinition::default())
+        // Lifeline type
+        .add_lifeline(LifelineDefinition::default())
         // Relation type
         .add_arrow(ArrowDefinition::default())
         // Annotation type
@@ -344,6 +427,8 @@ pub fn defaults() -> BuiltinTypeBuilder {
         .add_shape(ENTITY, EntityDefinition::new())
         .add_shape(CONTROL, ControlDefinition::new())
         .add_shape(INTERFACE, InterfaceDefinition::new())
+        // Diagram-wide type
+        .add_diagram(DiagramDefinition::new())
 }
 
 #[cfg(test)]
@@ -372,9 +457,10 @@ mod tests {
     }
 
     /// All built-in type names in [`defaults`] registration order.
-    const DEFAULT_TYPE_NAMES: [&str; 18] = [
+    const DEFAULT_TYPE_NAMES: [&str; 20] = [
         STROKE,
         TEXT,
+        LIFELINE,
         ARROW,
         NOTE,
         ACTIVATE,
@@ -391,6 +477,7 @@ mod tests {
         ENTITY,
         CONTROL,
         INTERFACE,
+        DIAGRAM,
     ];
 
     #[test]
@@ -413,6 +500,47 @@ mod tests {
         let stroke = &parser_types[0];
         assert_eq!(*stroke.name.inner(), STROKE);
         assert!(stroke.type_spec.attributes.is_empty());
+
+        // `Lifeline` wires its `stroke` to `Stroke` with an inline `style="dashed"`.
+        let lifeline = parser_types
+            .iter()
+            .find(|type_def| *type_def.name.inner() == LIFELINE)
+            .expect("Lifeline must be registered");
+        assert_eq!(lifeline.type_spec.attributes.len(), 1);
+        let stroke_attr = &lifeline.type_spec.attributes[0];
+        assert_eq!(*stroke_attr.name.inner(), "stroke");
+        let stroke_ref = stroke_attr
+            .value
+            .as_type_spec()
+            .expect("stroke attribute is a type ref");
+        assert_eq!(
+            stroke_ref.type_name.as_ref().map(|name| *name.inner()),
+            Some(Id::new(STROKE))
+        );
+        assert_eq!(stroke_ref.attributes.len(), 1);
+        assert_eq!(*stroke_ref.attributes[0].name.inner(), "style");
+        assert_eq!(stroke_ref.attributes[0].value.as_str(), Ok("dashed"));
+
+        // `Diagram` references `Lifeline` via its `lifeline` attr.
+        let diagram = parser_types
+            .iter()
+            .find(|type_def| *type_def.name.inner() == DIAGRAM)
+            .expect("Diagram must be registered");
+        let diagram_refs: Vec<(&str, Id)> = diagram
+            .type_spec
+            .attributes
+            .iter()
+            .map(|attr| {
+                let type_spec = attr.value.as_type_spec().expect("attribute is a type ref");
+                let type_name = *type_spec
+                    .type_name
+                    .as_ref()
+                    .expect("type ref has a type name")
+                    .inner();
+                (*attr.name.inner(), type_name)
+            })
+            .collect();
+        assert_eq!(diagram_refs, vec![("lifeline", Id::new(LIFELINE))]);
 
         // `Arrow` references `Stroke` and `Text` via its `stroke`/`text` attrs.
         let arrow = parser_types
@@ -457,10 +585,12 @@ mod tests {
         // Each built-in elaborates to the matching draw definition.
         assert!(find(STROKE).stroke_definition().is_ok());
         assert!(find(TEXT).text_definition_from_draw().is_ok());
+        assert!(find(LIFELINE).lifeline_definition().is_ok());
         assert!(find(ARROW).arrow_definition().is_ok());
         assert!(find(NOTE).note_definition().is_ok());
         assert!(find(ACTIVATE).activation_box_definition().is_ok());
         assert!(find(FRAGMENT).fragment_definition().is_ok());
         assert!(find(RECTANGLE).shape_definition().is_ok());
+        assert!(find(DIAGRAM).diagram_definition().is_ok());
     }
 }

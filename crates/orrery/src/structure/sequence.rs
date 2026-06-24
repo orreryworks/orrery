@@ -15,15 +15,20 @@
 //! The graph stores participants as nodes and maintains a separate ordered list of events
 //! that represents the timeline of interactions.
 
+use std::rc::Rc;
+
 use indexmap::IndexMap;
 use log::debug;
 
 use orrery_core::{
+    draw::LifelineDefinition,
     identifier::Id,
-    semantic::{Activate, Block, Element, Fragment, FragmentSection, Node, Note, Relation},
+    semantic::{
+        Activate, Block, Diagram, Element, Fragment, FragmentSection, Node, Note, Relation,
+    },
 };
 
-use crate::RenderError;
+use crate::{RenderError, structure::HierarchyNode};
 
 /// Represents ordered events in a sequence diagram.
 ///
@@ -100,6 +105,7 @@ pub enum SequenceEvent<'a> {
 pub struct SequenceGraph<'a> {
     nodes: IndexMap<Id, &'a Node>,
     events: Vec<SequenceEvent<'a>>,
+    lifeline_definition: Rc<LifelineDefinition>,
 }
 
 impl<'a> SequenceGraph<'a> {
@@ -139,30 +145,37 @@ impl<'a> SequenceGraph<'a> {
         self.nodes.keys()
     }
 
-    /// Creates a sequence graph from AST elements.
+    /// Returns the diagram-wide lifeline styling applied to every participant.
+    pub fn lifeline_definition(&self) -> &Rc<LifelineDefinition> {
+        &self.lifeline_definition
+    }
+
+    /// Creates a sequence graph from a sequence [`Diagram`].
     ///
-    /// Processes the elements to build the graph structure, adding participants as nodes
-    /// and maintaining the temporal ordering of events. Also identifies any embedded
-    /// diagrams within participant nodes that need separate processing.
+    /// Participants become nodes in temporal order, and the diagram-wide lifeline
+    /// styling is carried on the graph.
     ///
     /// # Returns
-    /// A tuple containing the constructed sequence graph and a vector of any embedded
-    /// diagrams found during processing.
-    pub(super) fn new_from_elements<'idx>(
-        elements: &'a [Element],
-    ) -> Result<(Self, Vec<super::HierarchyNode<'a, 'idx>>), RenderError> {
-        let mut graph = Self::new();
+    ///
+    /// - The constructed sequence graph.
+    /// - The embedded diagrams found in participant nodes, as [`HierarchyNode`]s
+    ///   for recursive processing.
+    pub(super) fn from_diagram<'idx>(
+        diagram: &'a Diagram,
+    ) -> Result<(Self, Vec<HierarchyNode<'a, 'idx>>), RenderError> {
+        let mut graph = Self::new(Rc::clone(diagram.definition().lifeline()));
 
-        let child_diagrams = Self::process_elements(elements, &mut graph)?;
+        let child_diagrams = Self::process_elements(diagram.scope().elements(), &mut graph)?;
 
         Ok((graph, child_diagrams))
     }
 
-    /// Creates a new empty sequence graph.
-    fn new() -> Self {
+    /// Creates a new empty sequence graph with the given lifeline styling.
+    fn new(lifeline_definition: Rc<LifelineDefinition>) -> Self {
         Self {
             nodes: IndexMap::new(),
             events: Vec::new(),
+            lifeline_definition,
         }
     }
 
@@ -204,10 +217,7 @@ impl<'a> SequenceGraph<'a> {
                                 inner_diagram.kind()
                             );
                             let inner_hierarchy_child =
-                                super::HierarchyNode::build_from_ast_diagram(
-                                    inner_diagram,
-                                    Some(node.id()),
-                                )?;
+                                HierarchyNode::build_from_diagram(inner_diagram, Some(node.id()))?;
                             child_diagrams.push(inner_hierarchy_child);
                         }
                         Block::None => {}
@@ -283,7 +293,7 @@ mod tests {
         let eve = create_test_node("Eve");
 
         // Create a sequence graph and add nodes in order
-        let mut graph = SequenceGraph::new();
+        let mut graph = SequenceGraph::new(Rc::new(LifelineDefinition::default()));
         graph.add_node(&zara);
         graph.add_node(&alice);
         graph.add_node(&mike);
@@ -354,7 +364,7 @@ mod tests {
         let bob = create_test_node("Bob");
         let alice = create_test_node("Alice");
 
-        let mut graph = SequenceGraph::new();
+        let mut graph = SequenceGraph::new(Rc::new(LifelineDefinition::default()));
         graph.add_node(&zara);
         graph.add_node(&bob);
         graph.add_node(&alice);

@@ -184,9 +184,8 @@ impl<'a, P: SourceProvider> DiagramBuilder<'a, P> {
         let temp_path = temp_file.path().to_string_lossy().to_string();
 
         let mut svg_exporter = export::svg::SvgBuilder::new(&temp_path)
-            .with_style(self.config.style())
             .with_diagram(diagram)
-            .build()?;
+            .build();
 
         svg_exporter.export_layered_layout(&layered_layout)?;
 

@@ -9,8 +9,9 @@ use std::{rc::Rc, str::FromStr};
 use orrery_core::{
     color::Color,
     draw::{
-        ActivationBoxDefinition, ArrowDefinition, FragmentDefinition, NoteDefinition,
-        ShapeDefinition, StrokeCap, StrokeDefinition, StrokeJoin, StrokeStyle, TextDefinition,
+        ActivationBoxDefinition, ArrowDefinition, DiagramDefinition, FragmentDefinition,
+        LifelineDefinition, NoteDefinition, ShapeDefinition, StrokeCap, StrokeDefinition,
+        StrokeJoin, StrokeStyle, TextDefinition,
     },
     geometry::Insets,
     identifier::Id,
@@ -29,6 +30,8 @@ pub enum DrawDefinition {
     Fragment(Rc<FragmentDefinition>),
     Note(Rc<NoteDefinition>),
     ActivationBox(Rc<ActivationBoxDefinition>),
+    Lifeline(Rc<LifelineDefinition>),
+    Diagram(Rc<DiagramDefinition>),
     Stroke(Rc<StrokeDefinition>),
     Text(Rc<TextDefinition>),
 }
@@ -74,6 +77,16 @@ impl TypeDefinition {
         activation_box_definition: Rc<ActivationBoxDefinition>,
     ) -> Self {
         Self::new(id, DrawDefinition::ActivationBox(activation_box_definition))
+    }
+
+    /// Construct a concrete lifeline type definition from a lifeline definition.
+    pub fn new_lifeline(id: Id, lifeline_definition: Rc<LifelineDefinition>) -> Self {
+        Self::new(id, DrawDefinition::Lifeline(lifeline_definition))
+    }
+
+    /// Construct a concrete diagram type definition from a diagram definition.
+    pub fn new_diagram(id: Id, diagram_definition: Rc<DiagramDefinition>) -> Self {
+        Self::new(id, DrawDefinition::Diagram(diagram_definition))
     }
 
     /// Construct a concrete stroke type definition from a stroke definition.
@@ -133,6 +146,22 @@ impl TypeDefinition {
         match &self.draw_definition {
             DrawDefinition::ActivationBox(activation_box) => Ok(activation_box),
             _ => Err(format!("Type '{}' is not an activation box type", self.id)),
+        }
+    }
+
+    /// Borrow the lifeline definition if this type is a lifeline; otherwise returns an error.
+    pub fn lifeline_definition(&self) -> Result<&Rc<LifelineDefinition>, String> {
+        match &self.draw_definition {
+            DrawDefinition::Lifeline(lifeline) => Ok(lifeline),
+            _ => Err(format!("type `{}` is not a lifeline type", self.id)),
+        }
+    }
+
+    /// Borrow the diagram definition if this type is a diagram; otherwise returns an error.
+    pub fn diagram_definition(&self) -> Result<&Rc<DiagramDefinition>, String> {
+        match &self.draw_definition {
+            DrawDefinition::Diagram(diagram) => Ok(diagram),
+            _ => Err(format!("type `{}` is not a diagram type", self.id)),
         }
     }
 

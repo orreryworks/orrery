@@ -7,8 +7,7 @@ use std::{cell::RefCell, cmp::Ordering, collections::HashMap, f32, rc::Rc};
 use orrery_core::{
     draw::{
         Arrow, ArrowPath, ArrowStyle, ArrowWithText, Drawable, Fragment, Lifeline,
-        LifelineDefinition, Note as DrawNote, PositionedArrowWithText, PositionedDrawable, Shape,
-        ShapeWithText, Text,
+        Note as DrawNote, PositionedArrowWithText, PositionedDrawable, Shape, ShapeWithText, Text,
     },
     geometry::{Insets, Point, Size},
     identifier::Id,
@@ -394,7 +393,7 @@ impl Engine {
                 let lifeline_start_y = component.bounds().max_y();
                 let height = (lifeline_end - lifeline_start_y).max(0.0);
                 let lifeline = PositionedDrawable::new(Lifeline::new(
-                    Rc::new(LifelineDefinition::default()),
+                    Rc::clone(graph.lifeline_definition()),
                     height,
                 ))
                 .with_position(Point::new(position.x(), lifeline_start_y));

@@ -58,37 +58,32 @@ impl<'a, 'idx> GraphKind<'a, 'idx> {
         Ok((Self::ComponentGraph(graph), children))
     }
 
-    /// Builds a sequence graph from AST elements.
-    ///
-    /// Processes the provided AST elements to construct a sequence graph with its
-    /// participants and temporally ordered events.
-    ///
-    /// # Arguments
-    /// * `elements` - The AST elements to process into a sequence graph
+    /// Builds a sequence graph from a diagram.
     ///
     /// # Returns
-    /// A tuple containing:
-    /// - The constructed [`GraphKind::SequenceGraph`] variant
-    /// - A vector of [`HierarchyNode`] representing any embedded diagrams found
+    ///
+    /// - The constructed [`GraphKind::SequenceGraph`].
+    /// - The embedded diagrams found in participant nodes, as [`HierarchyNode`]s
+    ///   for recursive processing.
     fn build_sequence(
-        elements: &'a [Element],
+        diagram: &'a Diagram,
     ) -> Result<(Self, Vec<HierarchyNode<'a, 'idx>>), RenderError> {
-        let (graph, children) = SequenceGraph::new_from_elements(elements)?;
+        let (graph, children) = SequenceGraph::from_diagram(diagram)?;
         Ok((Self::SequenceGraph(graph), children))
     }
 }
 
-/// Container that pairs an AST diagram with its graph representation.
+/// Container that pairs a diagram with its graph representation.
 #[derive(Debug)]
 pub struct GraphedDiagram<'a, 'idx> {
-    ast_diagram: &'a Diagram,
+    diagram: &'a Diagram,
     graph_kind: GraphKind<'a, 'idx>,
 }
 
 impl<'a, 'idx> GraphedDiagram<'a, 'idx> {
-    /// Returns a reference to the underlying AST diagram.
-    pub fn ast_diagram(&self) -> &Diagram {
-        self.ast_diagram
+    /// Returns a reference to the underlying diagram.
+    pub fn diagram(&self) -> &Diagram {
+        self.diagram
     }
 
     /// Returns a reference to the graph representation of this diagram.
@@ -99,10 +94,10 @@ impl<'a, 'idx> GraphedDiagram<'a, 'idx> {
         &self.graph_kind
     }
 
-    /// Creates a new graphed diagram from an AST diagram and its graph representation.
-    fn new(ast_diagram: &'a Diagram, graph_kind: GraphKind<'a, 'idx>) -> Self {
+    /// Pairs a diagram with its graph representation.
+    fn new(diagram: &'a Diagram, graph_kind: GraphKind<'a, 'idx>) -> Self {
         Self {
-            ast_diagram,
+            diagram,
             graph_kind,
         }
     }
@@ -143,28 +138,23 @@ impl<'a, 'idx> HierarchyNode<'a, 'idx> {
         }
     }
 
-    /// Builds a hierarchy node from an AST diagram.
+    /// Builds a hierarchy node from a diagram.
     ///
     /// Recursively processes the diagram's elements to create the appropriate graph
     /// structure (component or sequence) and identifies any nested diagrams that
     /// need to be processed as children in the hierarchy.
     ///
-    /// # Arguments
-    /// * `ast_diagram` - The AST diagram to process
-    /// * `container_id` - Optional ID of the container component (if this is an embedded diagram)
-    ///
-    /// # Returns
-    /// A constructed `HierarchyNode` with its graph and children, or an error if
-    /// graph construction fails.
-    fn build_from_ast_diagram(
-        ast_diagram: &'a Diagram,
+    /// `container_id` is the enclosing component for an embedded diagram, or `None`
+    /// for the root.
+    fn build_from_diagram(
+        diagram: &'a Diagram,
         container_id: Option<Id>,
     ) -> Result<Self, RenderError> {
-        let (graph, children) = match ast_diagram.kind() {
-            DiagramKind::Component => GraphKind::build_component(ast_diagram.scope().elements())?,
-            DiagramKind::Sequence => GraphKind::build_sequence(ast_diagram.scope().elements())?,
+        let (graph, children) = match diagram.kind() {
+            DiagramKind::Component => GraphKind::build_component(diagram.scope().elements())?,
+            DiagramKind::Sequence => GraphKind::build_sequence(diagram)?,
         };
-        let graphed_diagram = GraphedDiagram::new(ast_diagram, graph);
+        let graphed_diagram = GraphedDiagram::new(diagram, graph);
 
         Ok(Self::new(graphed_diagram, container_id, children))
     }
@@ -212,7 +202,7 @@ impl<'a, 'idx> DiagramHierarchy<'a, 'idx> {
     /// in the hierarchy, or an [`RenderError`] if graph construction fails.
     pub fn from_diagram(diagram: &'a Diagram) -> Result<Self, RenderError> {
         // Process all elements in the diagram recursively
-        let root_diagram = HierarchyNode::build_from_ast_diagram(diagram, None)?;
+        let root_diagram = HierarchyNode::build_from_diagram(diagram, None)?;
 
         let hierarchy = DiagramHierarchy { root: root_diagram };
 

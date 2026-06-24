@@ -11,7 +11,7 @@ use std::{fmt, rc::Rc, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{color::Color, draw::LifelineDefinition, semantic::element::Element};
+use crate::{draw::DiagramDefinition, semantic::element::Element};
 
 /// The kind of a diagram: component or sequence.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -119,38 +119,27 @@ impl fmt::Display for LayoutEngine {
 /// diagram after parsing, desugaring, validation, and elaboration. All type
 /// references have been resolved, attributes have been processed, and the diagram
 /// is ready to be transformed into a hierarchy and laid out for rendering.
-///
-/// # Fields
-///
-/// - `kind` - The type of diagram (component, sequence, etc.)
-/// - `scope` - The top-level container of diagram elements
-/// - `layout_engine` - The algorithm to use for automatic positioning
-/// - `background_color` - Optional background color for the diagram
-/// - `lifeline_definition` - Optional lifeline styling (for sequence diagrams)
 #[derive(Debug, Clone)]
 pub struct Diagram {
     kind: DiagramKind,
     scope: Scope,
     layout_engine: LayoutEngine,
-    background_color: Option<Color>,
-    lifeline_definition: Option<Rc<LifelineDefinition>>,
+    definition: Rc<DiagramDefinition>,
 }
 
 impl Diagram {
-    /// Create a new Diagram with its kind, scope, layout engine, and optional background color.
+    /// Creates a diagram.
     pub fn new(
         kind: DiagramKind,
         scope: Scope,
         layout_engine: LayoutEngine,
-        background_color: Option<Color>,
-        lifeline_definition: Option<Rc<LifelineDefinition>>,
+        definition: Rc<DiagramDefinition>,
     ) -> Self {
         Self {
             kind,
             scope,
             layout_engine,
-            background_color,
-            lifeline_definition,
+            definition,
         }
     }
 
@@ -169,14 +158,9 @@ impl Diagram {
         self.layout_engine
     }
 
-    /// Get the diagram's background color if specified.
-    pub fn background_color(&self) -> Option<Color> {
-        self.background_color
-    }
-
-    /// Get the lifeline definition if specified (for sequence diagrams).
-    pub fn lifeline_definition(&self) -> Option<&Rc<LifelineDefinition>> {
-        self.lifeline_definition.as_ref()
+    /// Borrow the diagram's [`DiagramDefinition`].
+    pub fn definition(&self) -> &Rc<DiagramDefinition> {
+        &self.definition
     }
 }
 

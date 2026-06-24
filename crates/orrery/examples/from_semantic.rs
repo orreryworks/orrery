@@ -9,7 +9,8 @@ use orrery::{
     DiagramBuilder, InMemorySourceProvider,
     config::AppConfig,
     draw::{
-        ArrowDefinition, ArrowDirection, RectangleDefinition, ShapeDefinition, StrokeDefinition,
+        ArrowDefinition, ArrowDirection, DiagramDefinition, RectangleDefinition, ShapeDefinition,
+        StrokeDefinition,
     },
     identifier::Id,
     semantic::{Block, Diagram, DiagramKind, Element, LayoutEngine, Node, Relation, Scope},
@@ -86,8 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         DiagramKind::Component,
         scope,
         LayoutEngine::Basic,
-        None, // no background color
-        None, // no lifeline definition (not a sequence diagram)
+        Rc::new(DiagramDefinition::new()),
     );
 
     // Print diagram info

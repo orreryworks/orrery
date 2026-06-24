@@ -243,7 +243,7 @@ impl EngineBuilder {
         // First phase: calculate all layouts
         for (container_id, graphed_diagram) in collection.iter_post_order() {
             // Calculate the layout for this diagram using the appropriate engine
-            let diagram = graphed_diagram.ast_diagram();
+            let diagram = graphed_diagram.diagram();
             let layout_result = match graphed_diagram.graph_kind() {
                 GraphKind::ComponentGraph(graph) => {
                     let engine = self.component_engine(diagram.layout_engine());
