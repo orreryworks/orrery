@@ -49,7 +49,7 @@ auth_service as "Auth Service": Service embed {
 // --- Component Node with Embedded Component Diagram (Basic) ---
 
 order_service as "Order Service": Service embed {
-    diagram component [layout_engine="basic", background_color="#fafafa"];
+    diagram component [layout_engine="basic", canvas_color="#fafafa"];
     api as "API Layer": Rectangle[fill_color="#e6f3ff", rounded=3];
     validation as "Validation": Rectangle[fill_color="#fff3cd", rounded=3];
     persistence as "Persistence": Rectangle[fill_color="#e0f0e0", rounded=3];
@@ -64,7 +64,7 @@ order_service as "Order Service": Service embed {
 // --- Component Node with Embedded Component Diagram (Sugiyama) ---
 
 analytics as "Analytics Pipeline": Service embed {
-    diagram component [layout_engine="sugiyama", background_color="#fafafa"];
+    diagram component [layout_engine="sugiyama", canvas_color="#fafafa"];
     ingress as "Ingress": Rectangle[fill_color="#fff0e0"];
     parser as "Parser": Rectangle[fill_color="#e6f3ff"];
     enricher as "Enricher": Rectangle[fill_color="#e6f3ff"];
@@ -99,7 +99,7 @@ outer as "Outer System": Service embed {
 
     // Participant with an embedded component diagram inside
     api_node as "API Server": Rectangle embed {
-        diagram component [layout_engine="basic", background_color="#f8f8ff"];
+        diagram component [layout_engine="basic", canvas_color="#f8f8ff"];
         router as "Router": Rectangle[fill_color="#e6f3ff", rounded=3];
         middleware as "Middleware": Rectangle[fill_color="#fff3cd", rounded=3];
         handler as "Handler": Rectangle[fill_color="#e0f0e0", rounded=3];

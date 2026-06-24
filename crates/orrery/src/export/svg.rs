@@ -21,8 +21,6 @@ use orrery_core::{
 };
 
 use crate::{
-    config::StyleConfig,
-    error::RenderError,
     export::{Error, Exporter},
     layout::layer::LayeredLayout,
 };
@@ -30,7 +28,6 @@ use crate::{
 /// SVG exporter builder to configure and build the SVG exporter.
 pub struct SvgBuilder<'a> {
     file_name: String,
-    style: Option<&'a StyleConfig>,
     diagram: Option<&'a Diagram>,
 }
 
@@ -50,19 +47,8 @@ impl<'a> SvgBuilder<'a> {
     pub fn new(file_name: &str) -> Self {
         Self {
             file_name: file_name.to_string(),
-            style: None,
             diagram: None,
         }
-    }
-
-    /// Sets the style configuration.
-    ///
-    /// # Arguments
-    ///
-    /// * `style` - The style configuration to apply.
-    pub fn with_style(mut self, style: &'a StyleConfig) -> Self {
-        self.style = Some(style);
-        self
     }
 
     /// Sets the diagram to extract styles from.
@@ -76,28 +62,18 @@ impl<'a> SvgBuilder<'a> {
     }
 
     /// Builds the SVG exporter with the configured options.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`RenderError`] if style configuration parsing fails.
-    pub fn build(self) -> Result<Svg, RenderError> {
-        let mut background_color = None;
-
-        if let Some(diagram) = self.diagram {
-            if let Some(color) = diagram.background_color() {
-                background_color = Some(color);
-            }
-        } else if let Some(style) = self.style {
-            background_color = style.background_color().map_err(RenderError::Layout)?;
-        }
+    pub fn build(self) -> Svg {
+        let background_color = self
+            .diagram
+            .and_then(|diagram| diagram.definition().canvas_color());
 
         let arrow_with_text_drawer = ArrowWithTextDrawer::new();
 
-        Ok(Svg {
+        Svg {
             file_name: self.file_name,
             background_color,
             arrow_with_text_drawer,
-        })
+        }
     }
 }
 

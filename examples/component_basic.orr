@@ -8,7 +8,7 @@
 //   - Relation labels
 //   - Diagram attributes
 
-diagram component [background_color="#f8f8f8"];
+diagram component [canvas_color="#f8f8f8"];
 
 // --- Type Definitions ---
 

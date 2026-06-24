@@ -11,6 +11,7 @@
 mod activation_box;
 mod arrow;
 mod arrow_with_text;
+mod diagram;
 mod fragment;
 mod layer;
 mod lifeline;
@@ -25,6 +26,7 @@ mod text_positioning;
 pub use activation_box::{ActivationBox, ActivationBoxDefinition};
 pub use arrow::{Arrow, ArrowDefinition, ArrowDirection, ArrowDrawer, ArrowPath, ArrowStyle};
 pub use arrow_with_text::{ArrowWithText, ArrowWithTextDrawer, PositionedArrowWithText};
+pub use diagram::DiagramDefinition;
 pub use fragment::{Fragment, FragmentDefinition, FragmentSection};
 pub use layer::{LayeredOutput, RenderLayer};
 pub use lifeline::{Lifeline, LifelineDefinition};
