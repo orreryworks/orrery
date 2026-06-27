@@ -137,7 +137,7 @@ impl Svg {
     ///
     /// # Errors
     ///
-    /// Returns [`export::Error::Io`] if file creation or writing fails.
+    /// Returns [`Error::Io`] if file creation or writing fails.
     pub fn write_document(&self, doc: Document) -> Result<(), Error> {
         info!(file_name = self.file_name; "Creating SVG file");
         // Create the output file

@@ -1429,7 +1429,7 @@ fn convert_error(
     }
 }
 
-/// Parses a token stream into a [`FileAst`](FileAst).
+/// Parses a token stream into a [`FileAst`].
 ///
 /// This is the public entry point for parsing a complete source file.
 /// After the inner [`file()`] combinator succeeds, this
@@ -1443,7 +1443,7 @@ fn convert_error(
 ///
 /// # Returns
 ///
-/// A [`FileAst`](FileAst) on success.
+/// A [`FileAst`] on success.
 ///
 /// # Errors
 ///

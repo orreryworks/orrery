@@ -63,7 +63,7 @@ impl ElaborateConfig {
 /// 1. Registers built-in type definitions
 /// 2. Processes user-defined types from the AST
 /// 3. Resolves type references and validates structure
-/// 4. Constructs the semantic [`Diagram`](orrery_core::Diagram)
+/// 4. Constructs the semantic [`Diagram`]
 pub struct Builder {
     cfg: ElaborateConfig,
     type_definitions: HashMap<Id, elaborate_utils::TypeDefinition>,
@@ -91,7 +91,7 @@ impl Builder {
     // ============================================================================
 
     /// Consumes the builder and elaborates a [`FileAst`](parser_types::FileAst)
-    /// into a semantic [`Diagram`](Diagram).
+    /// into a semantic [`Diagram`].
     ///
     /// This is the public entry point for elaboration. It delegates to
     /// [`build_diagram_from_file_ast`](Self::build_diagram_from_file_ast).
@@ -116,7 +116,7 @@ impl Builder {
 
     /// Builds a semantic diagram from a parsed file AST.
     ///
-    /// Converts a [`FileAst`](parser_types::FileAst) into a [`Diagram`](Diagram)
+    /// Converts a [`FileAst`](parser_types::FileAst) into a [`Diagram`]
     /// by registering type definitions, extracting the diagram kind, processing
     /// elements into a scope, and resolving diagram-level attributes.
     ///
@@ -315,8 +315,7 @@ impl Builder {
 
     /// Returns the built-in type definitions as an id-keyed map.
     fn builtin_type_definitions_map() -> HashMap<Id, elaborate_utils::TypeDefinition> {
-        builtin_types::defaults()
-            .into_elaborate_type_definitions()
+        builtin_types::elaborate_type_definitions()
             .into_iter()
             .map(|def| (def.id(), def))
             .collect()
@@ -368,7 +367,7 @@ impl Builder {
         Ok(())
     }
 
-    /// Converts a slice of parser elements into a semantic [`Block`](Block).
+    /// Converts a slice of parser elements into a semantic [`Block`].
     ///
     /// Returns `Block::None` for an empty slice, or wraps the elaborated elements
     /// in a `Block::Scope`. This function only produces `None` or `Scope` variants;
@@ -394,7 +393,7 @@ impl Builder {
         }
     }
 
-    /// Elaborates a slice of parser elements into a semantic [`Scope`](Scope).
+    /// Elaborates a slice of parser elements into a semantic [`Scope`].
     ///
     /// Dispatches each [`Element`](parser_types::Element) variant to the appropriate
     /// `build_*_element` method. Sugar variants (`ActivateBlock`, `AltElseBlock`,
@@ -470,7 +469,7 @@ impl Builder {
     /// Builds a component element from parser data.
     ///
     /// Resolves the component's type definition, validates that the shape supports
-    /// content (if any), and constructs the semantic [`Node`](Node).
+    /// content (if any), and constructs the semantic [`Node`].
     ///
     /// Content is determined by matching on [`ComponentContent`](parser_types::ComponentContent):
     /// - `None` — the component has no nested content.
@@ -541,7 +540,7 @@ impl Builder {
     ///
     /// Resolves the arrow type definition, parses the arrow direction string
     /// (`->`, `<-`, `<->`, `-`), and constructs a semantic
-    /// [`Relation`](Relation).
+    /// [`Relation`].
     ///
     /// # Errors
     ///
@@ -584,7 +583,7 @@ impl Builder {
     ///
     /// Validates that activation is only used in sequence diagrams, resolves the
     /// activation-box type definition, and constructs a semantic
-    /// [`Activate`](Activate).
+    /// [`Activate`].
     ///
     /// # Errors
     ///
@@ -654,7 +653,7 @@ impl Builder {
     ///
     /// Validates that fragments are only used in sequence diagrams, resolves the
     /// fragment type definition, and elaborates each section's elements into
-    /// a [`FragmentSection`](FragmentSection).
+    /// a [`FragmentSection`].
     ///
     /// # Errors
     ///
