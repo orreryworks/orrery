@@ -524,10 +524,10 @@ pub struct Desugar<'a> {
 impl<'a> Desugar<'a> {
     /// Creates a new [`Desugar`] folder instance.
     ///
-    /// Initializes the built-in type set from [`builtin_types::defaults`] and
+    /// Initializes the built-in type set from [`builtin_types::ids`] and
     /// starts with an empty `embed_refs` map and root-level path stack.
     fn new() -> Self {
-        let type_ids = builtin_types::defaults().into_ids().into_iter().collect();
+        let type_ids = builtin_types::ids().into_iter().collect();
         Self {
             path_stack: PathStack::new(),
             builtin_types: type_ids,
@@ -567,9 +567,7 @@ impl<'a> Desugar<'a> {
 
     /// Yields the built-in prelude as parser-level [`TypeDefinition`]s.
     fn prelude_type_definitions() -> impl DoubleEndedIterator<Item = TypeDefinition<'a>> {
-        builtin_types::defaults()
-            .into_parser_type_definitions()
-            .into_iter()
+        builtin_types::parser_type_definitions().into_iter()
     }
 
     /// Extracts [`TypeDefinition`]s from resolved imports, qualifying each with
@@ -1057,12 +1055,13 @@ mod tests {
     /// Helper: strip the leading built-in prelude from a desugared
     /// `type_definitions` list, returning only the user/import definitions.
     ///
-    /// The desugar phase prepends [`builtin_types::defaults`] as a prelude, so
-    /// tests asserting on user/import definitions skip those leading built-ins.
+    /// The desugar phase prepends [`builtin_types::parser_type_definitions`] as
+    /// a prelude, so tests asserting on user/import definitions skip those
+    /// leading built-ins.
     fn user_type_definitions<'a, 'b>(
         type_defs: &'b [TypeDefinition<'a>],
     ) -> &'b [TypeDefinition<'a>] {
-        &type_defs[builtin_types::defaults().into_ids().len()..]
+        &type_defs[builtin_types::ids().len()..]
     }
 
     #[test]
@@ -2494,10 +2493,7 @@ mod tests {
             .iter()
             .filter(|td| td.name.inner().namespace().is_none())
             .count();
-        assert_eq!(
-            unqualified_count,
-            builtin_types::defaults().into_ids().len()
-        );
+        assert_eq!(unqualified_count, builtin_types::ids().len());
     }
 
     #[test]
@@ -2898,10 +2894,7 @@ mod tests {
                     // receives the built-in prelude — injected exactly once and
                     // left unqualified, even though it was reached through the
                     // namespaced `auth_flow` import.
-                    assert_eq!(
-                        embedded.type_definitions.len(),
-                        builtin_types::defaults().into_ids().len()
-                    );
+                    assert_eq!(embedded.type_definitions.len(), builtin_types::ids().len());
                     assert!(
                         embedded.type_definitions.iter().all(|td| td
                             .name

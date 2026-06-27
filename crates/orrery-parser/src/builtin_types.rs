@@ -1,9 +1,9 @@
 //! Built-in type definitions for the Orrery type system.
 //!
-//! This module provides:
-//! - String constants for all built-in base types
-//! - Builder pattern for creating default type definitions
-//! - Centralized location for all built-in type logic
+//! The `builtin_types!` table is the single source of truth for every built-in
+//! base type, expanding into three views of that table: the parser-level
+//! prelude ([`parser_type_definitions`]), the elaborated defaults
+//! ([`elaborate_type_definitions`]), and the registered names ([`ids`]).
 //!
 //! # Built-in Type Categories
 //!
@@ -20,7 +20,7 @@ use orrery_core::{
         ActivationBoxDefinition, ActorDefinition, ArrowDefinition, BoundaryDefinition,
         ComponentDefinition, ControlDefinition, DiagramDefinition, EntityDefinition,
         FragmentDefinition, InterfaceDefinition, LifelineDefinition, NoteDefinition,
-        OvalDefinition, RectangleDefinition, ShapeDefinition, StrokeDefinition, TextDefinition,
+        OvalDefinition, RectangleDefinition, StrokeDefinition, TextDefinition,
     },
     identifier::Id,
 };
@@ -92,343 +92,290 @@ pub const STROKE: &str = "Stroke";
 /// Built-in base type for text attribute groups
 pub const TEXT: &str = "Text";
 
-/// Builder for creating built-in type definitions.
+/// Builds a slot that references another built-in by its constant `type_name`
+/// (e.g. [`STROKE`]), re-applying any `inline` overrides so the referencing
+/// built-in's own non-default styling survives the wiring.
+fn type_ref(
+    name: &'static str,
+    type_name: &str,
+    inline: Vec<Attribute<'static>>,
+) -> Attribute<'static> {
+    Attribute {
+        name: Spanned::new(name, Span::empty()),
+        value: AttributeValue::TypeSpec(TypeSpec {
+            type_name: Some(Spanned::new(Id::new(type_name), Span::empty())),
+            attributes: inline,
+        }),
+    }
+}
+
+/// Turns an inline-override literal into an [`Attribute`].
 ///
-/// Registration order matters: a type that carries `stroke`/`text` attributes
-/// only picks up references to the `Stroke`/`Text` types that were added
-/// *before* it. Add [`add_stroke`](Self::add_stroke) and
-/// [`add_text`](Self::add_text) first so the types that depend on them resolve
-/// correctly.
+/// This lets `builtin_types!` stay agnostic about the value's type: `&str`
+/// values build a string attribute (`name="value"`) and floating-point values
+/// build a float attribute (`name=value`), so the macro can emit a single
+/// uniform call per override.
+trait InlineValue {
+    /// Builds the override attribute named `name` from `self`.
+    fn into_attribute(self, name: &'static str) -> Attribute<'static>;
+}
+
+impl InlineValue for &str {
+    /// Builds an inline string attribute (`name="value"`).
+    fn into_attribute(self, name: &'static str) -> Attribute<'static> {
+        Attribute {
+            name: Spanned::new(name, Span::empty()),
+            value: AttributeValue::String(Spanned::new(self.to_string(), Span::empty())),
+        }
+    }
+}
+
+impl InlineValue for f64 {
+    /// Builds an inline float attribute (`name=value`).
+    fn into_attribute(self, name: &'static str) -> Attribute<'static> {
+        Attribute {
+            name: Spanned::new(name, Span::empty()),
+            value: AttributeValue::Float(Spanned::new(self as f32, Span::empty())),
+        }
+    }
+}
+
+/// Declares the full table of built-in types.
 ///
-/// # Examples
+/// Each entry is `NAME => { parser: { .. }, elaborate: .. }`.
+///
+/// The `parser` block lists references declaratively:
 ///
 /// ```text
-/// let types = BuiltinTypeBuilder::new()
-///     .add_stroke(StrokeDefinition::default())
-///     .add_text(TextDefinition::default())
-///     .add_shape(RECTANGLE, RectangleDefinition::new())
-///     .add_arrow(ArrowDefinition::default())
-///     .add_note(NoteDefinition::new())
-///     .into_elaborate_type_definitions();
+/// "attr_name" => TargetType,                          // plain reference
+/// "attr_name" => TargetType { "override" = "value" }, // string override
+/// "attr_name" => TargetType { "override" = 2.0 },     // float override
 /// ```
-#[derive(Debug, Default)]
-pub struct BuiltinTypeBuilder {
-    stroke_id: Option<Spanned<Id>>,
-    text_id: Option<Spanned<Id>>,
-    lifeline_id: Option<Spanned<Id>>,
-    parser_types: Vec<ParserTypeDefinition<'static>>,
-    elaborate_types: Vec<ElaborateTypeDefinition>,
-}
-
-impl BuiltinTypeBuilder {
-    /// Creates an empty builder.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Adds a stroke type definition.
-    ///
-    /// Must be called before any type that references a `stroke` attribute.
-    pub fn add_stroke(mut self, stroke_definition: StrokeDefinition) -> Self {
-        let id = self.push_parser_type(STROKE, &[], &[]);
-        self.stroke_id = Some(Spanned::new(id, Span::empty()));
-
-        self.elaborate_types
-            .push(ElaborateTypeDefinition::new_stroke(id, stroke_definition));
-
-        self
-    }
-
-    /// Adds a text type definition.
-    ///
-    /// Must be called before any type that references a `text` attribute.
-    pub fn add_text(mut self, text_definition: TextDefinition) -> Self {
-        let id = self.push_parser_type(TEXT, &[], &[]);
-        self.text_id = Some(Spanned::new(id, Span::empty()));
-
-        self.elaborate_types
-            .push(ElaborateTypeDefinition::new_text(id, text_definition));
-
-        self
-    }
-
-    /// Adds the lifeline type, wiring its `stroke` to the `Stroke` type with a
-    /// dashed-style variation (`Lifeline[stroke=Stroke[style="dashed"]]`).
-    pub fn add_lifeline(mut self, lifeline_definition: LifelineDefinition) -> Self {
-        let stroke_id = self
-            .stroke_id
-            .expect("`Stroke` must be registered before `Lifeline`");
-
-        let id = Id::new(LIFELINE);
-        let spanned_id = Spanned::new(id, Span::empty());
-        let attributes = vec![Attribute {
-            name: Spanned::new("stroke", Span::empty()),
-            value: AttributeValue::TypeSpec(TypeSpec {
-                type_name: Some(stroke_id),
-                attributes: vec![Attribute {
-                    name: Spanned::new("style", Span::empty()),
-                    value: AttributeValue::String(Spanned::new(
-                        "dashed".to_string(),
-                        Span::empty(),
-                    )),
-                }],
-            }),
-        }];
-
-        self.parser_types.push(ParserTypeDefinition {
-            name: spanned_id,
-            type_spec: TypeSpec {
-                type_name: Some(spanned_id),
-                attributes,
-            },
-        });
-        self.lifeline_id = Some(spanned_id);
-
-        self.elaborate_types
-            .push(ElaborateTypeDefinition::new_lifeline(
-                id,
-                Rc::new(lifeline_definition),
-            ));
-
-        self
-    }
-
-    /// Adds an arrow type definition with default text styling.
-    pub fn add_arrow(mut self, arrow_definition: ArrowDefinition) -> Self {
-        let id = self.push_parser_type(ARROW, &["stroke"], &["text"]);
-
-        self.elaborate_types
-            .push(ElaborateTypeDefinition::new_arrow(
-                id,
-                Rc::new(arrow_definition),
-            ));
-
-        self
-    }
-
-    /// Adds a note type definition.
-    pub fn add_note(mut self, note_definition: NoteDefinition) -> Self {
-        let id = self.push_parser_type(NOTE, &["stroke"], &["text"]);
-
-        self.elaborate_types.push(ElaborateTypeDefinition::new_note(
-            id,
-            Rc::new(note_definition),
-        ));
-
-        self
-    }
-
-    /// Adds an activation box type definition.
-    pub fn add_activation_box(
-        mut self,
-        activation_box_definition: ActivationBoxDefinition,
-    ) -> Self {
-        let id = self.push_parser_type(ACTIVATE, &["stroke"], &[]);
-
-        self.elaborate_types
-            .push(ElaborateTypeDefinition::new_activation_box(
-                id,
-                Rc::new(activation_box_definition),
-            ));
-
-        self
-    }
-
-    /// Adds a fragment type definition with default text styling.
-    pub fn add_fragment(mut self, name: &str, fragment_definition: FragmentDefinition) -> Self {
-        let id = self.push_parser_type(
-            name,
-            &["border_stroke", "separator_stroke"],
-            &["operation_label_text", "section_title_text"],
-        );
-
-        self.elaborate_types
-            .push(ElaborateTypeDefinition::new_fragment(
-                id,
-                Rc::new(fragment_definition),
-            ));
-
-        self
-    }
-
-    /// Adds a shape type definition with default text styling.
-    pub fn add_shape(
-        mut self,
-        name: &str,
-        shape_definition: impl ShapeDefinition + 'static,
-    ) -> Self {
-        let id = self.push_parser_type(name, &["stroke"], &["text"]);
-
-        self.elaborate_types
-            .push(ElaborateTypeDefinition::new_shape(
-                id,
-                Rc::new(Box::new(shape_definition)),
-            ));
-
-        self
-    }
-
-    /// Adds the diagram-wide configuration type.
-    pub fn add_diagram(mut self, diagram_definition: DiagramDefinition) -> Self {
-        let lifeline_id = self
-            .lifeline_id
-            .expect("`Lifeline` must be registered before `Diagram`");
-
-        let id = Id::new(DIAGRAM);
-        let spanned_id = Spanned::new(id, Span::empty());
-        let attributes = vec![Attribute {
-            name: Spanned::new("lifeline", Span::empty()),
-            value: AttributeValue::TypeSpec(TypeSpec {
-                type_name: Some(lifeline_id),
-                attributes: vec![],
-            }),
-        }];
-
-        self.parser_types.push(ParserTypeDefinition {
-            name: spanned_id,
-            type_spec: TypeSpec {
-                type_name: Some(spanned_id),
-                attributes,
-            },
-        });
-
-        self.elaborate_types
-            .push(ElaborateTypeDefinition::new_diagram(
-                id,
-                Rc::new(diagram_definition),
-            ));
-
-        self
-    }
-
-    /// Consumes the builder, returning the [`Id`] of every registered type.
-    pub fn into_ids(self) -> Vec<Id> {
-        self.parser_types
-            .into_iter()
-            .map(|type_def| *type_def.name.inner())
-            .collect()
-    }
-
-    /// Consumes the builder, returning the [`ParserTypeDefinition`]s injected as
-    /// the built-in prelude during desugaring.
-    pub fn into_parser_type_definitions(self) -> Vec<ParserTypeDefinition<'static>> {
-        self.parser_types
-    }
-
-    /// Consumes the builder, returning the accumulated elaborated type
-    /// definitions.
-    pub fn into_elaborate_type_definitions(self) -> Vec<ElaborateTypeDefinition> {
-        self.elaborate_types
-    }
-
-    /// Builds the `stroke`/`text` attributes that reference the registered
-    /// `Stroke` and `Text` types under the given attribute names.
-    ///
-    /// References are emitted only for the `Stroke`/`Text` types already added,
-    /// so [`add_stroke`](Self::add_stroke) and [`add_text`](Self::add_text) must
-    /// precede any type that depends on them.
-    ///
-    /// # Panics
-    ///
-    /// In debug builds, panics if `stroke_names` (or `text_names`) is non-empty
-    /// before the corresponding `Stroke` (or `Text`) type has been registered.
-    fn attributes(
-        &self,
-        stroke_names: &[&'static str],
-        text_names: &[&'static str],
-    ) -> Vec<Attribute<'static>> {
-        debug_assert!(
-            stroke_names.is_empty() || self.stroke_id.is_some(),
-            "stroke_names must be empty or stroke_id must be set"
-        );
-        debug_assert!(
-            text_names.is_empty() || self.text_id.is_some(),
-            "text_names must be empty or text_id must be set"
-        );
-
-        let mut attrs = Vec::new();
-        if let Some(id) = self.stroke_id {
-            for name in stroke_names {
-                attrs.push(Attribute {
-                    name: Spanned::new(name, Span::empty()),
-                    value: AttributeValue::TypeSpec(TypeSpec {
-                        type_name: Some(id),
-                        attributes: vec![],
-                    }),
-                });
-            }
-        }
-        if let Some(id) = self.text_id {
-            for name in text_names {
-                attrs.push(Attribute {
-                    name: Spanned::new(name, Span::empty()),
-                    value: AttributeValue::TypeSpec(TypeSpec {
-                        type_name: Some(id),
-                        attributes: vec![],
-                    }),
-                });
-            }
-        }
-        attrs
-    }
-
-    /// Registers a parser-level type definition for `name` and returns its [`Id`].
-    fn push_parser_type(
-        &mut self,
-        name: &str,
-        stroke_names: &[&'static str],
-        text_names: &[&'static str],
-    ) -> Id {
-        let id = Id::new(name);
-        let spanned_id = Spanned::new(id, Span::empty());
-
-        self.parser_types.push(ParserTypeDefinition {
-            name: spanned_id,
-            type_spec: TypeSpec {
-                type_name: Some(spanned_id),
-                attributes: self.attributes(stroke_names, text_names),
-            },
-        });
-        id
-    }
-}
-
-/// Creates a builder pre-populated with all default built-in types.
 ///
-/// Single source of truth for the built-in types in the Orrery type system,
-/// assembling the standard set via [`BuiltinTypeBuilder`]. `Stroke` and `Text`
-/// are registered first so the types that reference them resolve their
-/// `stroke`/`text` attributes.
-pub fn defaults() -> BuiltinTypeBuilder {
-    BuiltinTypeBuilder::new()
-        // Attribute group types — must come first; later types reference these.
-        .add_stroke(StrokeDefinition::default())
-        .add_text(TextDefinition::default())
-        // Lifeline type
-        .add_lifeline(LifelineDefinition::default())
-        // Relation type
-        .add_arrow(ArrowDefinition::default())
-        // Annotation type
-        .add_note(NoteDefinition::new())
-        // Activation type
-        .add_activation_box(ActivationBoxDefinition::new())
-        // Fragment type definitions for common operations
-        .add_fragment(FRAGMENT_ALT, FragmentDefinition::new())
-        .add_fragment(FRAGMENT_OPT, FragmentDefinition::new())
-        .add_fragment(FRAGMENT_LOOP, FragmentDefinition::new())
-        .add_fragment(FRAGMENT_PAR, FragmentDefinition::new())
-        .add_fragment(FRAGMENT, FragmentDefinition::new())
-        // Shape types
-        .add_shape(RECTANGLE, RectangleDefinition::new())
-        .add_shape(OVAL, OvalDefinition::new())
-        .add_shape(COMPONENT, ComponentDefinition::new())
-        .add_shape(BOUNDARY, BoundaryDefinition::new())
-        .add_shape(ACTOR, ActorDefinition::new())
-        .add_shape(ENTITY, EntityDefinition::new())
-        .add_shape(CONTROL, ControlDefinition::new())
-        .add_shape(INTERFACE, InterfaceDefinition::new())
-        // Diagram-wide type
-        .add_diagram(DiagramDefinition::new())
+/// The `elaborate` field joins the constructor and the bare definition with a
+/// `=>` arrow (not call syntax — the macro, not the constructor, takes the
+/// definition):
+///
+/// ```text
+/// elaborate: ElaborateTypeDefinition::new_shape => RectangleDefinition::new(),
+/// ```
+///
+/// From the one table it expands a standalone function per consumer outcome —
+/// [`ids`], [`parser_type_definitions`] and [`elaborate_type_definitions`] —
+/// plus the test-only `DEFAULT_TYPE_NAMES`.
+macro_rules! builtin_types {
+    // Internal: build one elaborated definition, applying the wrapping each
+    // constructor expects around the bare `*Definition` value.
+    (@elaborate new_stroke, $definition:expr, $id:expr) => {
+        ElaborateTypeDefinition::new_stroke($id, $definition)
+    };
+    (@elaborate new_text, $definition:expr, $id:expr) => {
+        ElaborateTypeDefinition::new_text($id, $definition)
+    };
+    (@elaborate new_shape, $definition:expr, $id:expr) => {
+        ElaborateTypeDefinition::new_shape($id, Rc::new(Box::new($definition)))
+    };
+    (@elaborate $constructor:ident, $definition:expr, $id:expr) => {
+        ElaborateTypeDefinition::$constructor($id, Rc::new($definition))
+    };
+
+    // Public: the built-in type table.
+    (
+        $(
+            $name:expr => {
+                parser: {
+                    $(
+                        $attr:literal => $target:path
+                        $( { $( $ovr_name:literal = $ovr_value:expr ),* $(,)? } )?
+                    ),* $(,)?
+                },
+                elaborate: ElaborateTypeDefinition::$constructor:ident => $definition:expr $(,)?
+            }
+        ),* $(,)?
+    ) => {
+
+        /// The [`Id`] of every built-in type, in declaration order.
+        ///
+        /// These names are reserved: they resolve as built-ins everywhere and
+        /// are never namespace-qualified.
+        pub fn ids() -> Vec<Id> {
+            vec![ $( Id::new($name) ),* ]
+        }
+
+        /// The built-in prelude, as parser-level [`ParserTypeDefinition`]s.
+        ///
+        /// Inter-built-in references resolve by constant name, so a referenced
+        /// target (e.g. `Stroke`) need not precede the type that uses it.
+        pub fn parser_type_definitions() -> Vec<ParserTypeDefinition<'static>> {
+            vec![
+                $(
+                    {
+                        let spanned_id = Spanned::new(Id::new($name), Span::empty());
+                        ParserTypeDefinition {
+                            name: spanned_id,
+                            type_spec: TypeSpec {
+                                type_name: Some(spanned_id),
+                                attributes: vec![
+                                    $(
+                                        type_ref($attr, $target, vec![
+                                            $(
+                                                $(
+                                                    InlineValue::into_attribute($ovr_value, $ovr_name)
+                                                ),*
+                                            )?
+                                        ])
+                                    ),*
+                                ],
+                            },
+                        }
+                    }
+                ),*
+            ]
+        }
+
+        /// The elaborated default definition for each built-in type.
+        pub fn elaborate_type_definitions() -> Vec<ElaborateTypeDefinition> {
+            vec![
+                $(
+                    builtin_types!(@elaborate $constructor, $definition, Id::new($name))
+                ),*
+            ]
+        }
+    };
+}
+
+builtin_types! {
+    STROKE => {
+        parser: {},
+        elaborate: ElaborateTypeDefinition::new_stroke => StrokeDefinition::default(),
+    },
+    TEXT => {
+        parser: {},
+        elaborate: ElaborateTypeDefinition::new_text => TextDefinition::default(),
+    },
+    LIFELINE => {
+        parser: {
+            "stroke" => STROKE { "style" = "dashed" },
+        },
+        elaborate: ElaborateTypeDefinition::new_lifeline => LifelineDefinition::default(),
+    },
+    ARROW => {
+        parser: {
+            "stroke" => STROKE,
+            "text" => TEXT { "background_color" = "rgba(255, 255, 255, 0.85)" },
+        },
+        elaborate: ElaborateTypeDefinition::new_arrow => ArrowDefinition::default(),
+    },
+    NOTE => {
+        parser: {
+            "stroke" => STROKE,
+            "text" => TEXT,
+        },
+        elaborate: ElaborateTypeDefinition::new_note => NoteDefinition::new(),
+    },
+    ACTIVATE => {
+        parser: {
+            "stroke" => STROKE,
+        },
+        elaborate: ElaborateTypeDefinition::new_activation_box => ActivationBoxDefinition::new(),
+    },
+    FRAGMENT_ALT => {
+        parser: {
+            "border_stroke" => STROKE,
+            "separator_stroke" => STROKE { "style" = "dashed" },
+        },
+        elaborate: ElaborateTypeDefinition::new_fragment => FragmentDefinition::new(),
+    },
+    FRAGMENT_OPT => {
+        parser: {
+            "border_stroke" => STROKE,
+            "separator_stroke" => STROKE { "style" = "dashed" },
+        },
+        elaborate: ElaborateTypeDefinition::new_fragment => FragmentDefinition::new(),
+    },
+    FRAGMENT_LOOP => {
+        parser: {
+            "border_stroke" => STROKE,
+            "separator_stroke" => STROKE { "style" = "dashed" },
+        },
+        elaborate: ElaborateTypeDefinition::new_fragment => FragmentDefinition::new(),
+    },
+    FRAGMENT_PAR => {
+        parser: {
+            "border_stroke" => STROKE,
+            "separator_stroke" => STROKE { "style" = "dashed" },
+        },
+        elaborate: ElaborateTypeDefinition::new_fragment => FragmentDefinition::new(),
+    },
+    FRAGMENT => {
+        parser: {
+            "border_stroke" => STROKE,
+            "separator_stroke" => STROKE { "style" = "dashed" },
+        },
+        elaborate: ElaborateTypeDefinition::new_fragment => FragmentDefinition::new(),
+    },
+    RECTANGLE => {
+        parser: {
+            "stroke" => STROKE { "width" = 2.0 },
+            "text" => TEXT,
+        },
+        elaborate: ElaborateTypeDefinition::new_shape => RectangleDefinition::new(),
+    },
+    OVAL => {
+        parser: {
+            "stroke" => STROKE { "width" = 2.0 },
+            "text" => TEXT,
+        },
+        elaborate: ElaborateTypeDefinition::new_shape => OvalDefinition::new(),
+    },
+    COMPONENT => {
+        parser: {
+            "stroke" => STROKE { "width" = 2.0 },
+            "text" => TEXT,
+        },
+        elaborate: ElaborateTypeDefinition::new_shape => ComponentDefinition::new(),
+    },
+    BOUNDARY => {
+        parser: {
+            "stroke" => STROKE { "width" = 2.0 },
+            "text" => TEXT,
+        },
+        elaborate: ElaborateTypeDefinition::new_shape => BoundaryDefinition::new(),
+    },
+    ACTOR => {
+        parser: {
+            "stroke" => STROKE { "width" = 2.0 },
+            "text" => TEXT,
+        },
+        elaborate: ElaborateTypeDefinition::new_shape => ActorDefinition::new(),
+    },
+    ENTITY => {
+        parser: {
+            "stroke" => STROKE { "width" = 2.0 },
+            "text" => TEXT,
+        },
+        elaborate: ElaborateTypeDefinition::new_shape => EntityDefinition::new(),
+    },
+    CONTROL => {
+        parser: {
+            "stroke" => STROKE { "width" = 2.0 },
+            "text" => TEXT,
+        },
+        elaborate: ElaborateTypeDefinition::new_shape => ControlDefinition::new(),
+    },
+    INTERFACE => {
+        parser: {
+            "stroke" => STROKE { "width" = 2.0 },
+            "text" => TEXT,
+        },
+        elaborate: ElaborateTypeDefinition::new_shape => InterfaceDefinition::new(),
+    },
+    DIAGRAM => {
+        parser: {
+            "lifeline" => LIFELINE,
+        },
+        elaborate: ElaborateTypeDefinition::new_diagram => DiagramDefinition::new(),
+    },
 }
 
 #[cfg(test)]
@@ -436,65 +383,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_builder_starts_empty() {
-        let builder = BuiltinTypeBuilder::new();
-        let types = builder.into_elaborate_type_definitions();
-        assert_eq!(types.len(), 0);
-    }
+    fn test_parser_type_definitions_wires_attribute_references() {
+        let parser_types = parser_type_definitions();
 
-    #[test]
-    fn test_builder_chaining() {
-        // `Stroke`/`Text` must be registered before types that reference them.
-        let types = BuiltinTypeBuilder::new()
-            .add_stroke(StrokeDefinition::default())
-            .add_text(TextDefinition::default())
-            .add_arrow(ArrowDefinition::default())
-            .add_note(NoteDefinition::new())
-            .add_shape(RECTANGLE, RectangleDefinition::new())
-            .into_elaborate_type_definitions();
-
-        assert_eq!(types.len(), 5);
-    }
-
-    /// All built-in type names in [`defaults`] registration order.
-    const DEFAULT_TYPE_NAMES: [&str; 20] = [
-        STROKE,
-        TEXT,
-        LIFELINE,
-        ARROW,
-        NOTE,
-        ACTIVATE,
-        FRAGMENT_ALT,
-        FRAGMENT_OPT,
-        FRAGMENT_LOOP,
-        FRAGMENT_PAR,
-        FRAGMENT,
-        RECTANGLE,
-        OVAL,
-        COMPONENT,
-        BOUNDARY,
-        ACTOR,
-        ENTITY,
-        CONTROL,
-        INTERFACE,
-        DIAGRAM,
-    ];
-
-    #[test]
-    fn test_defaults_creates_all_types() {
-        assert_eq!(defaults().into_ids(), DEFAULT_TYPE_NAMES);
-    }
-
-    #[test]
-    fn test_into_parser_type_definitions_wires_attribute_references() {
-        let parser_types = defaults().into_parser_type_definitions();
-
-        // Same types, in the same order, as the registered ids.
+        // Same types, in the same order, as `ids`.
         let names: Vec<Id> = parser_types
             .iter()
             .map(|type_def| *type_def.name.inner())
             .collect();
-        assert_eq!(names, DEFAULT_TYPE_NAMES);
+        assert_eq!(names, ids());
 
         // `Stroke` is a leaf attribute group with no references of its own.
         let stroke = &parser_types[0];
@@ -565,15 +462,104 @@ mod tests {
             refs,
             vec![("stroke", Id::new(STROKE)), ("text", Id::new(TEXT))]
         );
+
+        // `Arrow`'s `text` re-applies the translucent label background so the
+        // shared `Text` wiring doesn't drop it.
+        let arrow_text = arrow
+            .type_spec
+            .attributes
+            .iter()
+            .find(|attr| *attr.name.inner() == "text")
+            .expect("Arrow must wire a `text` attribute");
+        let arrow_text_ref = arrow_text
+            .value
+            .as_type_spec()
+            .expect("text attribute is a type ref");
+        assert_eq!(arrow_text_ref.attributes.len(), 1);
+        assert_eq!(
+            *arrow_text_ref.attributes[0].name.inner(),
+            "background_color"
+        );
+        assert_eq!(
+            arrow_text_ref.attributes[0].value.as_str(),
+            Ok("rgba(255, 255, 255, 0.85)")
+        );
+
+        // `Rectangle` (a shape) re-applies its 2.0-wide outline on top of the
+        // shared `Stroke`, which defaults to 1.0.
+        let rectangle = parser_types
+            .iter()
+            .find(|type_def| *type_def.name.inner() == RECTANGLE)
+            .expect("Rectangle must be registered");
+        let rectangle_stroke = rectangle
+            .type_spec
+            .attributes
+            .iter()
+            .find(|attr| *attr.name.inner() == "stroke")
+            .expect("Rectangle must wire a `stroke` attribute");
+        let rectangle_stroke_ref = rectangle_stroke
+            .value
+            .as_type_spec()
+            .expect("stroke attribute is a type ref");
+        assert_eq!(
+            rectangle_stroke_ref
+                .type_name
+                .as_ref()
+                .map(|name| *name.inner()),
+            Some(Id::new(STROKE))
+        );
+        assert_eq!(rectangle_stroke_ref.attributes.len(), 1);
+        assert_eq!(*rectangle_stroke_ref.attributes[0].name.inner(), "width");
+        assert_eq!(rectangle_stroke_ref.attributes[0].value.as_float(), Ok(2.0));
+
+        // `Fragment` wires its strokes (re-applying the dashed separator) but
+        // leaves the label-text slots unwired so their bespoke defaults survive.
+        let fragment = parser_types
+            .iter()
+            .find(|type_def| *type_def.name.inner() == FRAGMENT)
+            .expect("Fragment must be registered");
+        let fragment_refs: Vec<(&str, Id)> = fragment
+            .type_spec
+            .attributes
+            .iter()
+            .map(|attr| {
+                let type_spec = attr.value.as_type_spec().expect("attribute is a type ref");
+                let type_name = *type_spec
+                    .type_name
+                    .as_ref()
+                    .expect("type ref has a type name")
+                    .inner();
+                (*attr.name.inner(), type_name)
+            })
+            .collect();
+        assert_eq!(
+            fragment_refs,
+            vec![
+                ("border_stroke", Id::new(STROKE)),
+                ("separator_stroke", Id::new(STROKE)),
+            ]
+        );
+        let separator_ref = fragment
+            .type_spec
+            .attributes
+            .iter()
+            .find(|attr| *attr.name.inner() == "separator_stroke")
+            .expect("Fragment must wire a `separator_stroke`")
+            .value
+            .as_type_spec()
+            .expect("separator_stroke is a type ref");
+        assert_eq!(separator_ref.attributes.len(), 1);
+        assert_eq!(*separator_ref.attributes[0].name.inner(), "style");
+        assert_eq!(separator_ref.attributes[0].value.as_str(), Ok("dashed"));
     }
 
     #[test]
-    fn test_into_elaborate_type_definitions_match_kinds() {
-        let types = defaults().into_elaborate_type_definitions();
+    fn test_elaborate_type_definitions_match_kinds() {
+        let types = elaborate_type_definitions();
 
-        // Same types, in the same order, as the registered ids.
+        // Same types, in the same order, as `ids`.
         let names: Vec<Id> = types.iter().map(|type_def| type_def.id()).collect();
-        assert_eq!(names, DEFAULT_TYPE_NAMES);
+        assert_eq!(names, ids());
 
         let find = |name: &str| {
             types

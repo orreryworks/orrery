@@ -98,7 +98,7 @@ impl<'a> Component<'a> {
 ///   *canonical* end of the pair, and `target` is the other end. For
 ///   self-loop buckets the same [`Component`] is passed for both.
 /// - Relations within the bucket may go either direction; inspect
-///   [`Relation::source`](semantic::Relation::source) to determine orientation.
+///   [`Relation::source`] to determine orientation.
 /// - Return exactly one arrow per input relation.
 pub trait ArrowPlacer {
     /// Places a bucket of relations between the same component pair.
@@ -188,7 +188,7 @@ impl CurvedArrowPlacer {
         }
     }
 
-    /// Packages `lane_geometry` output into a [`PositionedArrowWithText`](PositionedArrowWithText).
+    /// Packages `lane_geometry` output into a [`PositionedArrowWithText`].
     fn curved_arrow<'a>(
         relation: &'a Relation,
         source: &Component<'_>,
