@@ -8,11 +8,14 @@
 //! Leaf values are wrapped in [`Spanned<T>`] to preserve source location information
 //! for error reporting. Composite types derive their spans from their contents.
 
-use std::{cell::RefCell, fmt, rc::Rc};
+use std::{cell::RefCell, fmt, rc::Rc, str::FromStr};
 
 use orrery_core::{identifier::Id, semantic::DiagramKind};
 
-use crate::span::{Span, Spanned};
+use crate::{
+    span::{Span, Spanned},
+    tokens::Token,
+};
 
 /// Type specifier used in both declarations and invocations.
 ///
@@ -21,12 +24,12 @@ use crate::span::{Span, Spanned};
 /// - `TypeName` — named without attributes.
 /// - `[attrs]` — anonymous (no type name, just attributes).
 #[derive(Debug, Clone, Default)]
-pub struct TypeSpec<'a> {
+pub struct TypeSpec {
     pub type_name: Option<Spanned<Id>>,
-    pub attributes: Vec<Attribute<'a>>,
+    pub attributes: Vec<Attribute>,
 }
 
-impl<'a> TypeSpec<'a> {
+impl TypeSpec {
     /// Returns the [`Span`] covering the entire type specifier.
     pub fn span(&self) -> Span {
         match &self.type_name {
@@ -45,7 +48,7 @@ impl<'a> TypeSpec<'a> {
     }
 }
 
-impl<'a> fmt::Display for TypeSpec<'a> {
+impl fmt::Display for TypeSpec {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(name) = &self.type_name {
             write!(f, "{}", name)?;
@@ -65,7 +68,7 @@ impl<'a> fmt::Display for TypeSpec<'a> {
 }
 
 /// Empty TypeSpec constant for use with Empty variant
-static EMPTY_TYPE_SPEC: TypeSpec<'static> = TypeSpec {
+static EMPTY_TYPE_SPEC: TypeSpec = TypeSpec {
     type_name: None,
     attributes: Vec::new(),
 };
@@ -86,15 +89,15 @@ static EMPTY_TYPE_SPEC: TypeSpec<'static> = TypeSpec {
 /// - Allows `on=[]` (margin note) and `text=[]` (empty type spec) to parse correctly
 /// - Parser doesn't need to know the semantic context during parsing
 #[derive(Debug, Clone)]
-pub enum AttributeValue<'a> {
+pub enum AttributeValue {
     String(Spanned<String>),
     Float(Spanned<f32>),
-    TypeSpec(TypeSpec<'a>),
+    TypeSpec(TypeSpec),
     Identifiers(Vec<Spanned<Id>>),
     Empty,
 }
 
-impl<'a> PartialEq for AttributeValue<'a> {
+impl PartialEq for AttributeValue {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (AttributeValue::String(s1), AttributeValue::String(s2)) => s1.inner() == s2.inner(),
@@ -113,7 +116,7 @@ impl<'a> PartialEq for AttributeValue<'a> {
     }
 }
 
-impl<'a> fmt::Display for AttributeValue<'a> {
+impl fmt::Display for AttributeValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AttributeValue::String(s) => write!(f, "\"{}\"", s.inner()),
@@ -136,7 +139,7 @@ impl<'a> fmt::Display for AttributeValue<'a> {
     }
 }
 
-impl<'a> AttributeValue<'a> {
+impl AttributeValue {
     /// Get the span for this attribute value
     pub fn span(&self) -> Span {
         match self {
@@ -194,7 +197,7 @@ impl<'a> AttributeValue<'a> {
     }
 
     /// Extract a type spec, returning an error if this is not a type spec value
-    pub fn as_type_spec(&self) -> Result<&TypeSpec<'a>, &'static str> {
+    pub fn as_type_spec(&self) -> Result<&TypeSpec, &'static str> {
         match self {
             AttributeValue::TypeSpec(type_spec) => Ok(type_spec),
             AttributeValue::Empty => Ok(&EMPTY_TYPE_SPEC),
@@ -204,7 +207,7 @@ impl<'a> AttributeValue<'a> {
 
     /// Returns a mutable reference to the inner [`TypeSpec`], or an error if
     /// this is not a type spec value.
-    pub fn as_type_spec_mut(&mut self) -> Result<&mut TypeSpec<'a>, &'static str> {
+    pub fn as_type_spec_mut(&mut self) -> Result<&mut TypeSpec, &'static str> {
         match self {
             AttributeValue::TypeSpec(type_spec) => Ok(type_spec),
             _ => Err("expected type spec"),
@@ -221,14 +224,172 @@ impl<'a> AttributeValue<'a> {
     }
 }
 
-/// Key-value attribute pair on a type specifier or element.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Attribute<'a> {
-    pub name: Spanned<&'a str>,
-    pub value: AttributeValue<'a>,
+/// A recognized attribute key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AttributeKey {
+    Align,
+    BackgroundColor,
+    BorderStroke,
+    CanvasColor,
+    Cap,
+    Color,
+    FillColor,
+    FontFamily,
+    FontSize,
+    Join,
+    LayoutEngine,
+    Lifeline,
+    NestingOffset,
+    On,
+    OperationLabelText,
+    Padding,
+    Rounded,
+    SectionTitleText,
+    SeparatorStroke,
+    Stroke,
+    Style,
+    Text,
+    Width,
 }
 
-impl<'a> fmt::Display for Attribute<'a> {
+impl AttributeKey {
+    /// Returns the canonical source text for this key.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AttributeKey::Align => "align",
+            AttributeKey::BackgroundColor => "background_color",
+            AttributeKey::BorderStroke => "border_stroke",
+            AttributeKey::CanvasColor => "canvas_color",
+            AttributeKey::Cap => "cap",
+            AttributeKey::Color => "color",
+            AttributeKey::FillColor => "fill_color",
+            AttributeKey::FontFamily => "font_family",
+            AttributeKey::FontSize => "font_size",
+            AttributeKey::Join => "join",
+            AttributeKey::LayoutEngine => "layout_engine",
+            AttributeKey::Lifeline => "lifeline",
+            AttributeKey::NestingOffset => "nesting_offset",
+            AttributeKey::On => "on",
+            AttributeKey::OperationLabelText => "operation_label_text",
+            AttributeKey::Padding => "padding",
+            AttributeKey::Rounded => "rounded",
+            AttributeKey::SectionTitleText => "section_title_text",
+            AttributeKey::SeparatorStroke => "separator_stroke",
+            AttributeKey::Stroke => "stroke",
+            AttributeKey::Style => "style",
+            AttributeKey::Text => "text",
+            AttributeKey::Width => "width",
+        }
+    }
+}
+
+impl FromStr for AttributeKey {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "align" => AttributeKey::Align,
+            "background_color" => AttributeKey::BackgroundColor,
+            "border_stroke" => AttributeKey::BorderStroke,
+            "canvas_color" => AttributeKey::CanvasColor,
+            "cap" => AttributeKey::Cap,
+            "color" => AttributeKey::Color,
+            "fill_color" => AttributeKey::FillColor,
+            "font_family" => AttributeKey::FontFamily,
+            "font_size" => AttributeKey::FontSize,
+            "join" => AttributeKey::Join,
+            "layout_engine" => AttributeKey::LayoutEngine,
+            "lifeline" => AttributeKey::Lifeline,
+            "nesting_offset" => AttributeKey::NestingOffset,
+            "on" => AttributeKey::On,
+            "operation_label_text" => AttributeKey::OperationLabelText,
+            "padding" => AttributeKey::Padding,
+            "rounded" => AttributeKey::Rounded,
+            "section_title_text" => AttributeKey::SectionTitleText,
+            "separator_stroke" => AttributeKey::SeparatorStroke,
+            "stroke" => AttributeKey::Stroke,
+            "style" => AttributeKey::Style,
+            "text" => AttributeKey::Text,
+            "width" => AttributeKey::Width,
+            _ => return Err("unknown attribute key"),
+        })
+    }
+}
+
+impl fmt::Display for AttributeKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// A relation operator, such as `->` or `<->`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RelationType {
+    /// `->`
+    Forward,
+    /// `<-`
+    Backward,
+    /// `<->`
+    Bidirectional,
+    /// `-`
+    Undirected,
+}
+
+impl RelationType {
+    /// Returns the canonical source text for this relation operator.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RelationType::Forward => "->",
+            RelationType::Backward => "<-",
+            RelationType::Bidirectional => "<->",
+            RelationType::Undirected => "-",
+        }
+    }
+}
+
+impl FromStr for RelationType {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "->" => RelationType::Forward,
+            "<-" => RelationType::Backward,
+            "<->" => RelationType::Bidirectional,
+            "-" => RelationType::Undirected,
+            _ => return Err("unknown relation type"),
+        })
+    }
+}
+
+impl TryFrom<&Token<'_>> for RelationType {
+    type Error = ();
+
+    /// Maps a relation-arrow token to its operator; `Err(())` for any other token.
+    fn try_from(token: &Token<'_>) -> Result<Self, Self::Error> {
+        Ok(match token {
+            Token::Arrow_ => RelationType::Forward,
+            Token::LeftArrow => RelationType::Backward,
+            Token::DoubleArrow => RelationType::Bidirectional,
+            Token::Plain => RelationType::Undirected,
+            _ => return Err(()),
+        })
+    }
+}
+
+impl fmt::Display for RelationType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Key-value attribute pair on a type specifier or element.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attribute {
+    pub name: Spanned<AttributeKey>,
+    pub value: AttributeValue,
+}
+
+impl fmt::Display for Attribute {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}={}", self.name, self.value)
     }
@@ -236,12 +397,12 @@ impl<'a> fmt::Display for Attribute<'a> {
 
 /// Type Definition - declares a new type name as an alias with attributes
 #[derive(Debug, Clone)]
-pub struct TypeDefinition<'a> {
+pub struct TypeDefinition {
     pub name: Spanned<Id>,
-    pub type_spec: TypeSpec<'a>,
+    pub type_spec: TypeSpec,
 }
 
-impl TypeDefinition<'_> {
+impl TypeDefinition {
     pub fn span(&self) -> Span {
         self.name.span().union(self.type_spec.span())
     }
@@ -257,7 +418,7 @@ impl TypeDefinition<'_> {
 /// - `diagram <kind> [attrs];` — a renderable diagram of a specific [`DiagramKind`].
 /// - `library;` — a file that only exports type definitions for import.
 #[derive(Debug, Clone)]
-pub enum FileHeader<'a> {
+pub enum FileHeader {
     /// A diagram file declared with `diagram <kind> [attributes...];`.
     ///
     /// Diagram files are the primary renderable unit. The [`DiagramKind`]
@@ -267,7 +428,7 @@ pub enum FileHeader<'a> {
         /// The diagram kind keyword, wrapped in a [`Spanned`].
         kind: Spanned<DiagramKind>,
         /// Zero or more diagram-level attributes.
-        attributes: Vec<Attribute<'a>>,
+        attributes: Vec<Attribute>,
     },
     /// A library file declared with `library;`.
     ///
@@ -279,7 +440,7 @@ pub enum FileHeader<'a> {
     },
 }
 
-impl FileHeader<'_> {
+impl FileHeader {
     /// Returns the [`Span`] covering the entire file header declaration.
     pub fn span(&self) -> Span {
         match self {
@@ -342,7 +503,7 @@ pub struct ImportDecl {
 /// later processes each [`ImportDecl`], loads the referenced file, parses it,
 /// and stores the result here.
 #[derive(Debug, Clone)]
-pub struct Import<'a> {
+pub struct Import {
     /// Namespace qualifier derived from the last segment of the import path.
     ///
     /// Used to scope imported symbols (e.g., `styles::Card`). `None` when the
@@ -352,7 +513,7 @@ pub struct Import<'a> {
     ///
     /// Stored as `Rc<RefCell<…>>` so that diamond dependencies (the same file
     /// imported by multiple parents) share a single AST instance.
-    pub file_ast: Rc<RefCell<FileAst<'a>>>,
+    pub file_ast: Rc<RefCell<FileAst>>,
 }
 
 /// Top-level parsed file — the root AST node produced by the parser.
@@ -365,23 +526,23 @@ pub struct Import<'a> {
 /// The `imports` field is initially empty; the resolver populates it by
 /// walking `import_decls` and attaching parsed [`Import`]s.
 #[derive(Debug, Clone)]
-pub struct FileAst<'a> {
+pub struct FileAst {
     /// The file header that identifies this file as a diagram or library.
-    pub header: FileHeader<'a>,
+    pub header: FileHeader,
     /// Syntactic `import "…";` declarations in source order.
     /// These are unresolved; the resolver converts them into [`Import`]s.
     pub import_decls: Vec<Spanned<ImportDecl>>,
     /// Named type aliases declared with `type Name = TypeSpec;`.
-    pub type_definitions: Vec<TypeDefinition<'a>>,
+    pub type_definitions: Vec<TypeDefinition>,
     /// Diagram body elements (components, relations, fragments, etc.).
     /// Always empty for library files because they have no renderable body.
-    pub elements: Vec<Element<'a>>,
+    pub elements: Vec<Element>,
     /// Resolved imports populated by the resolver after parsing.
     /// Empty immediately after parsing; filled during the resolve pass.
-    pub imports: Vec<Import<'a>>,
+    pub imports: Vec<Import>,
 }
 
-impl FileAst<'_> {
+impl FileAst {
     /// Returns the [`Span`] covering the entire file, from the header through
     /// the last element.
     pub fn span(&self) -> Span {
@@ -402,12 +563,12 @@ impl FileAst<'_> {
 /// Each section has an optional title (used as a guard condition label) and
 /// a list of child [`Element`]s.
 #[derive(Debug, Clone)]
-pub struct FragmentSection<'a> {
+pub struct FragmentSection {
     pub title: Option<Spanned<String>>,
-    pub elements: Vec<Element<'a>>,
+    pub elements: Vec<Element>,
 }
 
-impl FragmentSection<'_> {
+impl FragmentSection {
     pub fn span(&self) -> Span {
         let elements_span = self
             .elements
@@ -427,16 +588,16 @@ impl FragmentSection<'_> {
 /// Fragment block.
 ///
 #[derive(Debug, Clone)]
-pub struct Fragment<'a> {
+pub struct Fragment {
     /// The fragment operation/title as a string literal.
     pub operation: Spanned<String>,
     /// type specification.
-    pub type_spec: TypeSpec<'a>,
+    pub type_spec: TypeSpec,
     /// One or more [`FragmentSection`]s containing elements.
-    pub sections: Vec<FragmentSection<'a>>,
+    pub sections: Vec<FragmentSection>,
 }
 
-impl Fragment<'_> {
+impl Fragment {
     pub fn span(&self) -> Span {
         let span = self.operation.span().union(self.type_spec.span());
         self.sections
@@ -448,12 +609,12 @@ impl Fragment<'_> {
 
 /// AST node representing a note element.
 #[derive(Debug, Clone)]
-pub struct Note<'a> {
-    pub type_spec: TypeSpec<'a>,
+pub struct Note {
+    pub type_spec: TypeSpec,
     pub content: Spanned<String>,
 }
 
-impl Note<'_> {
+impl Note {
     pub fn span(&self) -> Span {
         self.content.span().union(self.type_spec.span())
     }
@@ -469,16 +630,16 @@ impl Note<'_> {
 /// - `Diagram` — an `embed` clause that attaches a [`DiagramSource`] to the
 ///   component.
 #[derive(Debug, Clone)]
-pub enum ComponentContent<'a> {
+pub enum ComponentContent {
     /// No nested content — a bare declaration like `box: Rectangle;`.
     None,
     /// Brace-delimited child [`Element`]s: `box: Rectangle { child: Oval; };`.
-    Scope(Vec<Element<'a>>),
+    Scope(Vec<Element>),
     /// Embedded diagram via [`DiagramSource`]: `box: Rectangle embed { ... };` or `box: Rectangle embed name;`.
-    Diagram(DiagramSource<'a>),
+    Diagram(DiagramSource),
 }
 
-impl ComponentContent<'_> {
+impl ComponentContent {
     /// Returns the combined span of the content.
     pub fn span(&self) -> Span {
         match self {
@@ -502,18 +663,18 @@ impl ComponentContent<'_> {
 /// - `Ref` — a symbolic reference to an imported diagram, resolved to
 ///   [`Inline`](DiagramSource::Inline) during the desugar pass.
 #[derive(Debug, Clone)]
-pub enum DiagramSource<'a> {
+pub enum DiagramSource {
     /// Inline definition: `embed { diagram sequence; ... }`.
     ///
     /// Wraps a full [`FileAst`] as `Rc<RefCell<…>>` to allow shared ownership.
-    Inline(Rc<RefCell<FileAst<'a>>>),
+    Inline(Rc<RefCell<FileAst>>),
     /// Reference to an imported diagram: `embed auth_flow`.
     ///
     /// Resolved to [`Inline`](DiagramSource::Inline) during desugaring.
     Ref(Spanned<Id>),
 }
 
-impl DiagramSource<'_> {
+impl DiagramSource {
     /// Returns the source span of this diagram source.
     pub fn span(&self) -> Span {
         match self {
@@ -525,7 +686,7 @@ impl DiagramSource<'_> {
 
 /// AST node representing a diagram body element.
 #[derive(Debug, Clone)]
-pub enum Element<'a> {
+pub enum Element {
     /// Named component declaration with optional display name and [`ComponentContent`].
     Component {
         /// The component's identifier, e.g. `box` in `box: Rectangle;`.
@@ -533,75 +694,75 @@ pub enum Element<'a> {
         /// Optional human-readable label shown in rendered output.
         display_name: Option<Spanned<String>>,
         /// Type and attributes applied to this component.
-        type_spec: TypeSpec<'a>,
+        type_spec: TypeSpec,
         /// The component's body — children, embedded diagram, or nothing.
-        content: ComponentContent<'a>,
+        content: ComponentContent,
     },
     /// Directed relation between two components with an optional label.
     Relation {
         source: Spanned<Id>,
         target: Spanned<Id>,
-        relation_type: Spanned<&'a str>,
-        type_spec: TypeSpec<'a>,
+        relation_type: Spanned<RelationType>,
+        type_spec: TypeSpec,
         label: Option<Spanned<String>>,
     },
     /// Explicit fragment block declared.
-    Fragment(Fragment<'a>),
+    Fragment(Fragment),
     /// Activation scope that wraps a list of elements. Desugared into explicit
     /// [`Activate`](Element::Activate)/[`Deactivate`](Element::Deactivate) pairs.
     ActivateBlock {
         component: Spanned<Id>,
-        type_spec: TypeSpec<'a>,
-        elements: Vec<Element<'a>>,
+        type_spec: TypeSpec,
+        elements: Vec<Element>,
     },
     /// Explicit component activation statement.
     Activate {
         component: Spanned<Id>,
-        type_spec: TypeSpec<'a>,
+        type_spec: TypeSpec,
     },
     /// Explicit deactivation of a component.
     Deactivate { component: Spanned<Id> },
     /// Alt/else block (sugar syntax for fragment with "alt" operation).
     AltElseBlock {
         keyword_span: Span,
-        type_spec: TypeSpec<'a>,
-        sections: Vec<FragmentSection<'a>>,
+        type_spec: TypeSpec,
+        sections: Vec<FragmentSection>,
     },
     /// Opt block (sugar syntax for fragment with "opt" operation).
     OptBlock {
         keyword_span: Span,
-        type_spec: TypeSpec<'a>,
-        section: FragmentSection<'a>,
+        type_spec: TypeSpec,
+        section: FragmentSection,
     },
     /// Loop block (sugar syntax for fragment with "loop" operation).
     LoopBlock {
         keyword_span: Span,
-        type_spec: TypeSpec<'a>,
-        section: FragmentSection<'a>,
+        type_spec: TypeSpec,
+        section: FragmentSection,
     },
     /// Par block (sugar syntax for fragment with "par" operation).
     ParBlock {
         keyword_span: Span,
-        type_spec: TypeSpec<'a>,
-        sections: Vec<FragmentSection<'a>>,
+        type_spec: TypeSpec,
+        sections: Vec<FragmentSection>,
     },
     /// Break block (sugar syntax for fragment with "break" operation).
     BreakBlock {
         keyword_span: Span,
-        type_spec: TypeSpec<'a>,
-        section: FragmentSection<'a>,
+        type_spec: TypeSpec,
+        section: FragmentSection,
     },
     /// Critical block (sugar syntax for fragment with "critical" operation).
     CriticalBlock {
         keyword_span: Span,
-        type_spec: TypeSpec<'a>,
-        section: FragmentSection<'a>,
+        type_spec: TypeSpec,
+        section: FragmentSection,
     },
     /// Note element with optional attributes and text content.
-    Note(Note<'a>),
+    Note(Note),
 }
 
-impl Element<'_> {
+impl Element {
     pub fn span(&self) -> Span {
         match self {
             Element::Component {
@@ -702,7 +863,7 @@ impl Element<'_> {
     }
 }
 
-impl Attribute<'_> {
+impl Attribute {
     pub fn span(&self) -> Span {
         self.name.span().union(self.value.span())
     }

@@ -61,6 +61,16 @@ pub enum ErrorCode {
     /// The input ended unexpectedly before a complete construct was parsed.
     E101,
 
+    /// Unknown attribute key.
+    ///
+    /// An attribute name was used that is not a recognized attribute key.
+    E102,
+
+    /// Unknown relation type.
+    ///
+    /// A relation operator was used that is not a recognized relation type.
+    E103,
+
     // =========================================================================
     // Validation Errors (E2xx)
     // =========================================================================
@@ -186,6 +196,8 @@ impl ErrorCode {
             // Parser errors
             ErrorCode::E100 => "E100",
             ErrorCode::E101 => "E101",
+            ErrorCode::E102 => "E102",
+            ErrorCode::E103 => "E103",
             // Validation errors
             ErrorCode::E200 => "E200",
             ErrorCode::E201 => "E201",
@@ -224,6 +236,8 @@ impl ErrorCode {
             // Parser errors
             ErrorCode::E100 => "unexpected token",
             ErrorCode::E101 => "incomplete input",
+            ErrorCode::E102 => "unknown attribute key",
+            ErrorCode::E103 => "unknown relation type",
             // Validation errors
             ErrorCode::E200 => "undefined component",
             ErrorCode::E201 => "unpaired activate",

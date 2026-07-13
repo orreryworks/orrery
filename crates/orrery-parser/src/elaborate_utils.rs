@@ -19,7 +19,7 @@ use orrery_core::{
 
 use crate::{
     error::{Diagnostic, ErrorCode, Result as DiagnosticResult},
-    parser_types,
+    parser_types::{self, AttributeKey},
 };
 
 /// Unified drawing definition for types: either a shape or an arrow.
@@ -212,7 +212,7 @@ impl TextAttributeExtractor {
         let value = &attr.value;
 
         match *name {
-            "font_size" => {
+            AttributeKey::FontSize => {
                 let val = value.as_u16().map_err(|_| {
                         Diagnostic::error(format!("invalid `font_size` value `{value}`"))
                             .with_code(ErrorCode::E302)
@@ -222,7 +222,7 @@ impl TextAttributeExtractor {
                 text_def.set_font_size(val);
                 Ok(())
             }
-            "font_family" => {
+            AttributeKey::FontFamily => {
                 text_def.set_font_family(value.as_str().map_err(|err| {
                     Diagnostic::error(err.to_string())
                         .with_code(ErrorCode::E302)
@@ -231,7 +231,7 @@ impl TextAttributeExtractor {
                 })?);
                 Ok(())
             }
-            "background_color" => {
+            AttributeKey::BackgroundColor => {
                 let val = Color::new(value.as_str().map_err(|err| {
                     Diagnostic::error(err.to_string())
                         .with_code(ErrorCode::E302)
@@ -247,7 +247,7 @@ impl TextAttributeExtractor {
                 text_def.set_background_color(Some(val));
                 Ok(())
             }
-            "padding" => {
+            AttributeKey::Padding => {
                 let val = value.as_float().map_err(|err| {
                     Diagnostic::error(format!("invalid `padding` value: {err}"))
                         .with_code(ErrorCode::E302)
@@ -257,7 +257,7 @@ impl TextAttributeExtractor {
                 text_def.set_padding(Insets::uniform(val));
                 Ok(())
             }
-            "color" => {
+            AttributeKey::Color => {
                 let val = Color::new(value.as_str().map_err(|err| {
                     Diagnostic::error(err.to_string())
                         .with_code(ErrorCode::E302)
@@ -307,7 +307,7 @@ impl StrokeAttributeExtractor {
         let value = &attr.value;
 
         match name {
-            "color" => {
+            AttributeKey::Color => {
                 let color_str = value.as_str().map_err(|err| {
                     Diagnostic::error(err.to_string())
                         .with_code(ErrorCode::E302)
@@ -323,7 +323,7 @@ impl StrokeAttributeExtractor {
                 stroke_def.set_color(val);
                 Ok(())
             }
-            "width" => {
+            AttributeKey::Width => {
                 let val = value.as_float().map_err(|err| {
                     Diagnostic::error(format!("invalid stroke `width` value: {err}"))
                         .with_code(ErrorCode::E302)
@@ -333,7 +333,7 @@ impl StrokeAttributeExtractor {
                 stroke_def.set_width(val);
                 Ok(())
             }
-            "style" => {
+            AttributeKey::Style => {
                 let style_str = value.as_str().map_err(|err| {
                     Diagnostic::error(err.to_string())
                         .with_code(ErrorCode::E302)
@@ -351,7 +351,7 @@ impl StrokeAttributeExtractor {
                 stroke_def.set_style(style);
                 Ok(())
             }
-            "cap" => {
+            AttributeKey::Cap => {
                 let cap_str = value.as_str().map_err(|err| {
                     Diagnostic::error(err.to_string())
                         .with_code(ErrorCode::E302)
@@ -367,7 +367,7 @@ impl StrokeAttributeExtractor {
                 stroke_def.set_cap(cap);
                 Ok(())
             }
-            "join" => {
+            AttributeKey::Join => {
                 let join_str = value.as_str().map_err(|err| {
                     Diagnostic::error(err.to_string())
                         .with_code(ErrorCode::E302)
@@ -434,20 +434,20 @@ mod elaborate_tests {
     }
 
     fn create_test_attribute(
-        name: &'static str,
-        value: parser_types::AttributeValue<'static>,
-    ) -> parser_types::Attribute<'static> {
+        name: AttributeKey,
+        value: parser_types::AttributeValue,
+    ) -> parser_types::Attribute {
         parser_types::Attribute {
             name: Spanned::new(name, Span::default()),
             value,
         }
     }
 
-    fn create_string_value(s: &str) -> parser_types::AttributeValue<'static> {
+    fn create_string_value(s: &str) -> parser_types::AttributeValue {
         parser_types::AttributeValue::String(Spanned::new(s.to_string(), Span::default()))
     }
 
-    fn create_float_value(f: f32) -> parser_types::AttributeValue<'static> {
+    fn create_float_value(f: f32) -> parser_types::AttributeValue {
         parser_types::AttributeValue::Float(Spanned::new(f, Span::default()))
     }
 
@@ -455,11 +455,11 @@ mod elaborate_tests {
     fn test_text_attribute_extractor_all_attributes() {
         let mut text_def = TextDefinition::new();
         let attributes = vec![
-            create_test_attribute("font_size", create_float_value(16.0)),
-            create_test_attribute("font_family", create_string_value("Helvetica")),
-            create_test_attribute("background_color", create_string_value("red")),
-            create_test_attribute("padding", create_float_value(5.0)),
-            create_test_attribute("color", create_string_value("blue")),
+            create_test_attribute(AttributeKey::FontSize, create_float_value(16.0)),
+            create_test_attribute(AttributeKey::FontFamily, create_string_value("Helvetica")),
+            create_test_attribute(AttributeKey::BackgroundColor, create_string_value("red")),
+            create_test_attribute(AttributeKey::Padding, create_float_value(5.0)),
+            create_test_attribute(AttributeKey::Color, create_string_value("blue")),
         ];
         let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
         assert!(result.is_ok());
@@ -468,13 +468,19 @@ mod elaborate_tests {
     #[test]
     fn test_text_attribute_extractor_color_attribute() {
         let mut text_def = TextDefinition::new();
-        let attributes = vec![create_test_attribute("color", create_string_value("red"))];
+        let attributes = vec![create_test_attribute(
+            AttributeKey::Color,
+            create_string_value("red"),
+        )];
         let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
         assert!(result.is_ok());
 
         // Test with invalid color value (should be string)
         let mut text_def = TextDefinition::new();
-        let attributes = vec![create_test_attribute("color", create_float_value(255.0))];
+        let attributes = vec![create_test_attribute(
+            AttributeKey::Color,
+            create_float_value(255.0),
+        )];
         let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
         assert!(result.is_err());
     }
@@ -492,8 +498,8 @@ mod elaborate_tests {
     fn test_text_attribute_extractor_invalid_attribute_name() {
         let mut text_def = TextDefinition::new();
         let attributes = vec![
-            create_test_attribute("font_size", create_float_value(16.0)),
-            create_test_attribute("invalid_attribute", create_string_value("test")),
+            create_test_attribute(AttributeKey::FontSize, create_float_value(16.0)),
+            create_test_attribute(AttributeKey::Width, create_string_value("test")),
         ];
 
         let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
@@ -501,7 +507,7 @@ mod elaborate_tests {
 
         if let Err(err) = result {
             let error_message = err.to_string();
-            assert!(error_message.contains("unknown text attribute `invalid_attribute`"));
+            assert!(error_message.contains("unknown text attribute `width`"));
         }
     }
 
@@ -510,7 +516,7 @@ mod elaborate_tests {
         // Test font_size with string value (should be float)
         let mut text_def = TextDefinition::new();
         let attributes = vec![create_test_attribute(
-            "font_size",
+            AttributeKey::FontSize,
             create_string_value("not_a_number"),
         )];
         let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
@@ -519,7 +525,7 @@ mod elaborate_tests {
         // Test font_family with float value (should be string)
         let mut text_def = TextDefinition::new();
         let attributes = vec![create_test_attribute(
-            "font_family",
+            AttributeKey::FontFamily,
             create_float_value(123.0),
         )];
         let result = TextAttributeExtractor::extract_text_attributes(&mut text_def, &attributes);
@@ -529,11 +535,11 @@ mod elaborate_tests {
     #[test]
     fn test_stroke_attribute_extractor_all_attributes() {
         let attrs = vec![
-            create_test_attribute("color", create_string_value("blue")),
-            create_test_attribute("width", create_float_value(2.5)),
-            create_test_attribute("style", create_string_value("dashed")),
-            create_test_attribute("cap", create_string_value("round")),
-            create_test_attribute("join", create_string_value("bevel")),
+            create_test_attribute(AttributeKey::Color, create_string_value("blue")),
+            create_test_attribute(AttributeKey::Width, create_float_value(2.5)),
+            create_test_attribute(AttributeKey::Style, create_string_value("dashed")),
+            create_test_attribute(AttributeKey::Cap, create_string_value("round")),
+            create_test_attribute(AttributeKey::Join, create_string_value("bevel")),
         ];
 
         let mut stroke_def = StrokeDefinition::default();
@@ -549,7 +555,10 @@ mod elaborate_tests {
 
     #[test]
     fn test_stroke_attribute_extractor_color_only() {
-        let attrs = vec![create_test_attribute("color", create_string_value("red"))];
+        let attrs = vec![create_test_attribute(
+            AttributeKey::Color,
+            create_string_value("red"),
+        )];
 
         let mut stroke_def = StrokeDefinition::default();
         let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
@@ -561,7 +570,7 @@ mod elaborate_tests {
     #[test]
     fn test_stroke_attribute_extractor_invalid_attribute_name() {
         let attrs = vec![create_test_attribute(
-            "invalid_attr",
+            AttributeKey::Padding,
             create_string_value("value"),
         )];
 
@@ -572,14 +581,14 @@ mod elaborate_tests {
         if let Err(err) = result {
             let error_message = format!("{err}");
             assert!(error_message.contains("unknown stroke attribute"));
-            assert!(error_message.contains("invalid_attr"));
+            assert!(error_message.contains("padding"));
         }
     }
 
     #[test]
     fn test_stroke_attribute_extractor_invalid_color() {
         let attrs = vec![create_test_attribute(
-            "color",
+            AttributeKey::Color,
             create_string_value("not-a-valid-color-12345"),
         )];
 
@@ -595,7 +604,10 @@ mod elaborate_tests {
 
     #[test]
     fn test_stroke_attribute_extractor_invalid_cap() {
-        let attrs = vec![create_test_attribute("cap", create_string_value("invalid"))];
+        let attrs = vec![create_test_attribute(
+            AttributeKey::Cap,
+            create_string_value("invalid"),
+        )];
 
         let mut stroke_def = StrokeDefinition::default();
         let result = StrokeAttributeExtractor::extract_stroke_attributes(&mut stroke_def, &attrs);
@@ -610,7 +622,7 @@ mod elaborate_tests {
     #[test]
     fn test_stroke_attribute_extractor_invalid_join() {
         let attrs = vec![create_test_attribute(
-            "join",
+            AttributeKey::Join,
             create_string_value("invalid"),
         )];
 
@@ -636,7 +648,7 @@ mod elaborate_tests {
 
         for (style_str, expected_style) in styles {
             let attrs = vec![create_test_attribute(
-                "style",
+                AttributeKey::Style,
                 create_string_value(style_str),
             )];
             let mut stroke_def = StrokeDefinition::default();

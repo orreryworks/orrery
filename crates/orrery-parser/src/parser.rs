@@ -19,8 +19,9 @@ use orrery_core::{identifier::Id, semantic::DiagramKind};
 use crate::{
     error::{Diagnostic, ErrorCode},
     parser_types::{
-        Attribute, AttributeValue, ComponentContent, DiagramSource, Element, FileAst, FileHeader,
-        Fragment, FragmentSection, ImportDecl, ImportForm, Note, TypeDefinition, TypeSpec,
+        Attribute, AttributeKey, AttributeValue, ComponentContent, DiagramSource, Element, FileAst,
+        FileHeader, Fragment, FragmentSection, ImportDecl, ImportForm, Note, RelationType,
+        TypeDefinition, TypeSpec,
     },
     span::{Span, Spanned},
     tokens::{PositionedToken, Token},
@@ -35,6 +36,16 @@ pub(crate) enum Context {
     ///
     /// Used to calculate start_offset as: `tokens.len() - start_offset_value`
     StartOffset(usize),
+    /// A fully-specified diagnostic the parser can render directly.
+    ///
+    /// When present, [`convert_error`] uses this code, message, and span instead
+    /// of the generic [`ErrorCode::E100`] path. This lets specific parse-time
+    /// failures surface a precise error code.
+    Error {
+        code: ErrorCode,
+        message: String,
+        span: Span,
+    },
 }
 
 type Input<'tok, 'src> = OrreryTokenSlice<'tok, 'src>;
@@ -283,7 +294,7 @@ fn empty_brackets<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<()> {
 /// 3. **TypeSpec** - `TypeName[attr=val]`, `TypeName`, or `[attr=val]`
 /// 4. **String** - `"value"` - Text values (colors, names, alignment)
 /// 5. **Float** - `2.5` or `10` - Numeric values (widths, sizes, dimensions)
-fn attribute_value<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<AttributeValue<'src>> {
+fn attribute_value<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<AttributeValue> {
     alt((
         // Parse empty brackets [] first - can be interpreted as either empty identifiers or empty attributes
         empty_brackets.map(|_| AttributeValue::Empty),
@@ -305,9 +316,20 @@ fn attribute_value<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Attribu
     .parse_next(input)
 }
 
-/// Parse a single attribute
-fn attribute<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Attribute<'src>> {
-    let name = raw_identifier.parse_next(input)?;
+/// Parses a single `name=value` attribute, resolving the name to an
+/// [`AttributeKey`]. An unrecognized name is reported as [`ErrorCode::E102`].
+fn attribute<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Attribute> {
+    let raw_name = raw_identifier.parse_next(input)?;
+    let key = raw_name.inner().parse::<AttributeKey>().map_err(|_| {
+        let mut e = ContextError::new();
+        e.push(Context::Error {
+            code: ErrorCode::E102,
+            message: format!("unknown attribute key `{raw_name}`"),
+            span: raw_name.span(),
+        });
+        ErrMode::Cut(e)
+    })?;
+    let name = Spanned::new(key, raw_name.span());
 
     preceded(
         ws_comments0,
@@ -323,7 +345,7 @@ fn attribute<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Attribute<'sr
 }
 
 /// Parse comma-separated attributes
-fn attributes<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Attribute<'src>>> {
+fn attributes<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Attribute>> {
     separated(
         0..,
         attribute,
@@ -338,7 +360,7 @@ fn attributes<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Attribut
 }
 
 /// Parse attributes wrapped in brackets
-fn wrapped_attributes<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Attribute<'src>>> {
+fn wrapped_attributes<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Attribute>> {
     delimited(
         (
             any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::LeftBracket)),
@@ -366,7 +388,7 @@ fn wrapped_attributes<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<
 /// - `TypeName[attrs]` → TypeSpec { type_name: Some(TypeName), attributes: [...] }
 /// - `TypeName` → TypeSpec { type_name: Some(TypeName), attributes: [] }
 /// - `[attrs]` → TypeSpec { type_name: None, attributes: [...] }
-fn attribute_type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeSpec<'src>> {
+fn attribute_type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeSpec> {
     alt((
         // Try TypeName[attrs] or TypeName (reuse type_spec)
         type_spec,
@@ -388,7 +410,7 @@ fn attribute_type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Typ
 /// Returns a TypeSpec with:
 /// - type_name: Always Some(id) - identifier is required
 /// - attributes: parsed attributes if present, empty vec otherwise
-fn type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeSpec<'src>> {
+fn type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeSpec> {
     let type_name = nested_identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -413,7 +435,7 @@ fn type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeSpec<'src
 /// - `@TypeName` → TypeSpec { type_name: Some(TypeName), attributes: [] }
 /// - `[attrs]` → TypeSpec { type_name: None, attributes: [...] }
 /// - (nothing) → TypeSpec::default() (sugar syntax)
-fn invocation_type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeSpec<'src>> {
+fn invocation_type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeSpec> {
     // Parse optional @TypeName
     // If @ is present, identifier is REQUIRED (cut_err prevents backtracking)
     // If @ is absent, we can still parse [attributes] or nothing (sugar)
@@ -450,8 +472,8 @@ fn invocation_type_spec<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Ty
 ///
 /// Examples:
 /// - `type Button = Rectangle;`
-/// - `type StyledBox = Rectangle[fill_color="blue", border_width="2"];`
-fn type_definition<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeDefinition<'src>> {
+/// - `type StyledBox = Rectangle[fill_color="blue", stroke=[width=2]];`
+fn type_definition<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeDefinition> {
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Type))
         .parse_next(input)?;
 
@@ -474,25 +496,34 @@ fn type_definition<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<TypeDef
 }
 
 /// Parse type definitions section
-fn type_definitions<'tok, 'src>(
-    input: &mut Input<'tok, 'src>,
-) -> IResult<Vec<TypeDefinition<'src>>> {
+fn type_definitions<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<TypeDefinition>> {
     repeat(0.., preceded(ws_comments0, type_definition)).parse_next(input)
 }
 
-/// Parse relation type (arrow with optional type specification)
-fn relation_type<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<&'src str> {
-    let arrow = any
-        .verify_map(|token: &PositionedToken<'_>| match &token.token {
-            Token::Arrow_ => Some("->"),
-            Token::LeftArrow => Some("<-"),
-            Token::DoubleArrow => Some("<->"),
-            Token::Plain => Some("-"),
-            _ => None,
-        })
-        .parse_next(input)?;
+/// Parses a relation arrow into [`RelationType`] and source span.
+///
+/// A token that is not a relation arrow yields a recoverable error carrying
+/// [`ErrorCode::E103`], so a caller trying alternatives (e.g. a component
+/// declaration) can still recover, while a committed relation surfaces `E103`.
+fn relation_type<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<RelationType>> {
+    let checkpoint = input.checkpoint();
+    let token = any.parse_next(input)?;
 
-    Ok(arrow)
+    match RelationType::try_from(&token.token) {
+        Ok(kind) => Ok(Spanned::new(kind, token.span)),
+        Err(()) => {
+            let span = token.span;
+            let message = format!("unknown relation type `{}`", token.token);
+            input.reset(&checkpoint);
+            let mut e = ContextError::new();
+            e.push(Context::Error {
+                code: ErrorCode::E103,
+                message,
+                span,
+            });
+            Err(ErrMode::Backtrack(e))
+        }
+    }
 }
 
 /// Parses a component declaration with optional content.
@@ -508,7 +539,7 @@ fn relation_type<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<&'src str
 /// - `container: Box { nested_component: Circle; };`
 /// - `panel: Box embed { diagram sequence; user -> server; };`
 /// - `panel: Box embed auth_flow;`
-fn component<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
+fn component<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element> {
     let name = identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -553,7 +584,7 @@ fn component<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>
 /// - `user -> @AsyncCall server: "Request";`
 /// - `user -> @AsyncCall[color="blue"] server: "Request";`
 /// - `user -> [color="red"] server;` (anonymous TypeSpec)
-fn relation<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
+fn relation<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element> {
     let source = nested_identifier.parse_next(input)?;
 
     ws_comments0.parse_next(input)?;
@@ -588,7 +619,7 @@ fn relation<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>>
         Ok(Element::Relation {
             source,
             target,
-            relation_type: make_spanned(relation_type, Span::new(0..0)), // TODO: track proper span
+            relation_type,
             type_spec,
             label,
         })
@@ -607,7 +638,7 @@ fn relation<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>>
 ///   (consistent with `Element::span()` semantics using the inner `component` span).
 /// - Whitespace and line comments are allowed between tokens as handled by
 ///   `ws_comments0/1`.
-fn activate_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
+fn activate_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element> {
     // Parse "activate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Activate))
         .context(Context::Label("activate keyword"))
@@ -664,7 +695,7 @@ fn activate_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<
 }
 
 /// Parse a section block: `section "title" { elements };`
-fn section_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FragmentSection<'src>> {
+fn section_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FragmentSection> {
     // Parse "section" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Section))
         .context(Context::Label("section keyword"))
@@ -718,7 +749,7 @@ fn section_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FragmentS
 fn parse_section_content<'tok, 'src>(
     input: &mut Input<'tok, 'src>,
     title_context: &'static str,
-) -> IResult<FragmentSection<'src>> {
+) -> IResult<FragmentSection> {
     ws_comments0.parse_next(input)?;
 
     let title = opt(string_literal.context(Context::Label(title_context))).parse_next(input)?;
@@ -748,7 +779,7 @@ fn parse_section_content<'tok, 'src>(
 /// Macro for generating single-section fragment keyword parsers
 macro_rules! single_section_parser {
     ($fn_name:ident, $token:ident, $title_ctx:expr, $element_variant:ident) => {
-        fn $fn_name<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
+        fn $fn_name<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element> {
             let keyword_token = any
                 .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::$token))
                 .context(Context::Label(concat!(stringify!($token), " keyword")))
@@ -786,7 +817,7 @@ macro_rules! single_section_parser {
 /// Macro for generating multi-section fragment keyword parsers
 macro_rules! multi_section_parser {
     ($fn_name:ident, $first_token:ident, $cont_token:ident, $first_ctx:expr, $cont_ctx:expr, $element_variant:ident) => {
-        fn $fn_name<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
+        fn $fn_name<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element> {
             let keyword_token = any
                 .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::$first_token))
                 .context(Context::Label(concat!(
@@ -858,7 +889,7 @@ multi_section_parser!(
 multi_section_parser!(par_block, Par, Par, "par title", "par title", ParBlock);
 
 /// Parse a fragment block: `fragment @TypeSpec "operation" { section+ };`
-fn fragment_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
+fn fragment_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element> {
     // Parse "fragment" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Fragment))
         .context(Context::Label("fragment keyword"))
@@ -923,7 +954,7 @@ fn fragment_block<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<
 /// - `@TypeSpec` is optional invocation type spec: `@TypeName[attrs]`, `@TypeName`, or omitted (sugar)
 /// - `<nested_identifier>` supports `::`-qualified component names
 /// - Optional whitespace and line comments are permitted between tokens
-fn activate_statement<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
+fn activate_statement<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element> {
     // Parse "activate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Activate))
         .context(Context::Label("activate keyword"))
@@ -956,7 +987,7 @@ fn activate_statement<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Elem
 }
 
 /// Parse an explicit deactivate statement: `deactivate <nested_identifier>;`
-fn deactivate_statement<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
+fn deactivate_statement<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element> {
     // Parse "deactivate" keyword
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Deactivate))
         .context(Context::Label("deactivate keyword"))
@@ -984,7 +1015,7 @@ fn deactivate_statement<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<El
 /// Behavior:
 /// - If an `activate {` block is present, parse the block
 /// - Otherwise, parse an explicit `activate <nested_identifier>;` statement
-fn activate_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
+fn activate_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element> {
     // Try parsing an activate block first; if it fails, reset and parse explicit statement.
     let checkpoint = input.checkpoint();
     match activate_block.parse_next(input) {
@@ -1010,7 +1041,7 @@ fn activate_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Elemen
 /// - `note @NoteType: "Typed note";`
 /// - `note @NoteType[on=[component]]: "Note attached to component";`
 /// - `note [on=[a, b], align="left"]: "Note with anonymous TypeSpec";`
-fn note_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'src>> {
+fn note_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element> {
     // Parse 'note' keyword
     let _ = any
         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Note))
@@ -1045,7 +1076,7 @@ fn note_element<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element<'s
 ///
 /// An invalid-statement catch-all provides better error reporting when no
 /// valid parser matches.
-fn elements<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Element<'src>>> {
+fn elements<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Element>> {
     repeat(
         0..,
         preceded(
@@ -1082,9 +1113,7 @@ fn elements<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Element<'s
 ///
 /// Strategy: Consume tokens up to semicolon or until hitting a block delimiter.
 /// Returns Cut error if semicolon found or if meaningful tokens consumed before delimiter.
-fn invalid_statement_with_semicolon<'tok, 'src>(
-    input: &mut Input<'tok, 'src>,
-) -> IResult<Element<'src>> {
+fn invalid_statement_with_semicolon<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Element> {
     let mut consumed_meaningful_tokens = false;
     let start_offset = input.eof_offset();
 
@@ -1141,7 +1170,7 @@ fn diagram_type<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Spanned<Di
 ///
 /// Consumes the `diagram` keyword, a required [`DiagramKind`], and optional
 /// wrapped attributes.
-fn diagram_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileHeader<'src>> {
+fn diagram_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileHeader> {
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Diagram))
         .parse_next(input)?;
     ws_comments1.parse_next(input)?;
@@ -1156,7 +1185,7 @@ fn diagram_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileHead
 /// Parses a library header: the `library` keyword.
 ///
 /// Consumes only the `library` token itself.
-fn library_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileHeader<'src>> {
+fn library_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileHeader> {
     let token = any
         .verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Library))
         .parse_next(input)?;
@@ -1167,7 +1196,7 @@ fn library_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileHead
 ///
 /// Dispatches to [`library_header`] or [`diagram_header`] based on the
 /// leading token, then consumes the required trailing semicolon.
-fn file_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileHeader<'src>> {
+fn file_header<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileHeader> {
     let header = alt((library_header, diagram_header))
         .context(Context::Label("file header"))
         .parse_next(input)?;
@@ -1241,7 +1270,7 @@ fn import_decls<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Vec<Spanne
 ///
 /// Expects the sequence: file header → import declarations → type definitions
 /// → elements.
-fn file<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileAst<'src>> {
+fn file<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileAst> {
     ws_comments0.parse_next(input)?;
     let header = file_header.parse_next(input)?;
     let import_decls = import_decls.parse_next(input)?;
@@ -1268,7 +1297,7 @@ fn file<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<FileAst<'src>> {
 /// - `ComponentContent::Diagram(...)` — when an `embed` keyword is found.
 /// - `ComponentContent::Scope(...)` — when a `{` brace block is found.
 /// - `ComponentContent::None` — when neither is present.
-fn component_content<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<ComponentContent<'src>> {
+fn component_content<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<ComponentContent> {
     opt(alt((
         // Try parsing embedded diagram first (starts with 'embed' keyword)
         embedded_diagram,
@@ -1300,7 +1329,7 @@ fn component_content<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<Compo
 ///   → `ComponentContent::Diagram(DiagramSource::Inline(...))`
 /// - `embed auth_flow` — reference to an imported diagram
 ///   → `ComponentContent::Diagram(DiagramSource::Ref(...))`
-fn embedded_diagram<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<ComponentContent<'src>> {
+fn embedded_diagram<'tok, 'src>(input: &mut Input<'tok, 'src>) -> IResult<ComponentContent> {
     // Parse: embed
     any.verify(|token: &PositionedToken<'_>| matches!(token.token, Token::Embed))
         .parse_next(input)?;
@@ -1334,6 +1363,23 @@ fn convert_error(
     tokens: &[PositionedToken],
     current_remaining: usize,
 ) -> Diagnostic {
+    // An `Error` context carries a fully-specified diagnostic; prefer it over the
+    // generic `E100` path so precise parse-time errors keep their own code.
+    if let ErrMode::Backtrack(e) | ErrMode::Cut(e) = &error
+        && let Some((code, message, span)) = e.context().find_map(|ctx| match ctx {
+            Context::Error {
+                code,
+                message,
+                span,
+            } => Some((code, message, span)),
+            _ => None,
+        })
+    {
+        return Diagnostic::error(message.as_str())
+            .with_code(*code)
+            .with_label(*span, code.description());
+    }
+
     // Extract start offset from error context if available
     let start_remaining = match &error {
         ErrMode::Backtrack(e) | ErrMode::Cut(e) => e.context().find_map(|ctx| match ctx {
@@ -1450,7 +1496,7 @@ fn convert_error(
 /// Returns a [`Diagnostic`] when:
 /// - The token stream does not match the expected Orrery grammar.
 /// - Tokens remain after parsing (unconsumed trailing input).
-pub fn build_file<'src>(tokens: &[PositionedToken<'src>]) -> Result<FileAst<'src>, Diagnostic> {
+pub fn build_file<'src>(tokens: &[PositionedToken<'src>]) -> Result<FileAst, Diagnostic> {
     let mut token_slice = TokenSlice::new(tokens);
 
     match file.parse_next(&mut token_slice) {
@@ -1616,8 +1662,8 @@ mod tests {
                 assert!(type_spec.type_name.is_some());
                 assert_eq!(*type_spec.type_name.unwrap().inner(), "Arrow");
                 assert_eq!(type_spec.attributes.len(), 2);
-                assert_eq!(*type_spec.attributes[0].name.inner(), "color");
-                assert_eq!(*type_spec.attributes[1].name.inner(), "width");
+                assert_eq!(*type_spec.attributes[0].name.inner(), AttributeKey::Color);
+                assert_eq!(*type_spec.attributes[1].name.inner(), AttributeKey::Width);
             }
             _ => panic!("Expected Relation element"),
         }
@@ -1636,8 +1682,8 @@ mod tests {
             Element::Relation { type_spec, .. } => {
                 assert!(type_spec.type_name.is_none(), "Anonymous type has no name");
                 assert_eq!(type_spec.attributes.len(), 2);
-                assert_eq!(*type_spec.attributes[0].name.inner(), "style");
-                assert_eq!(*type_spec.attributes[1].name.inner(), "width");
+                assert_eq!(*type_spec.attributes[0].name.inner(), AttributeKey::Style);
+                assert_eq!(*type_spec.attributes[1].name.inner(), AttributeKey::Width);
             }
             _ => panic!("Expected Relation element"),
         }
@@ -1837,7 +1883,7 @@ mod tests {
                     Some(Id::new("MyType"))
                 );
                 assert_eq!(type_spec.attributes.len(), 1);
-                assert_eq!(*type_spec.attributes[0].name.inner(), "color");
+                assert_eq!(*type_spec.attributes[0].name.inner(), AttributeKey::Color);
             }
             other => panic!("expected Activate element, got {:?}", other),
         }
@@ -1935,10 +1981,10 @@ mod tests {
 
     #[test]
     fn test_complex_diagram() {
-        let input = r#"diagram component [layout="basic"];
+        let input = r#"diagram component [layout_engine="basic"];
         type CustomBox = Rectangle [color="blue"];
 
-        frontend: CustomBox [label="Frontend"];
+        frontend: CustomBox [fill_color="green"];
         backend: Rectangle;
 
         frontend -> backend: "API calls";"#;
@@ -2102,7 +2148,7 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        assert_eq!(*attr.name.inner(), "color");
+        assert_eq!(*attr.name.inner(), AttributeKey::Color);
         assert!(matches!(&attr.value, AttributeValue::String(s) if s.inner() == "red"));
 
         // Test that unquoted identifiers are now valid as TypeSpec names
@@ -2111,7 +2157,7 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        assert_eq!(*attr.name.inner(), "stroke");
+        assert_eq!(*attr.name.inner(), AttributeKey::Stroke);
         if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             assert_eq!(*type_spec.type_name.as_ref().unwrap().inner(), "RedStroke");
             assert_eq!(type_spec.attributes.len(), 0);
@@ -2125,7 +2171,7 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        assert_eq!(*attr.name.inner(), "width");
+        assert_eq!(*attr.name.inner(), AttributeKey::Width);
         assert!(matches!(&attr.value, AttributeValue::Float(f) if *f.inner() == 2.5));
     }
 
@@ -2137,16 +2183,16 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        assert_eq!(*attr.name.inner(), "text");
+        assert_eq!(*attr.name.inner(), AttributeKey::Text);
 
         if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 2);
-            assert_eq!(*nested_attrs[0].name.inner(), "font_size");
+            assert_eq!(*nested_attrs[0].name.inner(), AttributeKey::FontSize);
             assert!(
                 matches!(&nested_attrs[0].value, AttributeValue::Float(f) if *f.inner() == 12.0)
             );
-            assert_eq!(*nested_attrs[1].name.inner(), "padding");
+            assert_eq!(*nested_attrs[1].name.inner(), AttributeKey::Padding);
             assert!(
                 matches!(&nested_attrs[1].value, AttributeValue::Float(f) if *f.inner() == 6.5)
             );
@@ -2160,7 +2206,7 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        assert_eq!(*attr.name.inner(), "text");
+        assert_eq!(*attr.name.inner(), AttributeKey::Text);
         // Empty brackets [] are parsed as Empty variant
         if let AttributeValue::Empty = &attr.value {
             // Verify it can be interpreted as empty attributes
@@ -2178,7 +2224,7 @@ mod tests {
         if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 1);
-            assert_eq!(*nested_attrs[0].name.inner(), "font_size");
+            assert_eq!(*nested_attrs[0].name.inner(), AttributeKey::FontSize);
             assert!(
                 matches!(&nested_attrs[0].value, AttributeValue::Float(f) if *f.inner() == 16.0)
             );
@@ -2195,11 +2241,11 @@ mod tests {
         if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 2);
-            assert_eq!(*nested_attrs[0].name.inner(), "font_family");
+            assert_eq!(*nested_attrs[0].name.inner(), AttributeKey::FontFamily);
             assert!(
                 matches!(&nested_attrs[0].value, AttributeValue::String(s) if s.inner() == "Arial")
             );
-            assert_eq!(*nested_attrs[1].name.inner(), "font_size");
+            assert_eq!(*nested_attrs[1].name.inner(), AttributeKey::FontSize);
             assert!(
                 matches!(&nested_attrs[1].value, AttributeValue::Float(f) if *f.inner() == 14.0)
             );
@@ -2219,11 +2265,11 @@ mod tests {
         if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 2);
-            assert_eq!(*nested_attrs[0].name.inner(), "font_size");
+            assert_eq!(*nested_attrs[0].name.inner(), AttributeKey::FontSize);
             assert!(
                 matches!(&nested_attrs[0].value, AttributeValue::Float(f) if *f.inner() == 12.0)
             );
-            assert_eq!(*nested_attrs[1].name.inner(), "padding");
+            assert_eq!(*nested_attrs[1].name.inner(), AttributeKey::Padding);
             assert!(
                 matches!(&nested_attrs[1].value, AttributeValue::Float(f) if *f.inner() == 6.5)
             );
@@ -2265,7 +2311,7 @@ mod tests {
         assert!(result.is_err());
 
         // Test nested brackets - now supported as nested TypeSpec
-        let tokens = parse_tokens("text=[style=[curved=true]]");
+        let tokens = parse_tokens("text=[stroke=[color=\"red\"]]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = attribute(&mut input);
         assert!(result.is_ok());
@@ -2281,32 +2327,32 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        assert_eq!(*attr.name.inner(), "text");
+        assert_eq!(*attr.name.inner(), AttributeKey::Text);
 
         if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 4);
 
             // Check font_size
-            assert_eq!(*nested_attrs[0].name.inner(), "font_size");
+            assert_eq!(*nested_attrs[0].name.inner(), AttributeKey::FontSize);
             assert!(
                 matches!(&nested_attrs[0].value, AttributeValue::Float(f) if *f.inner() == 16.0)
             );
 
             // Check font_family
-            assert_eq!(*nested_attrs[1].name.inner(), "font_family");
+            assert_eq!(*nested_attrs[1].name.inner(), AttributeKey::FontFamily);
             assert!(
                 matches!(&nested_attrs[1].value, AttributeValue::String(s) if s.inner() == "Arial")
             );
 
             // Check background_color (simplified name)
-            assert_eq!(*nested_attrs[2].name.inner(), "background_color");
+            assert_eq!(*nested_attrs[2].name.inner(), AttributeKey::BackgroundColor);
             assert!(
                 matches!(&nested_attrs[2].value, AttributeValue::String(s) if s.inner() == "white")
             );
 
             // Check padding (simplified name)
-            assert_eq!(*nested_attrs[3].name.inner(), "padding");
+            assert_eq!(*nested_attrs[3].name.inner(), AttributeKey::Padding);
             assert!(
                 matches!(&nested_attrs[3].value, AttributeValue::Float(f) if *f.inner() == 8.0)
             );
@@ -2324,7 +2370,7 @@ mod tests {
         let result = attribute(&mut input);
         assert!(result.is_ok());
         let attr = result.unwrap();
-        assert_eq!(*attr.name.inner(), "text");
+        assert_eq!(*attr.name.inner(), AttributeKey::Text);
         // Empty brackets [] are parsed as Empty variant
         if let AttributeValue::Empty = &attr.value {
             // Verify it can be interpreted as empty attributes
@@ -2342,7 +2388,7 @@ mod tests {
         if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 1);
-            assert_eq!(*nested_attrs[0].name.inner(), "font_size");
+            assert_eq!(*nested_attrs[0].name.inner(), AttributeKey::FontSize);
             assert!(
                 matches!(&nested_attrs[0].value, AttributeValue::Float(f) if *f.inner() == 20.0)
             );
@@ -2359,8 +2405,8 @@ mod tests {
         if let AttributeValue::TypeSpec(type_spec) = &attr.value {
             let nested_attrs = &type_spec.attributes;
             assert_eq!(nested_attrs.len(), 2);
-            assert_eq!(*nested_attrs[0].name.inner(), "font_size");
-            assert_eq!(*nested_attrs[1].name.inner(), "font_family");
+            assert_eq!(*nested_attrs[0].name.inner(), AttributeKey::FontSize);
+            assert_eq!(*nested_attrs[1].name.inner(), AttributeKey::FontFamily);
         } else {
             panic!("Expected text attributes with whitespace");
         }
@@ -2421,7 +2467,7 @@ mod tests {
         assert!(result.is_ok());
         let attrs = result.unwrap();
         assert_eq!(attrs.len(), 1);
-        assert_eq!(*attrs[0].name.inner(), "color");
+        assert_eq!(*attrs[0].name.inner(), AttributeKey::Color);
     }
 
     #[test]
@@ -2465,10 +2511,10 @@ mod tests {
         assert!(spec.type_name.is_some());
         assert_eq!(*spec.type_name.unwrap().inner(), "Rectangle");
         assert_eq!(spec.attributes.len(), 1);
-        assert_eq!(*spec.attributes[0].name.inner(), "fill_color");
+        assert_eq!(*spec.attributes[0].name.inner(), AttributeKey::FillColor);
 
         // Test: TypeName[multiple attributes]
-        let tokens = parse_tokens("Service[fill=\"blue\", size=100, active=1]");
+        let tokens = parse_tokens("Service[fill_color=\"blue\", width=100, rounded=1]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = type_spec(&mut input);
         assert!(result.is_ok(), "TypeName[multiple attributes] should parse");
@@ -2476,12 +2522,12 @@ mod tests {
         assert!(spec.type_name.is_some());
         assert_eq!(*spec.type_name.unwrap().inner(), "Service");
         assert_eq!(spec.attributes.len(), 3);
-        assert_eq!(*spec.attributes[0].name.inner(), "fill");
-        assert_eq!(*spec.attributes[1].name.inner(), "size");
-        assert_eq!(*spec.attributes[2].name.inner(), "active");
+        assert_eq!(*spec.attributes[0].name.inner(), AttributeKey::FillColor);
+        assert_eq!(*spec.attributes[1].name.inner(), AttributeKey::Width);
+        assert_eq!(*spec.attributes[2].name.inner(), AttributeKey::Rounded);
 
         // Test: TypeName[nested attributes]
-        let tokens = parse_tokens("Rectangle[text=[font=\"Arial\", size=12]]");
+        let tokens = parse_tokens("Rectangle[text=[font_family=\"Arial\", font_size=12]]");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = type_spec(&mut input);
         assert!(result.is_ok(), "TypeName[nested attributes] should parse");
@@ -2489,13 +2535,13 @@ mod tests {
         assert!(spec.type_name.is_some());
         assert_eq!(*spec.type_name.unwrap().inner(), "Rectangle");
         assert_eq!(spec.attributes.len(), 1);
-        assert_eq!(*spec.attributes[0].name.inner(), "text");
+        assert_eq!(*spec.attributes[0].name.inner(), AttributeKey::Text);
         match &spec.attributes[0].value {
             AttributeValue::TypeSpec(type_spec) => {
                 let nested = &type_spec.attributes;
                 assert_eq!(nested.len(), 2);
-                assert_eq!(*nested[0].name.inner(), "font");
-                assert_eq!(*nested[1].name.inner(), "size");
+                assert_eq!(*nested[0].name.inner(), AttributeKey::FontFamily);
+                assert_eq!(*nested[1].name.inner(), AttributeKey::FontSize);
             }
             _ => panic!("Expected nested attributes"),
         }
@@ -2541,7 +2587,7 @@ mod tests {
         assert!(spec.type_name.is_some());
         assert_eq!(*spec.type_name.unwrap().inner(), "Arrow");
         assert_eq!(spec.attributes.len(), 1);
-        assert_eq!(*spec.attributes[0].name.inner(), "color");
+        assert_eq!(*spec.attributes[0].name.inner(), AttributeKey::Color);
 
         // Test: @TypeName[multiple attributes]
         let tokens = parse_tokens("@Arrow[color=\"red\", width=2, style=\"dashed\"]");
@@ -2555,9 +2601,9 @@ mod tests {
         assert!(spec.type_name.is_some());
         assert_eq!(*spec.type_name.unwrap().inner(), "Arrow");
         assert_eq!(spec.attributes.len(), 3);
-        assert_eq!(*spec.attributes[0].name.inner(), "color");
-        assert_eq!(*spec.attributes[1].name.inner(), "width");
-        assert_eq!(*spec.attributes[2].name.inner(), "style");
+        assert_eq!(*spec.attributes[0].name.inner(), AttributeKey::Color);
+        assert_eq!(*spec.attributes[1].name.inner(), AttributeKey::Width);
+        assert_eq!(*spec.attributes[2].name.inner(), AttributeKey::Style);
 
         // Test: @TypeName[nested attributes]
         let tokens = parse_tokens("@Arrow[stroke=[color=\"blue\", width=3]]");
@@ -2568,13 +2614,13 @@ mod tests {
         assert!(spec.type_name.is_some());
         assert_eq!(*spec.type_name.unwrap().inner(), "Arrow");
         assert_eq!(spec.attributes.len(), 1);
-        assert_eq!(*spec.attributes[0].name.inner(), "stroke");
+        assert_eq!(*spec.attributes[0].name.inner(), AttributeKey::Stroke);
         match &spec.attributes[0].value {
             AttributeValue::TypeSpec(type_spec) => {
                 let nested = &type_spec.attributes;
                 assert_eq!(nested.len(), 2);
-                assert_eq!(*nested[0].name.inner(), "color");
-                assert_eq!(*nested[1].name.inner(), "width");
+                assert_eq!(*nested[0].name.inner(), AttributeKey::Color);
+                assert_eq!(*nested[1].name.inner(), AttributeKey::Width);
             }
             _ => panic!("Expected nested attributes"),
         }
@@ -2590,7 +2636,7 @@ mod tests {
         let spec = result.unwrap();
         assert!(spec.type_name.is_none());
         assert_eq!(spec.attributes.len(), 1);
-        assert_eq!(*spec.attributes[0].name.inner(), "color");
+        assert_eq!(*spec.attributes[0].name.inner(), AttributeKey::Color);
 
         // Test: [multiple attributes] without @ (anonymous)
         let tokens = parse_tokens("[style=\"dashed\", width=2, color=\"blue\"]");
@@ -2603,9 +2649,9 @@ mod tests {
         let spec = result.unwrap();
         assert!(spec.type_name.is_none());
         assert_eq!(spec.attributes.len(), 3);
-        assert_eq!(*spec.attributes[0].name.inner(), "style");
-        assert_eq!(*spec.attributes[1].name.inner(), "width");
-        assert_eq!(*spec.attributes[2].name.inner(), "color");
+        assert_eq!(*spec.attributes[0].name.inner(), AttributeKey::Style);
+        assert_eq!(*spec.attributes[1].name.inner(), AttributeKey::Width);
+        assert_eq!(*spec.attributes[2].name.inner(), AttributeKey::Color);
 
         // Test: [nested attributes] without @ (anonymous)
         let tokens = parse_tokens("[stroke=[color=\"green\", width=1.5]]");
@@ -2658,13 +2704,13 @@ mod tests {
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = relation_type(&mut input);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "->");
+        assert_eq!(*result.unwrap().inner(), RelationType::Forward);
 
         let tokens = parse_tokens("<-");
         let mut input = OrreryTokenSlice::new(&tokens);
         let result = relation_type(&mut input);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "<-");
+        assert_eq!(*result.unwrap().inner(), RelationType::Backward);
 
         // Test failure cases
         let tokens = parse_tokens("=");
@@ -2862,7 +2908,7 @@ mod tests {
 
     #[test]
     fn test_opt_block_with_attributes() {
-        let input = r##"opt [background_color="#f0f0f0", border_style="dashed"] "condition" {
+        let input = r##"opt [background_color="#f0f0f0", border_stroke=[style="dashed"]] "condition" {
             a -> b;
         };"##;
         let tokens = parse_tokens(input);
@@ -3164,7 +3210,10 @@ mod tests {
         let element = result.unwrap();
         if let Element::Note(note) = element {
             assert_eq!(note.type_spec.attributes.len(), 1);
-            assert_eq!(*note.type_spec.attributes[0].name.inner(), "align");
+            assert_eq!(
+                *note.type_spec.attributes[0].name.inner(),
+                AttributeKey::Align
+            );
             assert_eq!(note.content.inner(), "Note with attributes");
         } else {
             panic!("Expected Note element");
@@ -3193,7 +3242,7 @@ mod tests {
 
     #[test]
     fn test_note_element_with_named_type_and_attributes() {
-        let input = r#"note @InfoNote[color="blue", size=12]: "Information";"#;
+        let input = r#"note @InfoNote[color="blue", font_size=12]: "Information";"#;
         let tokens = parse_tokens(input);
         let mut token_slice = TokenSlice::new(&tokens);
 
@@ -3205,8 +3254,14 @@ mod tests {
             assert!(note.type_spec.type_name.is_some());
             assert_eq!(*note.type_spec.type_name.unwrap().inner(), "InfoNote");
             assert_eq!(note.type_spec.attributes.len(), 2);
-            assert_eq!(*note.type_spec.attributes[0].name.inner(), "color");
-            assert_eq!(*note.type_spec.attributes[1].name.inner(), "size");
+            assert_eq!(
+                *note.type_spec.attributes[0].name.inner(),
+                AttributeKey::Color
+            );
+            assert_eq!(
+                *note.type_spec.attributes[1].name.inner(),
+                AttributeKey::FontSize
+            );
             assert_eq!(note.content.inner(), "Information");
         } else {
             panic!("Expected Note element");
@@ -3252,7 +3307,10 @@ mod tests {
         let element = result.unwrap();
         if let Element::Note(note) = &element {
             assert_eq!(note.type_spec.attributes.len(), 1);
-            assert_eq!(*note.type_spec.attributes[0].name.inner(), "align");
+            assert_eq!(
+                *note.type_spec.attributes[0].name.inner(),
+                AttributeKey::Align
+            );
             assert_eq!(note.content.inner(), "Content with spacing");
         } else {
             panic!("Expected Note element");
@@ -3505,7 +3563,7 @@ mod tests {
                 note.type_spec
                     .attributes
                     .iter()
-                    .any(|attr| *attr.name.inner() == "on")
+                    .any(|attr| *attr.name.inner() == AttributeKey::On)
             })
             .collect();
         assert_eq!(
@@ -3631,7 +3689,7 @@ mod tests {
             FileHeader::Diagram { kind, attributes } => {
                 assert_eq!(*kind.inner(), DiagramKind::Component);
                 assert_eq!(attributes.len(), 1);
-                assert_eq!(*attributes[0].name.inner(), "layout_engine");
+                assert_eq!(*attributes[0].name.inner(), AttributeKey::LayoutEngine);
             }
             FileHeader::Library { .. } => panic!("Expected Diagram header"),
         }

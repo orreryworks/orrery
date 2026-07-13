@@ -28,7 +28,9 @@ use orrery_core::{
 use crate::{
     Span,
     elaborate_utils::TypeDefinition as ElaborateTypeDefinition,
-    parser_types::{Attribute, AttributeValue, TypeDefinition as ParserTypeDefinition, TypeSpec},
+    parser_types::{
+        Attribute, AttributeKey, AttributeValue, TypeDefinition as ParserTypeDefinition, TypeSpec,
+    },
     span::Spanned,
 };
 
@@ -95,11 +97,7 @@ pub const TEXT: &str = "Text";
 /// Builds a slot that references another built-in by its constant `type_name`
 /// (e.g. [`STROKE`]), re-applying any `inline` overrides so the referencing
 /// built-in's own non-default styling survives the wiring.
-fn type_ref(
-    name: &'static str,
-    type_name: &str,
-    inline: Vec<Attribute<'static>>,
-) -> Attribute<'static> {
+fn type_ref(name: AttributeKey, type_name: &str, inline: Vec<Attribute>) -> Attribute {
     Attribute {
         name: Spanned::new(name, Span::empty()),
         value: AttributeValue::TypeSpec(TypeSpec {
@@ -117,12 +115,12 @@ fn type_ref(
 /// uniform call per override.
 trait InlineValue {
     /// Builds the override attribute named `name` from `self`.
-    fn into_attribute(self, name: &'static str) -> Attribute<'static>;
+    fn into_attribute(self, name: AttributeKey) -> Attribute;
 }
 
 impl InlineValue for &str {
     /// Builds an inline string attribute (`name="value"`).
-    fn into_attribute(self, name: &'static str) -> Attribute<'static> {
+    fn into_attribute(self, name: AttributeKey) -> Attribute {
         Attribute {
             name: Spanned::new(name, Span::empty()),
             value: AttributeValue::String(Spanned::new(self.to_string(), Span::empty())),
@@ -132,7 +130,7 @@ impl InlineValue for &str {
 
 impl InlineValue for f64 {
     /// Builds an inline float attribute (`name=value`).
-    fn into_attribute(self, name: &'static str) -> Attribute<'static> {
+    fn into_attribute(self, name: AttributeKey) -> Attribute {
         Attribute {
             name: Spanned::new(name, Span::empty()),
             value: AttributeValue::Float(Spanned::new(self as f32, Span::empty())),
@@ -147,9 +145,9 @@ impl InlineValue for f64 {
 /// The `parser` block lists references declaratively:
 ///
 /// ```text
-/// "attr_name" => TargetType,                          // plain reference
-/// "attr_name" => TargetType { "override" = "value" }, // string override
-/// "attr_name" => TargetType { "override" = 2.0 },     // float override
+/// AttributeKey::Attr => TargetType,                          // plain reference
+/// AttributeKey::Attr => TargetType { AttributeKey::Ovr = "value" }, // string override
+/// AttributeKey::Attr => TargetType { AttributeKey::Ovr = 2.0 },     // float override
 /// ```
 ///
 /// The `elaborate` field joins the constructor and the bare definition with a
@@ -185,8 +183,8 @@ macro_rules! builtin_types {
             $name:expr => {
                 parser: {
                     $(
-                        $attr:literal => $target:path
-                        $( { $( $ovr_name:literal = $ovr_value:expr ),* $(,)? } )?
+                        $attr:path => $target:path
+                        $( { $( $ovr_name:path = $ovr_value:expr ),* $(,)? } )?
                     ),* $(,)?
                 },
                 elaborate: ElaborateTypeDefinition::$constructor:ident => $definition:expr $(,)?
@@ -206,7 +204,7 @@ macro_rules! builtin_types {
         ///
         /// Inter-built-in references resolve by constant name, so a referenced
         /// target (e.g. `Stroke`) need not precede the type that uses it.
-        pub fn parser_type_definitions() -> Vec<ParserTypeDefinition<'static>> {
+        pub fn parser_type_definitions() -> Vec<ParserTypeDefinition> {
             vec![
                 $(
                     {
@@ -255,124 +253,124 @@ builtin_types! {
     },
     LIFELINE => {
         parser: {
-            "stroke" => STROKE { "style" = "dashed" },
+            AttributeKey::Stroke => STROKE { AttributeKey::Style = "dashed" },
         },
         elaborate: ElaborateTypeDefinition::new_lifeline => LifelineDefinition::default(),
     },
     ARROW => {
         parser: {
-            "stroke" => STROKE,
-            "text" => TEXT { "background_color" = "rgba(255, 255, 255, 0.85)" },
+            AttributeKey::Stroke => STROKE,
+            AttributeKey::Text => TEXT { AttributeKey::BackgroundColor = "rgba(255, 255, 255, 0.85)" },
         },
         elaborate: ElaborateTypeDefinition::new_arrow => ArrowDefinition::default(),
     },
     NOTE => {
         parser: {
-            "stroke" => STROKE,
-            "text" => TEXT,
+            AttributeKey::Stroke => STROKE,
+            AttributeKey::Text => TEXT,
         },
         elaborate: ElaborateTypeDefinition::new_note => NoteDefinition::new(),
     },
     ACTIVATE => {
         parser: {
-            "stroke" => STROKE,
+            AttributeKey::Stroke => STROKE,
         },
         elaborate: ElaborateTypeDefinition::new_activation_box => ActivationBoxDefinition::new(),
     },
     FRAGMENT_ALT => {
         parser: {
-            "border_stroke" => STROKE,
-            "separator_stroke" => STROKE { "style" = "dashed" },
+            AttributeKey::BorderStroke => STROKE,
+            AttributeKey::SeparatorStroke => STROKE { AttributeKey::Style = "dashed" },
         },
         elaborate: ElaborateTypeDefinition::new_fragment => FragmentDefinition::new(),
     },
     FRAGMENT_OPT => {
         parser: {
-            "border_stroke" => STROKE,
-            "separator_stroke" => STROKE { "style" = "dashed" },
+            AttributeKey::BorderStroke => STROKE,
+            AttributeKey::SeparatorStroke => STROKE { AttributeKey::Style = "dashed" },
         },
         elaborate: ElaborateTypeDefinition::new_fragment => FragmentDefinition::new(),
     },
     FRAGMENT_LOOP => {
         parser: {
-            "border_stroke" => STROKE,
-            "separator_stroke" => STROKE { "style" = "dashed" },
+            AttributeKey::BorderStroke => STROKE,
+            AttributeKey::SeparatorStroke => STROKE { AttributeKey::Style = "dashed" },
         },
         elaborate: ElaborateTypeDefinition::new_fragment => FragmentDefinition::new(),
     },
     FRAGMENT_PAR => {
         parser: {
-            "border_stroke" => STROKE,
-            "separator_stroke" => STROKE { "style" = "dashed" },
+            AttributeKey::BorderStroke => STROKE,
+            AttributeKey::SeparatorStroke => STROKE { AttributeKey::Style = "dashed" },
         },
         elaborate: ElaborateTypeDefinition::new_fragment => FragmentDefinition::new(),
     },
     FRAGMENT => {
         parser: {
-            "border_stroke" => STROKE,
-            "separator_stroke" => STROKE { "style" = "dashed" },
+            AttributeKey::BorderStroke => STROKE,
+            AttributeKey::SeparatorStroke => STROKE { AttributeKey::Style = "dashed" },
         },
         elaborate: ElaborateTypeDefinition::new_fragment => FragmentDefinition::new(),
     },
     RECTANGLE => {
         parser: {
-            "stroke" => STROKE { "width" = 2.0 },
-            "text" => TEXT,
+            AttributeKey::Stroke => STROKE { AttributeKey::Width = 2.0 },
+            AttributeKey::Text => TEXT,
         },
         elaborate: ElaborateTypeDefinition::new_shape => RectangleDefinition::new(),
     },
     OVAL => {
         parser: {
-            "stroke" => STROKE { "width" = 2.0 },
-            "text" => TEXT,
+            AttributeKey::Stroke => STROKE { AttributeKey::Width = 2.0 },
+            AttributeKey::Text => TEXT,
         },
         elaborate: ElaborateTypeDefinition::new_shape => OvalDefinition::new(),
     },
     COMPONENT => {
         parser: {
-            "stroke" => STROKE { "width" = 2.0 },
-            "text" => TEXT,
+            AttributeKey::Stroke => STROKE { AttributeKey::Width = 2.0 },
+            AttributeKey::Text => TEXT,
         },
         elaborate: ElaborateTypeDefinition::new_shape => ComponentDefinition::new(),
     },
     BOUNDARY => {
         parser: {
-            "stroke" => STROKE { "width" = 2.0 },
-            "text" => TEXT,
+            AttributeKey::Stroke => STROKE { AttributeKey::Width = 2.0 },
+            AttributeKey::Text => TEXT,
         },
         elaborate: ElaborateTypeDefinition::new_shape => BoundaryDefinition::new(),
     },
     ACTOR => {
         parser: {
-            "stroke" => STROKE { "width" = 2.0 },
-            "text" => TEXT,
+            AttributeKey::Stroke => STROKE { AttributeKey::Width = 2.0 },
+            AttributeKey::Text => TEXT,
         },
         elaborate: ElaborateTypeDefinition::new_shape => ActorDefinition::new(),
     },
     ENTITY => {
         parser: {
-            "stroke" => STROKE { "width" = 2.0 },
-            "text" => TEXT,
+            AttributeKey::Stroke => STROKE { AttributeKey::Width = 2.0 },
+            AttributeKey::Text => TEXT,
         },
         elaborate: ElaborateTypeDefinition::new_shape => EntityDefinition::new(),
     },
     CONTROL => {
         parser: {
-            "stroke" => STROKE { "width" = 2.0 },
-            "text" => TEXT,
+            AttributeKey::Stroke => STROKE { AttributeKey::Width = 2.0 },
+            AttributeKey::Text => TEXT,
         },
         elaborate: ElaborateTypeDefinition::new_shape => ControlDefinition::new(),
     },
     INTERFACE => {
         parser: {
-            "stroke" => STROKE { "width" = 2.0 },
-            "text" => TEXT,
+            AttributeKey::Stroke => STROKE { AttributeKey::Width = 2.0 },
+            AttributeKey::Text => TEXT,
         },
         elaborate: ElaborateTypeDefinition::new_shape => InterfaceDefinition::new(),
     },
     DIAGRAM => {
         parser: {
-            "lifeline" => LIFELINE,
+            AttributeKey::Lifeline => LIFELINE,
         },
         elaborate: ElaborateTypeDefinition::new_diagram => DiagramDefinition::new(),
     },
@@ -405,7 +403,7 @@ mod tests {
             .expect("Lifeline must be registered");
         assert_eq!(lifeline.type_spec.attributes.len(), 1);
         let stroke_attr = &lifeline.type_spec.attributes[0];
-        assert_eq!(*stroke_attr.name.inner(), "stroke");
+        assert_eq!(*stroke_attr.name.inner(), AttributeKey::Stroke);
         let stroke_ref = stroke_attr
             .value
             .as_type_spec()
@@ -415,7 +413,7 @@ mod tests {
             Some(Id::new(STROKE))
         );
         assert_eq!(stroke_ref.attributes.len(), 1);
-        assert_eq!(*stroke_ref.attributes[0].name.inner(), "style");
+        assert_eq!(*stroke_ref.attributes[0].name.inner(), AttributeKey::Style);
         assert_eq!(stroke_ref.attributes[0].value.as_str(), Ok("dashed"));
 
         // `Diagram` references `Lifeline` via its `lifeline` attr.
@@ -423,7 +421,7 @@ mod tests {
             .iter()
             .find(|type_def| *type_def.name.inner() == DIAGRAM)
             .expect("Diagram must be registered");
-        let diagram_refs: Vec<(&str, Id)> = diagram
+        let diagram_refs: Vec<(AttributeKey, Id)> = diagram
             .type_spec
             .attributes
             .iter()
@@ -437,14 +435,17 @@ mod tests {
                 (*attr.name.inner(), type_name)
             })
             .collect();
-        assert_eq!(diagram_refs, vec![("lifeline", Id::new(LIFELINE))]);
+        assert_eq!(
+            diagram_refs,
+            vec![(AttributeKey::Lifeline, Id::new(LIFELINE))]
+        );
 
         // `Arrow` references `Stroke` and `Text` via its `stroke`/`text` attrs.
         let arrow = parser_types
             .iter()
             .find(|type_def| *type_def.name.inner() == ARROW)
             .expect("Arrow must be registered");
-        let refs: Vec<(&str, Id)> = arrow
+        let refs: Vec<(AttributeKey, Id)> = arrow
             .type_spec
             .attributes
             .iter()
@@ -460,7 +461,10 @@ mod tests {
             .collect();
         assert_eq!(
             refs,
-            vec![("stroke", Id::new(STROKE)), ("text", Id::new(TEXT))]
+            vec![
+                (AttributeKey::Stroke, Id::new(STROKE)),
+                (AttributeKey::Text, Id::new(TEXT))
+            ]
         );
 
         // `Arrow`'s `text` re-applies the translucent label background so the
@@ -469,7 +473,7 @@ mod tests {
             .type_spec
             .attributes
             .iter()
-            .find(|attr| *attr.name.inner() == "text")
+            .find(|attr| *attr.name.inner() == AttributeKey::Text)
             .expect("Arrow must wire a `text` attribute");
         let arrow_text_ref = arrow_text
             .value
@@ -478,7 +482,7 @@ mod tests {
         assert_eq!(arrow_text_ref.attributes.len(), 1);
         assert_eq!(
             *arrow_text_ref.attributes[0].name.inner(),
-            "background_color"
+            AttributeKey::BackgroundColor
         );
         assert_eq!(
             arrow_text_ref.attributes[0].value.as_str(),
@@ -495,7 +499,7 @@ mod tests {
             .type_spec
             .attributes
             .iter()
-            .find(|attr| *attr.name.inner() == "stroke")
+            .find(|attr| *attr.name.inner() == AttributeKey::Stroke)
             .expect("Rectangle must wire a `stroke` attribute");
         let rectangle_stroke_ref = rectangle_stroke
             .value
@@ -509,7 +513,10 @@ mod tests {
             Some(Id::new(STROKE))
         );
         assert_eq!(rectangle_stroke_ref.attributes.len(), 1);
-        assert_eq!(*rectangle_stroke_ref.attributes[0].name.inner(), "width");
+        assert_eq!(
+            *rectangle_stroke_ref.attributes[0].name.inner(),
+            AttributeKey::Width
+        );
         assert_eq!(rectangle_stroke_ref.attributes[0].value.as_float(), Ok(2.0));
 
         // `Fragment` wires its strokes (re-applying the dashed separator) but
@@ -518,7 +525,7 @@ mod tests {
             .iter()
             .find(|type_def| *type_def.name.inner() == FRAGMENT)
             .expect("Fragment must be registered");
-        let fragment_refs: Vec<(&str, Id)> = fragment
+        let fragment_refs: Vec<(AttributeKey, Id)> = fragment
             .type_spec
             .attributes
             .iter()
@@ -535,21 +542,24 @@ mod tests {
         assert_eq!(
             fragment_refs,
             vec![
-                ("border_stroke", Id::new(STROKE)),
-                ("separator_stroke", Id::new(STROKE)),
+                (AttributeKey::BorderStroke, Id::new(STROKE)),
+                (AttributeKey::SeparatorStroke, Id::new(STROKE)),
             ]
         );
         let separator_ref = fragment
             .type_spec
             .attributes
             .iter()
-            .find(|attr| *attr.name.inner() == "separator_stroke")
+            .find(|attr| *attr.name.inner() == AttributeKey::SeparatorStroke)
             .expect("Fragment must wire a `separator_stroke`")
             .value
             .as_type_spec()
             .expect("separator_stroke is a type ref");
         assert_eq!(separator_ref.attributes.len(), 1);
-        assert_eq!(*separator_ref.attributes[0].name.inner(), "style");
+        assert_eq!(
+            *separator_ref.attributes[0].name.inner(),
+            AttributeKey::Style
+        );
         assert_eq!(separator_ref.attributes[0].value.as_str(), Ok("dashed"));
     }
 
