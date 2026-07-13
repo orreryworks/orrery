@@ -25,7 +25,7 @@ use crate::{
     Span, builtin_types,
     elaborate_utils::{self, StrokeAttributeExtractor, TextAttributeExtractor},
     error::{Diagnostic, ErrorCode, Result},
-    parser_types,
+    parser_types::{self, AttributeKey, RelationType},
     span::Spanned,
 };
 
@@ -231,9 +231,9 @@ impl Builder {
     /// * `attr` - The attribute containing the value
     /// * `key` - Display name for error messages (e.g., "stroke", "text")
     fn extract_type_spec<'b>(
-        attr: &'b parser_types::Attribute<'b>,
+        attr: &'b parser_types::Attribute,
         key: &str,
-    ) -> Result<&'b parser_types::TypeSpec<'b>> {
+    ) -> Result<&'b parser_types::TypeSpec> {
         attr.value.as_type_spec().map_err(|err| {
             Diagnostic::error(err.to_string())
                 .with_code(ErrorCode::E302)
@@ -249,7 +249,7 @@ impl Builder {
     /// # Arguments
     /// * `attr` - The attribute containing the value
     /// * `key` - Display name for error messages (e.g., "style", "layout_engine")
-    fn extract_string<'b>(attr: &'b parser_types::Attribute<'b>, key: &str) -> Result<&'b str> {
+    fn extract_string<'b>(attr: &'b parser_types::Attribute, key: &str) -> Result<&'b str> {
         attr.value.as_str().map_err(|err| {
             Diagnostic::error(err.to_string())
                 .with_code(ErrorCode::E302)
@@ -264,7 +264,7 @@ impl Builder {
     /// # Arguments
     /// * `attr` - The attribute containing the value
     /// * `key` - Display name for error messages (e.g., "fill_color", "background_color")
-    fn extract_color(attr: &parser_types::Attribute<'_>, key: &str) -> Result<Color> {
+    fn extract_color(attr: &parser_types::Attribute, key: &str) -> Result<Color> {
         let color_str = attr.value.as_str().map_err(|err| {
             Diagnostic::error(err.to_string())
                 .with_code(ErrorCode::E302)
@@ -285,7 +285,7 @@ impl Builder {
     /// # Arguments
     /// * `attr` - The attribute containing the value
     /// * `key` - Display name for error messages (e.g., "width", "padding")
-    fn extract_positive_float(attr: &parser_types::Attribute<'_>, key: &str) -> Result<f32> {
+    fn extract_positive_float(attr: &parser_types::Attribute, key: &str) -> Result<f32> {
         attr.value.as_float().map_err(|err| {
             Diagnostic::error(err.to_string())
                 .with_code(ErrorCode::E302)
@@ -300,7 +300,7 @@ impl Builder {
     /// * `attr` - The attribute containing the value
     /// * `key` - Display name for error messages (e.g., "rounded")
     /// * `hint` - Additional hint for the error message (e.g., "must be a positive number")
-    fn extract_usize(attr: &parser_types::Attribute<'_>, key: &str, hint: &str) -> Result<usize> {
+    fn extract_usize(attr: &parser_types::Attribute, key: &str, hint: &str) -> Result<usize> {
         attr.value.as_usize().map_err(|err| {
             Diagnostic::error(err.to_string())
                 .with_code(ErrorCode::E302)
@@ -432,7 +432,7 @@ impl Builder {
                     type_spec,
                     label,
                 } => {
-                    self.build_relation_element(source, target, relation_type, type_spec, label)?
+                    self.build_relation_element(source, target, *relation_type, type_spec, label)?
                 }
                 parser_types::Element::ActivateBlock { .. } => {
                     unreachable!(
@@ -538,19 +538,17 @@ impl Builder {
 
     /// Builds a relation element from parser data.
     ///
-    /// Resolves the arrow type definition, parses the arrow direction string
-    /// (`->`, `<-`, `<->`, `-`), and constructs a semantic
-    /// [`Relation`].
+    /// Resolves the arrow type definition and maps the [`RelationType`] operator to
+    /// a semantic arrow direction, then constructs a [`Relation`].
     ///
     /// # Errors
     ///
-    /// Returns `E307` for an invalid arrow type, or `E302` for an unrecognised
-    /// arrow direction string.
+    /// - `E307` if the resolved type is not an arrow type.
     fn build_relation_element(
         &mut self,
         source: &Spanned<Id>,
         target: &Spanned<Id>,
-        relation_type: &Spanned<&str>,
+        relation_type: Spanned<RelationType>,
         type_spec: &parser_types::TypeSpec,
         label: &Option<Spanned<String>>,
     ) -> Result<Element> {
@@ -563,12 +561,12 @@ impl Builder {
                 .with_label(type_spec.span(), "invalid arrow type")
         })?;
 
-        let arrow_direction = ArrowDirection::from_str(relation_type).map_err(|_| {
-            Diagnostic::error(format!("invalid arrow direction `{relation_type}`"))
-                .with_code(ErrorCode::E302)
-                .with_label(relation_type.span(), "invalid direction")
-                .with_help("arrow direction must be `->`, `<-`, `<->`, or `-`")
-        })?;
+        let arrow_direction = match relation_type.inner() {
+            RelationType::Forward => ArrowDirection::Forward,
+            RelationType::Backward => ArrowDirection::Backward,
+            RelationType::Bidirectional => ArrowDirection::Bidirectional,
+            RelationType::Undirected => ArrowDirection::Plain,
+        };
 
         Ok(Element::Relation(Relation::new(
             *source.inner(),
@@ -846,7 +844,7 @@ impl Builder {
             let name = attr.name.inner();
 
             match *name {
-                "stroke" => {
+                AttributeKey::Stroke => {
                     let type_spec = Self::extract_type_spec(attr, "stroke")?;
                     let stroke_rc =
                         self.resolve_stroke_type_reference(type_spec, lifeline_def.stroke())?;
@@ -930,7 +928,7 @@ impl Builder {
                     let name = attr.name.inner();
 
                     match *name {
-                        "fill_color" => {
+                        AttributeKey::FillColor => {
                             let color = Self::extract_color(attr, "fill_color")?;
                             shape_def_mut.set_fill_color(Some(color)).map_err(|err| {
                                 Diagnostic::error(err.to_string())
@@ -938,13 +936,13 @@ impl Builder {
                                     .with_label(attr.span(), "unsupported attribute")
                             })?;
                         }
-                        "stroke" => {
+                        AttributeKey::Stroke => {
                             let type_spec = Self::extract_type_spec(attr, "stroke")?;
                             let stroke_rc = self
                                 .resolve_stroke_type_reference(type_spec, shape_def_mut.stroke())?;
                             shape_def_mut.set_stroke(stroke_rc);
                         }
-                        "rounded" => {
+                        AttributeKey::Rounded => {
                             let val =
                                 Self::extract_usize(attr, "rounded", "must be a positive number")?;
                             shape_def_mut.set_rounded(val).map_err(|err| {
@@ -953,7 +951,7 @@ impl Builder {
                                     .with_label(attr.span(), "unsupported attribute")
                             })?;
                         }
-                        "text" => {
+                        AttributeKey::Text => {
                             let type_spec = Self::extract_type_spec(attr, "text")?;
                             let text_rc =
                                 self.resolve_text_type_reference(type_spec, shape_def_mut.text())?;
@@ -985,13 +983,13 @@ impl Builder {
                     let name = attr.name.inner();
 
                     match *name {
-                        "stroke" => {
+                        AttributeKey::Stroke => {
                             let type_spec = Self::extract_type_spec(attr, "stroke")?;
                             let stroke_rc = self
                                 .resolve_stroke_type_reference(type_spec, arrow_def_mut.stroke())?;
                             arrow_def_mut.set_stroke(stroke_rc);
                         }
-                        "style" => {
+                        AttributeKey::Style => {
                             let style_str = Self::extract_string(attr, "style")?;
                             let val = ArrowStyle::from_str(style_str).map_err(|_| {
                                 Diagnostic::error("invalid arrow style")
@@ -1003,7 +1001,7 @@ impl Builder {
                             })?;
                             arrow_def_mut.set_style(val);
                         }
-                        "text" => {
+                        AttributeKey::Text => {
                             let type_spec = Self::extract_type_spec(attr, "text")?;
                             let text_rc =
                                 self.resolve_text_type_reference(type_spec, arrow_def_mut.text())?;
@@ -1035,7 +1033,7 @@ impl Builder {
                     let name = attr.name.inner();
 
                     match *name {
-                        "border_stroke" => {
+                        AttributeKey::BorderStroke => {
                             let type_spec = Self::extract_type_spec(attr, "border_stroke")?;
                             let stroke_rc = self.resolve_stroke_type_reference(
                                 type_spec,
@@ -1043,11 +1041,11 @@ impl Builder {
                             )?;
                             fragment_def_mut.set_border_stroke(stroke_rc);
                         }
-                        "background_color" => {
+                        AttributeKey::BackgroundColor => {
                             let color = Self::extract_color(attr, "background_color")?;
                             fragment_def_mut.set_background_color(Some(color));
                         }
-                        "separator_stroke" => {
+                        AttributeKey::SeparatorStroke => {
                             let type_spec = Self::extract_type_spec(attr, "separator_stroke")?;
                             let stroke_rc = self.resolve_stroke_type_reference(
                                 type_spec,
@@ -1055,7 +1053,7 @@ impl Builder {
                             )?;
                             fragment_def_mut.set_separator_stroke(stroke_rc);
                         }
-                        "operation_label_text" => {
+                        AttributeKey::OperationLabelText => {
                             let type_spec = Self::extract_type_spec(attr, "operation_label_text")?;
                             let text_rc = self.resolve_text_type_reference(
                                 type_spec,
@@ -1063,7 +1061,7 @@ impl Builder {
                             )?;
                             fragment_def_mut.set_operation_label_text(text_rc);
                         }
-                        "section_title_text" => {
+                        AttributeKey::SectionTitleText => {
                             let type_spec = Self::extract_type_spec(attr, "section_title_text")?;
                             let text_rc = self.resolve_text_type_reference(
                                 type_spec,
@@ -1095,23 +1093,23 @@ impl Builder {
                     let name = attr.name.inner();
 
                     match *name {
-                        "background_color" => {
+                        AttributeKey::BackgroundColor => {
                             let color = Self::extract_color(attr, "background_color")?;
                             note_def_mut.set_background_color(Some(color));
                         }
-                        "stroke" => {
+                        AttributeKey::Stroke => {
                             let type_spec = Self::extract_type_spec(attr, "stroke")?;
                             let stroke_rc = self
                                 .resolve_stroke_type_reference(type_spec, note_def_mut.stroke())?;
                             note_def_mut.set_stroke(stroke_rc);
                         }
-                        "text" => {
+                        AttributeKey::Text => {
                             let type_spec = Self::extract_type_spec(attr, "text")?;
                             let text_rc =
                                 self.resolve_text_type_reference(type_spec, note_def_mut.text())?;
                             note_def_mut.set_text(text_rc);
                         }
-                        "on" | "align" => {
+                        AttributeKey::On | AttributeKey::Align => {
                             // Skip positioning attributes - these are handled by build_note_element
                             // and are not part of the note's styling definition
                         }
@@ -1138,19 +1136,19 @@ impl Builder {
                     let name = attr.name.inner();
 
                     match *name {
-                        "width" => {
+                        AttributeKey::Width => {
                             let val = Self::extract_positive_float(attr, "width")?;
                             activation_box_def_mut.set_width(val);
                         }
-                        "nesting_offset" => {
+                        AttributeKey::NestingOffset => {
                             let val = Self::extract_positive_float(attr, "nesting_offset")?;
                             activation_box_def_mut.set_nesting_offset(val);
                         }
-                        "fill_color" => {
+                        AttributeKey::FillColor => {
                             let color = Self::extract_color(attr, "fill_color")?;
                             activation_box_def_mut.set_fill_color(color);
                         }
-                        "stroke" => {
+                        AttributeKey::Stroke => {
                             let type_spec = Self::extract_type_spec(attr, "stroke")?;
                             let stroke_rc = self.resolve_stroke_type_reference(
                                 type_spec,
@@ -1191,11 +1189,11 @@ impl Builder {
                     let name = attr.name.inner();
 
                     match *name {
-                        "canvas_color" => {
+                        AttributeKey::CanvasColor => {
                             let color = Self::extract_color(attr, "canvas_color")?;
                             diagram_def_mut.set_canvas_color(Some(color));
                         }
-                        "lifeline" => {
+                        AttributeKey::Lifeline => {
                             let type_spec = Self::extract_type_spec(attr, "lifeline")?;
                             let lifeline_rc = self.resolve_lifeline_type_reference(
                                 type_spec,
@@ -1252,7 +1250,7 @@ impl Builder {
     fn resolve_diagram_header(
         &self,
         kind: DiagramKind,
-        attrs: &[parser_types::Attribute<'_>],
+        attrs: &[parser_types::Attribute],
         span: Span,
     ) -> Result<(LayoutEngine, Rc<DiagramDefinition>)> {
         // Resolve the current `Diagram` type binding into a draw definition.
@@ -1281,14 +1279,14 @@ impl Builder {
         };
         for attr in attrs {
             match *attr.name {
-                "layout_engine" => {
+                AttributeKey::LayoutEngine => {
                     layout_engine = Self::determine_layout_engine(attr)?;
                 }
-                "canvas_color" => {
+                AttributeKey::CanvasColor => {
                     let color = Self::extract_color(attr, "canvas_color")?;
                     definition.set_canvas_color(Some(color));
                 }
-                "lifeline" => {
+                AttributeKey::Lifeline => {
                     let type_spec = Self::extract_type_spec(attr, "lifeline")?;
                     let lifeline =
                         self.resolve_lifeline_type_reference(type_spec, definition.lifeline())?;
@@ -1309,7 +1307,7 @@ impl Builder {
     }
 
     /// Determines the layout engine from an attribute.
-    fn determine_layout_engine(engine_attr: &parser_types::Attribute<'_>) -> Result<LayoutEngine> {
+    fn determine_layout_engine(engine_attr: &parser_types::Attribute) -> Result<LayoutEngine> {
         let engine_str = Self::extract_string(engine_attr, "layout_engine")?;
         LayoutEngine::from_str(engine_str).map_err(|_| {
             Diagnostic::error(format!("invalid `layout_engine` value: `{engine_str}`"))
@@ -1384,7 +1382,7 @@ impl Builder {
 
         for attr in attributes {
             match *attr.name.inner() {
-                "on" => {
+                AttributeKey::On => {
                     let ids = attr.value.as_identifiers().map_err(|_| {
                         Diagnostic::error("`on` attribute must be a list of element identifiers")
                             .with_code(ErrorCode::E302)
@@ -1394,7 +1392,7 @@ impl Builder {
 
                     on = Some(ids.iter().map(|id| *id.inner()).collect());
                 }
-                "align" => {
+                AttributeKey::Align => {
                     let align_str = Self::extract_string(attr, "align")?;
 
                     let alignment = align_str.parse::<NoteAlign>().map_err(|_| {
@@ -1476,7 +1474,7 @@ mod tests {
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("user"), Span::new(0..4)),
                 target: Spanned::new(Id::new("server"), Span::new(0..6)),
-                relation_type: Spanned::new("->", Span::new(0..2)),
+                relation_type: Spanned::new(RelationType::Forward, Span::new(0..2)),
                 type_spec: parser_types::TypeSpec {
                     type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
                     attributes: vec![],
@@ -1486,7 +1484,7 @@ mod tests {
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("server"), Span::new(0..6)),
                 target: Spanned::new(Id::new("database"), Span::new(0..8)),
-                relation_type: Spanned::new("->", Span::new(0..2)),
+                relation_type: Spanned::new(RelationType::Forward, Span::new(0..2)),
                 type_spec: parser_types::TypeSpec {
                     type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
                     attributes: vec![],
@@ -1553,7 +1551,7 @@ mod tests {
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("user"), Span::new(0..4)),
                 target: Spanned::new(Id::new("server"), Span::new(0..6)),
-                relation_type: Spanned::new("->", Span::new(0..2)),
+                relation_type: Spanned::new(RelationType::Forward, Span::new(0..2)),
                 type_spec: parser_types::TypeSpec {
                     type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
                     attributes: vec![],
@@ -1573,7 +1571,7 @@ mod tests {
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("user"), Span::new(0..4)),
                 target: Spanned::new(Id::new("database"), Span::new(0..8)),
-                relation_type: Spanned::new("->", Span::new(0..2)),
+                relation_type: Spanned::new(RelationType::Forward, Span::new(0..2)),
                 type_spec: parser_types::TypeSpec {
                     type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
                     attributes: vec![],
@@ -1593,7 +1591,7 @@ mod tests {
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("server"), Span::new(0..6)),
                 target: Spanned::new(Id::new("cache"), Span::new(0..5)),
-                relation_type: Spanned::new("->", Span::new(0..2)),
+                relation_type: Spanned::new(RelationType::Forward, Span::new(0..2)),
                 type_spec: parser_types::TypeSpec {
                     type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
                     attributes: vec![],
@@ -1866,7 +1864,7 @@ mod tests {
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("user"), Span::new(0..4)),
                 target: Spanned::new(Id::new("server"), Span::new(0..6)),
-                relation_type: Spanned::new("->", Span::new(0..2)),
+                relation_type: Spanned::new(RelationType::Forward, Span::new(0..2)),
                 type_spec: parser_types::TypeSpec {
                     type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
                     attributes: vec![],
@@ -1883,7 +1881,7 @@ mod tests {
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("server"), Span::new(0..6)),
                 target: Spanned::new(Id::new("database"), Span::new(0..8)),
-                relation_type: Spanned::new("->", Span::new(0..2)),
+                relation_type: Spanned::new(RelationType::Forward, Span::new(0..2)),
                 type_spec: parser_types::TypeSpec {
                     type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
                     attributes: vec![],
@@ -1893,7 +1891,7 @@ mod tests {
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("database"), Span::new(0..8)),
                 target: Spanned::new(Id::new("server"), Span::new(0..6)),
-                relation_type: Spanned::new("->", Span::new(0..2)),
+                relation_type: Spanned::new(RelationType::Forward, Span::new(0..2)),
                 type_spec: parser_types::TypeSpec {
                     type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
                     attributes: vec![],
@@ -1909,7 +1907,7 @@ mod tests {
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("server"), Span::new(0..6)),
                 target: Spanned::new(Id::new("user"), Span::new(0..4)),
-                relation_type: Spanned::new("->", Span::new(0..2)),
+                relation_type: Spanned::new(RelationType::Forward, Span::new(0..2)),
                 type_spec: parser_types::TypeSpec {
                     type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
                     attributes: vec![],
@@ -1926,7 +1924,7 @@ mod tests {
             parser_types::Element::Relation {
                 source: Spanned::new(Id::new("user"), Span::new(0..4)),
                 target: Spanned::new(Id::new("server"), Span::new(0..6)),
-                relation_type: Spanned::new("->", Span::new(0..2)),
+                relation_type: Spanned::new(RelationType::Forward, Span::new(0..2)),
                 type_spec: parser_types::TypeSpec {
                     type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
                     attributes: vec![],
@@ -2054,26 +2052,26 @@ mod tests {
 
         let attributes = vec![
             parser_types::Attribute {
-                name: Spanned::new("background_color", Span::new(0..16)),
+                name: Spanned::new(AttributeKey::BackgroundColor, Span::new(0..16)),
                 value: parser_types::AttributeValue::String(Spanned::new(
                     "lightyellow".to_string(),
                     Span::new(0..11),
                 )),
             },
             parser_types::Attribute {
-                name: Spanned::new("stroke", Span::new(0..6)),
+                name: Spanned::new(AttributeKey::Stroke, Span::new(0..6)),
                 value: parser_types::AttributeValue::TypeSpec(parser_types::TypeSpec {
                     type_name: None,
                     attributes: vec![
                         parser_types::Attribute {
-                            name: Spanned::new("color", Span::new(0..5)),
+                            name: Spanned::new(AttributeKey::Color, Span::new(0..5)),
                             value: parser_types::AttributeValue::String(Spanned::new(
                                 "blue".to_string(),
                                 Span::new(0..4),
                             )),
                         },
                         parser_types::Attribute {
-                            name: Spanned::new("width", Span::new(0..5)),
+                            name: Spanned::new(AttributeKey::Width, Span::new(0..5)),
                             value: parser_types::AttributeValue::Float(Spanned::new(
                                 2.0,
                                 Span::new(0..3),
@@ -2083,11 +2081,11 @@ mod tests {
                 }),
             },
             parser_types::Attribute {
-                name: Spanned::new("text", Span::new(0..4)),
+                name: Spanned::new(AttributeKey::Text, Span::new(0..4)),
                 value: parser_types::AttributeValue::TypeSpec(parser_types::TypeSpec {
                     type_name: None,
                     attributes: vec![parser_types::Attribute {
-                        name: Spanned::new("font_size", Span::new(0..9)),
+                        name: Spanned::new(AttributeKey::FontSize, Span::new(0..9)),
                         value: parser_types::AttributeValue::Float(Spanned::new(
                             14.0,
                             Span::new(0..2),
@@ -2132,7 +2130,7 @@ mod tests {
             attributes: vec![],
         };
         let attr = Attribute {
-            name: Spanned::new("text", Span::new(0..4)),
+            name: Spanned::new(AttributeKey::Text, Span::new(0..4)),
             value: AttributeValue::TypeSpec(type_spec),
         };
 
@@ -2145,7 +2143,7 @@ mod tests {
         use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
-            name: Spanned::new("text", Span::new(0..4)),
+            name: Spanned::new(AttributeKey::Text, Span::new(0..4)),
             value: AttributeValue::String(Spanned::new(
                 "not a type spec".to_string(),
                 Span::new(5..20),
@@ -2163,7 +2161,7 @@ mod tests {
         use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
-            name: Spanned::new("style", Span::new(0..5)),
+            name: Spanned::new(AttributeKey::Style, Span::new(0..5)),
             value: AttributeValue::String(Spanned::new("curved".to_string(), Span::new(6..14))),
         };
 
@@ -2177,7 +2175,7 @@ mod tests {
         use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
-            name: Spanned::new("style", Span::new(0..5)),
+            name: Spanned::new(AttributeKey::Style, Span::new(0..5)),
             value: AttributeValue::Float(Spanned::new(42.0, Span::new(6..8))),
         };
 
@@ -2192,7 +2190,7 @@ mod tests {
         use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
-            name: Spanned::new("fill_color", Span::new(0..10)),
+            name: Spanned::new(AttributeKey::FillColor, Span::new(0..10)),
             value: AttributeValue::String(Spanned::new("red".to_string(), Span::new(11..16))),
         };
 
@@ -2205,7 +2203,7 @@ mod tests {
         use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
-            name: Spanned::new("fill_color", Span::new(0..10)),
+            name: Spanned::new(AttributeKey::FillColor, Span::new(0..10)),
             value: AttributeValue::Float(Spanned::new(42.0, Span::new(11..13))),
         };
 
@@ -2220,7 +2218,7 @@ mod tests {
         use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
-            name: Spanned::new("fill_color", Span::new(0..10)),
+            name: Spanned::new(AttributeKey::FillColor, Span::new(0..10)),
             value: AttributeValue::String(Spanned::new(
                 "not-a-color-xyz".to_string(),
                 Span::new(11..28),
@@ -2238,7 +2236,7 @@ mod tests {
         use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
-            name: Spanned::new("width", Span::new(0..5)),
+            name: Spanned::new(AttributeKey::Width, Span::new(0..5)),
             value: AttributeValue::Float(Spanned::new(42.5, Span::new(6..10))),
         };
 
@@ -2252,7 +2250,7 @@ mod tests {
         use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
-            name: Spanned::new("width", Span::new(0..5)),
+            name: Spanned::new(AttributeKey::Width, Span::new(0..5)),
             value: AttributeValue::String(Spanned::new(
                 "not a number".to_string(),
                 Span::new(6..20),
@@ -2270,7 +2268,7 @@ mod tests {
         use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
-            name: Spanned::new("rounded", Span::new(0..7)),
+            name: Spanned::new(AttributeKey::Rounded, Span::new(0..7)),
             value: AttributeValue::Float(Spanned::new(10.0, Span::new(8..10))),
         };
 
@@ -2284,7 +2282,7 @@ mod tests {
         use crate::parser_types::{Attribute, AttributeValue};
 
         let attr = Attribute {
-            name: Spanned::new("rounded", Span::new(0..7)),
+            name: Spanned::new(AttributeKey::Rounded, Span::new(0..7)),
             value: AttributeValue::String(Spanned::new(
                 "not a number".to_string(),
                 Span::new(8..22),
@@ -2308,21 +2306,21 @@ mod tests {
             type_name: Some(Spanned::new(Id::new("Fragment"), Span::new(0..8))),
             attributes: vec![
                 Attribute {
-                    name: Spanned::new("operation_label_text", Span::new(0..4)),
+                    name: Spanned::new(AttributeKey::OperationLabelText, Span::new(0..4)),
                     value: AttributeValue::TypeSpec(TypeSpec {
                         type_name: None,
                         attributes: vec![Attribute {
-                            name: Spanned::new("font_size", Span::new(0..9)),
+                            name: Spanned::new(AttributeKey::FontSize, Span::new(0..9)),
                             value: AttributeValue::Float(Spanned::new(14.0, Span::new(0..2))),
                         }],
                     }),
                 },
                 Attribute {
-                    name: Spanned::new("section_title_text", Span::new(0..18)),
+                    name: Spanned::new(AttributeKey::SectionTitleText, Span::new(0..18)),
                     value: AttributeValue::TypeSpec(TypeSpec {
                         type_name: None,
                         attributes: vec![Attribute {
-                            name: Spanned::new("font_size", Span::new(0..9)),
+                            name: Spanned::new(AttributeKey::FontSize, Span::new(0..9)),
                             value: AttributeValue::Float(Spanned::new(12.0, Span::new(0..2))),
                         }],
                     }),
@@ -2370,7 +2368,7 @@ mod tests {
                 type_spec: parser_types::TypeSpec {
                     type_name: Some(Spanned::new(Id::new("Oval"), Span::new(0..4))),
                     attributes: vec![parser_types::Attribute {
-                        name: Spanned::new("fill_color", Span::new(0..10)),
+                        name: Spanned::new(AttributeKey::FillColor, Span::new(0..10)),
                         value: parser_types::AttributeValue::String(Spanned::new(
                             "#e0f0e0".to_string(),
                             Span::new(0..7),
@@ -2407,7 +2405,7 @@ mod tests {
                 type_spec: parser_types::TypeSpec {
                     type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(0..9))),
                     attributes: vec![parser_types::Attribute {
-                        name: Spanned::new("fill_color", Span::new(0..10)),
+                        name: Spanned::new(AttributeKey::FillColor, Span::new(0..10)),
                         value: parser_types::AttributeValue::String(Spanned::new(
                             "#e6f3ff".to_string(),
                             Span::new(0..7),
@@ -2439,7 +2437,7 @@ mod tests {
                 parser_types::Element::Relation {
                     source: Spanned::new(Id::new("gateway"), Span::new(0..7)),
                     target: Spanned::new(Id::new("auth_overview"), Span::new(0..13)),
-                    relation_type: Spanned::new("->", Span::new(0..2)),
+                    relation_type: Spanned::new(RelationType::Forward, Span::new(0..2)),
                     type_spec: parser_types::TypeSpec {
                         type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(0..5))),
                         attributes: vec![],

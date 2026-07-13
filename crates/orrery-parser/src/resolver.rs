@@ -57,13 +57,13 @@ use crate::{
 #[derive(Debug)]
 pub struct ResolvedFile<'arena> {
     source_map: SourceMap<'arena>,
-    file_ast: FileAst<'arena>,
+    file_ast: FileAst,
 }
 
 impl<'arena> ResolvedFile<'arena> {
     /// Consumes the resolved file and returns the AST and source map
     /// as separate values.
-    pub fn into_parts(self) -> (FileAst<'arena>, SourceMap<'arena>) {
+    pub fn into_parts(self) -> (FileAst, SourceMap<'arena>) {
         (self.file_ast, self.source_map)
     }
 }
@@ -95,7 +95,7 @@ pub struct Resolver<'arena, P> {
     /// Caches resolved [`FileAst`]s by [`FileId`] so each file is read
     /// and parsed at most once. Diamond dependencies share the same
     /// `Rc<RefCell<FileAst>>` instance.
-    cache: HashMap<FileId, Rc<RefCell<FileAst<'arena>>>>,
+    cache: HashMap<FileId, Rc<RefCell<FileAst>>>,
     /// [`FileId`]s currently being resolved, used for cycle detection.
     resolution_stack: Vec<FileId>,
 }
@@ -168,7 +168,7 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
         &mut self,
         path: &Path,
         import_span: Option<Span>,
-    ) -> Result<Rc<RefCell<FileAst<'arena>>>, Vec<Diagnostic>> {
+    ) -> Result<Rc<RefCell<FileAst>>, Vec<Diagnostic>> {
         let file_id = FileId::new(path);
 
         // 1. Deduplication — return cached Rc if already fully resolved.
@@ -237,7 +237,7 @@ impl<'arena, P: SourceProvider> Resolver<'arena, P> {
         &mut self,
         parent_path: &Path,
         import_decl: &Spanned<ImportDecl>,
-    ) -> Result<Import<'arena>, Vec<Diagnostic>> {
+    ) -> Result<Import, Vec<Diagnostic>> {
         let import_path = &import_decl.path;
         let decl_span = import_decl.span();
 

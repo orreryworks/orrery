@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING: Themeable lifeline and canvas styling** — Lifelines and the diagram canvas are now first-class, overridable built-in types, so they can be restyled by name (`type Lifeline = Lifeline[stroke=[color="#aaaaaa"]];`, `type Diagram = Diagram[canvas_color="#1e1e1e"];`) alongside rectangles, arrows, and notes — instead of repeating header attributes on every diagram. The diagram header attribute `background_color` is renamed to `canvas_color`, and canvas color is now set only through the diagram itself (header attribute or the `Diagram` type); the previous config/CLI background-color option is removed. ([#146](https://github.com/orreryworks/orrery/issues/146))
 - **Unknown base types caught during validation** — Referencing a base type that is neither a built-in nor a previously defined `type` is now reported as `E205` during validation instead of elaboration. ([#141](https://github.com/orreryworks/orrery/issues/141))
 
+### Changed
+
+- **Attribute keys and relation operators are typed and validated at parse time** — The parser resolves attribute names and relation arrows into typed enums (`AttributeKey`, `RelationType`) once, instead of comparing raw strings during elaboration. As a result, an unrecognized attribute key or relation operator is now reported while parsing as `E102` (unknown attribute key) or `E103` (unknown relation type), rather than later during elaboration. ([#153](https://github.com/orreryworks/orrery/pull/153))
+
 ## [0.4.1] - 2026-06-08
 
 ### Changed

@@ -29,8 +29,9 @@ use orrery_core::identifier::Id;
 use crate::{
     builtin_types,
     parser_types::{
-        Attribute, AttributeValue, ComponentContent, DiagramSource, Element, FileAst, FileHeader,
-        Fragment, FragmentSection, Import, Note, TypeDefinition, TypeSpec,
+        Attribute, AttributeKey, AttributeValue, ComponentContent, DiagramSource, Element, FileAst,
+        FileHeader, Fragment, FragmentSection, Import, Note, RelationType, TypeDefinition,
+        TypeSpec,
     },
     span::Spanned,
 };
@@ -79,9 +80,9 @@ impl PathStack {
 ///
 /// Each method takes ownership of its input and returns a transformed version.
 /// The default implementations preserve the structure unchanged (identity transformation).
-trait Folder<'a> {
+trait Folder {
     /// Fold a complete [`FileAst`].
-    fn fold_file_ast(&mut self, file_ast: FileAst<'a>) -> FileAst<'a> {
+    fn fold_file_ast(&mut self, file_ast: FileAst) -> FileAst {
         FileAst {
             header: self.fold_header(file_ast.header),
             import_decls: file_ast.import_decls,
@@ -92,7 +93,7 @@ trait Folder<'a> {
     }
 
     /// Fold a [`FileHeader`] by dispatching.
-    fn fold_header(&mut self, header: FileHeader<'a>) -> FileHeader<'a> {
+    fn fold_header(&mut self, header: FileHeader) -> FileHeader {
         match header {
             FileHeader::Diagram { kind, attributes } => FileHeader::Diagram {
                 kind,
@@ -106,7 +107,7 @@ trait Folder<'a> {
     ///
     /// When the `Rc` is uniquely owned the inner value is unwrapped without
     /// cloning; shared instances fall back to `clone()`.
-    fn fold_rc_file_ast(&mut self, rc: Rc<RefCell<FileAst<'a>>>) -> Rc<RefCell<FileAst<'a>>> {
+    fn fold_rc_file_ast(&mut self, rc: Rc<RefCell<FileAst>>) -> Rc<RefCell<FileAst>> {
         let inner = match Rc::try_unwrap(rc) {
             Ok(cell) => cell.into_inner(),
             Err(rc) => rc.borrow().clone(),
@@ -115,7 +116,7 @@ trait Folder<'a> {
     }
 
     /// Fold resolved [`Import`]s.
-    fn fold_imports(&mut self, imports: Vec<Import<'a>>) -> Vec<Import<'a>> {
+    fn fold_imports(&mut self, imports: Vec<Import>) -> Vec<Import> {
         imports
             .into_iter()
             .map(|import| Import {
@@ -126,7 +127,7 @@ trait Folder<'a> {
     }
 
     /// Fold a list of attributes
-    fn fold_attributes(&mut self, attributes: Vec<Attribute<'a>>) -> Vec<Attribute<'a>> {
+    fn fold_attributes(&mut self, attributes: Vec<Attribute>) -> Vec<Attribute> {
         attributes
             .into_iter()
             .map(|attr| self.fold_attribute(attr))
@@ -134,7 +135,7 @@ trait Folder<'a> {
     }
 
     /// Fold a single attribute
-    fn fold_attribute(&mut self, attribute: Attribute<'a>) -> Attribute<'a> {
+    fn fold_attribute(&mut self, attribute: Attribute) -> Attribute {
         Attribute {
             name: self.fold_attribute_name(attribute.name),
             value: self.fold_attribute_value(attribute.value),
@@ -142,12 +143,12 @@ trait Folder<'a> {
     }
 
     /// Fold an attribute name
-    fn fold_attribute_name(&mut self, name: Spanned<&'a str>) -> Spanned<&'a str> {
+    fn fold_attribute_name(&mut self, name: Spanned<AttributeKey>) -> Spanned<AttributeKey> {
         name
     }
 
     /// Fold an attribute value
-    fn fold_attribute_value(&mut self, value: AttributeValue<'a>) -> AttributeValue<'a> {
+    fn fold_attribute_value(&mut self, value: AttributeValue) -> AttributeValue {
         match value {
             AttributeValue::String(s) => AttributeValue::String(self.fold_string_value(s)),
             AttributeValue::Float(f) => AttributeValue::Float(self.fold_float_value(f)),
@@ -187,8 +188,8 @@ trait Folder<'a> {
     /// Fold a list of type definitions
     fn fold_type_definitions(
         &mut self,
-        type_definitions: Vec<TypeDefinition<'a>>,
-    ) -> Vec<TypeDefinition<'a>> {
+        type_definitions: Vec<TypeDefinition>,
+    ) -> Vec<TypeDefinition> {
         type_definitions
             .into_iter()
             .map(|td| self.fold_type_definition(td))
@@ -196,7 +197,7 @@ trait Folder<'a> {
     }
 
     /// Fold a single type definition
-    fn fold_type_definition(&mut self, type_def: TypeDefinition<'a>) -> TypeDefinition<'a> {
+    fn fold_type_definition(&mut self, type_def: TypeDefinition) -> TypeDefinition {
         TypeDefinition {
             name: self.fold_type_name(type_def.name),
             type_spec: self.fold_type_spec(type_def.type_spec),
@@ -209,7 +210,7 @@ trait Folder<'a> {
     }
 
     /// Fold a TypeSpec
-    fn fold_type_spec(&mut self, type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+    fn fold_type_spec(&mut self, type_spec: TypeSpec) -> TypeSpec {
         TypeSpec {
             type_name: type_spec.type_name.map(|tn| self.fold_type_spec_name(tn)),
             attributes: self.fold_attributes(type_spec.attributes),
@@ -222,32 +223,32 @@ trait Folder<'a> {
     }
 
     /// Fold a component's TypeSpec
-    fn fold_component_type_spec(&mut self, type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+    fn fold_component_type_spec(&mut self, type_spec: TypeSpec) -> TypeSpec {
         self.fold_type_spec(type_spec)
     }
 
     /// Fold a relation's TypeSpec
-    fn fold_relation_type_spec(&mut self, type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+    fn fold_relation_type_spec(&mut self, type_spec: TypeSpec) -> TypeSpec {
         self.fold_type_spec(type_spec)
     }
 
     /// Fold a note's TypeSpec
-    fn fold_note_type_spec(&mut self, type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+    fn fold_note_type_spec(&mut self, type_spec: TypeSpec) -> TypeSpec {
         self.fold_type_spec(type_spec)
     }
 
     /// Fold a fragment's TypeSpec
-    fn fold_fragment_type_spec(&mut self, type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+    fn fold_fragment_type_spec(&mut self, type_spec: TypeSpec) -> TypeSpec {
         self.fold_type_spec(type_spec)
     }
 
     /// Fold an activate block's TypeSpec
-    fn fold_activate_type_spec(&mut self, type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+    fn fold_activate_type_spec(&mut self, type_spec: TypeSpec) -> TypeSpec {
         self.fold_type_spec(type_spec)
     }
 
     /// Fold a list of elements
-    fn fold_elements(&mut self, elements: Vec<Element<'a>>) -> Vec<Element<'a>> {
+    fn fold_elements(&mut self, elements: Vec<Element>) -> Vec<Element> {
         elements
             .into_iter()
             .map(|elem| self.fold_element(elem))
@@ -255,7 +256,7 @@ trait Folder<'a> {
     }
 
     /// Fold a single element
-    fn fold_element(&mut self, element: Element<'a>) -> Element<'a> {
+    fn fold_element(&mut self, element: Element) -> Element {
         match element {
             Element::Component {
                 name,
@@ -356,9 +357,9 @@ trait Folder<'a> {
         &mut self,
         name: Spanned<Id>,
         display_name: Option<Spanned<String>>,
-        type_spec: TypeSpec<'a>,
-        content: ComponentContent<'a>,
-    ) -> Element<'a> {
+        type_spec: TypeSpec,
+        content: ComponentContent,
+    ) -> Element {
         Element::Component {
             name: self.fold_component_name(name),
             display_name: display_name.map(|dn| self.fold_display_name(dn)),
@@ -368,7 +369,7 @@ trait Folder<'a> {
     }
 
     /// Folds a [`ComponentContent`] node.
-    fn fold_component_content(&mut self, content: ComponentContent<'a>) -> ComponentContent<'a> {
+    fn fold_component_content(&mut self, content: ComponentContent) -> ComponentContent {
         match content {
             ComponentContent::None => ComponentContent::None,
             ComponentContent::Scope(elements) => {
@@ -381,7 +382,7 @@ trait Folder<'a> {
     }
 
     /// Folds a [`DiagramSource`] node.
-    fn fold_diagram_source(&mut self, source: DiagramSource<'a>) -> DiagramSource<'a> {
+    fn fold_diagram_source(&mut self, source: DiagramSource) -> DiagramSource {
         match source {
             DiagramSource::Inline(rc) => DiagramSource::Inline(self.fold_rc_file_ast(rc)),
             DiagramSource::Ref(id) => DiagramSource::Ref(id),
@@ -403,10 +404,10 @@ trait Folder<'a> {
         &mut self,
         source: Spanned<Id>,
         target: Spanned<Id>,
-        relation_type: Spanned<&'a str>,
-        type_spec: TypeSpec<'a>,
+        relation_type: Spanned<RelationType>,
+        type_spec: TypeSpec,
         label: Option<Spanned<String>>,
-    ) -> Element<'a> {
+    ) -> Element {
         Element::Relation {
             source: self.fold_relation_source(source),
             target: self.fold_relation_target(target),
@@ -427,7 +428,10 @@ trait Folder<'a> {
     }
 
     /// Fold a relation type
-    fn fold_relation_type(&mut self, relation_type: Spanned<&'a str>) -> Spanned<&'a str> {
+    fn fold_relation_type(
+        &mut self,
+        relation_type: Spanned<RelationType>,
+    ) -> Spanned<RelationType> {
         relation_type
     }
 
@@ -440,9 +444,9 @@ trait Folder<'a> {
     fn fold_activate_block(
         &mut self,
         component: Spanned<Id>,
-        elements: Vec<Element<'a>>,
-        type_spec: TypeSpec<'a>,
-    ) -> Element<'a> {
+        elements: Vec<Element>,
+        type_spec: TypeSpec,
+    ) -> Element {
         Element::ActivateBlock {
             component: self.fold_activate_component(component),
             elements: self.fold_elements(elements),
@@ -451,7 +455,7 @@ trait Folder<'a> {
     }
 
     /// Fold a fragment section
-    fn fold_fragment_section(&mut self, section: FragmentSection<'a>) -> FragmentSection<'a> {
+    fn fold_fragment_section(&mut self, section: FragmentSection) -> FragmentSection {
         FragmentSection {
             title: section.title,
             elements: self.fold_elements(section.elements),
@@ -459,7 +463,7 @@ trait Folder<'a> {
     }
 
     /// Fold a fragment
-    fn fold_fragment(&mut self, fragment: Fragment<'a>) -> Fragment<'a> {
+    fn fold_fragment(&mut self, fragment: Fragment) -> Fragment {
         Fragment {
             operation: fragment.operation,
             type_spec: self.fold_fragment_type_spec(fragment.type_spec),
@@ -472,7 +476,7 @@ trait Folder<'a> {
     }
 
     /// Fold a note element
-    fn fold_note(&mut self, note: Note<'a>) -> Note<'a> {
+    fn fold_note(&mut self, note: Note) -> Note {
         Note {
             type_spec: self.fold_note_type_spec(note.type_spec),
             content: self.fold_note_content(note.content),
@@ -509,7 +513,7 @@ trait Folder<'a> {
 /// ## Path Stack
 /// The `path_stack` field tracks the current position in the component hierarchy,
 /// allowing nested identifiers to be qualified with their full path from the root.
-pub struct Desugar<'a> {
+pub struct Desugar {
     /// Tracks the current position in the component hierarchy for identifier
     /// qualification.
     path_stack: PathStack,
@@ -518,10 +522,10 @@ pub struct Desugar<'a> {
     builtin_types: HashSet<Id>,
     /// Lookup map from namespace [`Id`] → `Rc<RefCell<FileAst>>` for diagram imports.
     /// Built during `fold_file_ast` and used to resolve `DiagramSource::Ref`.
-    embed_refs: HashMap<Id, Rc<RefCell<FileAst<'a>>>>,
+    embed_refs: HashMap<Id, Rc<RefCell<FileAst>>>,
 }
 
-impl<'a> Desugar<'a> {
+impl Desugar {
     /// Creates a new [`Desugar`] folder instance.
     ///
     /// Initializes the built-in type set from [`builtin_types::ids`] and
@@ -566,7 +570,7 @@ impl<'a> Desugar<'a> {
     }
 
     /// Yields the built-in prelude as parser-level [`TypeDefinition`]s.
-    fn prelude_type_definitions() -> impl DoubleEndedIterator<Item = TypeDefinition<'a>> {
+    fn prelude_type_definitions() -> impl DoubleEndedIterator<Item = TypeDefinition> {
         builtin_types::parser_type_definitions().into_iter()
     }
 
@@ -577,8 +581,8 @@ impl<'a> Desugar<'a> {
     /// that library ASTs are left empty after extraction.
     fn extract_type_definitions_from_imports(
         &self,
-        imports: Vec<Import<'a>>,
-    ) -> impl DoubleEndedIterator<Item = TypeDefinition<'a>> {
+        imports: Vec<Import>,
+    ) -> impl DoubleEndedIterator<Item = TypeDefinition> {
         imports.into_iter().flat_map(|import| {
             // `mem::take` drains the library AST's type_definitions in place,
             // so the shared Rc<RefCell<FileAst>> is left empty — safe because
@@ -612,10 +616,10 @@ impl<'a> Desugar<'a> {
     /// definition site.
     fn assemble_type_definitions(
         &self,
-        type_defs: Vec<TypeDefinition<'a>>,
-        imports: Vec<Import<'a>>,
+        type_defs: Vec<TypeDefinition>,
+        imports: Vec<Import>,
         inject_prelude: bool,
-    ) -> Vec<TypeDefinition<'a>> {
+    ) -> Vec<TypeDefinition> {
         let prelude = inject_prelude
             .then(Self::prelude_type_definitions)
             .into_iter()
@@ -652,10 +656,10 @@ impl<'a> Desugar<'a> {
     }
 }
 
-impl<'a> Folder<'a> for Desugar<'a> {
+impl Folder for Desugar {
     /// Desugars a complete [`FileAst`] by flattening library imports into the
     /// root type-definition list and consuming diagram imports into `embed_refs`.
-    fn fold_file_ast(&mut self, mut file_ast: FileAst<'a>) -> FileAst<'a> {
+    fn fold_file_ast(&mut self, mut file_ast: FileAst) -> FileAst {
         // Save the parent's embed refs so nested fold_file_ast calls (from
         // inline embeds processed during fold_elements) don't clobber them.
         let saved_embed_refs = mem::take(&mut self.embed_refs);
@@ -706,7 +710,7 @@ impl<'a> Folder<'a> for Desugar<'a> {
     }
 
     /// Resolves a [`DiagramSource`] reference against the `embed_refs` lookup table.
-    fn fold_diagram_source(&mut self, source: DiagramSource<'a>) -> DiagramSource<'a> {
+    fn fold_diagram_source(&mut self, source: DiagramSource) -> DiagramSource {
         match source {
             DiagramSource::Inline(rc) => DiagramSource::Inline(self.fold_rc_file_ast(rc)),
             DiagramSource::Ref(id) => {
@@ -729,9 +733,9 @@ impl<'a> Folder<'a> for Desugar<'a> {
         &mut self,
         name: Spanned<Id>,
         display_name: Option<Spanned<String>>,
-        type_spec: TypeSpec<'a>,
-        content: ComponentContent<'a>,
-    ) -> Element<'a> {
+        type_spec: TypeSpec,
+        content: ComponentContent,
+    ) -> Element {
         // Enter this component's namespace
         self.path_stack.push(*name.inner());
 
@@ -764,7 +768,7 @@ impl<'a> Folder<'a> for Desugar<'a> {
     /// 3. An [`Element::Deactivate`] statement for `component`.
     ///
     /// All other element variants are delegated to [`fold_element`](Folder::fold_element).
-    fn fold_elements(&mut self, elements: Vec<Element<'a>>) -> Vec<Element<'a>> {
+    fn fold_elements(&mut self, elements: Vec<Element>) -> Vec<Element> {
         let mut out = Vec::with_capacity(elements.len());
         for elem in elements {
             match elem {
@@ -789,7 +793,7 @@ impl<'a> Folder<'a> for Desugar<'a> {
     }
 
     /// Override fold_relation_type_spec to inject default "Arrow" type for sugar syntax
-    fn fold_relation_type_spec(&mut self, mut type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+    fn fold_relation_type_spec(&mut self, mut type_spec: TypeSpec) -> TypeSpec {
         if type_spec.type_name.is_none() {
             type_spec.type_name = Some(Spanned::new(
                 Id::new(builtin_types::ARROW),
@@ -800,7 +804,7 @@ impl<'a> Folder<'a> for Desugar<'a> {
     }
 
     /// Override fold_note_type_spec to inject default "Note" type for sugar syntax
-    fn fold_note_type_spec(&mut self, mut type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+    fn fold_note_type_spec(&mut self, mut type_spec: TypeSpec) -> TypeSpec {
         if type_spec.type_name.is_none() {
             type_spec.type_name =
                 Some(Spanned::new(Id::new(builtin_types::NOTE), type_spec.span()));
@@ -809,7 +813,7 @@ impl<'a> Folder<'a> for Desugar<'a> {
     }
 
     /// Override fold_fragment_type_spec to inject default "Fragment" type for sugar syntax
-    fn fold_fragment_type_spec(&mut self, mut type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+    fn fold_fragment_type_spec(&mut self, mut type_spec: TypeSpec) -> TypeSpec {
         if type_spec.type_name.is_none() {
             type_spec.type_name = Some(Spanned::new(
                 Id::new(builtin_types::FRAGMENT),
@@ -820,7 +824,7 @@ impl<'a> Folder<'a> for Desugar<'a> {
     }
 
     /// Override fold_activate_type_spec to inject default "Activate" type for sugar syntax
-    fn fold_activate_type_spec(&mut self, mut type_spec: TypeSpec<'a>) -> TypeSpec<'a> {
+    fn fold_activate_type_spec(&mut self, mut type_spec: TypeSpec) -> TypeSpec {
         if type_spec.type_name.is_none() {
             type_spec.type_name = Some(Spanned::new(
                 Id::new(builtin_types::ACTIVATE),
@@ -831,7 +835,7 @@ impl<'a> Folder<'a> for Desugar<'a> {
     }
 
     /// Fold an Element node, performing transformations and recursive descent
-    fn fold_element(&mut self, element: Element<'a>) -> Element<'a> {
+    fn fold_element(&mut self, element: Element) -> Element {
         match element {
             // ========================================================================
             // NO DESUGARING - Just recursive folding to process nested elements
@@ -976,7 +980,7 @@ impl<'a> Folder<'a> for Desugar<'a> {
 /// # Returns
 ///
 /// A desugared [`FileAst`] tree.
-pub fn desugar<'a>(ast: FileAst<'a>) -> FileAst<'a> {
+pub fn desugar(ast: FileAst) -> FileAst {
     let mut folder = Desugar::new();
     folder.fold_file_ast(ast)
 }
@@ -991,7 +995,7 @@ mod tests {
     // Test-only IdentityFolder for verifying identity transformations
     struct IdentityFolder;
 
-    impl<'a> Folder<'a> for IdentityFolder {
+    impl Folder for IdentityFolder {
         // Use default methods: identity behavior for all nodes
     }
 
@@ -1001,7 +1005,7 @@ mod tests {
     }
 
     /// Helper: create a library `FileAst` with the given type definitions.
-    fn make_library_ast<'a>(type_defs: Vec<TypeDefinition<'a>>) -> FileAst<'a> {
+    fn make_library_ast(type_defs: Vec<TypeDefinition>) -> FileAst {
         FileAst {
             header: FileHeader::Library {
                 span: Span::new(0..1),
@@ -1014,10 +1018,7 @@ mod tests {
     }
 
     /// Helper: create a diagram `FileAst` with the given elements and type defs.
-    fn make_diagram_ast<'a>(
-        type_defs: Vec<TypeDefinition<'a>>,
-        elements: Vec<Element<'a>>,
-    ) -> FileAst<'a> {
+    fn make_diagram_ast(type_defs: Vec<TypeDefinition>, elements: Vec<Element>) -> FileAst {
         FileAst {
             header: FileHeader::Diagram {
                 kind: spanned(DiagramKind::Component),
@@ -1031,7 +1032,7 @@ mod tests {
     }
 
     /// Helper: create a sequence diagram `FileAst` with the given elements.
-    fn make_sequence_ast<'a>(elements: Vec<Element<'a>>) -> FileAst<'a> {
+    fn make_sequence_ast(elements: Vec<Element>) -> FileAst {
         FileAst {
             header: FileHeader::Diagram {
                 kind: spanned(DiagramKind::Sequence),
@@ -1045,7 +1046,7 @@ mod tests {
     }
 
     /// Helper: create an `Import` from the given namespace and file AST.
-    fn make_import<'a>(namespace: Option<Id>, file_ast: FileAst<'a>) -> Import<'a> {
+    fn make_import(namespace: Option<Id>, file_ast: FileAst) -> Import {
         Import {
             namespace,
             file_ast: Rc::new(RefCell::new(file_ast)),
@@ -1058,9 +1059,7 @@ mod tests {
     /// The desugar phase prepends [`builtin_types::parser_type_definitions`] as
     /// a prelude, so tests asserting on user/import definitions skip those
     /// leading built-ins.
-    fn user_type_definitions<'a, 'b>(
-        type_defs: &'b [TypeDefinition<'a>],
-    ) -> &'b [TypeDefinition<'a>] {
+    fn user_type_definitions(type_defs: &[TypeDefinition]) -> &[TypeDefinition] {
         &type_defs[builtin_types::ids().len()..]
     }
 
@@ -1114,11 +1113,11 @@ mod tests {
                 kind: spanned(DiagramKind::Component),
                 attributes: vec![
                     Attribute {
-                        name: spanned("background_color"),
+                        name: spanned(AttributeKey::BackgroundColor),
                         value: AttributeValue::String(spanned("#ffffff".to_string())),
                     },
                     Attribute {
-                        name: spanned("layout_engine"),
+                        name: spanned(AttributeKey::LayoutEngine),
                         value: AttributeValue::String(spanned("basic".to_string())),
                     },
                 ],
@@ -1135,7 +1134,7 @@ mod tests {
         match &result.header {
             FileHeader::Diagram { attributes, .. } => {
                 assert_eq!(attributes.len(), 2);
-                assert_eq!(*attributes[0].name.inner(), "background_color");
+                assert_eq!(*attributes[0].name.inner(), AttributeKey::BackgroundColor);
                 match &attributes[0].value {
                     AttributeValue::String(s) => assert_eq!(s.inner(), "#ffffff"),
                     _ => panic!("Expected string attribute"),
@@ -1154,7 +1153,7 @@ mod tests {
                 type_spec: TypeSpec {
                     type_name: Some(spanned(Id::new("Rectangle"))),
                     attributes: vec![Attribute {
-                        name: spanned("fill_color"),
+                        name: spanned(AttributeKey::FillColor),
                         value: AttributeValue::String(spanned("lightblue".to_string())),
                     }],
                 },
@@ -1190,7 +1189,7 @@ mod tests {
                 type_spec: TypeSpec {
                     type_name: Some(spanned(Id::new("Rectangle"))),
                     attributes: vec![Attribute {
-                        name: spanned("fill_color"),
+                        name: spanned(AttributeKey::FillColor),
                         value: AttributeValue::String(spanned("blue".to_string())),
                     }],
                 },
@@ -1228,7 +1227,7 @@ mod tests {
             elements: vec![Element::Relation {
                 source: spanned(Id::new("user")),
                 target: spanned(Id::new("server")),
-                relation_type: spanned("->"),
+                relation_type: spanned(RelationType::Forward),
                 type_spec: TypeSpec::default(),
                 label: Some(spanned("Request".to_string())),
             }],
@@ -1266,7 +1265,7 @@ mod tests {
             elements: vec![Element::Relation {
                 source: spanned(Id::new("user")),
                 target: spanned(Id::new("server")),
-                relation_type: spanned("->"),
+                relation_type: spanned(RelationType::Forward),
                 type_spec: TypeSpec::default(),
                 label: Some(spanned("Request".to_string())),
             }],
@@ -1309,7 +1308,7 @@ mod tests {
                 elements: vec![Element::Relation {
                     source: spanned(Id::new("user")),
                     target: spanned(Id::new("profile")),
-                    relation_type: spanned("->"),
+                    relation_type: spanned(RelationType::Forward),
                     type_spec: TypeSpec::default(),
                     label: Some(spanned("Load".to_string())),
                 }],
@@ -1343,7 +1342,7 @@ mod tests {
                 elements: vec![Element::Relation {
                     source: spanned(Id::new("client")),
                     target: spanned(Id::new("server")),
-                    relation_type: spanned("->"),
+                    relation_type: spanned(RelationType::Forward),
                     type_spec: TypeSpec::default(),
                     label: Some(spanned("Process".to_string())),
                 }],
@@ -1376,7 +1375,7 @@ mod tests {
                 elements: vec![Element::Relation {
                     source: spanned(Id::new("client")),
                     target: spanned(Id::new("server")),
-                    relation_type: spanned("->"),
+                    relation_type: spanned(RelationType::Forward),
                     type_spec: TypeSpec::default(),
                     label: Some(spanned("Cancel".to_string())),
                 }],
@@ -1409,7 +1408,7 @@ mod tests {
                 elements: vec![Element::Relation {
                     source: spanned(Id::new("app")),
                     target: spanned(Id::new("db")),
-                    relation_type: spanned("->"),
+                    relation_type: spanned(RelationType::Forward),
                     type_spec: TypeSpec::default(),
                     label: Some(spanned("UPDATE".to_string())),
                 }],
@@ -1443,7 +1442,7 @@ mod tests {
                     elements: vec![Element::Relation {
                         source: spanned(Id::new("a")),
                         target: spanned(Id::new("b")),
-                        relation_type: spanned("->"),
+                        relation_type: spanned(RelationType::Forward),
                         type_spec: TypeSpec::default(),
                         label: None,
                     }],
@@ -1453,7 +1452,7 @@ mod tests {
                     elements: vec![Element::Relation {
                         source: spanned(Id::new("b")),
                         target: spanned(Id::new("a")),
-                        relation_type: spanned("->"),
+                        relation_type: spanned(RelationType::Forward),
                         type_spec: TypeSpec::default(),
                         label: None,
                     }],
@@ -1463,7 +1462,7 @@ mod tests {
                     elements: vec![Element::Relation {
                         source: spanned(Id::new("a")),
                         target: spanned(Id::new("a")),
-                        relation_type: spanned("->"),
+                        relation_type: spanned(RelationType::Forward),
                         type_spec: TypeSpec::default(),
                         label: None,
                     }],
@@ -1503,7 +1502,7 @@ mod tests {
                     elements: vec![Element::Relation {
                         source: spanned(Id::new("a")),
                         target: spanned(Id::new("b")),
-                        relation_type: spanned("->"),
+                        relation_type: spanned(RelationType::Forward),
                         type_spec: TypeSpec::default(),
                         label: None,
                     }],
@@ -1513,7 +1512,7 @@ mod tests {
                     elements: vec![Element::Relation {
                         source: spanned(Id::new("c")),
                         target: spanned(Id::new("d")),
-                        relation_type: spanned("->"),
+                        relation_type: spanned(RelationType::Forward),
                         type_spec: TypeSpec::default(),
                         label: None,
                     }],
@@ -1554,11 +1553,11 @@ mod tests {
                 type_name: None,
                 attributes: vec![
                     Attribute {
-                        name: spanned("background_color"),
+                        name: spanned(AttributeKey::BackgroundColor),
                         value: AttributeValue::String(spanned("#f0f0f0".to_string())),
                     },
                     Attribute {
-                        name: spanned("border_style"),
+                        name: spanned(AttributeKey::BorderStroke),
                         value: AttributeValue::String(spanned("dashed".to_string())),
                     },
                 ],
@@ -1573,11 +1572,11 @@ mod tests {
                 assert_eq!(fragment.type_spec.attributes.len(), 2);
                 assert_eq!(
                     *fragment.type_spec.attributes[0].name.inner(),
-                    "background_color"
+                    AttributeKey::BackgroundColor
                 );
                 assert_eq!(
                     *fragment.type_spec.attributes[1].name.inner(),
-                    "border_style"
+                    AttributeKey::BorderStroke
                 );
             }
             _ => panic!("Expected Fragment element"),
@@ -1707,11 +1706,11 @@ mod tests {
                 type_name: None,
                 attributes: vec![
                     Attribute {
-                        name: spanned("align"),
+                        name: spanned(AttributeKey::Align),
                         value: AttributeValue::String(spanned("left".to_string())),
                     },
                     Attribute {
-                        name: spanned("on"),
+                        name: spanned(AttributeKey::On),
                         value: AttributeValue::Identifiers(vec![spanned(Id::new("component"))]),
                     },
                 ],
@@ -1725,8 +1724,14 @@ mod tests {
         match result {
             Element::Note(note_result) => {
                 assert_eq!(note_result.type_spec.attributes.len(), 2);
-                assert_eq!(*note_result.type_spec.attributes[0].name.inner(), "align");
-                assert_eq!(*note_result.type_spec.attributes[1].name.inner(), "on");
+                assert_eq!(
+                    *note_result.type_spec.attributes[0].name.inner(),
+                    AttributeKey::Align
+                );
+                assert_eq!(
+                    *note_result.type_spec.attributes[1].name.inner(),
+                    AttributeKey::On
+                );
                 assert_eq!(note_result.content.inner(), "Note with attributes");
             }
             _ => panic!("Expected Note element"),
@@ -1765,7 +1770,7 @@ mod tests {
                 Element::Relation {
                     source: spanned(Id::new("child1")),
                     target: spanned(Id::new("child2")),
-                    relation_type: spanned("->"),
+                    relation_type: spanned(RelationType::Forward),
                     type_spec: TypeSpec::default(),
                     label: None,
                 },
@@ -1827,7 +1832,7 @@ mod tests {
                     Element::Relation {
                         source: spanned(Id::new("level3")),
                         target: spanned(Id::new("sibling")),
-                        relation_type: spanned("->"),
+                        relation_type: spanned(RelationType::Forward),
                         type_spec: TypeSpec::default(),
                         label: None,
                     },
@@ -1940,7 +1945,7 @@ mod tests {
                     type_spec: TypeSpec {
                         type_name: None,
                         attributes: vec![Attribute {
-                            name: spanned("on"),
+                            name: spanned(AttributeKey::On),
                             value: AttributeValue::Identifiers(vec![spanned(Id::new("child"))]),
                         }],
                     },
@@ -1964,7 +1969,7 @@ mod tests {
                         .type_spec
                         .attributes
                         .iter()
-                        .find(|a| *a.name.inner() == "on");
+                        .find(|a| *a.name.inner() == AttributeKey::On);
                     if let Some(attr) = on_attr {
                         if let AttributeValue::Identifiers(ids) = &attr.value {
                             assert_eq!(ids[0].inner(), "parent::child");
@@ -1991,7 +1996,7 @@ mod tests {
         let relation = Element::Relation {
             source: spanned(Id::new("system1")),
             target: spanned(Id::new("system2")),
-            relation_type: spanned("->"),
+            relation_type: spanned(RelationType::Forward),
             type_spec: TypeSpec::default(),
             label: None,
         };
@@ -2021,7 +2026,7 @@ mod tests {
             content: ComponentContent::Scope(vec![Element::Relation {
                 source: Spanned::new(Id::new("child"), original_span),
                 target: spanned(Id::new("other")),
-                relation_type: spanned("->"),
+                relation_type: spanned(RelationType::Forward),
                 type_spec: TypeSpec::default(),
                 label: None,
             }]),
@@ -2053,11 +2058,11 @@ mod tests {
         let relation = Element::Relation {
             source: spanned(Id::new("a")),
             target: spanned(Id::new("b")),
-            relation_type: spanned("->"),
+            relation_type: spanned(RelationType::Forward),
             type_spec: TypeSpec {
                 type_name: Some(spanned(Id::new("Arrow"))),
                 attributes: vec![Attribute {
-                    name: spanned("color"),
+                    name: spanned(AttributeKey::Color),
                     value: AttributeValue::String(spanned("red".to_string())),
                 }],
             },
@@ -2071,7 +2076,7 @@ mod tests {
             Element::Relation { type_spec, .. } => {
                 assert_eq!(*type_spec.type_name.as_ref().unwrap().inner(), "Arrow");
                 assert_eq!(type_spec.attributes.len(), 1);
-                assert_eq!(*type_spec.attributes[0].name.inner(), "color");
+                assert_eq!(*type_spec.attributes[0].name.inner(), AttributeKey::Color);
                 match &type_spec.attributes[0].value {
                     AttributeValue::String(s) => assert_eq!(s.inner(), "red"),
                     _ => panic!("Expected string attribute value"),
@@ -2089,7 +2094,7 @@ mod tests {
             type_spec: TypeSpec {
                 type_name: Some(spanned(Id::new("CustomFragment"))),
                 attributes: vec![Attribute {
-                    name: spanned("bg"),
+                    name: spanned(AttributeKey::BackgroundColor),
                     value: AttributeValue::String(spanned("yellow".to_string())),
                 }],
             },
@@ -2110,7 +2115,10 @@ mod tests {
                     "CustomFragment"
                 );
                 assert_eq!(fragment.type_spec.attributes.len(), 1);
-                assert_eq!(*fragment.type_spec.attributes[0].name.inner(), "bg");
+                assert_eq!(
+                    *fragment.type_spec.attributes[0].name.inner(),
+                    AttributeKey::BackgroundColor
+                );
                 assert_eq!(fragment.sections.len(), 1);
                 assert_eq!(
                     fragment.sections[0].title.as_ref().unwrap().inner(),
@@ -2129,7 +2137,7 @@ mod tests {
             type_spec: TypeSpec {
                 type_name: Some(spanned(Id::new("CustomActivation"))),
                 attributes: vec![Attribute {
-                    name: spanned("fill"),
+                    name: spanned(AttributeKey::FillColor),
                     value: AttributeValue::String(spanned("green".to_string())),
                 }],
             },
@@ -2149,7 +2157,10 @@ mod tests {
                     "CustomActivation"
                 );
                 assert_eq!(type_spec.attributes.len(), 1);
-                assert_eq!(*type_spec.attributes[0].name.inner(), "fill");
+                assert_eq!(
+                    *type_spec.attributes[0].name.inner(),
+                    AttributeKey::FillColor
+                );
             }
             _ => panic!("Expected Activate"),
         }
@@ -2164,11 +2175,11 @@ mod tests {
                 type_name: Some(spanned(Id::new("RepeatFragment"))),
                 attributes: vec![
                     Attribute {
-                        name: spanned("border"),
+                        name: spanned(AttributeKey::BorderStroke),
                         value: AttributeValue::String(spanned("dashed".to_string())),
                     },
                     Attribute {
-                        name: spanned("color"),
+                        name: spanned(AttributeKey::Color),
                         value: AttributeValue::String(spanned("blue".to_string())),
                     },
                 ],
@@ -2190,8 +2201,14 @@ mod tests {
                     "RepeatFragment"
                 );
                 assert_eq!(fragment.type_spec.attributes.len(), 2);
-                assert_eq!(*fragment.type_spec.attributes[0].name.inner(), "border");
-                assert_eq!(*fragment.type_spec.attributes[1].name.inner(), "color");
+                assert_eq!(
+                    *fragment.type_spec.attributes[0].name.inner(),
+                    AttributeKey::BorderStroke
+                );
+                assert_eq!(
+                    *fragment.type_spec.attributes[1].name.inner(),
+                    AttributeKey::Color
+                );
             }
             _ => panic!("Expected Fragment"),
         }
@@ -2203,7 +2220,7 @@ mod tests {
         let relation = Element::Relation {
             source: spanned(Id::new("client")),
             target: spanned(Id::new("server")),
-            relation_type: spanned("->"),
+            relation_type: spanned(RelationType::Forward),
             type_spec: TypeSpec {
                 type_name: None,
                 attributes: vec![],
@@ -2230,11 +2247,11 @@ mod tests {
         let relation = Element::Relation {
             source: spanned(Id::new("api")),
             target: spanned(Id::new("db")),
-            relation_type: spanned("->"),
+            relation_type: spanned(RelationType::Forward),
             type_spec: TypeSpec {
                 type_name: None,
                 attributes: vec![Attribute {
-                    name: spanned("color"),
+                    name: spanned(AttributeKey::Color),
                     value: AttributeValue::String(spanned("red".to_string())),
                 }],
             },
@@ -2249,7 +2266,7 @@ mod tests {
                 assert!(type_spec.type_name.is_some());
                 assert_eq!(*type_spec.type_name.unwrap().inner(), builtin_types::ARROW);
                 assert_eq!(type_spec.attributes.len(), 1);
-                assert_eq!(*type_spec.attributes[0].name.inner(), "color");
+                assert_eq!(*type_spec.attributes[0].name.inner(), AttributeKey::Color);
             }
             _ => panic!("Expected Relation"),
         }
@@ -2261,7 +2278,7 @@ mod tests {
         let relation = Element::Relation {
             source: spanned(Id::new("a")),
             target: spanned(Id::new("b")),
-            relation_type: spanned("->"),
+            relation_type: spanned(RelationType::Forward),
             type_spec: TypeSpec {
                 type_name: Some(spanned(Id::new("DashedArrow"))),
                 attributes: vec![],
@@ -2314,7 +2331,7 @@ mod tests {
             type_spec: TypeSpec {
                 type_name: None,
                 attributes: vec![Attribute {
-                    name: spanned("align"),
+                    name: spanned(AttributeKey::Align),
                     value: AttributeValue::String(spanned("left".to_string())),
                 }],
             },
@@ -2332,7 +2349,10 @@ mod tests {
                     builtin_types::NOTE
                 );
                 assert_eq!(note.type_spec.attributes.len(), 1);
-                assert_eq!(*note.type_spec.attributes[0].name.inner(), "align");
+                assert_eq!(
+                    *note.type_spec.attributes[0].name.inner(),
+                    AttributeKey::Align
+                );
             }
             _ => panic!("Expected Note"),
         }
@@ -2432,7 +2452,7 @@ mod tests {
                 type_spec: TypeSpec {
                     type_name: Some(spanned(Id::new("Rectangle"))),
                     attributes: vec![Attribute {
-                        name: spanned("fill_color"),
+                        name: spanned(AttributeKey::FillColor),
                         value: AttributeValue::String(spanned("blue".to_string())),
                     }],
                 },
@@ -2442,7 +2462,7 @@ mod tests {
                 type_spec: TypeSpec {
                     type_name: Some(spanned(Id::new("Oval"))),
                     attributes: vec![Attribute {
-                        name: spanned("fill_color"),
+                        name: spanned(AttributeKey::FillColor),
                         value: AttributeValue::String(spanned("green".to_string())),
                     }],
                 },
@@ -2505,7 +2525,7 @@ mod tests {
                 type_spec: TypeSpec {
                     type_name: Some(spanned(Id::new("Stroke"))),
                     attributes: vec![Attribute {
-                        name: spanned("style"),
+                        name: spanned(AttributeKey::Style),
                         value: AttributeValue::String(spanned("dashed".to_string())),
                     }],
                 },
@@ -2515,7 +2535,7 @@ mod tests {
                 type_spec: TypeSpec {
                     type_name: Some(spanned(Id::new("DashedLine"))),
                     attributes: vec![Attribute {
-                        name: spanned("fill_color"),
+                        name: spanned(AttributeKey::FillColor),
                         value: AttributeValue::String(spanned("blue".to_string())),
                     }],
                 },
@@ -2550,7 +2570,7 @@ mod tests {
             type_spec: TypeSpec {
                 type_name: Some(spanned(Id::new("Rectangle"))),
                 attributes: vec![Attribute {
-                    name: spanned("fill_color"),
+                    name: spanned(AttributeKey::FillColor),
                     value: AttributeValue::String(spanned("blue".to_string())),
                 }],
             },
@@ -2585,7 +2605,7 @@ mod tests {
                 type_spec: TypeSpec {
                     type_name: Some(spanned(Id::new("Stroke"))),
                     attributes: vec![Attribute {
-                        name: spanned("style"),
+                        name: spanned(AttributeKey::Style),
                         value: AttributeValue::String(spanned("dashed".to_string())),
                     }],
                 },
@@ -2595,7 +2615,7 @@ mod tests {
                 type_spec: TypeSpec {
                     type_name: Some(spanned(Id::new("Rectangle"))),
                     attributes: vec![Attribute {
-                        name: spanned("stroke"),
+                        name: spanned(AttributeKey::Stroke),
                         value: AttributeValue::TypeSpec(TypeSpec {
                             type_name: Some(spanned(Id::new("DashedLine"))),
                             attributes: vec![],
@@ -2622,7 +2642,7 @@ mod tests {
 
         // The nested stroke attribute's TypeSpec type_name should be qualified.
         let stroke_attr = &service.type_spec.attributes[0];
-        assert_eq!(*stroke_attr.name, "stroke");
+        assert_eq!(*stroke_attr.name, AttributeKey::Stroke);
         let inner = &stroke_attr
             .value
             .as_type_spec()
@@ -2641,7 +2661,7 @@ mod tests {
             type_spec: TypeSpec {
                 type_name: Some(spanned(Id::new("Rectangle"))),
                 attributes: vec![Attribute {
-                    name: spanned("fill_color"),
+                    name: spanned(AttributeKey::FillColor),
                     value: AttributeValue::String(spanned("blue".to_string())),
                 }],
             },
@@ -2652,7 +2672,7 @@ mod tests {
             type_spec: TypeSpec {
                 type_name: Some(spanned(Id::new("Rectangle"))),
                 attributes: vec![Attribute {
-                    name: spanned("fill_color"),
+                    name: spanned(AttributeKey::FillColor),
                     value: AttributeValue::String(spanned("red".to_string())),
                 }],
             },
@@ -2685,7 +2705,7 @@ mod tests {
             type_spec: TypeSpec {
                 type_name: Some(spanned(Id::new("Rectangle"))),
                 attributes: vec![Attribute {
-                    name: spanned("fill_color"),
+                    name: spanned(AttributeKey::FillColor),
                     value: AttributeValue::String(spanned("blue".to_string())),
                 }],
             },
@@ -2697,7 +2717,7 @@ mod tests {
                 type_spec: TypeSpec {
                     type_name: Some(spanned(Id::new("Rectangle"))),
                     attributes: vec![Attribute {
-                        name: spanned("fill_color"),
+                        name: spanned(AttributeKey::FillColor),
                         value: AttributeValue::String(spanned("custom".to_string())),
                     }],
                 },
@@ -2730,7 +2750,7 @@ mod tests {
             type_spec: TypeSpec {
                 type_name: Some(spanned(Id::new("Stroke"))),
                 attributes: vec![Attribute {
-                    name: spanned("style"),
+                    name: spanned(AttributeKey::Style),
                     value: AttributeValue::String(spanned("solid".to_string())),
                 }],
             },
@@ -2823,7 +2843,7 @@ mod tests {
             type_spec: TypeSpec {
                 type_name: Some(spanned(Id::new("Rectangle"))),
                 attributes: vec![Attribute {
-                    name: spanned("fill_color"),
+                    name: spanned(AttributeKey::FillColor),
                     value: AttributeValue::String(spanned("blue".to_string())),
                 }],
             },
@@ -3133,7 +3153,7 @@ mod tests {
                     type_spec: TypeSpec {
                         type_name: Some(spanned(Id::new("Rectangle"))),
                         attributes: vec![Attribute {
-                            name: spanned("fill_color"),
+                            name: spanned(AttributeKey::FillColor),
                             value: AttributeValue::String(spanned("blue".to_string())),
                         }],
                     },
@@ -3143,7 +3163,7 @@ mod tests {
                     type_spec: TypeSpec {
                         type_name: Some(spanned(Id::new("Service"))),
                         attributes: vec![Attribute {
-                            name: spanned("rounded"),
+                            name: spanned(AttributeKey::Rounded),
                             value: AttributeValue::String(spanned("5".to_string())),
                         }],
                     },
@@ -3153,7 +3173,7 @@ mod tests {
                     type_spec: TypeSpec {
                         type_name: Some(spanned(Id::new("Service"))),
                         attributes: vec![Attribute {
-                            name: spanned("text"),
+                            name: spanned(AttributeKey::Text),
                             value: AttributeValue::String(spanned("white".to_string())),
                         }],
                     },
@@ -3175,13 +3195,20 @@ mod tests {
             "Rectangle"
         );
 
-        let names: Vec<&str> = def
+        let names: Vec<AttributeKey> = def
             .type_spec
             .attributes
             .iter()
             .map(|attr| *attr.name.inner())
             .collect();
-        assert_eq!(names, vec!["fill_color", "rounded", "text"]);
+        assert_eq!(
+            names,
+            vec![
+                AttributeKey::FillColor,
+                AttributeKey::Rounded,
+                AttributeKey::Text
+            ]
+        );
     }
 
     #[test]
@@ -3195,7 +3222,7 @@ mod tests {
                     type_spec: TypeSpec {
                         type_name: Some(spanned(Id::new("Rectangle"))),
                         attributes: vec![Attribute {
-                            name: spanned("fill_color"),
+                            name: spanned(AttributeKey::FillColor),
                             value: AttributeValue::String(spanned("blue".to_string())),
                         }],
                     },
@@ -3205,7 +3232,7 @@ mod tests {
                     type_spec: TypeSpec {
                         type_name: Some(spanned(Id::new("Service"))),
                         attributes: vec![Attribute {
-                            name: spanned("fill_color"),
+                            name: spanned(AttributeKey::FillColor),
                             value: AttributeValue::String(spanned("red".to_string())),
                         }],
                     },
@@ -3244,7 +3271,7 @@ mod tests {
                 type_spec: TypeSpec {
                     type_name: Some(spanned(Id::new("WarnArrow"))),
                     attributes: vec![Attribute {
-                        name: spanned("color"),
+                        name: spanned(AttributeKey::Color),
                         value: AttributeValue::String(spanned("red".to_string())),
                     }],
                 },
@@ -3276,7 +3303,7 @@ mod tests {
             type_spec: TypeSpec {
                 type_name: Some(spanned(Id::new("Rectangle"))),
                 attributes: vec![Attribute {
-                    name: spanned("fill_color"),
+                    name: spanned(AttributeKey::FillColor),
                     value: AttributeValue::String(spanned("blue".to_string())),
                 }],
             },
@@ -3288,7 +3315,7 @@ mod tests {
                 type_spec: TypeSpec {
                     type_name: Some(spanned(Id::new("Service"))),
                     attributes: vec![Attribute {
-                        name: spanned("rounded"),
+                        name: spanned(AttributeKey::Rounded),
                         value: AttributeValue::String(spanned("5".to_string())),
                     }],
                 },
@@ -3309,7 +3336,13 @@ mod tests {
             "Rectangle"
         );
         assert_eq!(def.type_spec.attributes.len(), 2);
-        assert_eq!(*def.type_spec.attributes[0].name.inner(), "fill_color");
-        assert_eq!(*def.type_spec.attributes[1].name.inner(), "rounded");
+        assert_eq!(
+            *def.type_spec.attributes[0].name.inner(),
+            AttributeKey::FillColor
+        );
+        assert_eq!(
+            *def.type_spec.attributes[1].name.inner(),
+            AttributeKey::Rounded
+        );
     }
 }

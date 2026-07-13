@@ -202,7 +202,7 @@ mod attribute_parsing_tests {
     fn test_three_attributes() {
         let source = r#"
             diagram component;
-            app: Rectangle [color="blue", width="10", height="20"];
+            app: Rectangle [color="blue", width="10", rounded="20"];
         "#;
         assert_parses_successfully(source);
     }
@@ -211,7 +211,7 @@ mod attribute_parsing_tests {
     fn test_attributes_with_various_whitespace() {
         let source = r#"
             diagram component;
-            app: Rectangle [color="blue",width="10"  , height="20" ];
+            app: Rectangle [color="blue",width="10"  , rounded="20" ];
         "#;
         assert_parses_successfully(source);
     }
@@ -220,7 +220,7 @@ mod attribute_parsing_tests {
     fn test_attributes_with_complex_values() {
         let source = "
             diagram component;
-            app: Rectangle [fill_color=\"#ff00ff\", border_style=\"dashed_dotted\"];
+            app: Rectangle [fill_color=\"#ff00ff\", stroke=[style=\"dashed_dotted\"]];
         ";
         assert_parses_successfully(source);
     }
@@ -550,7 +550,7 @@ mod string_and_identifier_tests {
     fn test_string_literals_with_special_characters() {
         let source = r#"
             diagram component;
-            api: Rectangle [description="RESTful API with /users/{id} endpoint"];
+            api as "RESTful API with /users/{id} endpoint": Rectangle;
         "#;
         assert_parses_successfully(source);
     }
@@ -559,7 +559,7 @@ mod string_and_identifier_tests {
     fn test_string_literals_with_escape_sequences() {
         let source = r#"
             diagram component;
-            logger: Rectangle [pattern="Log: \"[%s] %s\n\""];
+            logger as "Log: \"[%s] %s\n\"": Rectangle;
         "#;
         assert_parses_successfully(source);
     }
@@ -1202,12 +1202,12 @@ mod regression_tests {
     #[test]
     fn test_comma_whitespace_variations() {
         let test_cases = vec![
-            r#"app: Rectangle [a="1",b="2"];"#,     // No spaces
-            r#"app: Rectangle [a="1", b="2"];"#,    // Space after comma
-            r#"app: Rectangle [a="1" ,b="2"];"#,    // Space before comma
-            r#"app: Rectangle [a="1" , b="2"];"#,   // Spaces around comma
-            r#"app: Rectangle [a="1",  b="2"];"#,   // Multiple spaces after
-            r#"app: Rectangle [a="1"  ,  b="2"];"#, // Multiple spaces both sides
+            r#"app: Rectangle [color="1",width="2"];"#,   // No spaces
+            r#"app: Rectangle [color="1", width="2"];"#,  // Space after comma
+            r#"app: Rectangle [color="1" ,width="2"];"#,  // Space before comma
+            r#"app: Rectangle [color="1" , width="2"];"#, // Spaces around comma
+            r#"app: Rectangle [color="1",  width="2"];"#, // Multiple spaces after
+            r#"app: Rectangle [color="1"  ,  width="2"];"#, // Multiple spaces both sides
         ];
 
         for case in test_cases {
@@ -1297,9 +1297,8 @@ mod regression_tests {
     #[test]
     fn test_activation_box_configuration() {
         let source = r#"
-            diagram sequence [
-                activation_box=[stroke=[color="orange", width=2.0], fill_color="lightyellow"]
-            ];
+            diagram sequence;
+            type Activate = Activate[stroke=[color="orange", width=2.0], fill_color="lightyellow"];
             user: Rectangle;
             server: Rectangle;
             user -> server;
@@ -1312,9 +1311,8 @@ mod regression_tests {
         let source = "
             diagram sequence [
                 layout_engine=\"basic\",
-                background_color=\"#f0f0f0\",
-                lifeline=[stroke=[color=\"gray\"]],
-                activation_box=[fill_color=\"yellow\"]
+                canvas_color=\"#f0f0f0\",
+                lifeline=[stroke=[color=\"gray\"]]
             ];
             user: Rectangle;
             server: Rectangle;
@@ -1341,45 +1339,6 @@ mod typespec_case_tests {
             diagram component;
             type MyType = Rectangle[];
             app: MyType;
-        "#;
-        assert_parses_successfully(source);
-    }
-
-    #[test]
-    fn test_type_spec_deeply_nested_attributes() {
-        // Test deeply nested attributes in component declarations
-        let source = r#"
-            diagram component;
-            app: Service[
-                config=[
-                    server=[
-                        host="localhost",
-                        port=8080
-                    ],
-                    database=[
-                        name="mydb",
-                        pool=[
-                            min=5,
-                            max=20
-                        ]
-                    ]
-                ]
-            ];
-        "#;
-        assert_parses_successfully(source);
-
-        // Test in type definitions
-        let source = r#"
-            diagram component;
-            type ComplexService = Service[
-                settings=[
-                    network=[
-                        timeout=30,
-                        retry=[enabled=1, max=3]
-                    ]
-                ]
-            ];
-            app: ComplexService;
         "#;
         assert_parses_successfully(source);
     }
@@ -1414,13 +1373,13 @@ mod typespec_case_tests {
         let source = r#"
             diagram component;
             app: Service[
-                name="MyService",
-                port=8080,
-                active=1,
-                endpoints=[api, web, admin],
-                config=[
-                    timeout=30,
-                    ssl="enabled"
+                fill_color="blue",
+                width=8080,
+                rounded=1,
+                on=[api, web, admin],
+                stroke=[
+                    color="red",
+                    width=2
                 ]
             ];
         "#;

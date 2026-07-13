@@ -25,8 +25,9 @@ use crate::{
     builtin_types,
     error::{Diagnostic, DiagnosticCollector, ErrorCode},
     parser_types::{
-        Attribute, AttributeValue, ComponentContent, DiagramSource, Element, FileAst, FileHeader,
-        Fragment, FragmentSection, Import, Note, TypeDefinition, TypeSpec,
+        Attribute, AttributeKey, AttributeValue, ComponentContent, DiagramSource, Element, FileAst,
+        FileHeader, Fragment, FragmentSection, Import, Note, RelationType, TypeDefinition,
+        TypeSpec,
     },
     span::{Span, Spanned},
 };
@@ -36,9 +37,9 @@ use crate::{
 /// Each method takes a reference to its input and can accumulate state or errors.
 /// Default implementations perform recursive traversal so implementors can override
 /// only the methods they care about.
-trait Visitor<'a> {
+trait Visitor {
     /// Walks a complete [`FileAst`].
-    fn visit_file_ast(&mut self, file_ast: &FileAst<'a>) {
+    fn visit_file_ast(&mut self, file_ast: &FileAst) {
         self.visit_header(&file_ast.header);
         self.visit_imports(&file_ast.imports);
         self.visit_type_definitions(&file_ast.type_definitions);
@@ -46,7 +47,7 @@ trait Visitor<'a> {
     }
 
     /// Visits the file header.
-    fn visit_header(&mut self, header: &FileHeader<'a>) {
+    fn visit_header(&mut self, header: &FileHeader) {
         match header {
             FileHeader::Diagram { kind, attributes } => {
                 self.visit_diagram_kind(kind);
@@ -57,7 +58,7 @@ trait Visitor<'a> {
     }
 
     /// Iterates over resolved imports and recursively visits each import's inner [`FileAst`].
-    fn visit_imports(&mut self, imports: &[Import<'a>]) {
+    fn visit_imports(&mut self, imports: &[Import]) {
         for import in imports {
             self.visit_file_ast(&import.file_ast.borrow());
         }
@@ -67,23 +68,23 @@ trait Visitor<'a> {
     fn visit_diagram_kind(&mut self, _kind: &Spanned<DiagramKind>) {}
 
     /// Visits a list of attributes.
-    fn visit_attributes(&mut self, attributes: &[Attribute<'a>]) {
+    fn visit_attributes(&mut self, attributes: &[Attribute]) {
         for attr in attributes {
             self.visit_attribute(attr);
         }
     }
 
     /// Visits a single attribute.
-    fn visit_attribute(&mut self, attribute: &Attribute<'a>) {
+    fn visit_attribute(&mut self, attribute: &Attribute) {
         self.visit_attribute_name(&attribute.name);
         self.visit_attribute_value(&attribute.value);
     }
 
     /// Visits an attribute name.
-    fn visit_attribute_name(&mut self, _name: &Spanned<&'a str>) {}
+    fn visit_attribute_name(&mut self, _name: &Spanned<AttributeKey>) {}
 
     /// Visits an attribute value.
-    fn visit_attribute_value(&mut self, value: &AttributeValue<'a>) {
+    fn visit_attribute_value(&mut self, value: &AttributeValue) {
         match value {
             AttributeValue::String(s) => self.visit_string_value(s),
             AttributeValue::Float(f) => self.visit_float_value(f),
@@ -110,14 +111,14 @@ trait Visitor<'a> {
     }
 
     /// Visits a list of type definitions.
-    fn visit_type_definitions(&mut self, type_definitions: &[TypeDefinition<'a>]) {
+    fn visit_type_definitions(&mut self, type_definitions: &[TypeDefinition]) {
         for td in type_definitions {
             self.visit_type_definition(td);
         }
     }
 
     /// Visits a single type definition.
-    fn visit_type_definition(&mut self, type_def: &TypeDefinition<'a>) {
+    fn visit_type_definition(&mut self, type_def: &TypeDefinition) {
         self.visit_type_spec(&type_def.type_spec);
         self.visit_type_name(&type_def.name);
     }
@@ -129,7 +130,7 @@ trait Visitor<'a> {
     fn visit_base_type(&mut self, _base_type: &Spanned<Id>) {}
 
     /// Visits a type specification.
-    fn visit_type_spec(&mut self, type_spec: &TypeSpec<'a>) {
+    fn visit_type_spec(&mut self, type_spec: &TypeSpec) {
         if let Some(ref type_name) = type_spec.type_name {
             self.visit_base_type(type_name);
         }
@@ -137,7 +138,7 @@ trait Visitor<'a> {
     }
 
     /// Visits a list of elements.
-    fn visit_elements(&mut self, elements: &[Element<'a>]) {
+    fn visit_elements(&mut self, elements: &[Element]) {
         for elem in elements {
             self.visit_element(elem);
         }
@@ -146,7 +147,7 @@ trait Visitor<'a> {
     /// Visits a single element by dispatching to the appropriate typed visitor method.
     ///
     /// Each [`Element`] variant is routed to its dedicated `visit_*` method.
-    fn visit_element(&mut self, element: &Element<'a>) {
+    fn visit_element(&mut self, element: &Element) {
         match *element {
             Element::Component {
                 ref name,
@@ -231,14 +232,14 @@ trait Visitor<'a> {
     }
 
     /// Visits a fragment.
-    fn visit_fragment(&mut self, fragment: &Fragment<'a>) {
+    fn visit_fragment(&mut self, fragment: &Fragment) {
         for section in &fragment.sections {
             self.visit_fragment_section(section);
         }
     }
 
     /// Visits a fragment section.
-    fn visit_fragment_section(&mut self, section: &FragmentSection<'a>) {
+    fn visit_fragment_section(&mut self, section: &FragmentSection) {
         // Traverse section title as a string literal and its elements
         if let Some(title) = &section.title {
             self.visit_string_value(title);
@@ -251,8 +252,8 @@ trait Visitor<'a> {
         &mut self,
         name: &Spanned<Id>,
         display_name: &Option<Spanned<String>>,
-        type_spec: &TypeSpec<'a>,
-        content: &ComponentContent<'a>,
+        type_spec: &TypeSpec,
+        content: &ComponentContent,
     ) {
         self.visit_component_name(name);
         if let Some(dn) = display_name {
@@ -263,7 +264,7 @@ trait Visitor<'a> {
     }
 
     /// Visits the content of a component element.
-    fn visit_component_content(&mut self, content: &ComponentContent<'a>) {
+    fn visit_component_content(&mut self, content: &ComponentContent) {
         match content {
             ComponentContent::None => {}
             ComponentContent::Scope(elements) => self.visit_elements(elements),
@@ -272,7 +273,7 @@ trait Visitor<'a> {
     }
 
     /// Visits an embedded diagram source inside a component.
-    fn visit_diagram_source(&mut self, source: &DiagramSource<'a>) {
+    fn visit_diagram_source(&mut self, source: &DiagramSource) {
         match source {
             DiagramSource::Inline(rc) => self.visit_file_ast(&rc.borrow()),
             DiagramSource::Ref(_) => {}
@@ -290,8 +291,8 @@ trait Visitor<'a> {
         &mut self,
         source: &Spanned<Id>,
         target: &Spanned<Id>,
-        relation_type: &Spanned<&'a str>,
-        type_spec: &TypeSpec<'a>,
+        relation_type: &Spanned<RelationType>,
+        type_spec: &TypeSpec,
         label: &Option<Spanned<String>>,
     ) {
         self.visit_relation_source(source);
@@ -314,7 +315,7 @@ trait Visitor<'a> {
     }
 
     /// Visits a relation type.
-    fn visit_relation_type(&mut self, _relation_type: &Spanned<&'a str>) {}
+    fn visit_relation_type(&mut self, _relation_type: &Spanned<RelationType>) {}
 
     /// Visits a relation label.
     fn visit_relation_label(&mut self, _label: &Spanned<String>) {}
@@ -323,8 +324,8 @@ trait Visitor<'a> {
     fn visit_activate_block(
         &mut self,
         component: &Spanned<Id>,
-        type_spec: &TypeSpec<'a>,
-        elements: &[Element<'a>],
+        type_spec: &TypeSpec,
+        elements: &[Element],
     ) {
         self.visit_activate_component(component);
         self.visit_type_spec(type_spec);
@@ -335,7 +336,7 @@ trait Visitor<'a> {
     fn visit_activate_component(&mut self, _component: &Spanned<Id>) {}
 
     /// Visits an activate statement.
-    fn visit_activate(&mut self, component: &Spanned<Id>, type_spec: &TypeSpec<'a>) {
+    fn visit_activate(&mut self, component: &Spanned<Id>, type_spec: &TypeSpec) {
         self.visit_identifier(component);
         self.visit_type_spec(type_spec);
     }
@@ -346,7 +347,7 @@ trait Visitor<'a> {
     }
 
     /// Visits a note element.
-    fn visit_note(&mut self, note: &Note<'a>) {
+    fn visit_note(&mut self, note: &Note) {
         self.visit_type_spec(&note.type_spec);
         self.visit_note_content(&note.content);
     }
@@ -356,7 +357,7 @@ trait Visitor<'a> {
 }
 
 /// Entry point for running a visitor on a file AST.
-fn visit_file_ast<'a, V: Visitor<'a>>(visitor: &mut V, file_ast: &FileAst<'a>) {
+fn visit_file_ast<V: Visitor>(visitor: &mut V, file_ast: &FileAst) {
     visitor.visit_file_ast(file_ast)
 }
 
@@ -479,9 +480,9 @@ impl Validator {
     }
 }
 
-impl<'a> Visitor<'a> for Validator {
+impl Visitor for Validator {
     /// Pushes a fresh component registry scope before visiting the file's children.
-    fn visit_file_ast(&mut self, file_ast: &FileAst<'a>) {
+    fn visit_file_ast(&mut self, file_ast: &FileAst) {
         let last_state = mem::replace(&mut self.state, FileAstState::new());
 
         // Call default traversal
@@ -529,7 +530,7 @@ impl<'a> Visitor<'a> for Validator {
     }
 
     /// Validates the activation target and pushes it onto the activation stack.
-    fn visit_activate(&mut self, component: &Spanned<Id>, type_spec: &TypeSpec<'a>) {
+    fn visit_activate(&mut self, component: &Spanned<Id>, type_spec: &TypeSpec) {
         // Validate component identifier exists
         self.visit_identifier(component);
 
@@ -570,12 +571,12 @@ impl<'a> Visitor<'a> for Validator {
     }
 
     /// Validates the `align` attribute against the current diagram type, emitting `E203` if invalid.
-    fn visit_note(&mut self, note: &Note<'a>) {
+    fn visit_note(&mut self, note: &Note) {
         self.visit_type_spec(&note.type_spec);
 
         // Validation for align attribute
         for attr in &note.type_spec.attributes {
-            if *attr.name.inner() == "align"
+            if *attr.name.inner() == AttributeKey::Align
                 && let Ok(align_value) = attr.value.as_str()
             {
                 self.validate_align_for_diagram_type(align_value, attr.value.span());
@@ -591,7 +592,7 @@ impl<'a> Visitor<'a> for Validator {
     /// An `Inline` source is traversed normally. A `Ref` source means the embed
     /// reference was never resolved to a known namespaced import, so an
     /// "unknown embed reference" diagnostic is emitted.
-    fn visit_diagram_source(&mut self, source: &DiagramSource<'a>) {
+    fn visit_diagram_source(&mut self, source: &DiagramSource) {
         match source {
             DiagramSource::Inline(rc) => self.visit_file_ast(&rc.borrow()),
             DiagramSource::Ref(id) => {
@@ -652,7 +653,7 @@ impl<'a> Visitor<'a> for Validator {
 /// # Errors
 ///
 /// Returns `Vec<Diagnostic>` if one or more semantic validation checks fail.
-pub fn validate(ast: &FileAst<'_>) -> Result<(), Vec<Diagnostic>> {
+pub fn validate(ast: &FileAst) -> Result<(), Vec<Diagnostic>> {
     let mut validator = Validator::new();
     visit_file_ast(&mut validator, ast);
     validator.diagnostics.finish()
@@ -681,13 +682,13 @@ mod tests {
         }
     }
 
-    impl<'a> Visitor<'a> for CountingVisitor {
+    impl Visitor for CountingVisitor {
         fn visit_component(
             &mut self,
             name: &Spanned<Id>,
             display_name: &Option<Spanned<String>>,
-            type_spec: &TypeSpec<'a>,
-            content: &ComponentContent<'a>,
+            type_spec: &TypeSpec,
+            content: &ComponentContent,
         ) {
             self.component_count += 1;
             // Call default traversal
@@ -703,8 +704,8 @@ mod tests {
             &mut self,
             source: &Spanned<Id>,
             target: &Spanned<Id>,
-            relation_type: &Spanned<&'a str>,
-            type_spec: &TypeSpec<'a>,
+            relation_type: &Spanned<RelationType>,
+            type_spec: &TypeSpec,
             label: &Option<Spanned<String>>,
         ) {
             self.relation_count += 1;
@@ -718,7 +719,7 @@ mod tests {
             }
         }
 
-        fn visit_activate(&mut self, component: &Spanned<Id>, type_spec: &TypeSpec<'a>) {
+        fn visit_activate(&mut self, component: &Spanned<Id>, type_spec: &TypeSpec) {
             self.visit_identifier(component);
             self.visit_type_spec(type_spec);
             self.activate_count += 1;
@@ -757,7 +758,7 @@ mod tests {
                 Element::Relation {
                     source: Spanned::new(Id::new("user"), Span::new(40..44)),
                     target: Spanned::new(Id::new("server"), Span::new(48..54)),
-                    relation_type: Spanned::new("->", Span::new(45..47)),
+                    relation_type: Spanned::new(RelationType::Forward, Span::new(45..47)),
                     type_spec: TypeSpec::default(),
                     label: None,
                 },
@@ -1269,7 +1270,7 @@ mod identifier_validation_tests {
                 Element::Relation {
                     source: Spanned::new(Id::new("app"), Span::new(30..33)),
                     target: Spanned::new(Id::new("db"), Span::new(37..39)),
-                    relation_type: Spanned::new("->", Span::new(34..36)),
+                    relation_type: Spanned::new(RelationType::Forward, Span::new(34..36)),
                     type_spec: TypeSpec::default(),
                     label: None,
                 },
@@ -1303,7 +1304,7 @@ mod identifier_validation_tests {
                 Element::Relation {
                     source: Spanned::new(Id::new("unknown"), Span::new(30..37)),
                     target: Spanned::new(Id::new("db"), Span::new(41..43)),
-                    relation_type: Spanned::new("->", Span::new(38..40)),
+                    relation_type: Spanned::new(RelationType::Forward, Span::new(38..40)),
                     type_spec: TypeSpec::default(),
                     label: None,
                 },
@@ -1339,7 +1340,7 @@ mod identifier_validation_tests {
                 Element::Relation {
                     source: Spanned::new(Id::new("app"), Span::new(30..33)),
                     target: Spanned::new(Id::new("missing"), Span::new(37..44)),
-                    relation_type: Spanned::new("->", Span::new(34..36)),
+                    relation_type: Spanned::new(RelationType::Forward, Span::new(34..36)),
                     type_spec: TypeSpec::default(),
                     label: None,
                 },
@@ -1475,7 +1476,7 @@ mod identifier_validation_tests {
                     type_spec: TypeSpec {
                         type_name: None,
                         attributes: vec![Attribute {
-                            name: Spanned::new("on", Span::new(20..22)),
+                            name: Spanned::new(AttributeKey::On, Span::new(20..22)),
                             value: AttributeValue::Identifiers(vec![Spanned::new(
                                 Id::new("unknown"),
                                 Span::new(24..31),
@@ -1526,7 +1527,7 @@ mod identifier_validation_tests {
                     type_spec: TypeSpec {
                         type_name: None,
                         attributes: vec![Attribute {
-                            name: Spanned::new("on", Span::new(38..40)),
+                            name: Spanned::new(AttributeKey::On, Span::new(38..40)),
                             value: AttributeValue::Identifiers(vec![
                                 Spanned::new(Id::new("client"), Span::new(42..48)),
                                 Spanned::new(Id::new("server"), Span::new(50..56)),
@@ -1569,7 +1570,7 @@ mod identifier_validation_tests {
                     type_spec: TypeSpec {
                         type_name: None,
                         attributes: vec![Attribute {
-                            name: Spanned::new("on", Span::new(20..22)),
+                            name: Spanned::new(AttributeKey::On, Span::new(20..22)),
                             value: AttributeValue::Identifiers(vec![]),
                         }],
                     },
@@ -1596,7 +1597,7 @@ mod identifier_validation_tests {
                 type_spec: TypeSpec {
                     type_name: Some(Spanned::new(Id::new("Arrow"), Span::new(24..29))),
                     attributes: vec![Attribute {
-                        name: Spanned::new("color", Span::new(30..35)),
+                        name: Spanned::new(AttributeKey::Color, Span::new(30..35)),
                         value: AttributeValue::String(Spanned::new(
                             "red".to_string(),
                             Span::new(37..42),
@@ -1611,7 +1612,7 @@ mod identifier_validation_tests {
                     type_spec: TypeSpec {
                         type_name: Some(Spanned::new(Id::new("Rectangle"), Span::new(58..67))),
                         attributes: vec![Attribute {
-                            name: Spanned::new("fill", Span::new(68..72)),
+                            name: Spanned::new(AttributeKey::FillColor, Span::new(68..72)),
                             value: AttributeValue::String(Spanned::new(
                                 "blue".to_string(),
                                 Span::new(74..80),
@@ -1634,7 +1635,7 @@ mod identifier_validation_tests {
                     type_spec: TypeSpec {
                         type_name: Some(Spanned::new(Id::new("Activate"), Span::new(118..128))),
                         attributes: vec![Attribute {
-                            name: Spanned::new("fill", Span::new(129..133)),
+                            name: Spanned::new(AttributeKey::FillColor, Span::new(129..133)),
                             value: AttributeValue::String(Spanned::new(
                                 "yellow".to_string(),
                                 Span::new(135..143),
@@ -1645,11 +1646,11 @@ mod identifier_validation_tests {
                 Element::Relation {
                     source: Spanned::new(Id::new("client"), Span::new(150..156)),
                     target: Spanned::new(Id::new("server"), Span::new(160..166)),
-                    relation_type: Spanned::new("->", Span::new(157..159)),
+                    relation_type: Spanned::new(RelationType::Forward, Span::new(157..159)),
                     type_spec: TypeSpec {
                         type_name: Some(Spanned::new(Id::new("CustomArrow"), Span::new(168..179))),
                         attributes: vec![Attribute {
-                            name: Spanned::new("width", Span::new(180..185)),
+                            name: Spanned::new(AttributeKey::Width, Span::new(180..185)),
                             value: AttributeValue::Float(Spanned::new(2.0, Span::new(187..188))),
                         }],
                     },
@@ -1660,14 +1661,14 @@ mod identifier_validation_tests {
                         type_name: Some(Spanned::new(Id::new("Note"), Span::new(205..209))),
                         attributes: vec![
                             Attribute {
-                                name: Spanned::new("on", Span::new(210..212)),
+                                name: Spanned::new(AttributeKey::On, Span::new(210..212)),
                                 value: AttributeValue::Identifiers(vec![
                                     Spanned::new(Id::new("client"), Span::new(214..220)),
                                     Spanned::new(Id::new("server"), Span::new(222..228)),
                                 ]),
                             },
                             Attribute {
-                                name: Spanned::new("align", Span::new(230..235)),
+                                name: Spanned::new(AttributeKey::Align, Span::new(230..235)),
                                 value: AttributeValue::String(Spanned::new(
                                     "right".to_string(),
                                     Span::new(237..245),
@@ -1923,7 +1924,7 @@ mod base_type_validation_tests {
                 type_spec: TypeSpec {
                     type_name: Some(Spanned::new(Id::new("MyType"), Span::new(24..30))),
                     attributes: vec![Attribute {
-                        name: Spanned::new("fill_color", Span::new(31..41)),
+                        name: Spanned::new(AttributeKey::FillColor, Span::new(31..41)),
                         value: AttributeValue::String(Spanned::new(
                             "red".to_string(),
                             Span::new(43..48),
@@ -1969,7 +1970,7 @@ mod base_type_validation_tests {
                     type_spec: TypeSpec {
                         type_name: Some(Spanned::new(Id::new("MyType"), Span::new(49..55))),
                         attributes: vec![Attribute {
-                            name: Spanned::new("fill_color", Span::new(56..66)),
+                            name: Spanned::new(AttributeKey::FillColor, Span::new(56..66)),
                             value: AttributeValue::String(Spanned::new(
                                 "red".to_string(),
                                 Span::new(68..73),
